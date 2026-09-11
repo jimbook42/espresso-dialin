@@ -1,0 +1,15 @@
+{
+  "name": "Espresso Dial-In",
+  "short_name": "EspressoDial",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#f59e0b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

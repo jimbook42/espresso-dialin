@@ -134,20 +134,20 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
   return { daysOld: effectiveDays, recommendedOffset: microStepOffset, notice, isTooFresh, isStale };
 }
 
-export function getInitialGrindRecommendation(grinderModel, roastType, activeBean, recipes = [], allShots = [], beans = [], mockDate = null) {
+export function getInitialGrindRecommendation(grinderModel, roastType, activeBean, recipes = [], allShots = [], beans = [], mockDateOverride = null) {
   const trendOffset = getGrindHistoryTrendOffset(grinderModel, allShots, recipes, beans);
-  const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
-  const beanAgeMicroOffset = ageData.recommendedOffset || 0;
+  const ageData = calculateEffectiveBeanAge(activeBean, mockDateOverride);
+  const totalOffset = ageData.recommendedOffset + Math.round(trendOffset);
 
   if (grinderModel === 'Sette 270Wi') {
-    let baseMacro = roastType === 'Light' ? 15 : roastType === 'Dark' ? 12 : 13;
-    let baseMicroIdx = roastType === 'Light' ? 2 : roastType === 'Dark' ? 5 : 4;
-    let numeric = baseMacro * 9 + baseMicroIdx + Math.round(trendOffset) + beanAgeMicroOffset;
-    return numericToSette(numeric);
+    const baseMacro = roastType === 'Light' ? 15 : roastType === 'Dark' ? 12 : 13;
+    const baseMicroIdx = roastType === 'Light' ? 2 : roastType === 'Dark' ? 5 : 4;
+    const baseNumeric = baseMacro * 9 + baseMicroIdx + totalOffset;
+    return numericToSette(baseNumeric);
   } else {
-    let baseSetting = roastType === 'Light' ? 17 : roastType === 'Dark' ? 13 : 15;
-    let setting = Math.round(baseSetting + trendOffset + (beanAgeMicroOffset * 0.3));
-    return { setting: Math.min(Math.max(setting, 1), 30) };
+    const baseSetting = roastType === 'Light' ? 17 : roastType === 'Dark' ? 13 : 15;
+    const finalSetting = Math.min(Math.max(baseSetting + totalOffset, 1), 30);
+    return { setting: finalSetting };
   }
 }
 
@@ -222,29 +222,32 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
           } else if (diff <= 5) {
             sunbeamShift = -1;
             reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Making a 1-step finer adjustment.`;
-          } else if (diff <= 10) {
+          } else if (diff <= 9) {
             sunbeamShift = -2;
             reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Making a 2-step finer adjustment.`;
-          } else {
+          } else if (diff <= 14) {
             sunbeamShift = -3;
-            reason = `Your extraction time was severely fast at ${timeStr} (${diff}s off target). Making a 3-step finer adjustment.`;
+            reason = `Your extraction time was fast at ${timeStr} (${diff}s off target). Making a 3-step finer adjustment.`;
+          } else {
+            sunbeamShift = -4;
+            reason = `Your extraction time was severely fast at ${timeStr} (${diff}s off target). Making an aggressive 4-step finer adjustment to dial in faster.`;
           }
         } else {
-          if (diff === 1) {
+          if (diff <= 1) {
             microShift = -1 + retentionOffset + inactivityOffset;
             reason = `Your extraction time was ${timeStr} (1s faster than target). Nudging 1 micro-step finer.`;
-          } else if (diff >= 2 && diff <= 3) {
+          } else if (diff <= 3) {
             microShift = -2 + retentionOffset + inactivityOffset;
             reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Nudging 2 micro-steps finer.`;
-          } else if (diff >= 4 && diff <= 6) {
-            microShift = -3 + retentionOffset + inactivityOffset;
-            reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Adjusting 3 micro-steps finer.`;
-          } else if (diff >= 7 && diff <= 10) {
-            microShift = -5 + retentionOffset + inactivityOffset;
-            reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Adjusting 5 micro-steps finer.`;
-          } else {
+          } else if (diff <= 6) {
+            microShift = -4 + retentionOffset + inactivityOffset;
+            reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Adjusting 4 micro-steps finer.`;
+          } else if (diff <= 10) {
             microShift = -8 + retentionOffset + inactivityOffset;
-            reason = `Your extraction time was severely fast at ${timeStr} (${diff}s off target). Applying major finer correction.`;
+            reason = `Your extraction time was fast at ${timeStr} (${diff}s off target). Adjusting 8 micro-steps (almost a macro step) finer.`;
+          } else {
+            microShift = -12 + retentionOffset + inactivityOffset;
+            reason = `Your extraction time was severely fast at ${timeStr} (${diff}s off target). Applying an aggressive >1 macro step finer correction to dial in faster.`;
           }
         }
       }
@@ -257,29 +260,32 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         } else if (diff <= 5) {
           sunbeamShift = 1;
           reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Making a 1-step coarser adjustment.`;
-        } else if (diff <= 10) {
+        } else if (diff <= 9) {
           sunbeamShift = 2;
           reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Making a 2-step coarser adjustment.`;
-        } else {
+        } else if (diff <= 14) {
           sunbeamShift = 3;
-          reason = `Your extraction time was severely slow at ${timeStr} (${diff}s off target). Making a 3-step coarser adjustment.`;
+          reason = `Your extraction time was slow at ${timeStr} (${diff}s off target). Making a 3-step coarser adjustment.`;
+        } else {
+          sunbeamShift = 4;
+          reason = `Your extraction time was severely slow at ${timeStr} (${diff}s off target). Making an aggressive 4-step coarser adjustment to dial in faster.`;
         }
       } else {
-        if (diff === 1) {
+        if (diff <= 1) {
           microShift = 1 + retentionOffset + inactivityOffset;
           reason = `Your extraction time was ${timeStr} (1s slower than target). Nudging 1 micro-step coarser.`;
-        } else if (diff >= 2 && diff <= 3) {
+        } else if (diff <= 3) {
           microShift = 2 + retentionOffset + inactivityOffset;
           reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Nudging 2 micro-steps coarser.`;
-        } else if (diff >= 4 && diff <= 6) {
-          microShift = 3 + retentionOffset + inactivityOffset;
-          reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Adjusting 3 micro-steps coarser.`;
-        } else if (diff >= 7 && diff <= 10) {
-          microShift = 5 + retentionOffset + inactivityOffset;
-          reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Adjusting 5 micro-steps coarser.`;
-        } else {
+        } else if (diff <= 6) {
+          microShift = 4 + retentionOffset + inactivityOffset;
+          reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Adjusting 4 micro-steps coarser.`;
+        } else if (diff <= 10) {
           microShift = 8 + retentionOffset + inactivityOffset;
-          reason = `Your extraction time was severely slow at ${timeStr} (${diff}s off target). Applying major coarser correction.`;
+          reason = `Your extraction time was slow at ${timeStr} (${diff}s off target). Adjusting 8 micro-steps coarser.`;
+        } else {
+          microShift = 12 + retentionOffset + inactivityOffset;
+          reason = `Your extraction time was severely slow at ${timeStr} (${diff}s off target). Applying an aggressive >1 macro step coarser correction to dial in faster.`;
         }
       }
     }
@@ -309,8 +315,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   }
 
   let subRecommendation = null;
-  // Ratio/Taste advisories should ONLY be factored in when the bean is dialed in 
-  // AND there are multiple sour/bitter shots with dialed-in figures for that bean.
   if (isTimeDialedIn) {
     const dialedInRecentShots = recentShots.filter(s => s.actualTimeS >= targetMin && s.actualTimeS <= targetMax);
     const dialedInBitterCount = dialedInRecentShots.filter(s => s.tasteProfile === 'bitter' || s.tasteProfile === 'very_bitter').length;

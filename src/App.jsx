@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, calculateRecommendation, calculateEffectiveBeanAge, getInitialGrindRecommendation, getIdealFreezeWindow } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Database, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Database, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, Square, RotateCcw, Edit2, X } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dial');
@@ -30,6 +31,16 @@ export default function App() {
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
   
+  // Timer State
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [usePreInfusion, setUsePreInfusion] = useState(false);
+  const [preInfusionPhase, setPreInfusionPhase] = useState(false);
+  const [preInfusionSeconds, setPreInfusionSeconds] = useState(0);
+
+  // Editing State
+  const [isEditingBean, setIsEditingBean] = useState(false);
+
   const [newBean, setNewBean] = useState({ 
     name: '', 
     roaster: '', 
@@ -85,6 +96,69 @@ export default function App() {
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
 
   const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
+
+  // Timer Logic
+  useEffect(() => {
+    let interval = null;
+    if (timerRunning) {
+      interval = setInterval(() => {
+        setTimerSeconds(s => s + 1);
+      }, 1000);
+    } else if (!timerRunning && timerSeconds !== 0) {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [timerRunning, timerSeconds]);
+
+  const formatTime = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const handleStartTimer = () => {
+    setTimerSeconds(0);
+    setPreInfusionSeconds(0);
+    if (usePreInfusion) setPreInfusionPhase(true);
+    setTimerRunning(true);
+  };
+
+  const handleEndPreInfusion = () => {
+    setPreInfusionSeconds(timerSeconds);
+    setPreInfusionPhase(false);
+  };
+
+  const handleStopTimer = () => {
+    setTimerRunning(false);
+    let finalExtractionTime = timerSeconds;
+    
+    // Subtract pre-infusion from total time if enabled and completed
+    if (usePreInfusion && !preInfusionPhase) {
+      finalExtractionTime = timerSeconds - preInfusionSeconds;
+    }
+    
+    setActualTimeS(finalExtractionTime);
+  };
+
+  const handleCancelTimer = () => {
+    setTimerRunning(false);
+    setTimerSeconds(0);
+    setPreInfusionSeconds(0);
+  };
+
+  const handleResetTimer = () => {
+    setTimerRunning(false);
+    setTimerSeconds(0);
+    setPreInfusionSeconds(0);
+    setPreInfusionPhase(false);
+  };
+
+  // Yield Auto-Default Logic
+  useEffect(() => {
+    if (activeRecipe?.targetYieldG) {
+      setActualYieldG(activeRecipe.targetYieldG);
+    }
+  }, [activeRecipe?.id]);
 
   useEffect(() => {
     if (activeBean && beanShots.length === 0 && grinderModel) {
@@ -208,18 +282,42 @@ export default function App() {
     setIsAdminOpen(false);
   };
 
-  const handleCreateBean = async (e) => {
+  const handleSaveBean = async (e) => {
     e.preventDefault();
     if (!newBean.name) return;
-    
-    const beanId = crypto.randomUUID();
     const sanitized = sanitizeRating(newBean.rating);
-    await db.beans.add({ ...newBean, rating: sanitized !== '' ? sanitized : null, id: beanId, createdAt: new Date().toISOString() });
-    await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: crypto.randomUUID(), beanId });
+    
+    if (isEditingBean && newBean.id) {
+      await db.beans.update(newBean.id, { ...newBean, rating: sanitized !== '' ? sanitized : null });
+      const existingRecipe = recipes.find(r => r.beanId === newBean.id);
+      if (existingRecipe) {
+        await db.recipes.update(existingRecipe.id, { ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36 });
+      }
+    } else {
+      const beanId = crypto.randomUUID();
+      await db.beans.add({ ...newBean, rating: sanitized !== '' ? sanitized : null, id: beanId, createdAt: new Date().toISOString() });
+      await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: crypto.randomUUID(), beanId });
+      setSelectedBeanId(beanId);
+    }
 
     setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', rating: '' });
-    setSelectedBeanId(beanId);
+    setIsEditingBean(false);
     setActiveTab('dial');
+  };
+
+  const startEditBean = (bean) => {
+    const recipe = recipes.find(r => r.beanId === bean.id);
+    setNewBean(bean);
+    if (recipe) setNewRecipe(recipe);
+    setIsEditingBean(true);
+    setActiveTab('beans');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEditBean = () => {
+    setIsEditingBean(false);
+    setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', rating: '' });
+    setNewRecipe({ targetDoseG: 18, targetYieldG: '', targetTimeMinS: 27, targetTimeMaxS: 32 });
   };
 
   const handleUpdateBeanRating = async (beanId, val) => {
@@ -323,16 +421,17 @@ export default function App() {
       recommendationFollowed,
       flairProfile: flairEnabled && showFlair ? { waterTempC, preinfusion: flairPreinfusion, extraction: flairExtraction, rampDown: flairRampDown } : null,
       recommendation: rec,
-      notes
+      notes: usePreInfusion && preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes
     };
 
     await db.shots.add(shotRecord);
     
     setActualTimeS('');
-    setActualYieldG('');
+    setActualYieldG(activeRecipe?.targetYieldG || '');
     setShotRating(null);
     setNotes('');
     setTasteProfile('');
+    handleResetTimer();
 
     setTimeout(() => {
       recommendationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -484,6 +583,46 @@ export default function App() {
   return (
     <div className={`min-h-screen ${currentTheme.bgWash} transition-colors duration-300 relative overflow-hidden`}>
       
+      {/* FULL-SCREEN ACTIVE TIMER OVERLAY */}
+      {timerRunning && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md p-6 animate-in fade-in duration-200">
+          <button onClick={handleCancelTimer} className="absolute top-6 right-6 p-4 text-slate-400 hover:text-white transition-colors">
+            <X className="w-8 h-8" />
+          </button>
+          
+          <div className="flex flex-col items-center justify-center mb-16 space-y-2">
+            <span className="text-amber-500 font-bold tracking-[0.2em] uppercase text-sm">
+              {usePreInfusion && preInfusionPhase ? 'Pre-infusing' : 'Extracting'}
+            </span>
+            <div className={`text-[8rem] leading-none font-black font-mono tracking-tighter ${usePreInfusion && preInfusionPhase ? 'text-indigo-400' : 'text-amber-500'}`}>
+              {formatTime(timerSeconds)}
+            </div>
+            {usePreInfusion && !preInfusionPhase && preInfusionSeconds > 0 && (
+              <p className="text-slate-400 text-xl font-medium mt-4">
+                Pre-infusion logged: <span className="text-white">{preInfusionSeconds}s</span>
+              </p>
+            )}
+          </div>
+          
+          <div className="w-full max-w-sm flex flex-col gap-6">
+            {usePreInfusion && preInfusionPhase && (
+              <button 
+                onClick={handleEndPreInfusion} 
+                className="w-full py-8 text-3xl font-black rounded-[2rem] bg-indigo-600 text-white shadow-[0_0_40px_rgba(79,70,229,0.4)] active:scale-95 transition-all"
+              >
+                End Pre-infusion
+              </button>
+            )}
+            <button 
+              onClick={handleStopTimer} 
+              className={`w-full py-8 text-3xl font-black rounded-[2rem] text-white shadow-2xl active:scale-95 transition-all ${usePreInfusion && preInfusionPhase ? 'bg-rose-900/50 text-rose-300 border border-rose-800/50' : 'bg-rose-600 shadow-[0_0_40px_rgba(225,29,72,0.4)]'}`}
+            >
+              Stop Shot
+            </button>
+          </div>
+        </div>
+      )}
+
       {easterEggActive && (
         <div className="fixed inset-0 z-50 pointer-events-none bg-black/95 flex flex-col items-center justify-center p-6 text-center animate-pulse overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-red-600 via-emerald-500 to-blue-600 opacity-40 animate-spin" style={{ animationDuration: '2s' }} />
@@ -671,6 +810,35 @@ export default function App() {
                       <span>{validationError}</span>
                     </div>
                   )}
+
+                  {/* Inline Shot Timer (Pre-Launch View) */}
+                  <div className={`${currentTheme.card} p-3 rounded-2xl border flex flex-col gap-3`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className={`text-[10px] uppercase font-bold ${labelClass}`}>Live Shot Timer</span>
+                        <span className={`text-2xl font-mono font-black ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>
+                          {formatTime(timerSeconds)}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={handleStartTimer} className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow transition-colors">
+                          <Play className="w-5 h-5 fill-current" />
+                        </button>
+                        <button type="button" onClick={handleResetTimer} className={`p-3 ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'} rounded-xl shadow-sm transition-colors hover:opacity-80`}>
+                          <RotateCcw className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className={`flex items-center justify-between border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} pt-2 mt-1`}>
+                      <span className={`text-xs font-semibold ${subTextClass}`}>Track Pre-infusion separately (subtracts from total)</span>
+                      <input
+                        type="checkbox"
+                        checked={usePreInfusion}
+                        onChange={(e) => setUsePreInfusion(e.target.checked)}
+                        className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+                      />
+                    </div>
+                  </div>
 
                   <div ref={grindSettingsRef} className={`${currentTheme.card} p-4 rounded-2xl border transition-all duration-300 ${highlightGrind ? 'ring-4 ring-amber-500 animate-pulse border-amber-500' : ''}`}>
                     <div className="flex justify-between items-center mb-2">
@@ -885,8 +1053,21 @@ export default function App() {
 
         {activeTab === 'beans' && (
           <div className="space-y-6">
-            <form onSubmit={handleCreateBean} className={`${currentTheme.card} p-5 rounded-2xl border space-y-4`}>
-              <h2 className="text-base font-bold mb-2">Configure New Coffee Profile</h2>
+            <form onSubmit={handleSaveBean} className={`${currentTheme.card} p-5 rounded-2xl border space-y-4 relative overflow-hidden`}>
+              {isEditingBean && (
+                <div className="absolute top-0 left-0 right-0 bg-amber-500 text-amber-950 text-[10px] font-black uppercase text-center py-1">
+                  Editing Mode Active
+                </div>
+              )}
+              
+              <div className="flex justify-between items-center mb-2 pt-2">
+                <h2 className="text-base font-bold">{isEditingBean ? 'Edit Coffee Profile' : 'Configure New Coffee Profile'}</h2>
+                {isEditingBean && (
+                  <button type="button" onClick={cancelEditBean} className="text-xs text-slate-400 hover:text-white font-bold underline">
+                    Cancel
+                  </button>
+                )}
+              </div>
               
               <div>
                 <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Bean Name</label>
@@ -1042,13 +1223,13 @@ export default function App() {
                 type="submit"
                 className={`w-full ${currentTheme.primary} font-bold py-3.5 rounded-xl shadow-lg transition-colors mt-2`}
               >
-                Save Coffee Profile
+                {isEditingBean ? 'Update Coffee Profile' : 'Save Coffee Profile'}
               </button>
             </form>
 
             <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-4`}>
               <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => setShowPastBeans(!showPastBeans)}>
-                <h3 className={`text-sm font-bold uppercase ${currentTheme.text}`}>Past Logged Beans & Post-Dial Ratings</h3>
+                <h3 className={`text-sm font-bold uppercase ${currentTheme.text}`}>Past Logged Beans & Profiles</h3>
                 {showPastBeans ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </div>
 
@@ -1059,12 +1240,17 @@ export default function App() {
                   ) : (
                     beans.map(b => (
                       <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border text-xs`}>
-                        <div>
-                          <span className={`font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'} block`}>{b.name}</span>
-                          <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast ({b.storageType})</span>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => startEditBean(b)} className={`${currentTheme.text} hover:opacity-70 p-1 bg-amber-500/10 rounded-md`} title="Edit Bean">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <div>
+                            <span className={`font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'} block`}>{b.name}</span>
+                            <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast ({b.storageType})</span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase font-bold text-slate-400">Rating (Max 10):</span>
+                          <span className="text-[10px] uppercase font-bold text-slate-400">Rating:</span>
                           <input
                             type="number"
                             step="0.1"
@@ -1457,11 +1643,12 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v1.2
+            Espresso Dial-In • v1.4
           </span>
         </footer>
 
       </div>
+      <Analytics />
     </div>
   );
 }
