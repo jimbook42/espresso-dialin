@@ -86,7 +86,8 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
       } else {
         const thawDate = new Date(bean.thawDate);
         const daysSinceThaw = Math.max(0, Math.floor((today - thawDate) / (1000 * 60 * 60 * 24)));
-        const thawDecayMultiplier = postThawStorage === 'vacuum' ? 0.85 : 1.0;
+        // Thawed in sealed vacuum prevents condensation, but freezing slightly increases cellular brittleness.
+        const thawDecayMultiplier = postThawStorage === 'vacuum' ? 0.9 : 1.1;
         effectiveDays = ageAtFreeze + Math.floor(daysSinceThaw * thawDecayMultiplier);
       }
     }
@@ -104,7 +105,7 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
 
   let microStepOffset = 0;
   if (isTooFresh) {
-    microStepOffset = -2;
+    microStepOffset = 1; // Gas creates pneumatic resistance. Coarser prevents choking.
   } else if (isStale) {
     const excessDays = Math.min(effectiveDays - 35, 300);
     microStepOffset = -Math.min(Math.round(excessDays * 0.05), 12);
@@ -115,7 +116,7 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
   const storageLabels = { frozen: 'Frozen Storage', vacuum: 'Vacuum Sealed Bag', bag: 'Standard Bag' };
   let notice = `(${storageLabels[storageType] || 'Standard'} • ${bean.roastType} Roast) Effective age: ${effectiveDays} days.`;
   if (isTooFresh) {
-    notice += ` ⚠️ Too fresh / High CO₂: Expect erratic gushing. Grind slightly finer to compact resistance.`;
+    notice += ` ⚠️ Too fresh / High CO₂: Gas creates pneumatic resistance. Grind slightly coarser to prevent choking, or extend pre-infusion.`;
   } else if (isStale) {
     notice += ` ⚠️ Stale / Low Degassing: Lacks backpressure. Grind significantly finer to force extraction time.`;
   }
@@ -167,7 +168,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     retentionOffset = -1;
   }
 
-  // Active Inactivity Adjustment (Fixes the dormant daysSinceLastShot math bug)
+  // Active Inactivity Adjustment
   let inactivityOffset = 0;
   if (daysSinceLastShot && daysSinceLastShot >= 3) {
     inactivityOffset = -Math.min(Math.floor(daysSinceLastShot / 3), 2);
@@ -190,42 +191,52 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   const timeStr = `${actualTime}s extraction time`;
   const targetTimeStr = `target window of ${targetMin}–${targetMax}s`;
   const isTimeDialedIn = actualTime >= targetMin && actualTime <= targetMax;
+  const isBitter = tasteProfile === 'bitter' || tasteProfile === 'very_bitter';
+  const isSour = tasteProfile === 'sour' || tasteProfile === 'very_sour';
 
   // Two-Stage Logic Matrix
   if (!isTimeDialedIn) {
     // Stage 1: Time/Velocity dominates when off-target
     if (actualTime < targetMin) {
-      const diff = targetMin - actualTime;
-      if (grinderModel === 'Sunbeam Barista Max') {
-        if (diff <= 2) {
-          sunbeamShift = 0;
-          reason = `Your ${timeStr} is just ${diff}s faster than the ${targetTimeStr}. Recommendation: Keep grind setting and increase dose by +0.5g or tighten ratio.`;
-        } else if (diff <= 5) {
-          sunbeamShift = -1;
-          reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Making a 1-step finer adjustment.`;
-        } else if (diff <= 10) {
-          sunbeamShift = -2;
-          reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Making a 2-step finer adjustment.`;
-        } else {
-          sunbeamShift = -3;
-          reason = `Your ${timeStr} was severely fast (${diff}s off target). Making a 3-step finer adjustment.`;
-        }
+      if (isBitter) {
+        // Channeling Trap: Fast but bitter means channeling, do NOT grind finer.
+        reason = `Your ${timeStr} was fast, but tastes bitter. This indicates severe channeling. DO NOT grind finer. Focus on WDT/puck prep, or grind slightly coarser to even out flow resistance.`;
+        warning = warning ? warning + " ⚠️ Severe channeling detected." : "⚠️ Severe channeling detected.";
+        microShift = 0;
+        sunbeamShift = 0;
       } else {
-        if (diff === 1) {
-          microShift = -1 + retentionOffset + inactivityOffset;
-          reason = `Your ${timeStr} was 1s faster than the ${targetTimeStr}. Nudging 1 micro-step finer.`;
-        } else if (diff >= 2 && diff <= 3) {
-          microShift = -2 + retentionOffset + inactivityOffset;
-          reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Nudging 2 micro-steps finer.`;
-        } else if (diff >= 4 && diff <= 6) {
-          microShift = -3 + retentionOffset + inactivityOffset;
-          reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Adjusting 3 micro-steps finer.`;
-        } else if (diff >= 7 && diff <= 10) {
-          microShift = -5 + retentionOffset + inactivityOffset;
-          reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Adjusting 5 micro-steps finer.`;
+        const diff = targetMin - actualTime;
+        if (grinderModel === 'Sunbeam Barista Max') {
+          if (diff <= 2) {
+            sunbeamShift = 0;
+            reason = `Your ${timeStr} is just ${diff}s faster than the ${targetTimeStr}. Recommendation: Keep grind setting and increase dose by +0.5g or tighten ratio.`;
+          } else if (diff <= 5) {
+            sunbeamShift = -1;
+            reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Making a 1-step finer adjustment.`;
+          } else if (diff <= 10) {
+            sunbeamShift = -2;
+            reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Making a 2-step finer adjustment.`;
+          } else {
+            sunbeamShift = -3;
+            reason = `Your ${timeStr} was severely fast (${diff}s off target). Making a 3-step finer adjustment.`;
+          }
         } else {
-          microShift = -8 + retentionOffset + inactivityOffset;
-          reason = `Your ${timeStr} was severely fast (${diff}s off target). Applying major finer correction.`;
+          if (diff === 1) {
+            microShift = -1 + retentionOffset + inactivityOffset;
+            reason = `Your ${timeStr} was 1s faster than the ${targetTimeStr}. Nudging 1 micro-step finer.`;
+          } else if (diff >= 2 && diff <= 3) {
+            microShift = -2 + retentionOffset + inactivityOffset;
+            reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Nudging 2 micro-steps finer.`;
+          } else if (diff >= 4 && diff <= 6) {
+            microShift = -3 + retentionOffset + inactivityOffset;
+            reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Adjusting 3 micro-steps finer.`;
+          } else if (diff >= 7 && diff <= 10) {
+            microShift = -5 + retentionOffset + inactivityOffset;
+            reason = `Your ${timeStr} was ${diff}s faster than the ${targetTimeStr}. Adjusting 5 micro-steps finer.`;
+          } else {
+            microShift = -8 + retentionOffset + inactivityOffset;
+            reason = `Your ${timeStr} was severely fast (${diff}s off target). Applying major finer correction.`;
+          }
         }
       }
     } else {
@@ -265,14 +276,14 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     }
   } else {
     // Stage 2: Time is dialed in; taste and secondary refinements take priority
-    if (tasteProfile === 'very_sour' || tasteProfile === 'sour') {
+    if (isSour) {
       microShift = -1 + retentionOffset + inactivityOffset;
       sunbeamShift = 0;
-      reason = `Extraction time (${timeStr}) hit target window, but taste is ${tasteProfile}. Nudging 1 micro-step finer.`;
-    } else if (tasteProfile === 'bitter' || tasteProfile === 'very_bitter') {
+      reason = `Extraction time (${timeStr}) hit target window, but taste is ${tasteProfile}. Nudging 1 micro-step finer to push extraction.`;
+    } else if (isBitter) {
       microShift = 1 + retentionOffset + inactivityOffset;
       sunbeamShift = 0;
-      reason = `Extraction time (${timeStr}) hit target window, but taste is ${tasteProfile}. Nudging 1 micro-step coarser.`;
+      reason = `Extraction time (${timeStr}) hit target window, but taste is ${tasteProfile}. Nudging 1 micro-step coarser to limit over-extraction.`;
     } else {
       microShift = 0 + retentionOffset + inactivityOffset;
       sunbeamShift = 0;
@@ -280,12 +291,12 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     }
   }
 
-  // Flair Water Temp Recommendations (Only when Flair is enabled, dialed in, and taste is off)
+  // Flair Water Temp Recommendations
   let flairWaterTempAdvice = null;
   if (flairEnabled && isTimeDialedIn) {
-    if (tasteProfile === 'sour' || tasteProfile === 'very_sour') {
+    if (isSour) {
       flairWaterTempAdvice = "🌡️ Flair Temperature Advisory: Extraction time is dialed in but flavor is sour. Increase brew water temperature by 1–2°C to boost extraction yield.";
-    } else if (tasteProfile === 'bitter' || tasteProfile === 'very_bitter') {
+    } else if (isBitter) {
       flairWaterTempAdvice = "🌡️ Flair Temperature Advisory: Extraction time is dialed in but flavor is bitter. Decrease brew water temperature by 1–2°C to suppress over-extraction.";
     }
   }

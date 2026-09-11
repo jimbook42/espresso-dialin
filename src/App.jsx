@@ -835,7 +835,7 @@ export default function App() {
 
                   <input
                     type="text"
-                    placeholder="Notes (optional, e.g. puck prep, channeling)"
+                    placeholder="Notes (e.g. puck prep, channeling, 130g vacuum batch)"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     className={`w-full ${currentTheme.card} border rounded-xl p-3 text-sm focus:outline-none`}
@@ -926,9 +926,12 @@ export default function App() {
 
               {newBean.storageType === 'frozen' && (
                 <div className={`space-y-3 ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} p-3 rounded-xl border`}>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className={currentTheme.text}>💡 Ideal Freezing Window:</span>
-                    <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{getIdealFreezeWindow(newBean.roastType).label}</strong>
+                  <div className="flex flex-col text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className={currentTheme.text}>💡 Ideal Freezing Window:</span>
+                      <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{getIdealFreezeWindow(newBean.roastType).label}</strong>
+                    </div>
+                    <span className="text-[9px] text-slate-500 italic">Thaw to room temp while still sealed to prevent condensation.</span>
                   </div>
                   <div>
                     <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Freezing Date</label>
@@ -1160,8 +1163,12 @@ export default function App() {
                   <div className="h-36 w-full flex items-end gap-1.5 pt-6 px-2 border-b border-slate-700/40 pb-2">
                     {shots.slice(0, 15).reverse().map((s, idx) => {
                       const heightPx = Math.min(Math.max((s.actualTimeS / 45) * 110, 15), 110);
-                      const isOptimal = s.actualTimeS >= 27 && s.actualTimeS <= 32;
-                      const isFast = s.actualTimeS < 27;
+                      const recipeForShot = recipes.find(r => r.beanId === s.beanId);
+                      const minT = recipeForShot?.targetTimeMinS || 27;
+                      const maxT = recipeForShot?.targetTimeMaxS || 32;
+                      const isOptimal = s.actualTimeS >= minT && s.actualTimeS <= maxT;
+                      const isFast = s.actualTimeS < minT;
+                      
                       return (
                         <div key={idx} className="flex-1 flex flex-col items-center gap-1 group">
                           <span className="text-[9px] font-mono opacity-80">{s.actualTimeS}s</span>
@@ -1421,7 +1428,7 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v1.0
+            Espresso Dial-In • v1.1
           </span>
         </footer>
 
