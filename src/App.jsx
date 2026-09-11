@@ -1,25 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { calculateRecommendation, calculateEffectiveBeanAge } from './utils/grinderLogic';
-import { Coffee, History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star } from 'lucide-react';
+import { calculateRecommendation, calculateEffectiveBeanAge, getInitialGrindRecommendation, getIdealFreezeWindow } from './utils/grinderLogic';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Database, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dial');
   const [darkMode, setDarkMode] = useState(true);
   const [accentColor, setAccentColor] = useState('amber');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Admin Mode & Mock Date
   const [logoClickCount, setLogoClickCount] = useState(0);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [mockDate, setMockDate] = useState('');
 
-  // Factory Reset Confirmation Modal
+  const [statsClickCount, setStatsClickCount] = useState(0);
+  const [easterEggActive, setEasterEggActive] = useState(false);
+  const [chartType, setChartType] = useState('timeline');
+
+  const [showFlair, setShowFlair] = useState(false);
+  const [showPastBeans, setShowPastBeans] = useState(true);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [leaderboardFilter, setLeaderboardFilter] = useState('All');
 
   const beans = useLiveQuery(() => db.beans.toArray(), []) || [];
   const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
   const shots = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []) || [];
+  const settingsSetting = useLiveQuery(() => db.settings.get('global'), []) || null;
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
@@ -30,36 +37,72 @@ export default function App() {
     roastType: 'Medium', 
     roastDate: '', 
     storageType: 'bag', 
+    postThawStorage: 'bag',
     freezeDate: '', 
     thawDate: '',
-    rating: 8.5
+    rating: ''
   });
   
-  const [newRecipe, setNewRecipe] = useState({ targetDoseG: 18, targetYieldG: 36, targetTimeMinS: 27, targetTimeMaxS: 32 });
+  const [newRecipe, setNewRecipe] = useState({ targetDoseG: 18, targetYieldG: '', targetTimeMinS: 27, targetTimeMaxS: 32 });
 
-  const [grinderModel, setGrinderModel] = useState('Sette 270Wi');
+  const [grinderModel, setGrinderModel] = useState('');
+  const [flairEnabled, setFlairEnabled] = useState(false);
+
   const [setteMacro, setSetteMacro] = useState(13);
   const [setteMicro, setSetteMicro] = useState('E');
   const [sunbeamSetting, setSunbeamSetting] = useState(15);
   const [wasPurged, setWasPurged] = useState(true);
   const [actualDoseG, setActualDoseG] = useState(18);
-  const [actualYieldG, setActualYieldG] = useState(36);
+  const [actualYieldG, setActualYieldG] = useState('');
   const [actualTimeS, setActualTimeS] = useState('');
-  const [tasteProfile, setTasteProfile] = useState('good');
-  const [shotRating, setShotRating] = useState(4);
+  const [tasteProfile, setTasteProfile] = useState('');
+  const [shotRating, setShotRating] = useState(null);
   const [notes, setNotes] = useState('');
 
-  const [useFlair, setUseFlair] = useState(false);
   const [waterTempC, setWaterTempC] = useState(93);
   const [flairPreinfusion, setFlairPreinfusion] = useState('10s @ 1-2 bar');
-  const [flairExtraction, setFlairExtraction] = useState('9 bar to 36g yield');
+  const [flairExtraction, setFlairExtraction] = useState('9 bar to yield');
   const [flairRampDown, setFlairRampDown] = useState('Ramp down to 5 bar');
+
+  const timeInputRef = useRef(null);
+  const yieldInputRef = useRef(null);
+  const tasteInputRef = useRef(null);
+  const recommendationRef = useRef(null);
+  const [validationError, setValidationError] = useState('');
+
+  useEffect(() => {
+    if (settingsSetting) {
+      if (settingsSetting.grinderModel) setGrinderModel(settingsSetting.grinderModel);
+      if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
+    }
+  }, [settingsSetting]);
 
   const activeBean = beans.find(b => b.id === selectedBeanId) || beans[0];
   const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
   const lastShot = shots.find(s => s.beanId === activeBean?.id);
+  const beanShots = shots.filter(s => s.beanId === activeBean?.id);
 
-  const brewRatio = actualDoseG > 0 ? (actualYieldG / actualDoseG).toFixed(1) : '0.0';
+  const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
+
+  useEffect(() => {
+    if (activeBean && beanShots.length === 0 && grinderModel) {
+      const recSette = getInitialGrindRecommendation('Sette 270Wi', activeBean.roastType, activeBean, recipes, shots, beans, mockDate);
+      const recSunbeam = getInitialGrindRecommendation('Sunbeam Barista Max', activeBean.roastType, activeBean, recipes, shots, beans, mockDate);
+      setSetteMacro(recSette.macro);
+      setSetteMicro(recSette.micro);
+      setSunbeamSetting(recSunbeam.setting);
+    }
+  }, [selectedBeanId, beans.length, grinderModel]);
+
+  const handleSaveGrinderSetup = async (model) => {
+    setGrinderModel(model);
+    await db.settings.put({ id: 'global', grinderModel: model, flairEnabled });
+  };
+
+  const handleToggleFlairSetting = async (val) => {
+    setFlairEnabled(val);
+    await db.settings.put({ id: 'global', grinderModel, flairEnabled: val });
+  };
 
   const handleLogoClick = () => {
     const nextCount = logoClickCount + 1;
@@ -70,12 +113,90 @@ export default function App() {
     }
   };
 
+  const handleStatsTabClick = () => {
+    setActiveTab('stats');
+    const nextCount = statsClickCount + 1;
+    setStatsClickCount(nextCount);
+    if (nextCount >= 5) {
+      setEasterEggActive(true);
+      setStatsClickCount(0);
+      setTimeout(() => setEasterEggActive(false), 8000);
+    }
+  };
+
   const handleFactoryReset = async () => {
     await db.shots.clear();
     await db.recipes.clear();
     await db.beans.clear();
+    await db.settings.clear();
     setShowResetConfirm(false);
     setSelectedBeanId('');
+    setGrinderModel('');
+    setFlairEnabled(false);
+    setIsSettingsOpen(false);
+  };
+
+  const handleSimulateMockUsage = async () => {
+    await db.shots.clear();
+    await db.recipes.clear();
+    await db.beans.clear();
+
+    const bean1Id = crypto.randomUUID();
+    const bean2Id = crypto.randomUUID();
+    const bean3Id = crypto.randomUUID();
+
+    const today = new Date();
+    const getDateStringDaysAgo = (days) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    await db.beans.bulkAdd([
+      { id: bean1Id, name: 'Ethiopian Yirgacheffe', roaster: 'Unknown Chapter', roastType: 'Light', roastDate: getDateStringDaysAgo(25), storageType: 'vacuum', rating: 9.2, createdAt: new Date().toISOString() },
+      { id: bean2Id, name: 'House Espresso Blend', roaster: 'Coffee Embassy', roastType: 'Medium', roastDate: getDateStringDaysAgo(15), storageType: 'bag', rating: 8.8, createdAt: new Date().toISOString() },
+      { id: bean3Id, name: 'Dark Colombian Single', roaster: 'C4 Coffee', roastType: 'Dark', roastDate: getDateStringDaysAgo(400), storageType: 'frozen', postThawStorage: 'vacuum', freezeDate: getDateStringDaysAgo(390), thawDate: getDateStringDaysAgo(5), rating: 7.5, createdAt: new Date().toISOString() }
+    ]);
+
+    await db.recipes.bulkAdd([
+      { id: crypto.randomUUID(), beanId: bean1Id, targetDoseG: 19, targetYieldG: 38, targetTimeMinS: 28, targetTimeMaxS: 34 },
+      { id: crypto.randomUUID(), beanId: bean2Id, targetDoseG: 18, targetYieldG: 36, targetTimeMinS: 27, targetTimeMaxS: 32 },
+      { id: crypto.randomUUID(), beanId: bean3Id, targetDoseG: 20, targetYieldG: 40, targetTimeMinS: 25, targetTimeMaxS: 30 }
+    ]);
+
+    const mockShots = [];
+    const targetBeans = [bean1Id, bean2Id, bean3Id];
+
+    for (let i = 30; i >= 1; i--) {
+      const shotDate = new Date(today);
+      shotDate.setDate(shotDate.getDate() - i);
+      const bId = targetBeans[i % targetBeans.length];
+
+      mockShots.push({
+        id: crypto.randomUUID(),
+        beanId: bId,
+        timestamp: shotDate.toISOString(),
+        grinderModel: i % 2 === 0 ? 'Sette 270Wi' : 'Sunbeam Barista Max',
+        setteMacro: 13,
+        setteMicro: 'E',
+        sunbeamSetting: 15,
+        wasPurged: true,
+        actualDoseG: 18,
+        actualYieldG: 36,
+        actualTimeS: 29,
+        tasteProfile: 'good',
+        shotRating: 5,
+        brewRatio: '1:2.0',
+        beanAgeDays: i,
+        storageType: 'bag',
+        recommendation: { recommendedSetting: { macro: 13, micro: 'E' }, reason: 'Simulated adjustment.' },
+        notes: `Simulated shot logged for day -${i}`
+      });
+    }
+
+    await db.shots.bulkAdd(mockShots);
+    setSelectedBeanId(bean1Id);
+    setIsAdminOpen(false);
   };
 
   const handleCreateBean = async (e) => {
@@ -83,12 +204,16 @@ export default function App() {
     if (!newBean.name) return;
     
     const beanId = crypto.randomUUID();
-    await db.beans.add({ ...newBean, id: beanId, createdAt: new Date().toISOString() });
-    await db.recipes.add({ ...newRecipe, id: crypto.randomUUID(), beanId });
+    await db.beans.add({ ...newBean, rating: newBean.rating ? parseFloat(newBean.rating) : null, id: beanId, createdAt: new Date().toISOString() });
+    await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: crypto.randomUUID(), beanId });
 
-    setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', freezeDate: '', thawDate: '', rating: 8.5 });
+    setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', rating: '' });
     setSelectedBeanId(beanId);
     setActiveTab('dial');
+  };
+
+  const handleUpdateBeanRating = async (beanId, val) => {
+    await db.beans.update(beanId, { rating: val ? parseFloat(val) : null });
   };
 
   const handleThawNewBag = async () => {
@@ -99,7 +224,27 @@ export default function App() {
 
   const handleLogShot = async (e) => {
     e.preventDefault();
-    if (!activeBean || !activeRecipe || !actualTimeS) return;
+    setValidationError('');
+
+    if (!actualYieldG) {
+      setValidationError('Yield is required.');
+      yieldInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      yieldInputRef.current?.focus();
+      return;
+    }
+    if (!actualTimeS) {
+      setValidationError('Extraction time is required.');
+      timeInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      timeInputRef.current?.focus();
+      return;
+    }
+    if (!tasteProfile) {
+      setValidationError('Taste profile selection is required.');
+      tasteInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    if (!activeBean || !activeRecipe) return;
 
     const lastShotGrind = lastShot ? {
       setteMacro: lastShot.setteMacro,
@@ -111,7 +256,6 @@ export default function App() {
     const lastTimestamp = lastShot ? new Date(lastShot.timestamp) : referenceNow;
     const daysSinceLastShot = Math.max(0, Math.floor((referenceNow - lastTimestamp) / (1000 * 60 * 60 * 24)));
     const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
-
     const recentBeanShots = shots.filter(s => s.beanId === activeBean.id).slice(0, 5);
 
     const rec = calculateRecommendation(
@@ -129,7 +273,8 @@ export default function App() {
         daysSinceLastShot 
       },
       activeRecipe,
-      recentBeanShots
+      recentBeanShots,
+      flairEnabled
     );
 
     const shotRecord = {
@@ -149,7 +294,7 @@ export default function App() {
       brewRatio: `1:${brewRatio}`,
       beanAgeDays: ageData.daysOld,
       storageType: activeBean.storageType || 'bag',
-      flairProfile: useFlair ? { waterTempC, preinfusion: flairPreinfusion, extraction: flairExtraction, rampDown: flairRampDown } : null,
+      flairProfile: flairEnabled && showFlair ? { waterTempC, preinfusion: flairPreinfusion, extraction: flairExtraction, rampDown: flairRampDown } : null,
       recommendation: rec,
       notes
     };
@@ -157,9 +302,14 @@ export default function App() {
     await db.shots.add(shotRecord);
     
     setActualTimeS('');
-    setActualYieldG(activeRecipe.targetYieldG);
-    setActualDoseG(activeRecipe.targetDoseG);
+    setActualYieldG('');
+    setShotRating(null);
     setNotes('');
+    setTasteProfile('');
+
+    setTimeout(() => {
+      recommendationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   const applyRecommendation = () => {
@@ -211,77 +361,142 @@ export default function App() {
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, mockDate) : null;
   const filteredShots = historyFilterBeanId === 'all' ? shots : shots.filter(s => s.beanId === historyFilterBeanId);
 
+  const referenceNow = mockDate ? new Date(mockDate) : new Date();
+  const lastBrewDaysAgo = lastShot ? Math.max(0, Math.floor((referenceNow - new Date(lastShot.timestamp)) / (1000 * 60 * 60 * 24))) : 0;
+
+  const totalShots = shots.length;
+  const compliantShots = shots.filter(s => {
+    const r = recipes.find(rec => rec.beanId === s.beanId);
+    if (!r) return false;
+    return s.actualTimeS >= r.targetTimeMinS && s.actualTimeS <= r.targetTimeMaxS;
+  }).length;
+  const complianceRate = totalShots > 0 ? Math.round((compliantShots / totalShots) * 100) : 0;
+  const avgExtractionTime = totalShots > 0 ? Math.round(shots.reduce((acc, s) => acc + s.actualTimeS, 0) / totalShots) : 0;
+
+  const tasteCounts = {
+    very_sour: shots.filter(s => s.tasteProfile === 'very_sour').length,
+    sour: shots.filter(s => s.tasteProfile === 'sour').length,
+    good: shots.filter(s => s.tasteProfile === 'good').length,
+    bitter: shots.filter(s => s.tasteProfile === 'bitter').length,
+    very_bitter: shots.filter(s => s.tasteProfile === 'very_bitter').length,
+  };
+
   const themes = {
     amber: {
       primary: 'bg-amber-600 hover:bg-amber-500 text-white font-semibold',
       badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
-      text: 'text-amber-600 dark:text-amber-400'
+      text: 'text-amber-600 dark:text-amber-400',
+      gradientFrom: '#f59e0b',
+      gradientTo: '#d97706',
+      bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-amber-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-amber-50/60 via-orange-50/30 to-slate-50 text-slate-900',
+      card: darkMode ? 'bg-slate-900/90 border-amber-950/40 text-slate-100 shadow-md' : 'bg-white border-amber-200 text-slate-900 shadow-sm'
     },
     emerald: {
       primary: 'bg-emerald-600 hover:bg-emerald-500 text-white font-semibold',
       badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-      text: 'text-emerald-600 dark:text-emerald-400'
+      text: 'text-emerald-600 dark:text-emerald-400',
+      gradientFrom: '#10b981',
+      gradientTo: '#059669',
+      bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-emerald-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-emerald-50/60 via-teal-50/30 to-slate-50 text-slate-900',
+      card: darkMode ? 'bg-slate-900/90 border-emerald-950/40 text-slate-100 shadow-md' : 'bg-white border-emerald-200 text-slate-900 shadow-sm'
     },
     indigo: {
       primary: 'bg-indigo-600 hover:bg-indigo-500 text-white font-semibold',
       badge: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
-      text: 'text-indigo-600 dark:text-indigo-400'
+      text: 'text-indigo-600 dark:text-indigo-400',
+      gradientFrom: '#6366f1',
+      gradientTo: '#4f46e5',
+      bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-indigo-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-indigo-50/60 via-blue-50/30 to-slate-50 text-slate-900',
+      card: darkMode ? 'bg-slate-900/90 border-indigo-950/40 text-slate-100 shadow-md' : 'bg-white border-indigo-200 text-slate-900 shadow-sm'
     },
     rose: {
       primary: 'bg-rose-600 hover:bg-rose-500 text-white font-semibold',
       badge: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
-      text: 'text-rose-600 dark:text-rose-400'
+      text: 'text-rose-600 dark:text-rose-400',
+      gradientFrom: '#f43f5e',
+      gradientTo: '#e11d48',
+      bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-rose-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-rose-50/60 via-pink-50/30 to-slate-50 text-slate-900',
+      card: darkMode ? 'bg-slate-900/90 border-rose-950/40 text-slate-100 shadow-md' : 'bg-white border-rose-200 text-slate-900 shadow-sm'
     }
   };
 
   const currentTheme = themes[accentColor] || themes.amber;
-
-  // Fully cohesive theme classes guaranteeing high contrast in both dark and light modes
-  const bgClass = darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900';
-  const cardClass = darkMode ? 'bg-slate-900 border-slate-800 text-slate-100 shadow' : 'bg-white border-slate-300 text-slate-900 shadow-sm';
   const inputClass = darkMode ? 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400';
   const labelClass = darkMode ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold';
   const subTextClass = darkMode ? 'text-slate-400' : 'text-slate-600';
 
+  if (!grinderModel) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full space-y-6 shadow-2xl text-center">
+          <div className="flex justify-center">
+            <Coffee className="w-12 h-12 text-amber-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold">Welcome to Espresso Dial-In</h2>
+            <p className="text-xs text-slate-400 mt-1">Please select your primary espresso grinder to configure your baseline calibration logic.</p>
+          </div>
+          <div className="space-y-3">
+            <button
+              onClick={() => handleSaveGrinderSetup('Sette 270Wi')}
+              className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl text-sm transition-colors shadow"
+            >
+              Baratza Sette 270Wi
+            </button>
+            <button
+              onClick={() => handleSaveGrinderSetup('Sunbeam Barista Max')}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 rounded-xl text-sm transition-colors border border-slate-700"
+            >
+              Sunbeam Barista Max
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`min-h-screen ${bgClass} transition-colors duration-200`}>
-      <div className="max-w-xl mx-auto p-4 pb-20">
+    <div className={`min-h-screen ${currentTheme.bgWash} transition-colors duration-300 relative overflow-hidden`}>
+      
+      {easterEggActive && (
+        <div className="fixed inset-0 z-50 pointer-events-none bg-black/95 flex flex-col items-center justify-center p-6 text-center animate-pulse overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-red-600 via-emerald-500 to-blue-600 opacity-40 animate-spin" style={{ animationDuration: '2s' }} />
+          <div className="relative z-10 space-y-6">
+            <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-500 to-cyan-400 animate-bounce">
+              ⚡ QUANTUM ESPRESSO SINGULARITY ⚡
+            </h1>
+            <p className="text-lg font-mono text-emerald-300">MOLECULAR COFFEE EXTRACTION AT 50,000 RPM. REALITY DISTORTED.</p>
+            <div className="text-7xl animate-spin">☕🌀⚛️💥</div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-xl mx-auto p-4 pb-28">
         
-        {/* Header */}
         <header className="flex items-center justify-between border-b border-slate-300 dark:border-slate-800 pb-4 mb-6">
-          <div className="flex items-center space-x-2 cursor-pointer select-none" onClick={handleLogoClick} title="App Logo">
-            <Coffee className={`w-7 h-7 ${currentTheme.text}`} />
-            <h1 className="text-xl font-bold tracking-tight">Espresso Dial-In</h1>
+          <div className="flex items-center space-x-3 cursor-pointer select-none group" onClick={handleLogoClick} title="App Logo">
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-500">
+              <Coffee className="w-5 h-5" />
+            </div>
+            <h1 className="text-xl font-black tracking-tight text-slate-100">Espresso Dial-In</h1>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`flex items-center gap-1 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'} border rounded-lg p-1 shadow-sm`}>
-              {['amber', 'emerald', 'indigo', 'rose'].map(c => (
-                <button
-                  key={c}
-                  onClick={() => setAccentColor(c)}
-                  className={`w-3.5 h-3.5 rounded-full ${c === 'amber' ? 'bg-amber-500' : c === 'emerald' ? 'bg-emerald-500' : c === 'indigo' ? 'bg-indigo-500' : 'bg-rose-500'} ${accentColor === c ? 'ring-2 ring-offset-2 ring-offset-slate-900 ring-white' : 'opacity-60'}`}
-                />
-              ))}
-            </div>
             <button
-              onClick={() => setDarkMode(!darkMode)}
+              onClick={() => setIsSettingsOpen(true)}
               className={`p-2 ${subTextClass} hover:opacity-100 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'} border rounded-lg shadow-sm`}
+              title="Settings"
             >
-              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-            <button onClick={exportDataCSV} className={`p-2 ${subTextClass} hover:opacity-100 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'} border rounded-lg flex items-center gap-1 text-xs font-medium shadow-sm`}>
-              <Download className="w-4 h-4" /> CSV
+              <Settings className="w-4 h-4" />
             </button>
           </div>
         </header>
 
-        {/* Navigation Tabs */}
         <div className={`flex ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200 border-slate-300'} p-1 rounded-xl mb-6 text-sm font-medium border shadow-sm`}>
           <button
             onClick={() => setActiveTab('dial')}
             className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'dial' ? `${currentTheme.primary} shadow` : subTextClass}`}
           >
-            <Coffee className="w-4 h-4" /> Dial
+            Dial
           </button>
           <button
             onClick={() => setActiveTab('beans')}
@@ -296,18 +511,17 @@ export default function App() {
             <History className="w-4 h-4" /> History
           </button>
           <button
-            onClick={() => setActiveTab('stats')}
+            onClick={handleStatsTabClick}
             className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'stats' ? `${currentTheme.primary} shadow` : subTextClass}`}
           >
             <BarChart2 className="w-4 h-4" /> Stats
           </button>
         </div>
 
-        {/* DIAL TAB */}
         {activeTab === 'dial' && (
           <div className="space-y-6">
             {beans.length === 0 ? (
-              <div className={`${cardClass} p-8 rounded-2xl text-center border`}>
+              <div className={`${currentTheme.card} p-8 rounded-2xl text-center border`}>
                 <p className={`${subTextClass} mb-4`}>No active coffee bean profiles configured in the system.</p>
                 <button onClick={() => setActiveTab('beans')} className={`${currentTheme.primary} px-4 py-2.5 rounded-xl text-sm font-semibold shadow`}>
                   Add Your First Coffee Bean
@@ -315,7 +529,14 @@ export default function App() {
               </div>
             ) : (
               <>
-                <div className={`${cardClass} p-4 rounded-2xl border space-y-3`}>
+                {lastBrewDaysAgo > 0 && (
+                  <div className={`${darkMode ? 'bg-amber-950/30 border-amber-900/40 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-800'} border p-3 rounded-xl flex items-center gap-2 text-xs font-semibold`}>
+                    <Flame className="w-4 h-4 shrink-0" />
+                    <span>📅 {lastBrewDaysAgo} days since last brew. Background aging progressed; recommendation adjusted.</span>
+                  </div>
+                )}
+
+                <div className={`${currentTheme.card} p-4 rounded-2xl border space-y-3`}>
                   <div className="flex justify-between items-center">
                     <label className={`text-xs uppercase font-bold ${labelClass}`}>Active Coffee Profile</label>
                     <div className="flex items-center gap-2">
@@ -334,7 +555,7 @@ export default function App() {
                         className={`${inputClass} border rounded-lg px-3 py-1.5 text-sm ${currentTheme.text} font-semibold focus:outline-none`}
                       >
                         {beans.map(b => (
-                          <option key={b.id} value={b.id}>{b.name} ({b.roaster}) [Rating: {b.rating || 'N/A'}]</option>
+                          <option key={b.id} value={b.id}>{b.name} ({b.roaster}) [Rating: {b.rating ? Number(b.rating).toFixed(1) : 'N/A'}]</option>
                         ))}
                       </select>
                     </div>
@@ -355,46 +576,82 @@ export default function App() {
                   )}
                 </div>
 
-                {lastShot && (
-                  <div className={`${cardClass} border p-3.5 rounded-2xl flex items-center justify-between text-xs`}>
-                    <div>
-                      <span className={`${subTextClass} block font-semibold uppercase text-[10px]`}>Last Shot Summary ({new Date(lastShot.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})</span>
-                      <span className={darkMode ? 'text-slate-200' : 'text-slate-800'}>
-                        Grind: {lastShot.grinderModel === 'Sette 270Wi' ? `${lastShot.setteMacro}-${lastShot.setteMicro}` : lastShot.sunbeamSetting} | Time: {lastShot.actualTimeS}s | Ratio: {lastShot.brewRatio || 'N/A'} | Taste: <strong className={`${currentTheme.text} capitalize`}>{lastShot.tasteProfile?.replace('_', ' ')}</strong>
+                {shots.length > 0 && shots[0].beanId === activeBean?.id && (
+                  <div ref={recommendationRef} className={`${currentTheme.card} border ${darkMode ? 'border-amber-500/40' : 'border-amber-400'} p-4 rounded-2xl space-y-3 shadow-sm`}>
+                    <div className={`flex items-center justify-between border-b ${darkMode ? 'border-slate-800' : 'border-slate-200'} pb-2`}>
+                      <span className={`text-xs font-bold uppercase ${currentTheme.text}`}>Grind Adjustment Recommendation</span>
+                      <span className={`text-[10px] ${subTextClass}`}>{new Date(shots[0].timestamp).toLocaleTimeString()}</span>
+                    </div>
+
+                    {shots[0].recommendation?.warning && (
+                      <div className="flex items-start gap-2 bg-rose-950/40 border border-rose-800/50 p-2.5 rounded-xl text-xs text-rose-300">
+                        <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                        <span>{shots[0].recommendation.warning}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className={`text-xs ${subTextClass}`}>Next Recommended Setting:</p>
+                        <p className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                          {shots[0].grinderModel === 'Sette 270Wi'
+                            ? `${shots[0].recommendation.recommendedSetting.macro}-${shots[0].recommendation.recommendedSetting.micro}`
+                            : `Setting ${shots[0].recommendation.recommendedSetting.setting}`}
+                        </p>
+                      </div>
+                      <span className={`${currentTheme.badge} border px-3 py-1 rounded-full text-xs font-semibold`}>
+                        {shots[0].grinderModel}
                       </span>
                     </div>
-                    {lastShot.recommendation?.recommendedSetting && (
-                      <button
-                        type="button"
-                        onClick={applyRecommendation}
-                        className={`${currentTheme.primary} px-3 py-2 rounded-xl font-bold flex items-center gap-1 shrink-0 ml-2 shadow`}
-                      >
-                        Apply Rec <ArrowRight className="w-3 h-3" />
-                      </button>
+                    <p className={`text-xs ${darkMode ? 'text-slate-200' : 'text-slate-800'} leading-relaxed font-medium`}>{shots[0].recommendation?.reason}</p>
+
+                    {shots[0].recommendation?.flairWaterTempAdvice && (
+                      <p className="text-xs bg-cyan-950/35 text-cyan-300 border border-cyan-800/40 p-2.5 rounded-xl">
+                        {shots[0].recommendation.flairWaterTempAdvice}
+                      </p>
+                    )}
+
+                    {shots[0].recommendation?.subRecommendation && (
+                      <p className="text-xs bg-indigo-950/30 text-indigo-300 border border-indigo-800/40 p-2.5 rounded-xl">
+                        {shots[0].recommendation.subRecommendation}
+                      </p>
+                    )}
+
+                    {lastShot && (
+                      <div className={`pt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} flex items-center justify-between text-xs`}>
+                        <span className={subTextClass}>Last Shot: {lastShot.actualTimeS}s ({lastShot.tasteProfile})</span>
+                        <button
+                          type="button"
+                          onClick={applyRecommendation}
+                          className={`${currentTheme.primary} px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow`}
+                        >
+                          Apply Rec <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
 
                 <form onSubmit={handleLogShot} className="space-y-4">
-                  <div className={`grid grid-cols-2 gap-2 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200 border-slate-300'} p-1 rounded-xl border`}>
-                    <button
-                      type="button"
-                      onClick={() => setGrinderModel('Sette 270Wi')}
-                      className={`py-2 text-xs font-semibold rounded-lg transition-all ${grinderModel === 'Sette 270Wi' ? `${darkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-900 shadow-sm font-bold'}` : subTextClass}`}
-                    >
-                      Baratza Sette 270Wi
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setGrinderModel('Sunbeam Barista Max')}
-                      className={`py-2 text-xs font-semibold rounded-lg transition-all ${grinderModel === 'Sunbeam Barista Max' ? `${darkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-900 shadow-sm font-bold'}` : subTextClass}`}
-                    >
-                      Sunbeam Barista Max
-                    </button>
-                  </div>
+                  {beanShots.length === 0 && (
+                    <div className={`${darkMode ? 'bg-indigo-950/20 border-indigo-950/40 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-800'} p-3 rounded-xl border text-xs flex items-center gap-2`}>
+                      <span>💡 Cold-start baseline auto-applied (factored in bean age and Grind History Trend).</span>
+                    </div>
+                  )}
 
-                  <div className={`${cardClass} p-4 rounded-2xl border`}>
-                    <label className={`text-xs uppercase font-bold ${labelClass} block mb-2`}>Grind Setting Used</label>
+                  {validationError && (
+                    <div className="bg-rose-950/80 border border-rose-800 p-3 rounded-xl text-xs text-rose-300 font-semibold flex items-center gap-2 animate-bounce">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{validationError}</span>
+                    </div>
+                  )}
+
+                  <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className={`text-xs uppercase font-bold ${labelClass}`}>Grind Setting Used</label>
+                      <span className={`text-[10px] ${currentTheme.text} font-semibold uppercase`}>Active Grinder: {grinderModel}</span>
+                    </div>
+
                     {grinderModel === 'Sette 270Wi' ? (
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -442,13 +699,13 @@ export default function App() {
                         onClick={() => setWasPurged(!wasPurged)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${wasPurged ? 'bg-emerald-600 text-white' : 'bg-rose-900/60 text-rose-300 border border-rose-700'}`}
                       >
-                        {wasPurged ? 'Yes (Purged)' : 'No (Unpurged)'}
+                        {wasPurged ? 'Yes (Purged)' : 'No (Unpurged ⚠️)'}
                       </button>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
-                    <div className={`${cardClass} p-3 rounded-2xl border`}>
+                    <div className={`${currentTheme.card} p-3 rounded-2xl border`}>
                       <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Dose (g)</label>
                       <input
                         type="number"
@@ -458,19 +715,20 @@ export default function App() {
                         className={`w-full ${inputClass} border rounded-lg p-2 text-center text-md font-bold`}
                       />
                     </div>
-                    <div className={`${cardClass} p-3 rounded-2xl border`}>
-                      <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Yield (g)</label>
+                    <div className={`${currentTheme.card} p-3 rounded-2xl border`} ref={yieldInputRef}>
+                      <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Yield (g)*</label>
                       <input
                         type="number"
                         step="0.1"
+                        placeholder="e.g. 36"
                         value={actualYieldG}
                         onChange={(e) => setActualYieldG(e.target.value)}
                         className={`w-full ${inputClass} border rounded-lg p-2 text-center text-md font-bold`}
                       />
                       <span className={`text-[9px] ${currentTheme.text} block text-center mt-1 font-semibold`}>Ratio: 1:{brewRatio}</span>
                     </div>
-                    <div className={`${cardClass} p-3 rounded-2xl border`}>
-                      <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Time (s)</label>
+                    <div className={`${currentTheme.card} p-3 rounded-2xl border`} ref={timeInputRef}>
+                      <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Time (s)*</label>
                       <input
                         type="number"
                         placeholder="e.g. 28"
@@ -481,66 +739,60 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Flair Manual Pressure Profile Toggle */}
-                  <div className={`${cardClass} p-4 rounded-2xl border space-y-3`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs uppercase font-bold ${labelClass}`}>Flair Manual Pressure Profile</span>
-                      <button
-                        type="button"
-                        onClick={() => setUseFlair(!useFlair)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${useFlair ? currentTheme.primary : `${darkMode ? 'bg-slate-950 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-700'} border`}`}
-                      >
-                        {useFlair ? 'Enabled' : 'Disabled'}
-                      </button>
-                    </div>
-
-                    {useFlair && (
-                      <div className={`space-y-3 pt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                        <div>
-                          <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Water Temp (°C)</label>
-                          <input
-                            type="number"
-                            value={waterTempC}
-                            onChange={(e) => setWaterTempC(e.target.value)}
-                            className={`w-full ${inputClass} border rounded-lg p-2 text-sm font-bold`}
-                          />
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <span className={`text-[9px] ${subTextClass} block`}>Preinfusion</span>
-                            <input
-                              type="text"
-                              value={flairPreinfusion}
-                              onChange={(e) => setFlairPreinfusion(e.target.value)}
-                              className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
-                            />
-                          </div>
-                          <div>
-                            <span className={`text-[9px] ${subTextClass} block`}>Extraction</span>
-                            <input
-                              type="text"
-                              value={flairExtraction}
-                              onChange={(e) => setFlairExtraction(e.target.value)}
-                              className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
-                            />
-                          </div>
-                          <div>
-                            <span className={`text-[9px] ${subTextClass} block`}>Ramp Down</span>
-                            <input
-                              type="text"
-                              value={flairRampDown}
-                              onChange={(e) => setFlairRampDown(e.target.value)}
-                              className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
-                            />
-                          </div>
-                        </div>
+                  {flairEnabled && (
+                    <div className={`${currentTheme.card} p-4 rounded-2xl border space-y-3`}>
+                      <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => setShowFlair(!showFlair)}>
+                        <span className={`text-xs uppercase font-bold ${labelClass}`}>Flair Manual Pressure Profile (Optional)</span>
+                        {showFlair ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </div>
-                    )}
-                  </div>
 
-                  {/* Tasting Notes & Detailed Profile */}
-                  <div className={`${cardClass} p-4 rounded-2xl border space-y-3`}>
-                    <label className={`text-xs uppercase font-bold ${labelClass} block`}>Extraction Taste Profile</label>
+                      {showFlair && (
+                        <div className={`space-y-3 pt-3 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                          <div>
+                            <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Water Temp (°C)</label>
+                            <input
+                              type="number"
+                              value={waterTempC}
+                              onChange={(e) => setWaterTempC(e.target.value)}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm font-bold`}
+                            />
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <span className={`text-[9px] ${subTextClass} block`}>Preinfusion</span>
+                              <input
+                                type="text"
+                                value={flairPreinfusion}
+                                onChange={(e) => setFlairPreinfusion(e.target.value)}
+                                className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
+                              />
+                            </div>
+                            <div>
+                              <span className={`text-[9px] ${subTextClass} block`}>Extraction</span>
+                              <input
+                                type="text"
+                                value={flairExtraction}
+                                onChange={(e) => setFlairExtraction(e.target.value)}
+                                className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
+                              />
+                            </div>
+                            <div>
+                              <span className={`text-[9px] ${subTextClass} block`}>Ramp Down</span>
+                              <input
+                                type="text"
+                                value={flairRampDown}
+                                onChange={(e) => setFlairRampDown(e.target.value)}
+                                className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className={`${currentTheme.card} p-4 rounded-2xl border space-y-3`} ref={tasteInputRef}>
+                    <label className={`text-xs uppercase font-bold ${labelClass} block`}>Extraction Taste Profile (Required)*</label>
                     <div className="grid grid-cols-5 gap-1">
                       {[
                         { id: 'very_sour', label: 'Very Sour' },
@@ -565,14 +817,14 @@ export default function App() {
                     </div>
 
                     <div className={`pt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} flex items-center justify-between`}>
-                      <span className={`text-xs ${labelClass}`}>Shot Rating (1–5 Stars)</span>
+                      <span className={`text-xs ${labelClass}`}>Shot Rating (1–5 Stars, Optional)</span>
                       <div className="flex gap-1">
                         {[1, 2, 3, 4, 5].map((star) => (
                           <button
                             type="button"
                             key={star}
                             onClick={() => setShotRating(star)}
-                            className={`p-1 ${star <= shotRating ? 'text-amber-400' : 'text-slate-400'}`}
+                            className={`p-1 ${shotRating !== null && star <= shotRating ? 'text-amber-400' : 'text-slate-400'}`}
                           >
                             <Star className="w-4 h-4 fill-current" />
                           </button>
@@ -586,219 +838,227 @@ export default function App() {
                     placeholder="Notes (optional, e.g. puck prep, channeling)"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    className={`w-full ${cardClass} border rounded-xl p-3 text-sm focus:outline-none`}
+                    className={`w-full ${currentTheme.card} border rounded-xl p-3 text-sm focus:outline-none`}
                   />
 
-                  <button
-                    type="submit"
-                    className={`w-full ${currentTheme.primary} font-bold py-3.5 rounded-xl shadow-lg transition-colors`}
-                  >
-                    Log Shot & Calculate Grind Adjustment
-                  </button>
-                </form>
-
-                {shots.length > 0 && shots[0].beanId === activeBean?.id && (
-                  <div className={`${cardClass} border ${darkMode ? 'border-amber-500/40' : 'border-amber-400'} p-4 rounded-2xl space-y-3 mt-6 shadow-sm`}>
-                    <div className={`flex items-center justify-between border-b ${darkMode ? 'border-slate-800' : 'border-slate-200'} pb-2`}>
-                      <span className={`text-xs font-bold uppercase ${currentTheme.text}`}>Grind Adjustment Recommendation</span>
-                      <span className={`text-[10px] ${subTextClass}`}>{new Date(shots[0].timestamp).toLocaleTimeString()}</span>
+                  <div className={`fixed bottom-0 left-0 right-0 p-3 ${darkMode ? 'bg-slate-950/90 border-slate-800' : 'bg-white/90 border-slate-200'} backdrop-blur border-t z-40 shadow-2xl`}>
+                    <div className="max-w-xl mx-auto">
+                      <button
+                        type="submit"
+                        className={`w-full ${currentTheme.primary} font-bold py-3.5 rounded-xl shadow-lg transition-colors`}
+                      >
+                        Log Shot & Calculate Grind Adjustment
+                      </button>
                     </div>
-
-                    {shots[0].recommendation?.warning && (
-                      <div className="flex items-start gap-2 bg-rose-950/40 border border-rose-800/50 p-2.5 rounded-xl text-xs text-rose-300">
-                        <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                        <span>{shots[0].recommendation.warning}</span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className={`text-xs ${subTextClass}`}>Next Recommended Setting:</p>
-                        <p className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                          {shots[0].grinderModel === 'Sette 270Wi'
-                            ? `${shots[0].recommendation.recommendedSetting.macro}-${shots[0].recommendation.recommendedSetting.micro}`
-                            : `Setting ${shots[0].recommendation.recommendedSetting.setting}`}
-                        </p>
-                      </div>
-                      <span className={`${currentTheme.badge} border px-3 py-1 rounded-full text-xs font-semibold`}>
-                        {shots[0].grinderModel}
-                      </span>
-                    </div>
-                    <p className={`text-xs ${darkMode ? 'text-slate-200' : 'text-slate-800'} leading-relaxed font-medium`}>{shots[0].recommendation?.reason}</p>
-
-                    {shots[0].recommendation?.subRecommendation && (
-                      <p className="text-xs bg-indigo-950/30 text-indigo-300 border border-indigo-800/40 p-2.5 rounded-xl">
-                        {shots[0].recommendation.subRecommendation}
-                      </p>
-                    )}
                   </div>
-                )}
+                </form>
               </>
             )}
           </div>
         )}
 
-        {/* BEANS TAB */}
         {activeTab === 'beans' && (
-          <form onSubmit={handleCreateBean} className={`${cardClass} p-5 rounded-2xl border space-y-4`}>
-            <h2 className="text-base font-bold mb-2">Configure Bean Profile & Numerical Rating</h2>
-            
-            <div>
-              <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Bean Name</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. House Espresso Blend"
-                value={newBean.name}
-                onChange={(e) => setNewBean({ ...newBean, name: e.target.value })}
-                className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-6">
+            <form onSubmit={handleCreateBean} className={`${currentTheme.card} p-5 rounded-2xl border space-y-4`}>
+              <h2 className="text-base font-bold mb-2">Configure New Coffee Profile</h2>
+              
               <div>
-                <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Roaster</label>
+                <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Bean Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Local Roaster"
-                  value={newBean.roaster}
-                  onChange={(e) => setNewBean({ ...newBean, roaster: e.target.value })}
-                  className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
-                />
-              </div>
-              <div>
-                <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Roast Type</label>
-                <select
-                  value={newBean.roastType}
-                  onChange={(e) => setNewBean({ ...newBean, roastType: e.target.value })}
-                  className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
-                >
-                  <option value="Light">Light</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Dark">Dark</option>
-                </select>
-              </div>
-              <div>
-                <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Rating (1.0–10)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="1.0"
-                  max="10.0"
-                  value={newBean.rating}
-                  onChange={(e) => setNewBean({ ...newBean, rating: parseFloat(e.target.value) })}
-                  className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm font-bold text-amber-500`}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Roast Date</label>
-                <input
-                  type="date"
                   required
-                  value={newBean.roastDate}
-                  onChange={(e) => setNewBean({ ...newBean, roastDate: e.target.value })}
+                  placeholder="e.g. House Espresso Blend"
+                  value={newBean.name}
+                  onChange={(e) => setNewBean({ ...newBean, name: e.target.value })}
                   className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
                 />
               </div>
-              <div>
-                <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Storage Method</label>
-                <select
-                  value={newBean.storageType}
-                  onChange={(e) => setNewBean({ ...newBean, storageType: e.target.value })}
-                  className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
-                >
-                  <option value="bag">Standard Bag</option>
-                  <option value="vacuum">Vacuum Sealed Bag</option>
-                  <option value="frozen">Frozen Storage</option>
-                </select>
-              </div>
-            </div>
 
-            {newBean.storageType === 'frozen' && (
-              <div className={`grid grid-cols-2 gap-2 ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} p-3 rounded-xl border`}>
-                <div>
-                  <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Freezing Date</label>
-                  <input
-                    type="date"
-                    value={newBean.freezeDate}
-                    onChange={(e) => setNewBean({ ...newBean, freezeDate: e.target.value })}
-                    className={`w-full ${inputClass} border rounded-lg p-2 text-xs`}
-                  />
-                </div>
-                <div>
-                  <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Initial Thaw Date</label>
-                  <input
-                    type="date"
-                    value={newBean.thawDate}
-                    onChange={(e) => setNewBean({ ...newBean, thawDate: e.target.value })}
-                    className={`w-full ${inputClass} border rounded-lg p-2 text-xs`}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className={`border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} pt-4 mt-2`}>
-              <h3 className={`text-xs uppercase font-bold ${currentTheme.text} mb-3`}>Target Recipe Profile</h3>
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                <div>
-                  <span className={`text-xs ${subTextClass}`}>Target Dose (g)</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={newRecipe.targetDoseG}
-                    onChange={(e) => setNewRecipe({ ...newRecipe, targetDoseG: parseFloat(e.target.value) })}
-                    className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                  />
-                </div>
-                <div>
-                  <span className={`text-xs ${subTextClass}`}>Target Yield (g)</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={newRecipe.targetYieldG}
-                    onChange={(e) => setNewRecipe({ ...newRecipe, targetYieldG: parseFloat(e.target.value) })}
-                    className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                  />
-                </div>
-              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <span className={`text-xs ${subTextClass}`}>Min Time (s)</span>
+                  <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Roaster</label>
                   <input
-                    type="number"
-                    value={newRecipe.targetTimeMinS}
-                    onChange={(e) => setNewRecipe({ ...newRecipe, targetTimeMinS: parseInt(e.target.value, 10) })}
-                    className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                    type="text"
+                    placeholder="e.g. Local Roaster"
+                    value={newBean.roaster}
+                    onChange={(e) => setNewBean({ ...newBean, roaster: e.target.value })}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
                   />
                 </div>
                 <div>
-                  <span className={`text-xs ${subTextClass}`}>Max Time (s)</span>
-                  <input
-                    type="number"
-                    value={newRecipe.targetTimeMaxS}
-                    onChange={(e) => setNewRecipe({ ...newRecipe, targetTimeMaxS: parseInt(e.target.value, 10) })}
-                    className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                  />
+                  <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Roast Type</label>
+                  <select
+                    value={newBean.roastType}
+                    onChange={(e) => setNewBean({ ...newBean, roastType: e.target.value })}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
+                  >
+                    <option value="Light">Light</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Dark">Dark</option>
+                  </select>
                 </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              className={`w-full ${currentTheme.primary} font-bold py-3.5 rounded-xl shadow-lg transition-colors mt-2`}
-            >
-              Save Coffee Profile & Rating
-            </button>
-          </form>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Roast Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={newBean.roastDate}
+                    onChange={(e) => setNewBean({ ...newBean, roastDate: e.target.value })}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
+                  />
+                </div>
+                <div>
+                  <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Storage Method</label>
+                  <select
+                    value={newBean.storageType}
+                    onChange={(e) => setNewBean({ ...newBean, storageType: e.target.value })}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
+                  >
+                    <option value="bag">Standard Bag</option>
+                    <option value="vacuum">Vacuum Sealed Bag</option>
+                    <option value="frozen">Frozen Storage</option>
+                  </select>
+                </div>
+              </div>
+
+              {newBean.storageType === 'frozen' && (
+                <div className={`space-y-3 ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} p-3 rounded-xl border`}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className={currentTheme.text}>💡 Ideal Freezing Window:</span>
+                    <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{getIdealFreezeWindow(newBean.roastType).label}</strong>
+                  </div>
+                  <div>
+                    <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Freezing Date</label>
+                    <input
+                      type="date"
+                      value={newBean.freezeDate}
+                      onChange={(e) => setNewBean({ ...newBean, freezeDate: e.target.value })}
+                      className={`w-full ${inputClass} border rounded-lg p-2 text-xs`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Post-Thaw Storage Method</label>
+                    <select
+                      value={newBean.postThawStorage}
+                      onChange={(e) => setNewBean({ ...newBean, postThawStorage: e.target.value })}
+                      className={`w-full ${inputClass} border rounded-lg p-2 text-xs`}
+                    >
+                      <option value="bag">Standard Bag (After Thaw)</option>
+                      <option value="vacuum">Vacuum Sealed Bag (After Thaw)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Initial Thaw Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={newBean.thawDate}
+                      onChange={(e) => setNewBean({ ...newBean, thawDate: e.target.value })}
+                      className={`w-full ${inputClass} border rounded-lg p-2 text-xs`}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className={`border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} pt-4 mt-2`}>
+                <h3 className={`text-xs uppercase font-bold ${currentTheme.text} mb-3`}>Target Recipe Profile</h3>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <span className={`text-xs ${subTextClass}`}>Target Dose (g)</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={newRecipe.targetDoseG}
+                      onChange={(e) => setNewRecipe({ ...newRecipe, targetDoseG: parseFloat(e.target.value) })}
+                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                    />
+                  </div>
+                  <div>
+                    <span className={`text-xs ${subTextClass}`}>Target Yield (g)</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g. 36"
+                      value={newRecipe.targetYieldG}
+                      onChange={(e) => setNewRecipe({ ...newRecipe, targetYieldG: e.target.value })}
+                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className={`text-xs ${subTextClass}`}>Min Time (s)</span>
+                    <input
+                      type="number"
+                      value={newRecipe.targetTimeMinS}
+                      onChange={(e) => setNewRecipe({ ...newRecipe, targetTimeMinS: parseInt(e.target.value, 10) })}
+                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                    />
+                  </div>
+                  <div>
+                    <span className={`text-xs ${subTextClass}`}>Max Time (s)</span>
+                    <input
+                      type="number"
+                      value={newRecipe.targetTimeMaxS}
+                      onChange={(e) => setNewRecipe({ ...newRecipe, targetTimeMaxS: parseInt(e.target.value, 10) })}
+                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className={`w-full ${currentTheme.primary} font-bold py-3.5 rounded-xl shadow-lg transition-colors mt-2`}
+              >
+                Save Coffee Profile
+              </button>
+            </form>
+
+            <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-4`}>
+              <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => setShowPastBeans(!showPastBeans)}>
+                <h3 className={`text-sm font-bold uppercase ${currentTheme.text}`}>Past Logged Beans & Post-Dial Ratings</h3>
+                {showPastBeans ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </div>
+
+              {showPastBeans && (
+                <div className="space-y-3 pt-2 border-t border-slate-700/40">
+                  {beans.length === 0 ? (
+                    <p className={`text-xs ${subTextClass}`}>No beans logged yet.</p>
+                  ) : (
+                    beans.map(b => (
+                      <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border text-xs`}>
+                        <div>
+                          <span className={`font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'} block`}>{b.name}</span>
+                          <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast ({b.storageType})</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase font-bold text-slate-400">Rating (1-10):</span>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="1.0"
+                            max="10.0"
+                            placeholder="e.g. 9.2"
+                            value={b.rating !== null && b.rating !== undefined ? b.rating : ''}
+                            onChange={(e) => handleUpdateBeanRating(b.id, e.target.value)}
+                            className={`w-16 ${inputClass} border rounded-lg p-1.5 text-center text-xs font-bold text-amber-500`}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
-        {/* HISTORY TAB */}
         {activeTab === 'history' && (
           <div className="space-y-4">
-            <div className={`flex justify-between items-center ${cardClass} p-3 rounded-2xl border`}>
+            <div className={`flex justify-between items-center ${currentTheme.card} p-3 rounded-2xl border`}>
               <span className={`text-xs font-bold uppercase ${labelClass}`}>Filter History Log</span>
               <select
                 value={historyFilterBeanId}
@@ -819,10 +1079,10 @@ export default function App() {
                 const bean = beans.find(b => b.id === s.beanId);
                 const grindStr = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro}-${s.setteMicro}` : `Dial ${s.sunbeamSetting}`;
                 return (
-                  <div key={s.id} className={`${cardClass} p-4 rounded-xl border space-y-2`}>
+                  <div key={s.id} className={`${currentTheme.card} p-4 rounded-xl border space-y-2`}>
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className={`text-xs font-bold ${currentTheme.text}`}>{bean ? `${bean.name} [Rating: ${bean.rating || 'N/A'}]` : 'Unknown Bean'}</span>
+                        <span className={`text-xs font-bold ${currentTheme.text}`}>{bean ? `${bean.name} [Rating: ${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown Bean'}</span>
                         <p className={`text-[10px] ${subTextClass}`}>{new Date(s.timestamp).toLocaleString()} • <span className={darkMode ? 'text-slate-300' : 'text-slate-700 capitalize'}>{s.storageType || 'bag'}</span> ({s.beanAgeDays || 0}d old)</p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -858,69 +1118,248 @@ export default function App() {
                 );
               })
             )}
-
-            {/* Factory Reset Trigger */}
-            <div className={`pt-6 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} mt-8`}>
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="w-full bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 font-bold py-3 rounded-xl text-xs transition-colors shadow-sm"
-              >
-                Perform Factory Reset (Delete All Data)
-              </button>
-            </div>
           </div>
         )}
 
-        {/* STATS & ANALYTICS TAB */}
         {activeTab === 'stats' && (
           <div className="space-y-4">
-            <h2 className="text-base font-bold mb-2">Extraction Analytics & Statistics</h2>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <div className={`${cardClass} p-4 rounded-2xl border`}>
-                <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Total Shots Logged</span>
-                <span className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} mt-1 block`}>{shots.length}</span>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-bold">Extraction Analytics & Statistics</h2>
+              <div className={`flex ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200 border-slate-300'} p-0.5 rounded-lg border text-[10px] font-semibold`}>
+                <button onClick={() => setChartType('timeline')} className={`px-2.5 py-1 rounded-md ${chartType === 'timeline' ? `${currentTheme.primary}` : subTextClass}`}>Timeline</button>
+                <button onClick={() => setChartType('scatter')} className={`px-2.5 py-1 rounded-md ${chartType === 'scatter' ? `${currentTheme.primary}` : subTextClass}`}>Dose/Time</button>
+                <button onClick={() => setChartType('taste')} className={`px-2.5 py-1 rounded-md ${chartType === 'taste' ? `${currentTheme.primary}` : subTextClass}`}>Taste</button>
               </div>
-              <div className={`${cardClass} p-4 rounded-2xl border`}>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
+                <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Total Shots Logged</span>
+                <span className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} mt-1 block`}>{totalShots}</span>
+              </div>
+              <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
+                <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Target Compliance</span>
+                <span className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} mt-1 block`}>{complianceRate}%</span>
+              </div>
+              <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
+                <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Avg Extraction Time</span>
+                <span className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} mt-1 block`}>{avgExtractionTime}s</span>
+              </div>
+              <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
                 <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Active Coffee Profiles</span>
                 <span className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} mt-1 block`}>{beans.length}</span>
               </div>
             </div>
 
-            <div className={`${cardClass} p-5 rounded-2xl border space-y-4`}>
-              <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Bean Rating Leaderboard (Ranked)</h3>
+            {chartType === 'timeline' && (
+              <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-3`}>
+                <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Recent Extraction Timeline (Seconds)</h3>
+                {shots.length < 2 ? (
+                  <p className={`text-xs ${subTextClass}`}>Log at least 2 shots to view trend graph.</p>
+                ) : (
+                  <div className="h-36 w-full flex items-end gap-1.5 pt-6 px-2 border-b border-slate-700/40 pb-2">
+                    {shots.slice(0, 15).reverse().map((s, idx) => {
+                      const heightPx = Math.min(Math.max((s.actualTimeS / 45) * 110, 15), 110);
+                      const isOptimal = s.actualTimeS >= 27 && s.actualTimeS <= 32;
+                      const isFast = s.actualTimeS < 27;
+                      return (
+                        <div key={idx} className="flex-1 flex flex-col items-center gap-1 group">
+                          <span className="text-[9px] font-mono opacity-80">{s.actualTimeS}s</span>
+                          <div 
+                            style={{ height: `${heightPx}px` }} 
+                            className={`w-full rounded-t transition-all ${isOptimal ? 'bg-emerald-500' : isFast ? 'bg-amber-500' : 'bg-rose-500'}`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {chartType === 'scatter' && (
+              <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-3`}>
+                <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Extraction Time vs Dose Distribution</h3>
+                <div className="h-36 w-full flex items-end gap-2 pt-6 px-2 border-b border-slate-700/40 pb-2">
+                  {shots.slice(0, 12).map((s, idx) => (
+                    <div key={idx} className="flex-1 flex flex-col items-center gap-1">
+                      <span className="text-[9px] font-mono">{s.actualDoseG}g</span>
+                      <div style={{ height: `${Math.min(s.actualTimeS * 3, 110)}px` }} className="w-full bg-indigo-500 rounded-t" />
+                      <span className="text-[9px] text-slate-400">{s.actualTimeS}s</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {chartType === 'taste' && (
+              <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-3`}>
+                <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Taste Profile Breakdown</h3>
+                <div className="space-y-2 text-xs">
+                  {[
+                    { label: 'Balanced / Good', count: tasteCounts.good, color: 'bg-emerald-500' },
+                    { label: 'Sour / Very Sour', count: tasteCounts.sour + tasteCounts.very_sour, color: 'bg-amber-500' },
+                    { label: 'Bitter / Very Bitter', count: tasteCounts.bitter + tasteCounts.very_bitter, color: 'bg-rose-500' },
+                  ].map(item => {
+                    const pct = totalShots > 0 ? Math.round((item.count / totalShots) * 100) : 0;
+                    return (
+                      <div key={item.label} className="space-y-1">
+                        <div className="flex justify-between font-semibold">
+                          <span className={subTextClass}>{item.label}</span>
+                          <span>{item.count} shots ({pct}%)</span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                          <div style={{ width: `${pct}%` }} className={`h-full ${item.color} transition-all duration-500`} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-4`}>
+              <div className="flex items-center justify-between">
+                <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Bean Rating Leaderboard</h3>
+                <select
+                  value={leaderboardFilter}
+                  onChange={(e) => setLeaderboardFilter(e.target.value)}
+                  className={`${inputClass} border rounded-lg px-2.5 py-1 text-xs font-semibold`}
+                >
+                  <option value="All">All Roasts</option>
+                  <option value="Light">Light Roast</option>
+                  <option value="Medium">Medium Roast</option>
+                  <option value="Dark">Dark Roast</option>
+                </select>
+              </div>
+
               {beans.length === 0 ? (
                 <p className={`text-xs ${subTextClass}`}>No beans configured yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {[...beans].sort((a, b) => (b.rating || 0) - (a.rating || 0)).map((b, idx) => (
-                    <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border text-xs`}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-amber-500">#{idx + 1}</span>
-                        <div>
-                          <span className={`font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'} block`}>{b.name}</span>
-                          <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast</span>
+                  {[...beans]
+                    .filter(b => leaderboardFilter === 'All' || b.roastType === leaderboardFilter)
+                    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+                    .map((b, idx) => (
+                      <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border text-xs`}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-amber-500">#{idx + 1}</span>
+                          <div>
+                            <span className={`font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'} block`}>{b.name}</span>
+                            <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast</span>
+                          </div>
                         </div>
+                        <span className="text-sm font-black text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                          ⭐ {b.rating ? Number(b.rating).toFixed(1) : 'N/A'}
+                        </span>
                       </div>
-                      <span className="text-sm font-black text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
-                        ⭐ {b.rating ? Number(b.rating).toFixed(1) : 'N/A'}
-                      </span>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* ADMIN MODE MODAL */}
+        {isSettingsOpen && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div className={`${currentTheme.card} border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
+              <div className="flex items-center justify-between border-b pb-3 border-slate-700">
+                <div className="flex items-center gap-2">
+                  <Sliders className={`w-5 h-5 ${currentTheme.text}`} />
+                  <h3 className="text-base font-bold">Preferences & Settings</h3>
+                </div>
+                <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-white text-sm font-bold">✕</button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className={`block font-bold mb-1 ${labelClass}`}>Primary Grinder Setup</label>
+                  <select
+                    value={grinderModel}
+                    onChange={(e) => handleSaveGrinderSetup(e.target.value)}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                  >
+                    <option value="Sette 270Wi">Baratza Sette 270Wi</option>
+                    <option value="Sunbeam Barista Max">Sunbeam Barista Max</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                  <div>
+                    <span className={`font-bold block ${labelClass}`}>Enable Flair Manual Profile</span>
+                    <span className="text-[10px] text-slate-400">Shows pressure profile & water temp recommendations</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={flairEnabled}
+                    onChange={(e) => handleToggleFlairSetting(e.target.checked)}
+                    className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className={`block font-bold mb-1 ${labelClass}`}>Accent Color Theme</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {['amber', 'emerald', 'indigo', 'rose'].map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setAccentColor(c)}
+                        className={`py-2 rounded-lg font-bold capitalize border ${accentColor === c ? 'border-white bg-slate-800 text-white' : 'border-slate-800 text-slate-400'}`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                  <span className={labelClass}>Interface Appearance</span>
+                  <button
+                    onClick={() => setDarkMode(!darkMode)}
+                    className={`px-3 py-1.5 border rounded-lg flex items-center gap-1 font-bold ${darkMode ? 'bg-slate-800 text-amber-400 border-slate-700' : 'bg-slate-100 text-slate-800 border-slate-300'}`}
+                  >
+                    {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />} {darkMode ? 'Dark Mode' : 'Light Mode'}
+                  </button>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800">
+                  <button
+                    onClick={exportDataCSV}
+                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 border border-slate-700"
+                  >
+                    <Download className="w-4 h-4" /> Export All Shots to CSV
+                  </button>
+                </div>
+
+                <div className="pt-3 border-t border-rose-900/40 space-y-2">
+                  <span className="font-bold text-rose-500 uppercase tracking-wider block">Danger Zone</span>
+                  <button
+                    onClick={() => setShowResetConfirm(true)}
+                    className="w-full bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white font-bold py-2 rounded-xl border border-rose-800 transition-colors"
+                  >
+                    Perform Factory Reset
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsSettingsOpen(false)}
+                className={`w-full ${currentTheme.primary} font-bold py-2.5 rounded-xl text-sm shadow mt-2`}
+              >
+                Save & Close
+              </button>
+            </div>
+          </div>
+        )}
+
         {isAdminOpen && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className={`${cardClass} border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
+            <div className={`${currentTheme.card} border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
               <div className="flex items-center gap-2 border-b pb-3 border-slate-700">
                 <Shield className={`w-5 h-5 ${currentTheme.text}`} />
                 <h3 className="text-base font-bold">Admin Panel (Testing Mode)</h3>
               </div>
+              
               <div>
                 <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Mock Todays Date</label>
                 <input
@@ -931,6 +1370,17 @@ export default function App() {
                 />
                 <p className={`text-[10px] ${subTextClass} mt-1`}>Leave blank to use actual live system date.</p>
               </div>
+
+              <div className="pt-2 border-t border-slate-700">
+                <button
+                  onClick={handleSimulateMockUsage}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow"
+                >
+                  <Database className="w-4 h-4" /> Simulate 30 Days of App Usage
+                </button>
+                <p className={`text-[10px] ${subTextClass} mt-1 text-center`}>Populates mock beans, recipes, & 30 days of shot logs.</p>
+              </div>
+
               <button
                 onClick={() => setIsAdminOpen(false)}
                 className={`w-full ${currentTheme.primary} font-bold py-2.5 rounded-xl text-sm shadow`}
@@ -941,10 +1391,9 @@ export default function App() {
           </div>
         )}
 
-        {/* FACTORY RESET CONFIRMATION MODAL */}
         {showResetConfirm && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className={`${cardClass} border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
+            <div className={`${currentTheme.card} border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
               <div className="flex items-center gap-2 text-rose-500 border-b pb-3 border-slate-700">
                 <AlertTriangle className="w-5 h-5" />
                 <h3 className="text-base font-bold">Confirm Factory Reset</h3>
@@ -969,6 +1418,12 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <footer className="text-center pt-8 pb-4">
+          <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
+            Espresso Dial-In • v1.0
+          </span>
+        </footer>
 
       </div>
     </div>
