@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db } from './db';
+import { db, calculateRecommendation, calculateEffectiveBeanAge, getInitialGrindRecommendation, getIdealFreezeWindow } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { calculateRecommendation, calculateEffectiveBeanAge, getInitialGrindRecommendation, getIdealFreezeWindow } from './utils/grinderLogic';
 import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Database, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee } from 'lucide-react';
 
 export default function App() {
@@ -68,7 +67,10 @@ export default function App() {
   const yieldInputRef = useRef(null);
   const tasteInputRef = useRef(null);
   const recommendationRef = useRef(null);
+  const grindSettingsRef = useRef(null);
+  
   const [validationError, setValidationError] = useState('');
+  const [highlightGrind, setHighlightGrind] = useState(false);
 
   useEffect(() => {
     if (settingsSetting) {
@@ -134,6 +136,13 @@ export default function App() {
     setGrinderModel('');
     setFlairEnabled(false);
     setIsSettingsOpen(false);
+  };
+
+  const sanitizeRating = (val) => {
+    if (!val && val !== 0) return '';
+    let num = parseFloat(val);
+    if (isNaN(num)) return '';
+    return Math.min(10.0, Math.max(1.0, num));
   };
 
   const handleSimulateMockUsage = async () => {
@@ -204,7 +213,8 @@ export default function App() {
     if (!newBean.name) return;
     
     const beanId = crypto.randomUUID();
-    await db.beans.add({ ...newBean, rating: newBean.rating ? parseFloat(newBean.rating) : null, id: beanId, createdAt: new Date().toISOString() });
+    const sanitized = sanitizeRating(newBean.rating);
+    await db.beans.add({ ...newBean, rating: sanitized !== '' ? sanitized : null, id: beanId, createdAt: new Date().toISOString() });
     await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: crypto.randomUUID(), beanId });
 
     setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', rating: '' });
@@ -213,7 +223,8 @@ export default function App() {
   };
 
   const handleUpdateBeanRating = async (beanId, val) => {
-    await db.beans.update(beanId, { rating: val ? parseFloat(val) : null });
+    const sanitized = sanitizeRating(val);
+    await db.beans.update(beanId, { rating: sanitized !== '' ? sanitized : null });
   };
 
   const handleThawNewBag = async () => {
@@ -246,6 +257,20 @@ export default function App() {
 
     if (!activeBean || !activeRecipe) return;
 
+    let recommendationFollowed = true;
+    if (lastShot && lastShot.recommendation?.recommendedSetting) {
+      const rec = lastShot.recommendation.recommendedSetting;
+      if (lastShot.grinderModel === 'Sette 270Wi') {
+        if (parseInt(setteMacro, 10) !== rec.macro || setteMicro !== rec.micro) {
+          recommendationFollowed = false;
+        }
+      } else if (lastShot.grinderModel === 'Sunbeam Barista Max') {
+        if (parseInt(sunbeamSetting, 10) !== rec.setting) {
+          recommendationFollowed = false;
+        }
+      }
+    }
+
     const lastShotGrind = lastShot ? {
       setteMacro: lastShot.setteMacro,
       setteMicro: lastShot.setteMicro,
@@ -270,7 +295,8 @@ export default function App() {
         actualYield: parseFloat(actualYieldG), 
         tasteProfile, 
         lastShotGrind, 
-        daysSinceLastShot 
+        daysSinceLastShot,
+        recommendationFollowed 
       },
       activeRecipe,
       recentBeanShots,
@@ -294,6 +320,7 @@ export default function App() {
       brewRatio: `1:${brewRatio}`,
       beanAgeDays: ageData.daysOld,
       storageType: activeBean.storageType || 'bag',
+      recommendationFollowed,
       flairProfile: flairEnabled && showFlair ? { waterTempC, preinfusion: flairPreinfusion, extraction: flairExtraction, rampDown: flairRampDown } : null,
       recommendation: rec,
       notes
@@ -323,10 +350,16 @@ export default function App() {
       setGrinderModel('Sunbeam Barista Max');
       setSunbeamSetting(recSet.setting);
     }
+
+    if (grindSettingsRef.current) {
+      grindSettingsRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightGrind(true);
+      setTimeout(() => setHighlightGrind(false), 1500);
+    }
   };
 
   const exportDataCSV = () => {
-    const headers = ['Timestamp', 'Bean', 'Grinder', 'Grind Setting', 'Purged', 'Dose(g)', 'Yield(g)', 'Ratio', 'Time(s)', 'Taste', 'Rating', 'Bean Age (Days)', 'Storage', 'Notes'];
+    const headers = ['Timestamp', 'Bean', 'Grinder', 'Grind Setting', 'Purged', 'Dose(g)', 'Yield(g)', 'Ratio', 'Time(s)', 'Taste', 'Rating', 'Bean Age (Days)', 'Storage', 'Rec Followed', 'Notes'];
     const rows = shots.map(s => {
       const bean = beans.find(b => b.id === s.beanId);
       const grind = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro}-${s.setteMicro}` : s.sunbeamSetting;
@@ -344,6 +377,7 @@ export default function App() {
         s.shotRating || '',
         s.beanAgeDays || 0,
         s.storageType || 'bag',
+        s.recommendationFollowed !== false ? 'Yes' : 'No',
         `"${s.notes || ''}"`
       ];
     });
@@ -386,8 +420,6 @@ export default function App() {
       primary: 'bg-amber-600 hover:bg-amber-500 text-white font-semibold',
       badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
       text: 'text-amber-600 dark:text-amber-400',
-      gradientFrom: '#f59e0b',
-      gradientTo: '#d97706',
       bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-amber-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-amber-50/60 via-orange-50/30 to-slate-50 text-slate-900',
       card: darkMode ? 'bg-slate-900/90 border-amber-950/40 text-slate-100 shadow-md' : 'bg-white border-amber-200 text-slate-900 shadow-sm'
     },
@@ -395,8 +427,6 @@ export default function App() {
       primary: 'bg-emerald-600 hover:bg-emerald-500 text-white font-semibold',
       badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
       text: 'text-emerald-600 dark:text-emerald-400',
-      gradientFrom: '#10b981',
-      gradientTo: '#059669',
       bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-emerald-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-emerald-50/60 via-teal-50/30 to-slate-50 text-slate-900',
       card: darkMode ? 'bg-slate-900/90 border-emerald-950/40 text-slate-100 shadow-md' : 'bg-white border-emerald-200 text-slate-900 shadow-sm'
     },
@@ -404,8 +434,6 @@ export default function App() {
       primary: 'bg-indigo-600 hover:bg-indigo-500 text-white font-semibold',
       badge: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
       text: 'text-indigo-600 dark:text-indigo-400',
-      gradientFrom: '#6366f1',
-      gradientTo: '#4f46e5',
       bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-indigo-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-indigo-50/60 via-blue-50/30 to-slate-50 text-slate-900',
       card: darkMode ? 'bg-slate-900/90 border-indigo-950/40 text-slate-100 shadow-md' : 'bg-white border-indigo-200 text-slate-900 shadow-sm'
     },
@@ -413,8 +441,6 @@ export default function App() {
       primary: 'bg-rose-600 hover:bg-rose-500 text-white font-semibold',
       badge: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
       text: 'text-rose-600 dark:text-rose-400',
-      gradientFrom: '#f43f5e',
-      gradientTo: '#e11d48',
       bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-rose-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-rose-50/60 via-pink-50/30 to-slate-50 text-slate-900',
       card: darkMode ? 'bg-slate-900/90 border-rose-950/40 text-slate-100 shadow-md' : 'bg-white border-rose-200 text-slate-900 shadow-sm'
     }
@@ -619,7 +645,7 @@ export default function App() {
 
                     {lastShot && (
                       <div className={`pt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} flex items-center justify-between text-xs`}>
-                        <span className={subTextClass}>Last Shot: {lastShot.actualTimeS}s ({lastShot.tasteProfile})</span>
+                        <span className={subTextClass}>Last Shot: {lastShot.actualTimeS}s ({lastShot.tasteProfile?.replace('_', ' ')})</span>
                         <button
                           type="button"
                           onClick={applyRecommendation}
@@ -646,7 +672,7 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
+                  <div ref={grindSettingsRef} className={`${currentTheme.card} p-4 rounded-2xl border transition-all duration-300 ${highlightGrind ? 'ring-4 ring-amber-500 animate-pulse border-amber-500' : ''}`}>
                     <div className="flex justify-between items-center mb-2">
                       <label className={`text-xs uppercase font-bold ${labelClass}`}>Grind Setting Used</label>
                       <span className={`text-[10px] ${currentTheme.text} font-semibold uppercase`}>Active Grinder: {grinderModel}</span>
@@ -1038,7 +1064,7 @@ export default function App() {
                           <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast ({b.storageType})</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase font-bold text-slate-400">Rating (1-10):</span>
+                          <span className="text-[10px] uppercase font-bold text-slate-400">Rating (Max 10):</span>
                           <input
                             type="number"
                             step="0.1"
@@ -1086,7 +1112,10 @@ export default function App() {
                     <div className="flex justify-between items-start">
                       <div>
                         <span className={`text-xs font-bold ${currentTheme.text}`}>{bean ? `${bean.name} [Rating: ${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown Bean'}</span>
-                        <p className={`text-[10px] ${subTextClass}`}>{new Date(s.timestamp).toLocaleString()} • <span className={darkMode ? 'text-slate-300' : 'text-slate-700 capitalize'}>{s.storageType || 'bag'}</span> ({s.beanAgeDays || 0}d old)</p>
+                        <p className={`text-[10px] ${subTextClass}`}>
+                          {new Date(s.timestamp).toLocaleString()} • <span className={darkMode ? 'text-slate-300' : 'text-slate-700 capitalize'}>{s.storageType || 'bag'}</span> ({s.beanAgeDays || 0}d old)
+                          {s.recommendationFollowed === false && <span className="text-rose-400 font-bold ml-2">⚠️ Rec Not Followed</span>}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         {s.shotRating && (
@@ -1428,7 +1457,7 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v1.1
+            Espresso Dial-In • v1.2
           </span>
         </footer>
 
