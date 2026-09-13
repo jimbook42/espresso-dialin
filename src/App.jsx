@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, calculateRecommendation, calculateEffectiveBeanAge, getInitialGrindRecommendation, getIdealFreezeWindow } from './utils/grinderLogic';
+import { db, generateId, calculateRecommendation, calculateEffectiveBeanAge, getInitialGrindRecommendation, getAgeAdjustedRecommendation, getIdealFreezeWindow } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Database, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, Square, RotateCcw, Edit2, X } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 
 export default function App() {
@@ -20,6 +20,7 @@ export default function App() {
 
   const [showFlair, setShowFlair] = useState(false);
   const [showPastBeans, setShowPastBeans] = useState(true);
+  const [showFinishedBeans, setShowFinishedBeans] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [leaderboardFilter, setLeaderboardFilter] = useState('All');
 
@@ -50,7 +51,9 @@ export default function App() {
     postThawStorage: 'bag',
     freezeDate: '', 
     thawDate: '',
-    rating: ''
+    thawHistory: [],
+    rating: '',
+    isFinished: false
   });
   
   const [newRecipe, setNewRecipe] = useState({ targetDoseG: 18, targetYieldG: '', targetTimeMinS: 27, targetTimeMaxS: 32 });
@@ -87,10 +90,12 @@ export default function App() {
     if (settingsSetting) {
       if (settingsSetting.grinderModel) setGrinderModel(settingsSetting.grinderModel);
       if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
+      if (settingsSetting.preInfusionEnabled !== undefined) setUsePreInfusion(settingsSetting.preInfusionEnabled);
     }
   }, [settingsSetting]);
 
-  const activeBean = beans.find(b => b.id === selectedBeanId) || beans[0];
+  const activeBeansList = beans.filter(b => !b?.isFinished);
+  const activeBean = beans.find(b => b.id === selectedBeanId) || activeBeansList[0] || beans[0];
   const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
   const lastShot = shots.find(s => s.beanId === activeBean?.id);
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
@@ -131,12 +136,9 @@ export default function App() {
   const handleStopTimer = () => {
     setTimerRunning(false);
     let finalExtractionTime = timerSeconds;
-    
-    // Subtract pre-infusion from total time if enabled and completed
     if (usePreInfusion && !preInfusionPhase) {
       finalExtractionTime = timerSeconds - preInfusionSeconds;
     }
-    
     setActualTimeS(finalExtractionTime);
   };
 
@@ -153,31 +155,63 @@ export default function App() {
     setPreInfusionPhase(false);
   };
 
-  // Yield Auto-Default Logic
   useEffect(() => {
-    if (activeRecipe?.targetYieldG) {
+    if (activeRecipe?.targetYieldG && !actualYieldG) {
       setActualYieldG(activeRecipe.targetYieldG);
     }
   }, [activeRecipe?.id]);
 
   useEffect(() => {
-    if (activeBean && beanShots.length === 0 && grinderModel) {
-      const recSette = getInitialGrindRecommendation('Sette 270Wi', activeBean.roastType, activeBean, recipes, shots, beans, mockDate);
-      const recSunbeam = getInitialGrindRecommendation('Sunbeam Barista Max', activeBean.roastType, activeBean, recipes, shots, beans, mockDate);
-      setSetteMacro(recSette.macro);
-      setSetteMicro(recSette.micro);
-      setSunbeamSetting(recSunbeam.setting);
+    if (activeBean && grinderModel) {
+      const currentBeanShots = shots.filter(s => s.beanId === activeBean.id && s.grinderModel === grinderModel);
+      
+      if (currentBeanShots.length > 0) {
+        const last = currentBeanShots[0];
+        const adjustedRec = getAgeAdjustedRecommendation(last, activeBean, mockDate);
+        
+        if (adjustedRec && adjustedRec.recommendedSetting) {
+          if (grinderModel === 'Sette 270Wi') {
+            setSetteMacro(adjustedRec.recommendedSetting.macro);
+            setSetteMicro(adjustedRec.recommendedSetting.micro);
+          } else {
+            setSunbeamSetting(adjustedRec.recommendedSetting.setting);
+          }
+        } else {
+          if (grinderModel === 'Sette 270Wi') {
+            setSetteMacro(last.setteMacro || 13);
+            setSetteMicro(last.setteMicro || 'E');
+          } else {
+            setSunbeamSetting(last.sunbeamSetting || 15);
+          }
+        }
+      } else {
+        const recParams = getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate);
+        if (grinderModel === 'Sette 270Wi') {
+          setSetteMacro(recParams.macro);
+          setSetteMicro(recParams.micro);
+        } else {
+          setSunbeamSetting(recParams.setting);
+        }
+      }
     }
-  }, [selectedBeanId, beans.length, grinderModel]);
+  }, [selectedBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
 
   const handleSaveGrinderSetup = async (model) => {
     setGrinderModel(model);
-    await db.settings.put({ id: 'global', grinderModel: model, flairEnabled });
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({ ...currentSettings, grinderModel: model });
   };
 
   const handleToggleFlairSetting = async (val) => {
     setFlairEnabled(val);
-    await db.settings.put({ id: 'global', grinderModel, flairEnabled: val });
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({ ...currentSettings, flairEnabled: val });
+  };
+
+  const handleTogglePreInfusion = async (val) => {
+    setUsePreInfusion(val);
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({ ...currentSettings, preInfusionEnabled: val });
   };
 
   const handleLogoClick = () => {
@@ -209,6 +243,7 @@ export default function App() {
     setSelectedBeanId('');
     setGrinderModel('');
     setFlairEnabled(false);
+    setUsePreInfusion(false);
     setIsSettingsOpen(false);
   };
 
@@ -219,90 +254,34 @@ export default function App() {
     return Math.min(10.0, Math.max(1.0, num));
   };
 
-  const handleSimulateMockUsage = async () => {
-    await db.shots.clear();
-    await db.recipes.clear();
-    await db.beans.clear();
-
-    const bean1Id = crypto.randomUUID();
-    const bean2Id = crypto.randomUUID();
-    const bean3Id = crypto.randomUUID();
-
-    const today = new Date();
-    const getDateStringDaysAgo = (days) => {
-      const d = new Date(today);
-      d.setDate(d.getDate() - days);
-      return d.toISOString().slice(0, 10);
-    };
-
-    await db.beans.bulkAdd([
-      { id: bean1Id, name: 'Ethiopian Yirgacheffe', roaster: 'Unknown Chapter', roastType: 'Light', roastDate: getDateStringDaysAgo(25), storageType: 'vacuum', rating: 9.2, createdAt: new Date().toISOString() },
-      { id: bean2Id, name: 'House Espresso Blend', roaster: 'Coffee Embassy', roastType: 'Medium', roastDate: getDateStringDaysAgo(15), storageType: 'bag', rating: 8.8, createdAt: new Date().toISOString() },
-      { id: bean3Id, name: 'Dark Colombian Single', roaster: 'C4 Coffee', roastType: 'Dark', roastDate: getDateStringDaysAgo(400), storageType: 'frozen', postThawStorage: 'vacuum', freezeDate: getDateStringDaysAgo(390), thawDate: getDateStringDaysAgo(5), rating: 7.5, createdAt: new Date().toISOString() }
-    ]);
-
-    await db.recipes.bulkAdd([
-      { id: crypto.randomUUID(), beanId: bean1Id, targetDoseG: 19, targetYieldG: 38, targetTimeMinS: 28, targetTimeMaxS: 34 },
-      { id: crypto.randomUUID(), beanId: bean2Id, targetDoseG: 18, targetYieldG: 36, targetTimeMinS: 27, targetTimeMaxS: 32 },
-      { id: crypto.randomUUID(), beanId: bean3Id, targetDoseG: 20, targetYieldG: 40, targetTimeMinS: 25, targetTimeMaxS: 30 }
-    ]);
-
-    const mockShots = [];
-    const targetBeans = [bean1Id, bean2Id, bean3Id];
-
-    for (let i = 30; i >= 1; i--) {
-      const shotDate = new Date(today);
-      shotDate.setDate(shotDate.getDate() - i);
-      const bId = targetBeans[i % targetBeans.length];
-
-      mockShots.push({
-        id: crypto.randomUUID(),
-        beanId: bId,
-        timestamp: shotDate.toISOString(),
-        grinderModel: i % 2 === 0 ? 'Sette 270Wi' : 'Sunbeam Barista Max',
-        setteMacro: 13,
-        setteMicro: 'E',
-        sunbeamSetting: 15,
-        wasPurged: true,
-        actualDoseG: 18,
-        actualYieldG: 36,
-        actualTimeS: 29,
-        tasteProfile: 'good',
-        shotRating: 5,
-        brewRatio: '1:2.0',
-        beanAgeDays: i,
-        storageType: 'bag',
-        recommendation: { recommendedSetting: { macro: 13, micro: 'E' }, reason: 'Simulated adjustment.' },
-        notes: `Simulated shot logged for day -${i}`
-      });
-    }
-
-    await db.shots.bulkAdd(mockShots);
-    setSelectedBeanId(bean1Id);
-    setIsAdminOpen(false);
-  };
-
   const handleSaveBean = async (e) => {
     e.preventDefault();
     if (!newBean.name) return;
-    const sanitized = sanitizeRating(newBean.rating);
-    
-    if (isEditingBean && newBean.id) {
-      await db.beans.update(newBean.id, { ...newBean, rating: sanitized !== '' ? sanitized : null });
-      const existingRecipe = recipes.find(r => r.beanId === newBean.id);
-      if (existingRecipe) {
-        await db.recipes.update(existingRecipe.id, { ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36 });
-      }
-    } else {
-      const beanId = crypto.randomUUID();
-      await db.beans.add({ ...newBean, rating: sanitized !== '' ? sanitized : null, id: beanId, createdAt: new Date().toISOString() });
-      await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: crypto.randomUUID(), beanId });
-      setSelectedBeanId(beanId);
-    }
+    setValidationError('');
 
-    setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', rating: '' });
-    setIsEditingBean(false);
-    setActiveTab('dial');
+    try {
+      const sanitized = sanitizeRating(newBean.rating);
+      
+      if (isEditingBean && newBean.id) {
+        await db.beans.update(newBean.id, { ...newBean, rating: sanitized !== '' ? sanitized : null });
+        const existingRecipe = recipes.find(r => r.beanId === newBean.id);
+        if (existingRecipe) {
+          await db.recipes.update(existingRecipe.id, { ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36 });
+        }
+      } else {
+        const beanId = generateId();
+        await db.beans.add({ ...newBean, rating: sanitized !== '' ? sanitized : null, id: beanId, isFinished: false, thawHistory: [], createdAt: new Date().toISOString() });
+        await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: generateId(), beanId });
+        setSelectedBeanId(beanId);
+      }
+
+      setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false });
+      setIsEditingBean(false);
+      setActiveTab('dial');
+    } catch (err) {
+      console.error("Failed to save bean profile:", err);
+      setValidationError("Failed to save bean: " + err.message);
+    }
   };
 
   const startEditBean = (bean) => {
@@ -316,7 +295,7 @@ export default function App() {
 
   const cancelEditBean = () => {
     setIsEditingBean(false);
-    setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', rating: '' });
+    setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false });
     setNewRecipe({ targetDoseG: 18, targetYieldG: '', targetTimeMinS: 27, targetTimeMaxS: 32 });
   };
 
@@ -325,24 +304,80 @@ export default function App() {
     await db.beans.update(beanId, { rating: sanitized !== '' ? sanitized : null });
   };
 
+  const handleToggleFinished = async (beanId, currentStatus) => {
+    await db.beans.update(beanId, { isFinished: !currentStatus });
+    if (!currentStatus && selectedBeanId === beanId) {
+      const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
+      setSelectedBeanId(remaining.length > 0 ? remaining[0].id : '');
+    }
+  };
+
+  const handleDeleteBean = async (beanId) => {
+    if (window.confirm("Are you sure you want to delete this coffee profile? This will permanently remove its recipe and all associated shot history.")) {
+      await db.beans.delete(beanId);
+      
+      const associatedRecipes = await db.recipes.where('beanId').equals(beanId).toArray();
+      for (const r of associatedRecipes) await db.recipes.delete(r.id);
+      
+      const associatedShots = await db.shots.where('beanId').equals(beanId).toArray();
+      for (const s of associatedShots) await db.shots.delete(s.id);
+
+      if (selectedBeanId === beanId) {
+        const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
+        setSelectedBeanId(remaining.length > 0 ? remaining[0].id : '');
+      }
+    }
+  };
+
   const handleThawNewBag = async () => {
     if (!activeBean) return;
     const todayStr = mockDate || new Date().toISOString().slice(0, 10);
-    await db.beans.update(activeBean.id, { thawDate: todayStr });
+    const currentHistory = activeBean.thawHistory || [];
+    const newHistoryEntry = { thawDate: activeBean.thawDate || null };
+    
+    await db.beans.update(activeBean.id, { 
+      thawDate: todayStr,
+      thawHistory: [...currentHistory, newHistoryEntry]
+    });
+  };
+
+  const handleReverseThaw = async () => {
+    if (!activeBean || !activeBean.thawHistory || activeBean.thawHistory.length === 0) return;
+    const currentHistory = [...activeBean.thawHistory];
+    const lastEntry = currentHistory.pop();
+
+    await db.beans.update(activeBean.id, {
+      thawDate: lastEntry.thawDate,
+      thawHistory: currentHistory
+    });
+  };
+
+  const handleDeleteShot = async (id) => {
+    if (window.confirm("Are you sure you want to delete this shot? It will be permanently removed from history and recommendation learning calculations.")) {
+      await db.shots.delete(id);
+    }
   };
 
   const handleLogShot = async (e) => {
     e.preventDefault();
     setValidationError('');
 
-    if (!actualYieldG) {
-      setValidationError('Yield is required.');
+    const parsedTime = parseInt(actualTimeS, 10);
+    const parsedYield = parseFloat(actualYieldG);
+    const parsedDose = parseFloat(actualDoseG);
+
+    if (isNaN(parsedDose)) {
+      setValidationError('Dose is required and must be a number.');
+      return;
+    }
+    if (isNaN(parsedYield)) {
+      setValidationError('Yield is required and must be a number.');
       yieldInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       yieldInputRef.current?.focus();
       return;
     }
-    if (!actualTimeS) {
-      setValidationError('Extraction time is required.');
+    if (isNaN(parsedTime)) {
+      setValidationError('Extraction time is required and must be a number.');
       timeInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       timeInputRef.current?.focus();
       return;
@@ -353,17 +388,39 @@ export default function App() {
       return;
     }
 
-    if (!activeBean || !activeRecipe) return;
+    let finalMacro = null;
+    let finalMicro = null;
+    let finalSunbeam = null;
+
+    if (grinderModel === 'Sette 270Wi') {
+      finalMacro = parseInt(setteMacro, 10);
+      if (isNaN(finalMacro)) {
+        setValidationError('Sette Macro setting must be a valid number.');
+        return;
+      }
+      finalMicro = setteMicro || 'E';
+    } else {
+      finalSunbeam = parseInt(sunbeamSetting, 10);
+      if (isNaN(finalSunbeam)) {
+        setValidationError('Sunbeam dial setting must be a valid number.');
+        return;
+      }
+    }
+
+    if (!activeBean || !activeRecipe) {
+      setValidationError('Missing active coffee profile or recipe.');
+      return;
+    }
 
     let recommendationFollowed = true;
     if (lastShot && lastShot.recommendation?.recommendedSetting) {
       const rec = lastShot.recommendation.recommendedSetting;
       if (lastShot.grinderModel === 'Sette 270Wi') {
-        if (parseInt(setteMacro, 10) !== rec.macro || setteMicro !== rec.micro) {
+        if (finalMacro !== rec.macro || finalMicro !== rec.micro) {
           recommendationFollowed = false;
         }
       } else if (lastShot.grinderModel === 'Sunbeam Barista Max') {
-        if (parseInt(sunbeamSetting, 10) !== rec.setting) {
+        if (finalSunbeam !== rec.setting) {
           recommendationFollowed = false;
         }
       }
@@ -375,25 +432,29 @@ export default function App() {
       sunbeamSetting: lastShot.sunbeamSetting
     } : null;
 
-    const referenceNow = mockDate ? new Date(mockDate) : new Date();
-    const lastTimestamp = lastShot ? new Date(lastShot.timestamp) : referenceNow;
-    const daysSinceLastShot = Math.max(0, Math.floor((referenceNow - lastTimestamp) / (1000 * 60 * 60 * 24)));
+    let referenceNow = new Date();
+    if (mockDate) {
+      const parsedMock = new Date(mockDate);
+      if (!isNaN(parsedMock.getTime())) {
+        referenceNow = parsedMock;
+      }
+    }
+
     const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
     const recentBeanShots = shots.filter(s => s.beanId === activeBean.id).slice(0, 5);
 
     const rec = calculateRecommendation(
       { 
         grinderModel, 
-        setteMacro, 
-        setteMicro, 
-        sunbeamSetting, 
+        setteMacro: finalMacro, 
+        setteMicro: finalMicro, 
+        sunbeamSetting: finalSunbeam, 
         wasPurged, 
-        actualTime: parseInt(actualTimeS, 10), 
-        actualDose: parseFloat(actualDoseG), 
-        actualYield: parseFloat(actualYieldG), 
+        actualTime: parsedTime, 
+        actualDose: parsedDose, 
+        actualYield: parsedYield, 
         tasteProfile, 
         lastShotGrind, 
-        daysSinceLastShot,
         recommendationFollowed 
       },
       activeRecipe,
@@ -402,19 +463,19 @@ export default function App() {
     );
 
     const shotRecord = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       beanId: activeBean.id,
       timestamp: referenceNow.toISOString(),
       grinderModel,
-      setteMacro: grinderModel === 'Sette 270Wi' ? parseInt(setteMacro, 10) : null,
-      setteMicro: grinderModel === 'Sette 270Wi' ? setteMicro : null,
-      sunbeamSetting: grinderModel === 'Sunbeam Barista Max' ? parseInt(sunbeamSetting, 10) : null,
+      setteMacro: finalMacro,
+      setteMicro: finalMicro,
+      sunbeamSetting: finalSunbeam,
       wasPurged,
-      actualDoseG: parseFloat(actualDoseG),
-      actualYieldG: parseFloat(actualYieldG),
-      actualTimeS: parseInt(actualTimeS, 10),
+      actualDoseG: parsedDose,
+      actualYieldG: parsedYield,
+      actualTimeS: parsedTime,
       tasteProfile,
-      shotRating,
+      shotRating: shotRating !== null ? shotRating : undefined,
       brewRatio: `1:${brewRatio}`,
       beanAgeDays: ageData.daysOld,
       storageType: activeBean.storageType || 'bag',
@@ -424,30 +485,42 @@ export default function App() {
       notes: usePreInfusion && preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes
     };
 
-    await db.shots.add(shotRecord);
-    
-    setActualTimeS('');
-    setActualYieldG(activeRecipe?.targetYieldG || '');
-    setShotRating(null);
-    setNotes('');
-    setTasteProfile('');
-    handleResetTimer();
+    try {
+      await db.shots.add(shotRecord);
+      
+      setActualTimeS('');
+      setActualYieldG(activeRecipe?.targetYieldG || '');
+      setShotRating(null);
+      setNotes('');
+      setTasteProfile('');
+      handleResetTimer();
 
-    setTimeout(() => {
-      recommendationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+      setTimeout(() => {
+        recommendationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    } catch (err) {
+      console.error("Database save failed:", err);
+      setValidationError(`Error saving to database: ${err.message || 'Unknown IndexedDB Error.'}`);
+    }
   };
 
-  const applyRecommendation = () => {
-    if (!lastShot || !lastShot.recommendation) return;
-    const recSet = lastShot.recommendation.recommendedSetting;
+  const dynamicRec = lastShot ? getAgeAdjustedRecommendation(lastShot, activeBean, mockDate) : null;
+
+  const applyRecommendation = async () => {
+    if (!dynamicRec || !dynamicRec.recommendedSetting) return;
+    const recSet = dynamicRec.recommendedSetting;
+    
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+
     if (lastShot.grinderModel === 'Sette 270Wi' && recSet.macro) {
       setGrinderModel('Sette 270Wi');
       setSetteMacro(recSet.macro);
       setSetteMicro(recSet.micro);
+      await db.settings.put({ ...currentSettings, lastSetteMacro: recSet.macro, lastSetteMicro: recSet.micro });
     } else if (lastShot.grinderModel === 'Sunbeam Barista Max' && recSet.setting) {
       setGrinderModel('Sunbeam Barista Max');
       setSunbeamSetting(recSet.setting);
+      await db.settings.put({ ...currentSettings, lastSunbeamSetting: recSet.setting });
     }
 
     if (grindSettingsRef.current) {
@@ -501,15 +574,15 @@ export default function App() {
   const compliantShots = shots.filter(s => {
     const r = recipes.find(rec => rec.beanId === s.beanId);
     if (!r) return false;
-    return s.actualTimeS >= r.targetTimeMinS && s.actualTimeS <= r.targetTimeMaxS;
+    return s.actualTimeS >= (r.targetTimeMinS || 27) && s.actualTimeS <= (r.targetTimeMaxS || 32);
   }).length;
   const complianceRate = totalShots > 0 ? Math.round((compliantShots / totalShots) * 100) : 0;
-  const avgExtractionTime = totalShots > 0 ? Math.round(shots.reduce((acc, s) => acc + s.actualTimeS, 0) / totalShots) : 0;
+  const avgExtractionTime = totalShots > 0 ? Math.round(shots.reduce((acc, s) => acc + (s.actualTimeS || 0), 0) / totalShots) : 0;
 
   const tasteCounts = {
     very_sour: shots.filter(s => s.tasteProfile === 'very_sour').length,
     sour: shots.filter(s => s.tasteProfile === 'sour').length,
-    good: shots.filter(s => s.tasteProfile === 'good').length,
+    good: shots.filter(s => s.tasteProfile === 'good' || s.tasteProfile === 'balanced').length,
     bitter: shots.filter(s => s.tasteProfile === 'bitter').length,
     very_bitter: shots.filter(s => s.tasteProfile === 'very_bitter').length,
   };
@@ -685,7 +758,7 @@ export default function App() {
 
         {activeTab === 'dial' && (
           <div className="space-y-6">
-            {beans.length === 0 ? (
+            {activeBeansList.length === 0 ? (
               <div className={`${currentTheme.card} p-8 rounded-2xl text-center border`}>
                 <p className={`${subTextClass} mb-4`}>No active coffee bean profiles configured in the system.</p>
                 <button onClick={() => setActiveTab('beans')} className={`${currentTheme.primary} px-4 py-2.5 rounded-xl text-sm font-semibold shadow`}>
@@ -694,43 +767,55 @@ export default function App() {
               </div>
             ) : (
               <>
-                {lastBrewDaysAgo > 0 && (
-                  <div className={`${darkMode ? 'bg-amber-950/30 border-amber-900/40 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-800'} border p-3 rounded-xl flex items-center gap-2 text-xs font-semibold`}>
-                    <Flame className="w-4 h-4 shrink-0" />
-                    <span>📅 {lastBrewDaysAgo} days since last brew. Background aging progressed; recommendation adjusted.</span>
-                  </div>
-                )}
-
                 <div className={`${currentTheme.card} p-4 rounded-2xl border space-y-3`}>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center flex-wrap gap-2">
                     <label className={`text-xs uppercase font-bold ${labelClass}`}>Active Coffee Profile</label>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {activeBean?.storageType === 'frozen' && (
-                        <button
-                          type="button"
-                          onClick={handleThawNewBag}
-                          className={`text-[10px] ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border px-2.5 py-1 rounded-lg ${currentTheme.text} font-bold hover:opacity-80`}
-                        >
-                          Thaw New Bag Today
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleThawNewBag}
+                            className={`text-[10px] ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border px-2.5 py-1 rounded-lg ${currentTheme.text} font-bold hover:opacity-80`}
+                          >
+                            Thaw New Bag Today
+                          </button>
+                          {activeBean.thawHistory && activeBean.thawHistory.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleReverseThaw}
+                              className={`text-[10px] bg-indigo-950/30 border border-indigo-800 px-2.5 py-1 rounded-lg text-indigo-400 font-bold hover:opacity-80 flex items-center gap-1`}
+                            >
+                              <RotateCcw className="w-3 h-3" /> Undo Thaw
+                            </button>
+                          )}
+                        </div>
                       )}
                       <select
                         value={activeBean?.id || ''}
                         onChange={(e) => setSelectedBeanId(e.target.value)}
                         className={`${inputClass} border rounded-lg px-3 py-1.5 text-sm ${currentTheme.text} font-semibold focus:outline-none`}
                       >
-                        {beans.map(b => (
+                        {activeBeansList.map(b => (
                           <option key={b.id} value={b.id}>{b.name} ({b.roaster}) [Rating: {b.rating ? Number(b.rating).toFixed(1) : 'N/A'}]</option>
                         ))}
                       </select>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
+                        className="text-[10px] bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 font-bold hover:bg-slate-700"
+                        title="Mark Bag as Finished"
+                      >
+                        Mark Finished
+                      </button>
                     </div>
                   </div>
 
                   {activeRecipe && (
                     <div className={`text-xs ${subTextClass} flex justify-between border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} pt-2`}>
-                      <span>Target Dose: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetDoseG}g</strong></span>
-                      <span>Target Yield: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetYieldG}g</strong></span>
-                      <span>Target Time: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetTimeMinS}-{activeRecipe.targetTimeMaxS}s</strong></span>
+                      <span>Target Dose: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetDoseG || 18}g</strong></span>
+                      <span>Target Yield: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetYieldG || 36}g</strong></span>
+                      <span>Target Time: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetTimeMinS || 27}-{activeRecipe.targetTimeMaxS || 32}s</strong></span>
                     </div>
                   )}
 
@@ -741,17 +826,24 @@ export default function App() {
                   )}
                 </div>
 
-                {shots.length > 0 && shots[0].beanId === activeBean?.id && (
+                {lastShot && dynamicRec && (
                   <div ref={recommendationRef} className={`${currentTheme.card} border ${darkMode ? 'border-amber-500/40' : 'border-amber-400'} p-4 rounded-2xl space-y-3 shadow-sm`}>
                     <div className={`flex items-center justify-between border-b ${darkMode ? 'border-slate-800' : 'border-slate-200'} pb-2`}>
                       <span className={`text-xs font-bold uppercase ${currentTheme.text}`}>Grind Adjustment Recommendation</span>
-                      <span className={`text-[10px] ${subTextClass}`}>{new Date(shots[0].timestamp).toLocaleTimeString()}</span>
+                      <span className={`text-[10px] ${subTextClass}`}>{new Date(lastShot.timestamp).toLocaleTimeString()}</span>
                     </div>
 
-                    {shots[0].recommendation?.warning && (
+                    {dynamicRec.ageWarning && (
+                      <div className="flex items-start gap-2 bg-indigo-950/40 border border-indigo-800/50 p-2.5 rounded-xl text-xs text-indigo-300">
+                        <Flame className="w-4 h-4 shrink-0 text-indigo-400" />
+                        <span>{dynamicRec.ageWarning}</span>
+                      </div>
+                    )}
+
+                    {dynamicRec.warning && (
                       <div className="flex items-start gap-2 bg-rose-950/40 border border-rose-800/50 p-2.5 rounded-xl text-xs text-rose-300">
                         <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                        <span>{shots[0].recommendation.warning}</span>
+                        <span>{dynamicRec.warning}</span>
                       </div>
                     )}
 
@@ -759,41 +851,39 @@ export default function App() {
                       <div>
                         <p className={`text-xs ${subTextClass}`}>Next Recommended Setting:</p>
                         <p className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                          {shots[0].grinderModel === 'Sette 270Wi'
-                            ? `${shots[0].recommendation.recommendedSetting.macro}-${shots[0].recommendation.recommendedSetting.micro}`
-                            : `Setting ${shots[0].recommendation.recommendedSetting.setting}`}
+                          {lastShot.grinderModel === 'Sette 270Wi'
+                            ? `${dynamicRec.recommendedSetting?.macro || 13}-${dynamicRec.recommendedSetting?.micro || 'E'}`
+                            : `Setting ${dynamicRec.recommendedSetting?.setting || 15}`}
                         </p>
                       </div>
                       <span className={`${currentTheme.badge} border px-3 py-1 rounded-full text-xs font-semibold`}>
-                        {shots[0].grinderModel}
+                        {lastShot.grinderModel}
                       </span>
                     </div>
-                    <p className={`text-xs ${darkMode ? 'text-slate-200' : 'text-slate-800'} leading-relaxed font-medium`}>{shots[0].recommendation?.reason}</p>
+                    <p className={`text-xs ${darkMode ? 'text-slate-200' : 'text-slate-800'} leading-relaxed font-medium`}>{dynamicRec.originalReason}</p>
 
-                    {shots[0].recommendation?.flairWaterTempAdvice && (
+                    {dynamicRec.flairWaterTempAdvice && (
                       <p className="text-xs bg-cyan-950/35 text-cyan-300 border border-cyan-800/40 p-2.5 rounded-xl">
-                        {shots[0].recommendation.flairWaterTempAdvice}
+                        {dynamicRec.flairWaterTempAdvice}
                       </p>
                     )}
 
-                    {shots[0].recommendation?.subRecommendation && (
+                    {dynamicRec.subRecommendation && (
                       <p className="text-xs bg-indigo-950/30 text-indigo-300 border border-indigo-800/40 p-2.5 rounded-xl">
-                        {shots[0].recommendation.subRecommendation}
+                        {dynamicRec.subRecommendation}
                       </p>
                     )}
 
-                    {lastShot && (
-                      <div className={`pt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} flex items-center justify-between text-xs`}>
-                        <span className={subTextClass}>Last Shot: {lastShot.actualTimeS}s ({lastShot.tasteProfile?.replace('_', ' ')})</span>
-                        <button
-                          type="button"
-                          onClick={applyRecommendation}
-                          className={`${currentTheme.primary} px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow`}
-                        >
-                          Apply Rec <ArrowRight className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
+                    <div className={`pt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} flex items-center justify-between text-xs`}>
+                      <span className={subTextClass}>Last Shot: {lastShot.actualTimeS || 0}s ({lastShot.tasteProfile?.replace('_', ' ') || 'unknown'})</span>
+                      <button
+                        type="button"
+                        onClick={applyRecommendation}
+                        className={`${currentTheme.primary} px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow`}
+                      >
+                        Apply Rec <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -828,15 +918,6 @@ export default function App() {
                           <RotateCcw className="w-5 h-5" />
                         </button>
                       </div>
-                    </div>
-                    <div className={`flex items-center justify-between border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} pt-2 mt-1`}>
-                      <span className={`text-xs font-semibold ${subTextClass}`}>Track Pre-infusion separately (subtracts from total)</span>
-                      <input
-                        type="checkbox"
-                        checked={usePreInfusion}
-                        onChange={(e) => setUsePreInfusion(e.target.checked)}
-                        className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
-                      />
                     </div>
                   </div>
 
@@ -1235,17 +1316,36 @@ export default function App() {
 
               {showPastBeans && (
                 <div className="space-y-3 pt-2 border-t border-slate-700/40">
-                  {beans.length === 0 ? (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className={subTextClass}>Show finished bags</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowFinishedBeans(!showFinishedBeans)}
+                      className={`px-2 py-1 rounded border font-semibold ${showFinishedBeans ? 'bg-amber-600 text-white border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-700'}`}
+                    >
+                      {showFinishedBeans ? 'Hiding Finished' : 'Showing Active Only'}
+                    </button>
+                  </div>
+
+                  {beans.filter(b => showFinishedBeans || !b?.isFinished).length === 0 ? (
                     <p className={`text-xs ${subTextClass}`}>No beans logged yet.</p>
                   ) : (
-                    beans.map(b => (
-                      <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border text-xs`}>
+                    beans.filter(b => showFinishedBeans || !b?.isFinished).map(b => (
+                      <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border text-xs ${b.isFinished ? 'opacity-60' : ''}`}>
                         <div className="flex items-center gap-2">
                           <button onClick={() => startEditBean(b)} className={`${currentTheme.text} hover:opacity-70 p-1 bg-amber-500/10 rounded-md`} title="Edit Bean">
                             <Edit2 className="w-4 h-4" />
                           </button>
+                          <button onClick={() => handleToggleFinished(b.id, b.isFinished)} className={`p-1 rounded-md ${b.isFinished ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`} title={b.isFinished ? 'Mark Active' : 'Mark Finished'}>
+                            <CheckCircle className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteBean(b.id)} className="text-rose-500 hover:opacity-70 p-1 bg-rose-500/10 rounded-md" title="Delete Bean Profile">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <div>
-                            <span className={`font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'} block`}>{b.name}</span>
+                            <span className={`font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'} block`}>
+                              {b.name} {b.isFinished && <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded ml-1">Finished</span>}
+                            </span>
                             <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast ({b.storageType})</span>
                           </div>
                         </div>
@@ -1282,7 +1382,7 @@ export default function App() {
               >
                 <option value="all">All Coffees</option>
                 {beans.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
+                  <option key={b.id} value={b.id}>{b.name} {b.isFinished ? '(Finished)' : ''}</option>
                 ))}
               </select>
             </div>
@@ -1292,7 +1392,7 @@ export default function App() {
             ) : (
               filteredShots.map(s => {
                 const bean = beans.find(b => b.id === s.beanId);
-                const grindStr = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro}-${s.setteMicro}` : `Dial ${s.sunbeamSetting}`;
+                const grindStr = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro || 13}-${s.setteMicro || 'E'}` : `Dial ${s.sunbeamSetting || 15}`;
                 return (
                   <div key={s.id} className={`${currentTheme.card} p-4 rounded-xl border space-y-2`}>
                     <div className="flex justify-between items-start">
@@ -1310,7 +1410,7 @@ export default function App() {
                           </div>
                         )}
                         <button
-                          onClick={() => db.shots.delete(s.id)}
+                          onClick={() => handleDeleteShot(s.id)}
                           className="text-slate-500 hover:text-rose-400 p-1"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1319,16 +1419,16 @@ export default function App() {
                     </div>
                     <div className={`grid grid-cols-4 gap-2 text-xs ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} p-2 rounded-lg border`}>
                       <div><span className={`block text-[9px] ${subTextClass}`}>GRIND</span><strong className={darkMode ? 'text-white' : 'text-slate-900'}>{grindStr}</strong></div>
-                      <div><span className={`block text-[9px] ${subTextClass}`}>DOSE/YIELD</span><strong className={darkMode ? 'text-white' : 'text-slate-900'}>{s.actualDoseG}/{s.actualYieldG}g</strong></div>
-                      <div><span className={`block text-[9px] ${subTextClass}`}>TIME</span><strong className={darkMode ? 'text-white' : 'text-slate-900'}>{s.actualTimeS}s</strong></div>
-                      <div><span className={`block text-[9px] ${subTextClass}`}>TASTE</span><strong className={`${currentTheme.text} capitalize`}>{s.tasteProfile?.replace('_', ' ')}</strong></div>
+                      <div><span className={`block text-[9px] ${subTextClass}`}>DOSE/YIELD</span><strong className={darkMode ? 'text-white' : 'text-slate-900'}>{s.actualDoseG || 0}/{s.actualYieldG || 0}g</strong></div>
+                      <div><span className={`block text-[9px] ${subTextClass}`}>TIME</span><strong className={darkMode ? 'text-white' : 'text-slate-900'}>{s.actualTimeS || 0}s</strong></div>
+                      <div><span className={`block text-[9px] ${subTextClass}`}>TASTE</span><strong className={`${currentTheme.text} capitalize`}>{s.tasteProfile?.replace('_', ' ') || 'Unknown'}</strong></div>
                     </div>
                     {s.flairProfile && (
                       <div className={`text-[10px] ${darkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-100 border-slate-300'} p-2 rounded border flex flex-wrap gap-2`}>
-                        <span>🌡️ Water: {s.flairProfile.waterTempC}°C</span>
-                        <span>💧 Pre: {s.flairProfile.preinfusion}</span>
-                        <span>⚡ Ext: {s.flairProfile.extraction}</span>
-                        <span>📉 Ramp: {s.flairProfile.rampDown}</span>
+                        <span>🌡️ Water: {s.flairProfile.waterTempC || 93}°C</span>
+                        <span>💧 Pre: {s.flairProfile.preinfusion || 'N/A'}</span>
+                        <span>⚡ Ext: {s.flairProfile.extraction || 'N/A'}</span>
+                        <span>📉 Ramp: {s.flairProfile.rampDown || 'N/A'}</span>
                       </div>
                     )}
                     {s.notes && <p className={`text-xs ${subTextClass} italic`}>"{s.notes}"</p>}
@@ -1365,7 +1465,7 @@ export default function App() {
               </div>
               <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
                 <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Active Coffee Profiles</span>
-                <span className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} mt-1 block`}>{beans.length}</span>
+                <span className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} mt-1 block`}>{activeBeansList.length}</span>
               </div>
             </div>
 
@@ -1377,16 +1477,16 @@ export default function App() {
                 ) : (
                   <div className="h-36 w-full flex items-end gap-1.5 pt-6 px-2 border-b border-slate-700/40 pb-2">
                     {shots.slice(0, 15).reverse().map((s, idx) => {
-                      const heightPx = Math.min(Math.max((s.actualTimeS / 45) * 110, 15), 110);
+                      const heightPx = Math.min(Math.max(((s.actualTimeS || 0) / 45) * 110, 15), 110);
                       const recipeForShot = recipes.find(r => r.beanId === s.beanId);
                       const minT = recipeForShot?.targetTimeMinS || 27;
                       const maxT = recipeForShot?.targetTimeMaxS || 32;
-                      const isOptimal = s.actualTimeS >= minT && s.actualTimeS <= maxT;
-                      const isFast = s.actualTimeS < minT;
+                      const isOptimal = (s.actualTimeS || 0) >= minT && (s.actualTimeS || 0) <= maxT;
+                      const isFast = (s.actualTimeS || 0) < minT;
                       
                       return (
                         <div key={idx} className="flex-1 flex flex-col items-center gap-1 group">
-                          <span className="text-[9px] font-mono opacity-80">{s.actualTimeS}s</span>
+                          <span className="text-[9px] font-mono opacity-80">{s.actualTimeS || 0}s</span>
                           <div 
                             style={{ height: `${heightPx}px` }} 
                             className={`w-full rounded-t transition-all ${isOptimal ? 'bg-emerald-500' : isFast ? 'bg-amber-500' : 'bg-rose-500'}`}
@@ -1405,9 +1505,9 @@ export default function App() {
                 <div className="h-36 w-full flex items-end gap-2 pt-6 px-2 border-b border-slate-700/40 pb-2">
                   {shots.slice(0, 12).map((s, idx) => (
                     <div key={idx} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-[9px] font-mono">{s.actualDoseG}g</span>
-                      <div style={{ height: `${Math.min(s.actualTimeS * 3, 110)}px` }} className="w-full bg-indigo-500 rounded-t" />
-                      <span className="text-[9px] text-slate-400">{s.actualTimeS}s</span>
+                      <span className="text-[9px] font-mono">{s.actualDoseG || 0}g</span>
+                      <div style={{ height: `${Math.min((s.actualTimeS || 0) * 3, 110)}px` }} className="w-full bg-indigo-500 rounded-t" />
+                      <span className="text-[9px] text-slate-400">{s.actualTimeS || 0}s</span>
                     </div>
                   ))}
                 </div>
@@ -1519,6 +1619,19 @@ export default function App() {
                   />
                 </div>
 
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                  <div>
+                    <span className={`font-bold block ${labelClass}`}>Track Pre-infusion Time</span>
+                    <span className="text-[10px] text-slate-400">Subtracts pre-infusion from total extraction time</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={usePreInfusion}
+                    onChange={(e) => handleTogglePreInfusion(e.target.checked)}
+                    className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                  />
+                </div>
+
                 <div>
                   <label className={`block font-bold mb-1 ${labelClass}`}>Accent Color Theme</label>
                   <div className="grid grid-cols-4 gap-2">
@@ -1593,16 +1706,6 @@ export default function App() {
                 <p className={`text-[10px] ${subTextClass} mt-1`}>Leave blank to use actual live system date.</p>
               </div>
 
-              <div className="pt-2 border-t border-slate-700">
-                <button
-                  onClick={handleSimulateMockUsage}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow"
-                >
-                  <Database className="w-4 h-4" /> Simulate 30 Days of App Usage
-                </button>
-                <p className={`text-[10px] ${subTextClass} mt-1 text-center`}>Populates mock beans, recipes, & 30 days of shot logs.</p>
-              </div>
-
               <button
                 onClick={() => setIsAdminOpen(false)}
                 className={`w-full ${currentTheme.primary} font-bold py-2.5 rounded-xl text-sm shadow`}
@@ -1643,7 +1746,7 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v1.4
+            Espresso Dial-In • v3.0
           </span>
         </footer>
 

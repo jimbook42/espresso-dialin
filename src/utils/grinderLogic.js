@@ -2,24 +2,34 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('EspressoDialDB');
 
-db.version(11).stores({
-  beans: 'id, name, roaster, roastDate, storageType, postThawStorage, freezeDate, thawDate, rating, createdAt',
+// Bumped to version 17 to accommodate persisted current grind settings
+db.version(17).stores({
+  beans: 'id, name, roaster, roastDate, storageType, postThawStorage, freezeDate, thawDate, rating, isFinished, createdAt',
   recipes: 'id, beanId, targetDoseG, targetYieldG, targetTimeMinS, targetTimeMaxS',
   shots: 'id, beanId, timestamp, grinderModel, setteMacro, setteMicro, sunbeamSetting',
-  settings: 'id, grinderModel, flairEnabled'
+  settings: 'id, grinderModel, flairEnabled, preInfusionEnabled, lastSetteMacro, lastSetteMicro, lastSunbeamSetting'
 });
+
+export function generateId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 10);
+}
 
 const SETTE_MICROS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
 export function setteToNumeric(macro, micro) {
   const macroVal = parseInt(macro, 10) || 13;
   const microIdx = SETTE_MICROS.indexOf(micro);
-  return macroVal * 9 + (microIdx !== -1 ? microIdx : 4);
+  // (Macro - 1) gives us a 0-based index so 1A starts at 0.
+  return (macroVal - 1) * 9 + (microIdx !== -1 ? microIdx : 4);
 }
 
 export function numericToSette(num) {
-  const clamped = Math.min(Math.max(Math.round(num), 9), 31 * 9 + 8);
-  const macro = Math.floor(clamped / 9);
+  // Clamp between 0 (1A) and 278 (31I)
+  const clamped = Math.min(Math.max(Math.round(num), 0), (31 - 1) * 9 + 8);
+  const macro = Math.floor(clamped / 9) + 1;
   const microIdx = clamped % 9;
   return { macro, micro: SETTE_MICROS[microIdx] };
 }
@@ -34,39 +44,6 @@ export function adjustSunbeam(currentSetting, stepShift) {
   return Math.min(Math.max(setting + stepShift, 1), 30);
 }
 
-export function getGrindHistoryTrendOffset(grinderModel, allShots = [], recipes = [], beans = []) {
-  const modelShots = allShots.filter(s => s.grinderModel === grinderModel);
-  let totalDrift = 0;
-  let count = 0;
-
-  modelShots.forEach(s => {
-    const recipe = recipes.find(r => r.beanId === s.beanId);
-    const bean = beans.find(b => b.id === s.beanId);
-    if (!recipe || !bean) return;
-
-    const isSuccessful = s.actualTimeS >= recipe.targetTimeMinS && s.actualTimeS <= recipe.targetTimeMaxS;
-    if (!isSuccessful) return;
-
-    const roastType = bean.roastType || 'Medium';
-    if (grinderModel === 'Sette 270Wi') {
-      const standardMacro = roastType === 'Light' ? 15 : roastType === 'Dark' ? 12 : 13;
-      const standardMicroIdx = roastType === 'Light' ? 2 : roastType === 'Dark' ? 5 : 4;
-      const standardNumeric = standardMacro * 9 + standardMicroIdx;
-      const actualNumeric = setteToNumeric(s.setteMacro, s.setteMicro);
-      totalDrift += (actualNumeric - standardNumeric);
-      count++;
-    } else {
-      const standardSetting = roastType === 'Light' ? 17 : roastType === 'Dark' ? 13 : 15;
-      const actualSetting = s.sunbeamSetting || 15;
-      totalDrift += (actualSetting - standardSetting);
-      count++;
-    }
-  });
-
-  if (count === 0) return 0;
-  return (totalDrift / count) * 0.5;
-}
-
 export function getIdealFreezeWindow(roastType) {
   switch (roastType) {
     case 'Light': return { min: 14, max: 21, label: '14–21 days post-roast' };
@@ -78,7 +55,7 @@ export function getIdealFreezeWindow(roastType) {
 }
 
 export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
-  if (!bean || !bean.roastDate) return { daysOld: 0, recommendedOffset: 0, notice: '', isTooFresh: false, isStale: false };
+  if (!bean || !bean.roastDate) return { daysOld: 0, recommendedOffsetSette: 0, recommendedOffsetSunbeam: 0, notice: '' };
 
   const roastDate = new Date(bean.roastDate);
   const today = mockDateOverride ? new Date(mockDateOverride) : new Date();
@@ -93,7 +70,7 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
       const freezeDate = new Date(bean.freezeDate);
       const ageAtFreeze = Math.max(0, Math.floor((freezeDate - roastDate) / (1000 * 60 * 60 * 24)));
       if (!bean.thawDate) {
-        effectiveDays = ageAtFreeze;
+        effectiveDays = ageAtFreeze; // Clock paused
       } else {
         const thawDate = new Date(bean.thawDate);
         const daysSinceThaw = Math.max(0, Math.floor((today - thawDate) / (1000 * 60 * 60 * 24)));
@@ -108,46 +85,129 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
     effectiveDays = Math.max(0, Math.floor((today - roastDate) / (1000 * 60 * 60 * 24)));
   }
 
-  const freshThresholds = { Light: 10, Medium: 5, Dark: 3 };
-  const minFresh = freshThresholds[bean.roastType] || 5;
-  const isTooFresh = effectiveDays < minFresh;
-  const isStale = effectiveDays > 35;
-
-  let microStepOffset = 0;
-  if (isTooFresh) {
-    microStepOffset = 1;
-  } else if (isStale) {
-    const excessDays = Math.min(effectiveDays - 35, 300);
-    microStepOffset = -Math.min(Math.round(excessDays * 0.05), 12);
-  } else if (effectiveDays > 14) {
-    microStepOffset = Math.floor((effectiveDays - 14) * 0.08);
-  }
+  let offsetSette = 0;
+  let offsetSunbeam = 0;
+  if (effectiveDays <= 3) { offsetSette = -3; offsetSunbeam = -2; }
+  else if (effectiveDays <= 7) { offsetSette = -2; offsetSunbeam = -1; }
+  else if (effectiveDays <= 14) { offsetSette = -1; offsetSunbeam = 0; }
+  else if (effectiveDays <= 30) { offsetSette = 0; offsetSunbeam = 0; }
+  else if (effectiveDays <= 45) { offsetSette = 1; offsetSunbeam = 1; }
+  else if (effectiveDays <= 60) { offsetSette = 2; offsetSunbeam = 1; }
+  else { offsetSette = 3; offsetSunbeam = 2; }
 
   const storageLabels = { frozen: 'Frozen Storage', vacuum: 'Vacuum Sealed Bag', bag: 'Standard Bag' };
   let notice = `(${storageLabels[storageType] || 'Standard'} • ${bean.roastType} Roast) Effective age: ${effectiveDays} days.`;
-  if (isTooFresh) {
-    notice += ` Too fresh / High CO2: Gas creates pneumatic resistance. Grind slightly coarser to prevent choking.`;
-  } else if (isStale) {
-    notice += ` Stale / Low Degassing: Lacks backpressure. Grind significantly finer to force extraction time.`;
+
+  return { daysOld: effectiveDays, recommendedOffsetSette: offsetSette, recommendedOffsetSunbeam: offsetSunbeam, notice };
+}
+
+export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = [], allShots = [], beans = []) {
+  const successfulShots = allShots.filter(s => {
+    if (s.grinderModel !== grinderModel) return false;
+    const bean = beans.find(b => b.id === s.beanId);
+    if (!bean || bean.roastType !== roastType) return false;
+    const recipe = recipes.find(r => r.beanId === s.beanId);
+    if (!recipe) return false;
+
+    const isTimeInRange = s.actualTimeS >= recipe.targetTimeMinS && s.actualTimeS <= recipe.targetTimeMaxS;
+    const isTasteGood = s.tasteProfile === 'good' || s.tasteProfile === 'balanced';
+    const wasFollowed = s.recommendationFollowed !== false;
+    
+    return isTimeInRange && isTasteGood && wasFollowed;
+  }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  if (successfulShots.length === 0) return null;
+
+  let weightedSum = 0;
+  let totalWeight = 0;
+  successfulShots.forEach((s, idx) => {
+    const weight = Math.pow(0.7, idx);
+    const num = grinderModel === 'Sette 270Wi' ? setteToNumeric(s.setteMacro, s.setteMicro) : s.sunbeamSetting;
+    weightedSum += num * weight;
+    totalWeight += weight;
+  });
+  return Math.round(weightedSum / totalWeight);
+}
+
+export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = null) {
+  if (!lastShot || !lastShot.recommendation || !lastShot.recommendation.recommendedSetting) return null;
+
+  const currentAgeData = calculateEffectiveBeanAge(activeBean, mockDate);
+  const currentAge = currentAgeData.daysOld;
+  const shotAge = lastShot.beanAgeDays !== undefined ? lastShot.beanAgeDays : currentAge;
+
+  const ageDelta = currentAge - shotAge;
+  let ageShiftSette = 0;
+  let ageShiftSunbeam = 0;
+  let ageWarning = null;
+
+  if (ageDelta <= -4) {
+    ageShiftSette = 2;
+    ageShiftSunbeam = 1;
+    ageWarning = `Thaw/Freshness detected: Active beans are ${Math.abs(ageDelta)} days fresher than your last logged shot. Recommendation dynamically shifted coarser to compensate.`;
+  } else if (ageDelta <= -2) {
+    ageShiftSette = 1;
+    ageShiftSunbeam = 1;
+    ageWarning = `Bean freshness shift detected. Recommendation dynamically shifted coarser.`;
+  } else if (ageDelta >= 10) {
+    ageShiftSette = -2;
+    ageShiftSunbeam = -1;
+    ageWarning = `Aging detected: Active beans are ${ageDelta} days older than your last logged shot. Recommendation dynamically shifted finer to compensate.`;
+  } else if (ageDelta >= 5) {
+    ageShiftSette = -1;
+    ageShiftSunbeam = 0;
+    ageWarning = `Bean aged ${ageDelta} days since last shot. Recommendation dynamically shifted finer.`;
   }
 
-  return { daysOld: effectiveDays, recommendedOffset: microStepOffset, notice, isTooFresh, isStale };
+  let adjustedSetting = { ...lastShot.recommendation.recommendedSetting };
+
+  if (lastShot.grinderModel === 'Sette 270Wi' && ageShiftSette !== 0) {
+    adjustedSetting = adjustSette(adjustedSetting.macro, adjustedSetting.micro, ageShiftSette);
+  } else if (lastShot.grinderModel === 'Sunbeam Barista Max' && ageShiftSunbeam !== 0) {
+    adjustedSetting.setting = adjustSunbeam(adjustedSetting.setting, ageShiftSunbeam);
+  }
+
+  return {
+    recommendedSetting: adjustedSetting,
+    ageWarning: ageWarning,
+    originalReason: lastShot.recommendation.reason,
+    warning: lastShot.recommendation.warning,
+    subRecommendation: lastShot.recommendation.subRecommendation,
+    flairWaterTempAdvice: lastShot.recommendation.flairWaterTempAdvice
+  };
 }
 
 export function getInitialGrindRecommendation(grinderModel, roastType, activeBean, recipes = [], allShots = [], beans = [], mockDateOverride = null) {
-  const trendOffset = getGrindHistoryTrendOffset(grinderModel, allShots, recipes, beans);
+  const beanShots = allShots.filter(s => s.beanId === activeBean?.id && s.grinderModel === grinderModel);
+  
+  if (beanShots.length > 0) {
+    const lastBeanShot = beanShots[0];
+    const adjustedRec = getAgeAdjustedRecommendation(lastBeanShot, activeBean, mockDateOverride);
+    
+    if (adjustedRec && adjustedRec.recommendedSetting) {
+      if (grinderModel === 'Sette 270Wi') {
+        return { macro: adjustedRec.recommendedSetting.macro, micro: adjustedRec.recommendedSetting.micro };
+      } else {
+        return { setting: adjustedRec.recommendedSetting.setting };
+      }
+    } else {
+      if (grinderModel === 'Sette 270Wi') {
+        return { macro: lastBeanShot.setteMacro || 13, micro: lastBeanShot.setteMicro || 'E' };
+      } else {
+        return { setting: lastBeanShot.sunbeamSetting || 15 };
+      }
+    }
+  }
+
   const ageData = calculateEffectiveBeanAge(activeBean, mockDateOverride);
-  const totalOffset = ageData.recommendedOffset + Math.round(trendOffset);
+  const baseline = getHistoricalRoastBaseline(grinderModel, roastType, recipes, allShots, beans);
 
   if (grinderModel === 'Sette 270Wi') {
-    const baseMacro = roastType === 'Light' ? 15 : roastType === 'Dark' ? 12 : 13;
-    const baseMicroIdx = roastType === 'Light' ? 2 : roastType === 'Dark' ? 5 : 4;
-    const baseNumeric = baseMacro * 9 + baseMicroIdx + totalOffset;
-    return numericToSette(baseNumeric);
+    let baseNumeric = baseline !== null ? baseline : (roastType === 'Light' ? 15 * 9 + 2 : roastType === 'Dark' ? 12 * 9 + 5 : 13 * 9 + 4);
+    return numericToSette(baseNumeric + ageData.recommendedOffsetSette);
   } else {
-    const baseSetting = roastType === 'Light' ? 17 : roastType === 'Dark' ? 13 : 15;
-    const finalSetting = Math.min(Math.max(baseSetting + totalOffset, 1), 30);
-    return { setting: finalSetting };
+    let baseSetting = baseline !== null ? baseline : (roastType === 'Light' ? 17 : roastType === 'Dark' ? 13 : 15);
+    return { setting: Math.min(Math.max(baseSetting + ageData.recommendedOffsetSunbeam, 1), 30) };
   }
 }
 
@@ -162,33 +222,33 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     actualYield,
     tasteProfile,
     lastShotGrind,
-    daysSinceLastShot,
     recommendationFollowed = true
   } = shotData;
 
-  const targetMin = recipe.targetTimeMinS;
-  const targetMax = recipe.targetTimeMaxS;
-  const targetYield = recipe.targetYieldG;
+  const targetMin = recipe.targetTimeMinS || 27;
+  const targetMax = recipe.targetTimeMaxS || 32;
+  const targetMid = (targetMin + targetMax) / 2;
+  const targetYield = recipe.targetYieldG || 36;
+  const timeDelta = actualTime - targetMid;
 
+  const isTimeInRange = actualTime >= targetMin && actualTime <= targetMax;
+  const isBitter = tasteProfile === 'bitter' || tasteProfile === 'very_bitter';
+  const isSour = tasteProfile === 'sour' || tasteProfile === 'very_sour';
+
+  let shift = 0;
+  let reason = '';
   let warning = null;
-  let retentionOffset = 0;
 
   if (lastShotGrind && JSON.stringify(lastShotGrind) !== JSON.stringify({ setteMacro, setteMicro, sunbeamSetting }) && !wasPurged) {
-    warning = "Unpurged setting change detected with residual grounds in the chute. Retention skewed flow speed.";
-    retentionOffset = -1;
+    warning = "⚠️ Unpurged setting change detected. Retention may have skewed flow.";
   }
 
   if (!recommendationFollowed) {
     warning = warning ? warning + " ⚠️ Previous grind recommendation was not followed." : "⚠️ Previous grind recommendation was not followed.";
   }
 
-  let inactivityOffset = 0;
-  if (daysSinceLastShot && daysSinceLastShot >= 3) {
-    inactivityOffset = -Math.min(Math.floor(daysSinceLastShot / 3), 2);
-  }
-
   const yieldDelta = actualYield - targetYield;
-  if (actualTime >= targetMin && actualTime <= targetMax && Math.abs(yieldDelta) >= 3.5) {
+  if (isTimeInRange && Math.abs(yieldDelta) >= 3.5) {
     if (yieldDelta < 0) {
       warning = warning ? warning + " Shot hit target time but under-yielded." : "Shot hit target time but under-yielded (restricted flow).";
     } else {
@@ -196,126 +256,51 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     }
   }
 
-  let microShift = 0;
-  let sunbeamShift = 0;
-  let reason = '';
+  if (timeDelta < 0 && isBitter) {
+    warning = (warning ? warning + " " : "") + "Shot ran fast but tasted bitter. Uneven extraction likely. Check puck prep before large grind changes.";
+  }
 
-  const timeStr = `${actualTime}s`;
-  const isTimeDialedIn = actualTime >= targetMin && actualTime <= targetMax;
-  const isBitter = tasteProfile === 'bitter' || tasteProfile === 'very_bitter';
-  const isSour = tasteProfile === 'sour' || tasteProfile === 'very_sour';
-  const prettyTaste = tasteProfile === 'very_sour' ? 'very sour' : tasteProfile === 'very_bitter' ? 'very bitter' : tasteProfile;
-
-  if (!isTimeDialedIn) {
-    if (actualTime < targetMin) {
-      if (isBitter) {
-        reason = `Your extraction time was ${timeStr}, but tastes ${prettyTaste}. This indicates severe channeling. DO NOT grind finer. Focus on WDT/puck prep.`;
-        warning = warning ? warning + " Severe channeling detected." : "Severe channeling detected.";
-        microShift = 0;
-        sunbeamShift = 0;
-      } else {
-        const diff = targetMin - actualTime;
-        if (grinderModel === 'Sunbeam Barista Max') {
-          if (diff <= 2) {
-            sunbeamShift = 0;
-            reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Keep grind setting and increase dose by +0.5g.`;
-          } else if (diff <= 5) {
-            sunbeamShift = -1;
-            reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Making a 1-step finer adjustment.`;
-          } else if (diff <= 9) {
-            sunbeamShift = -2;
-            reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Making a 2-step finer adjustment.`;
-          } else if (diff <= 14) {
-            sunbeamShift = -3;
-            reason = `Your extraction time was fast at ${timeStr} (${diff}s off target). Making a 3-step finer adjustment.`;
-          } else {
-            sunbeamShift = -4;
-            reason = `Your extraction time was severely fast at ${timeStr} (${diff}s off target). Making an aggressive 4-step finer adjustment to dial in faster.`;
-          }
-        } else {
-          if (diff <= 1) {
-            microShift = -1 + retentionOffset + inactivityOffset;
-            reason = `Your extraction time was ${timeStr} (1s faster than target). Nudging 1 micro-step finer.`;
-          } else if (diff <= 3) {
-            microShift = -2 + retentionOffset + inactivityOffset;
-            reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Nudging 2 micro-steps finer.`;
-          } else if (diff <= 6) {
-            microShift = -4 + retentionOffset + inactivityOffset;
-            reason = `Your extraction time was ${timeStr} (${diff}s faster than target). Adjusting 4 micro-steps finer.`;
-          } else if (diff <= 10) {
-            microShift = -8 + retentionOffset + inactivityOffset;
-            reason = `Your extraction time was fast at ${timeStr} (${diff}s off target). Adjusting 8 micro-steps (almost a macro step) finer.`;
-          } else {
-            microShift = -12 + retentionOffset + inactivityOffset;
-            reason = `Your extraction time was severely fast at ${timeStr} (${diff}s off target). Applying an aggressive >1 macro step finer correction to dial in faster.`;
-          }
-        }
-      }
+  if (isTimeInRange) {
+    if (tasteProfile === 'very_sour') {
+      shift = grinderModel === 'Sette 270Wi' ? -2 : -1;
+      reason = "Shot is in range but tastes very sour. Go slightly finer.";
+    } else if (tasteProfile === 'sour') {
+      shift = -1;
+      reason = "Shot is in range but tastes sour. Go slightly finer.";
+    } else if (tasteProfile === 'bitter') {
+      shift = 1;
+      reason = "Shot is in range but tastes bitter. Go slightly coarser.";
+    } else if (tasteProfile === 'very_bitter') {
+      shift = grinderModel === 'Sette 270Wi' ? 2 : 1;
+      reason = "Shot is in range but tastes very bitter. Go slightly coarser.";
     } else {
-      const diff = actualTime - targetMax;
-      if (grinderModel === 'Sunbeam Barista Max') {
-        if (diff <= 2) {
-          sunbeamShift = 0;
-          reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Keep grind setting and decrease dose by -0.5g.`;
-        } else if (diff <= 5) {
-          sunbeamShift = 1;
-          reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Making a 1-step coarser adjustment.`;
-        } else if (diff <= 9) {
-          sunbeamShift = 2;
-          reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Making a 2-step coarser adjustment.`;
-        } else if (diff <= 14) {
-          sunbeamShift = 3;
-          reason = `Your extraction time was slow at ${timeStr} (${diff}s off target). Making a 3-step coarser adjustment.`;
-        } else {
-          sunbeamShift = 4;
-          reason = `Your extraction time was severely slow at ${timeStr} (${diff}s off target). Making an aggressive 4-step coarser adjustment to dial in faster.`;
-        }
-      } else {
-        if (diff <= 1) {
-          microShift = 1 + retentionOffset + inactivityOffset;
-          reason = `Your extraction time was ${timeStr} (1s slower than target). Nudging 1 micro-step coarser.`;
-        } else if (diff <= 3) {
-          microShift = 2 + retentionOffset + inactivityOffset;
-          reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Nudging 2 micro-steps coarser.`;
-        } else if (diff <= 6) {
-          microShift = 4 + retentionOffset + inactivityOffset;
-          reason = `Your extraction time was ${timeStr} (${diff}s slower than target). Adjusting 4 micro-steps coarser.`;
-        } else if (diff <= 10) {
-          microShift = 8 + retentionOffset + inactivityOffset;
-          reason = `Your extraction time was slow at ${timeStr} (${diff}s off target). Adjusting 8 micro-steps coarser.`;
-        } else {
-          microShift = 12 + retentionOffset + inactivityOffset;
-          reason = `Your extraction time was severely slow at ${timeStr} (${diff}s off target). Applying an aggressive >1 macro step coarser correction to dial in faster.`;
-        }
-      }
+      reason = "Balanced and in range. Keep this setting.";
     }
   } else {
-    if (isSour) {
-      microShift = -1 + retentionOffset + inactivityOffset;
-      sunbeamShift = 0;
-      reason = `Extraction time (${timeStr}) hit target window, but taste is ${prettyTaste}. Nudging 1 micro-step finer to push extraction.`;
-    } else if (isBitter) {
-      microShift = 1 + retentionOffset + inactivityOffset;
-      sunbeamShift = 0;
-      reason = `Extraction time (${timeStr}) hit target window, but taste is ${prettyTaste}. Nudging 1 micro-step coarser to limit over-extraction.`;
+    const sensitivity = grinderModel === 'Sette 270Wi' ? 1.25 : 4.5;
+    shift = Math.round(timeDelta / sensitivity);
+    if (shift === 0) shift = timeDelta < 0 ? -1 : 1;
+
+    const absShift = Math.abs(shift);
+    const direction = shift < 0 ? "finer" : "coarser";
+    const secOff = Math.abs(Math.round(timeDelta));
+
+    if (grinderModel === 'Sette 270Wi') {
+      let sizeDesc = absShift >= 16 ? "Very large" : absShift >= 10 ? "Large" : absShift >= 6 ? "Moderate" : absShift >= 3 ? "Small" : "Very small";
+      reason = `${sizeDesc} adjustment — shot was ${secOff}s off target midpoint. Go ${absShift} micro steps ${direction}.`;
     } else {
-      microShift = 0 + retentionOffset + inactivityOffset;
-      sunbeamShift = 0;
-      reason = `Extraction time (${timeStr}) and flavor profile are perfectly balanced within target window.`;
+      reason = `Shot was ${secOff}s off target midpoint. Go ${absShift} setting(s) ${direction}.`;
     }
   }
 
   let flairWaterTempAdvice = null;
-  if (flairEnabled && isTimeDialedIn) {
-    if (isSour) {
-      flairWaterTempAdvice = "Flair Temperature Advisory: Extraction time is dialed in but flavor is sour. Increase brew water temperature by 1-2C to boost extraction yield.";
-    } else if (isBitter) {
-      flairWaterTempAdvice = "Flair Temperature Advisory: Extraction time is dialed in but flavor is bitter. Decrease brew water temperature by 1-2C to suppress over-extraction.";
-    }
+  if (flairEnabled && isTimeInRange) {
+    if (isSour) flairWaterTempAdvice = "Flair Temperature Advisory: Time is dialed in but flavor is sour. Increase brew water by 1-2°C.";
+    if (isBitter) flairWaterTempAdvice = "Flair Temperature Advisory: Time is dialed in but flavor is bitter. Decrease brew water by 1-2°C.";
   }
 
   let subRecommendation = null;
-  if (isTimeDialedIn) {
+  if (isTimeInRange) {
     const dialedInRecentShots = recentShots.filter(s => s.actualTimeS >= targetMin && s.actualTimeS <= targetMax);
     const dialedInBitterCount = dialedInRecentShots.filter(s => s.tasteProfile === 'bitter' || s.tasteProfile === 'very_bitter').length;
     const dialedInSourCount = dialedInRecentShots.filter(s => s.tasteProfile === 'sour' || s.tasteProfile === 'very_sour').length;
@@ -323,18 +308,19 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     const totalDialedInBitter = dialedInBitterCount + (isBitter ? 1 : 0);
     const totalDialedInSour = dialedInSourCount + (isSour ? 1 : 0);
 
-    if (totalDialedInBitter >= 2 && recipe.targetYieldG / recipe.targetDoseG <= 2.0) {
-      subRecommendation = "Ratio Advisory: Time is dialed in with persistent bitterness across dialed-in shots. Consider lengthening your ratio.";
+    const safeDoseG = recipe.targetDoseG || 18;
+    if (totalDialedInBitter >= 2 && targetYield / safeDoseG <= 2.0) {
+      subRecommendation = "Ratio Advisory: Time is dialed in with persistent bitterness. Consider lengthening your ratio.";
     } else if (totalDialedInSour >= 2) {
-      subRecommendation = "Ratio Advisory: Time is dialed in with persistent sourness across dialed-in shots. Consider tightening your ratio or increasing brew temperature.";
+      subRecommendation = "Ratio Advisory: Time is dialed in with persistent sourness. Consider tightening your ratio or increasing brew temperature.";
     }
   }
 
   let recommendedSetting = {};
   if (grinderModel === 'Sette 270Wi') {
-    recommendedSetting = adjustSette(setteMacro, setteMicro, microShift);
+    recommendedSetting = adjustSette(setteMacro || 13, setteMicro || 'E', shift);
   } else {
-    recommendedSetting = { setting: adjustSunbeam(sunbeamSetting, sunbeamShift) };
+    recommendedSetting = { setting: adjustSunbeam(sunbeamSetting || 15, shift) };
   }
 
   return { recommendedSetting, reason, warning, subRecommendation, flairWaterTempAdvice };
