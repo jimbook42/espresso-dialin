@@ -414,7 +414,10 @@ export default function App() {
 
     let recommendationFollowed = true;
     if (lastShot && lastShot.recommendation?.recommendedSetting) {
-      const rec = lastShot.recommendation.recommendedSetting;
+      // Use age-adjusted recommendation for comparison so thaw/freshness shifts don't cause false flags
+      const adjustedRec = getAgeAdjustedRecommendation(lastShot, activeBean, mockDate);
+      const rec = adjustedRec?.recommendedSetting || lastShot.recommendation.recommendedSetting;
+
       if (lastShot.grinderModel === 'Sette 270Wi') {
         if (finalMacro !== rec.macro || finalMicro !== rec.micro) {
           recommendationFollowed = false;
