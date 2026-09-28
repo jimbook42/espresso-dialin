@@ -44,7 +44,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
 }
 
 html[data-theme="light"] ::-webkit-scrollbar-track {
-  background: #f4f0e8;
+  background: #ebe6dc;
 }
 
 html[data-theme="light"] ::-webkit-scrollbar-thumb {

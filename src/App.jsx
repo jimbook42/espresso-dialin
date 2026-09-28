@@ -108,8 +108,8 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
-    document.body.style.backgroundColor = darkMode ? '#121110' : '#f4f0e8';
-    document.body.style.color = darkMode ? '#f5f2eb' : '#1c1914';
+    document.body.style.backgroundColor = darkMode ? '#121110' : '#ebe6dc';
+    document.body.style.color = darkMode ? '#f5f2eb' : '#2a261f';
   }, [darkMode]);
 
   const activeBeansList = beans.filter(b => !b?.isFinished);
@@ -703,6 +703,27 @@ export default function App() {
 
   const grinderBadgeLabel = grinderModel === 'Sette 270Wi' ? 'Sette 270Wi' : 'Sunbeam';
 
+  const formatShotWhen = (timestamp) => {
+    const d = new Date(timestamp);
+    const now = mockDate ? new Date(mockDate) : new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return isToday ? `Today • ${time}` : `${d.toLocaleDateString()} • ${time}`;
+  };
+
+  const shotTimeTone = (timeS, minT, maxT) => {
+    const t = Number(timeS) || 0;
+    if (t >= minT && t <= maxT) return 'text-emerald-400';
+    if (t < minT) return 'text-amber-400';
+    return 'text-rose-400';
+  };
+
+  const preInfusionFromNotes = (notes) => {
+    if (!notes) return null;
+    const match = notes.match(/Pre-infusion:\s*([\d.]+)s/i);
+    return match ? match[1] : null;
+  };
+
   if (!grinderModel) {
     return (
       <div className={`min-h-screen ${ui.page} flex items-center justify-center p-6`}>
@@ -1030,7 +1051,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={applyRecommendation}
-                        className="text-xs bg-[#ede6dd] hover:bg-[#e5dccf] text-[#121110] font-bold px-4 py-2.5 rounded-xl flex items-center gap-1 min-h-[44px] shrink-0"
+                        className={`text-xs px-4 py-2.5 rounded-xl flex items-center gap-1 min-h-[44px] shrink-0 transition-colors ${ui.applyRec}`}
                       >
                         Apply rec <ArrowRight className="w-3 h-3" />
                       </button>
@@ -1104,40 +1125,40 @@ export default function App() {
                   {/* Dose / Yield / Time */}
                   <div className="grid grid-cols-3 gap-2">
                     <div className={`${ui.card} p-3 rounded-2xl`}>
-                      <label className="text-[10px] uppercase tracking-widest text-[#6b6457] block mb-2">Dose (g)</label>
+                      <label className={`${ui.fieldLabel} block mb-2`}>Dose (g)</label>
                       <input
                         type="number" step="0.1"
                         value={actualDoseG}
                         onChange={(e) => setActualDoseG(e.target.value)}
-                        className="w-full bg-transparent text-[#f5f2eb] text-center text-xl font-black focus:outline-none"
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                       />
                     </div>
                     <div className={`${ui.card} p-3 rounded-2xl`} ref={yieldInputRef}>
-                      <label className="text-[10px] uppercase tracking-widest text-[#6b6457] block mb-2">Yield (g) *</label>
+                      <label className={`${ui.fieldLabel} block mb-2`}>Yield (g) *</label>
                       <input
                         type="number" step="0.1"
                         placeholder="36"
                         value={actualYieldG}
                         onChange={(e) => setActualYieldG(e.target.value)}
-                        className="w-full bg-transparent text-[#f5f2eb] placeholder-[#6b6457] text-center text-xl font-black focus:outline-none"
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
                       />
-                      <p className="text-[9px] text-[#c88a4b] text-center mt-1">1:{brewRatio}</p>
+                      <p className={`text-[9px] ${ui.accentText} text-center mt-1`}>1:{brewRatio}</p>
                     </div>
                     <div className={`${ui.card} p-3 rounded-2xl`} ref={timeInputRef}>
-                      <label className="text-[10px] uppercase tracking-widest text-[#6b6457] block mb-2">Time (s) *</label>
+                      <label className={`${ui.fieldLabel} block mb-2`}>Time (s) *</label>
                       <input
                         type="number"
                         placeholder="28"
                         value={actualTimeS}
                         onChange={(e) => setActualTimeS(e.target.value)}
-                        className="w-full bg-transparent text-[#f5f2eb] placeholder-[#6b6457] text-center text-xl font-black focus:outline-none"
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
                       />
                     </div>
                   </div>
 
                   {/* Taste selector */}
                   <div className={`${ui.card} p-4 rounded-2xl space-y-3`} ref={tasteInputRef}>
-                    <label className="text-[10px] uppercase tracking-widest text-[#6b6457]">Extraction Taste *</label>
+                    <label className={ui.fieldLabel}>Extraction taste *</label>
                     <div className="grid grid-cols-5 gap-1.5">
                       {[
                         { id: 'very_sour', label: 'V.Sour' },
@@ -1207,7 +1228,7 @@ export default function App() {
 
         {activeTab === 'beans' && (
           <div className="space-y-6">
-            <form onSubmit={handleSaveBean} className={`${currentTheme.card} p-5 rounded-2xl border space-y-4 relative overflow-hidden`}>
+            <form onSubmit={handleSaveBean} className={`${ui.card} p-5 rounded-2xl space-y-4 relative overflow-hidden`}>
               {isEditingBean && (
                 <div className="absolute top-0 left-0 right-0 bg-[#c88a4b] text-[#121110] text-[10px] font-black uppercase text-center py-1">
                   Editing Mode Active
@@ -1215,7 +1236,7 @@ export default function App() {
               )}
               
               <div className="flex justify-between items-center mb-2 pt-2">
-                <h2 className={`text-sm font-bold uppercase tracking-[0.18em] ${ui.accentText}`}>
+                <h2 className={ui.pageTitle}>
                   {isEditingBean ? 'Edit coffee profile' : 'Configure new coffee profile'}
                 </h2>
                 {isEditingBean && (
@@ -1226,7 +1247,7 @@ export default function App() {
               </div>
               
               <div>
-                <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Bean Name</label>
+                <label className={`${ui.fieldLabel} block mb-1`}>Bean name</label>
                 <input
                   type="text"
                   required
@@ -1329,65 +1350,58 @@ export default function App() {
               )}
 
               <div className={`border-t ${ui.modalDivider} pt-4 mt-2`}>
-                <h3 className={`text-xs uppercase font-bold ${currentTheme.text} mb-3`}>Target Recipe Profile</h3>
+                <h3 className={`${ui.sectionTitle} mb-3`}>Target recipe profile</h3>
                 <div className="grid grid-cols-2 gap-2 mb-2">
-                  <div>
-                    <span className={`text-xs ${subTextClass}`}>Target Dose (g)</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={newRecipe.targetDoseG}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, targetDoseG: parseFloat(e.target.value) })}
-                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                    />
-                  </div>
-                  <div>
-                    <span className={`text-xs ${subTextClass}`}>Target Yield (g)</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      placeholder="e.g. 36"
-                      value={newRecipe.targetYieldG}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, targetYieldG: e.target.value })}
-                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                    />
-                  </div>
+                  {[
+                    { label: 'Target dose', key: 'targetDoseG', value: newRecipe.targetDoseG, suffix: 'g', parse: (v) => parseFloat(v) },
+                    { label: 'Yield', key: 'targetYieldG', value: newRecipe.targetYieldG, suffix: 'g', parse: (v) => v },
+                  ].map((field) => (
+                    <div key={field.key} className={ui.metricCell}>
+                      <span className={`${ui.fieldLabel} block mb-1`}>{field.label}</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={field.value}
+                        onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: field.parse(e.target.value) })}
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
+                      />
+                      <span className={`text-[9px] ${ui.muted} text-center block`}>{field.suffix}</span>
+                    </div>
+                  ))}
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-2">
-                  <div>
-                    <span className={`text-xs ${subTextClass}`}>Min Time (s)</span>
-                    <input
-                      type="number"
-                      value={newRecipe.targetTimeMinS}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, targetTimeMinS: parseInt(e.target.value, 10) })}
-                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                    />
-                  </div>
-                  <div>
-                    <span className={`text-xs ${subTextClass}`}>Max Time (s)</span>
-                    <input
-                      type="number"
-                      value={newRecipe.targetTimeMaxS}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, targetTimeMaxS: parseInt(e.target.value, 10) })}
-                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                    />
-                  </div>
+                  {[
+                    { label: 'Min time', key: 'targetTimeMinS', value: newRecipe.targetTimeMinS },
+                    { label: 'Max time', key: 'targetTimeMaxS', value: newRecipe.targetTimeMaxS },
+                  ].map((field) => (
+                    <div key={field.key} className={ui.metricCell}>
+                      <span className={`${ui.fieldLabel} block mb-1`}>{field.label}</span>
+                      <input
+                        type="number"
+                        value={field.value}
+                        onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: parseInt(e.target.value, 10) })}
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
+                      />
+                      <span className={`text-[9px] ${ui.muted} text-center block`}>s</span>
+                    </div>
+                  ))}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className={`text-xs ${subTextClass}`}>Brew Temp (°C)</span>
+                  <div className={ui.metricCell}>
+                    <span className={`${ui.fieldLabel} block mb-1`}>Brew temp</span>
                     <input
                       type="number"
                       value={newRecipe.brewTemperatureC || ''}
                       onChange={(e) => setNewRecipe({ ...newRecipe, brewTemperatureC: parseInt(e.target.value, 10) })}
-                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                      className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                     />
+                    <span className={`text-[9px] ${ui.muted} text-center block`}>°C</span>
                   </div>
                 </div>
 
                 {flairEnabled && (
                   <div className={`pt-4 mt-2 border-t ${ui.modalDivider}`}>
-                    <h3 className={`text-xs uppercase font-bold ${currentTheme.text} mb-3`}>Flair Pressure Profile</h3>
+                    <h3 className={`${ui.sectionTitle} mb-3`}>Flair pressure profile</h3>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
                         <span className={`text-[10px] ${subTextClass}`}>Pre-infuse Pressure (bar)</span>
@@ -1447,9 +1461,9 @@ export default function App() {
               </button>
             </form>
 
-            <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-4`}>
+            <div className={`${ui.card} p-5 rounded-2xl space-y-4`}>
               <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => setShowPastBeans(!showPastBeans)}>
-                <h3 className={`text-sm font-bold uppercase ${currentTheme.text}`}>Past Logged Beans & Profiles</h3>
+                <h3 className={ui.sectionTitle}>Past logged beans & profiles</h3>
                 {showPastBeans ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </div>
 
@@ -1512,18 +1526,12 @@ export default function App() {
 
         {activeTab === 'history' && (
           <div className="space-y-4">
-            {activeBean && (
-              <div className="bg-[#211e1a] border border-[#2e2b26] p-3 rounded-xl text-xs text-[#a09880] flex justify-between gap-2">
-                <span>{beanShots.length} shot{beanShots.length === 1 ? '' : 's'} on {activeBean.name}</span>
-                <span className="text-[#6b6457]">{activeBeansList.length} active bean{activeBeansList.length === 1 ? '' : 's'}</span>
-              </div>
-            )}
-            <div className={`flex justify-between items-center ${currentTheme.card} p-3 rounded-2xl border`}>
-              <span className={`text-xs font-bold uppercase ${labelClass}`}>Filter History Log</span>
+            <div className={`flex justify-between items-center gap-3 ${ui.card} p-3 rounded-2xl`}>
+              <span className={ui.sectionTitle}>Filter history log</span>
               <select
                 value={historyFilterBeanId}
                 onChange={(e) => setHistoryFilterBeanId(e.target.value)}
-                className={`${inputClass} border rounded-lg px-3 py-1 text-xs ${currentTheme.text} font-semibold`}
+                className={`${inputClass} border rounded-lg px-3 py-1.5 text-xs font-semibold min-w-[8.5rem]`}
               >
                 <option value="all">All Coffees</option>
                 {beans.map(b => (
@@ -1537,37 +1545,59 @@ export default function App() {
             ) : (
               filteredShots.map(s => {
                 const bean = beans.find(b => b.id === s.beanId);
-                const grindStr = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro || 13}-${s.setteMicro || 'E'}` : `Dial ${s.sunbeamSetting || 15}`;
+                const grindStr = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro || 13}-${s.setteMicro || 'E'}` : `${s.sunbeamSetting || 15}`;
+                const recipeForShot = recipes.find(r => r.beanId === s.beanId);
+                const minT = recipeForShot?.targetTimeMinS || 27;
+                const maxT = recipeForShot?.targetTimeMaxS || 32;
+                const preSec = preInfusionFromNotes(s.notes);
+                const peakBar = s.flairProfile?.peakPressure;
                 return (
-                  <div key={s.id} className={`${currentTheme.card} p-4 rounded-xl border space-y-2`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className={`text-xs font-bold ${currentTheme.text}`}>{bean ? `${bean.name} [Rating: ${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown Bean'}</span>
-                        <p className={`text-[10px] ${subTextClass}`}>
-                          {new Date(s.timestamp).toLocaleString()} • <span className={`${ui.strong} font-mono`}>{grindStr}</span> • <span className="capitalize">{s.storageType || 'bag'}</span> ({s.beanAgeDays || 0}d old)
-                          {s.recommendationFollowed === false && <span className="text-rose-400 font-bold ml-2">⚠️ Rec Not Followed</span>}
+                  <div key={s.id} className={`${ui.card} p-4 rounded-2xl space-y-3`}>
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0">
+                        <span className={`text-sm font-bold ${ui.accentText}`}>
+                          {bean ? `${bean.name} [${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown bean'}
+                        </span>
+                        <p className={`text-[10px] ${ui.muted} mt-0.5`}>
+                          {formatShotWhen(s.timestamp)} • <span className={`${ui.strong} font-mono`}>{grindStr}</span>
+                          {s.recommendationFollowed === false && <span className="text-rose-400 font-bold ml-2">Rec not followed</span>}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         {s.shotRating && (
-                          <div className="flex items-center text-amber-400 text-xs font-bold gap-0.5">
+                          <div className={`flex items-center ${ui.accentText} text-xs font-bold gap-0.5`}>
                             <Star className="w-3.5 h-3.5 fill-current" /> {s.shotRating}
                           </div>
                         )}
-                        <button
-                          onClick={() => handleDeleteShot(s.id)}
-                          className={`${ui.muted} hover:text-rose-400 p-1`}
-                        >
+                        <button type="button" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
-                    <div className={`grid grid-cols-3 gap-2 text-xs ${ui.inset} p-2 rounded-lg`}>
-                      <div><span className={`block text-[9px] ${subTextClass}`}>DOSE/YIELD</span><strong className={ui.text}>{s.actualDoseG || 0}/{s.actualYieldG || 0}g</strong></div>
-                      <div><span className={`block text-[9px] ${subTextClass}`}>TIME</span><strong className={ui.text}>{s.actualTimeS || 0}s</strong></div>
-                      <div><span className={`block text-[9px] ${subTextClass}`}>TASTE</span><strong className={`${currentTheme.text} capitalize`}>{s.tasteProfile?.replace('_', ' ') || 'Unknown'}</strong></div>
+
+                    <div className="grid grid-cols-4 gap-2 text-xs">
+                      {[
+                        { label: 'Grind', value: grindStr, tone: ui.text },
+                        { label: 'Dose/Yield', value: `${s.actualDoseG || 0}/${s.actualYieldG || 0}g`, tone: ui.text },
+                        { label: 'Time', value: `${s.actualTimeS || 0}s`, tone: shotTimeTone(s.actualTimeS, minT, maxT) },
+                        { label: 'Taste', value: (s.tasteProfile?.replace('_', ' ') || '—'), tone: `${ui.sub} capitalize` },
+                      ].map((cell) => (
+                        <div key={cell.label} className={`${ui.metricCell} text-center`}>
+                          <span className={`block text-[8px] uppercase tracking-wider ${ui.muted} mb-1`}>{cell.label}</span>
+                          <strong className={`font-black text-sm ${cell.tone}`}>{cell.value}</strong>
+                        </div>
+                      ))}
                     </div>
-                    {s.notes && <p className={`text-xs ${subTextClass} italic`}>"{s.notes}"</p>}
+
+                    <div className={`flex flex-wrap items-center gap-2 text-[10px] ${ui.muted}`}>
+                      {preSec && <span className="italic">Pre-infusion: {preSec}s.</span>}
+                      {(s.brewTemperatureC || recipeForShot?.brewTemperatureC) && (
+                        <span className={`${ui.tempPill} px-2 py-0.5 rounded-full font-semibold`}>
+                          {s.brewTemperatureC || recipeForShot?.brewTemperatureC}°C
+                        </span>
+                      )}
+                      {peakBar && <span>{peakBar} bar</span>}
+                    </div>
                   </div>
                 );
               })
@@ -1577,37 +1607,32 @@ export default function App() {
 
         {activeTab === 'stats' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-base font-bold">Extraction Analytics & Statistics</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+              <h2 className={ui.pageTitle}>Extraction analytics & statistics</h2>
               <div className={`flex ${ui.cardInset} p-0.5 rounded-lg text-[10px] font-semibold overflow-hidden`}>
-                <button onClick={() => setChartType('timeline')} className={`px-2.5 py-1 rounded-md ${chartType === 'timeline' ? `${currentTheme.primary}` : subTextClass}`}>Timeline</button>
-                <button onClick={() => setChartType('scatter')} className={`px-2.5 py-1 rounded-md ${chartType === 'scatter' ? `${currentTheme.primary}` : subTextClass}`}>Dose/Time</button>
-                <button onClick={() => setChartType('taste')} className={`px-2.5 py-1 rounded-md ${chartType === 'taste' ? `${currentTheme.primary}` : subTextClass}`}>Taste</button>
+                <button type="button" onClick={() => setChartType('timeline')} className={`px-2.5 py-1 rounded-md transition-colors ${chartType === 'timeline' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Timeline</button>
+                <button type="button" onClick={() => setChartType('scatter')} className={`px-2.5 py-1 rounded-md transition-colors ${chartType === 'scatter' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Dose/Time</button>
+                <button type="button" onClick={() => setChartType('taste')} className={`px-2.5 py-1 rounded-md transition-colors ${chartType === 'taste' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Taste</button>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
-                <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Total Shots Logged</span>
-                <span className={`text-2xl font-black ${ui.text} mt-1 block`}>{totalShots}</span>
-              </div>
-              <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
-                <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Target Compliance</span>
-                <span className={`text-2xl font-black ${ui.text} mt-1 block`}>{complianceRate}%</span>
-              </div>
-              <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
-                <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Avg Extraction Time</span>
-                <span className={`text-2xl font-black ${ui.text} mt-1 block`}>{avgExtractionTime}s</span>
-              </div>
-              <div className={`${currentTheme.card} p-4 rounded-2xl border`}>
-                <span className={`text-xs ${subTextClass} block uppercase font-bold`}>Active Coffee Profiles</span>
-                <span className={`text-2xl font-black ${ui.text} mt-1 block`}>{activeBeansList.length}</span>
-              </div>
+              {[
+                { label: 'Total shots', value: totalShots },
+                { label: 'Target compliance', value: `${complianceRate}%` },
+                { label: 'Avg extraction', value: `${avgExtractionTime}s` },
+                { label: 'Active profiles', value: activeBeansList.length },
+              ].map((stat) => (
+                <div key={stat.label} className={`${ui.card} p-4 rounded-2xl`}>
+                  <span className={`${ui.fieldLabel} block`}>{stat.label}</span>
+                  <span className={`text-2xl font-black ${ui.text} mt-1 block tabular-nums`}>{stat.value}</span>
+                </div>
+              ))}
             </div>
 
             {chartType === 'timeline' && (
-              <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-3`}>
-                <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Recent Extraction Timeline (Seconds)</h3>
+              <div className={`${ui.card} p-5 rounded-2xl space-y-3`}>
+                <h3 className={ui.sectionTitle}>Recent extraction timeline (seconds)</h3>
                 {shots.length < 2 ? (
                   <p className={`text-xs ${subTextClass}`}>Log at least 2 shots to view trend graph.</p>
                 ) : (
@@ -1632,12 +1657,16 @@ export default function App() {
                     })}
                   </div>
                 )}
+                <div className={`flex justify-end gap-3 text-[9px] ${ui.muted} pt-1`}>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> In range</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500" /> Out</span>
+                </div>
               </div>
             )}
 
             {chartType === 'scatter' && (
-              <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-3`}>
-                <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Extraction Time vs Dose Distribution</h3>
+              <div className={`${ui.card} p-5 rounded-2xl space-y-3`}>
+                <h3 className={ui.sectionTitle}>Extraction time vs dose</h3>
                 <div className={`h-36 w-full flex items-end gap-2 pt-6 px-2 border-b ${ui.headerBorder} pb-2`}>
                   {shots.slice(0, 12).map((s, idx) => (
                     <div key={idx} className="flex-1 flex flex-col items-center gap-1">
@@ -1651,8 +1680,8 @@ export default function App() {
             )}
 
             {chartType === 'taste' && (
-              <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-3`}>
-                <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Taste Profile Breakdown</h3>
+              <div className={`${ui.card} p-5 rounded-2xl space-y-3`}>
+                <h3 className={ui.sectionTitle}>Taste profile breakdown</h3>
                 <div className="space-y-2 text-xs">
                   {[
                     { label: 'Balanced / Good', count: tasteCounts.good, color: 'bg-emerald-500' },
@@ -1676,9 +1705,9 @@ export default function App() {
               </div>
             )}
 
-            <div className={`${currentTheme.card} p-5 rounded-2xl border space-y-4 overflow-hidden`}>
-              <div className="flex items-center justify-between">
-                <h3 className={`text-xs uppercase font-bold ${currentTheme.text}`}>Bean Rating Leaderboard</h3>
+            <div className={`${ui.card} p-5 rounded-2xl space-y-4 overflow-hidden`}>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className={ui.sectionTitle}>Bean rating leaderboard</h3>
                 <select
                   value={leaderboardFilter}
                   onChange={(e) => setLeaderboardFilter(e.target.value)}
@@ -1701,13 +1730,13 @@ export default function App() {
                     .map((b, idx) => (
                       <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl overflow-hidden ${ui.inset} text-xs`}>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-black text-[#c88a4b] shrink-0">#{idx + 1}</span>
+                          <span className={`font-black ${ui.accentText} shrink-0`}>#{idx + 1}</span>
                           <div className="min-w-0">
                             <span className={`font-bold ${ui.text} block truncate`}>{b.name}</span>
                             <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast</span>
                           </div>
                         </div>
-                        <span className="text-sm font-black text-[#c88a4b] bg-[rgba(200,138,75,0.1)] px-2.5 py-1 rounded-lg border border-[rgba(200,138,75,0.2)] shrink-0">
+                        <span className={`text-sm font-black ${ui.badge} px-2.5 py-1 rounded-lg shrink-0`}>
                           ⭐ {b.rating ? Number(b.rating).toFixed(1) : 'N/A'}
                         </span>
                       </div>
@@ -1720,18 +1749,18 @@ export default function App() {
 
         {isSettingsOpen && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className={`${currentTheme.card} border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
+            <div className={`${ui.card} p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
               <div className={`flex items-center justify-between border-b pb-3 ${ui.modalDivider}`}>
                 <div className="flex items-center gap-2">
-                  <Sliders className={`w-5 h-5 ${currentTheme.text}`} />
+                  <Sliders className={`w-5 h-5 ${ui.accentText}`} />
                   <h3 className={`text-base font-bold ${ui.text}`}>Preferences & Settings</h3>
                 </div>
                 <button type="button" onClick={() => setIsSettingsOpen(false)} className={`${ui.ghostBtn} text-sm font-bold`}>✕</button>
               </div>
 
               <div className="space-y-4 text-xs">
-                <div>
-                  <label className={`block font-bold mb-1 ${labelClass}`}>Primary Grinder Setup</label>
+                <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
+                  <label className={`block ${ui.fieldLabel}`}>Primary grinder setup</label>
                   <select
                     value={grinderModel}
                     onChange={(e) => handleSaveGrinderSetup(e.target.value)}
@@ -1742,28 +1771,21 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className={`flex items-center justify-between pt-2 border-t ${ui.modalDivider}`}>
-                  <div>
-                    <span className={`font-bold block ${labelClass}`}>Enable Flair manual profile</span>
-                    <span className={`text-[10px] ${ui.muted}`}>Pressure chart & water temp guidance on Dial</span>
+                <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Enable Flair manual profile</span>
+                      <span className={`text-[10px] ${ui.muted}`}>Pressure chart & water temp on Dial</span>
+                    </div>
+                    <SettingsToggle checked={flairEnabled} onChange={handleToggleFlairSetting} label="Enable Flair manual profile" />
                   </div>
-                  <SettingsToggle
-                    checked={flairEnabled}
-                    onChange={handleToggleFlairSetting}
-                    label="Enable Flair manual profile"
-                  />
-                </div>
-
-                <div className={`flex items-center justify-between pt-2 border-t ${ui.modalDivider}`}>
-                  <div>
-                    <span className={`font-bold block ${labelClass}`}>Track pre-infusion time</span>
-                    <span className={`text-[10px] ${ui.muted}`}>Two-phase timer: pre → shot time</span>
+                  <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Track pre-infusion time</span>
+                      <span className={`text-[10px] ${ui.muted}`}>Two-phase timer: pre → shot</span>
+                    </div>
+                    <SettingsToggle checked={usePreInfusion} onChange={handleTogglePreInfusion} label="Track pre-infusion time" />
                   </div>
-                  <SettingsToggle
-                    checked={usePreInfusion}
-                    onChange={handleTogglePreInfusion}
-                    label="Track pre-infusion time"
-                  />
                 </div>
 
                 <div className={`flex items-center justify-between pt-2 border-t ${ui.modalDivider}`}>
