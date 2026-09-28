@@ -19,6 +19,27 @@ import { SettingsToggle } from './components/SettingsToggle';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
 
+const EXTRACTION_TIME_COLORS = {
+  inRange: { bar: 'bg-[#8a9d72]', dot: 'bg-[#8a9d72]', label: 'text-[#9cb088]' },
+  under: { bar: 'bg-[#c88a4b]', dot: 'bg-[#c88a4b]', label: 'text-[#d4a060]' },
+  over: { bar: 'bg-[#b86b5c]', dot: 'bg-[#b86b5c]', label: 'text-[#c97868]' },
+};
+
+const TASTE_CHART_COLORS = {
+  very_sour: 'bg-[#9a8a4a]',
+  sour: 'bg-[#c4a04b]',
+  good: 'bg-[#8a9d72]',
+  bitter: 'bg-[#a67c52]',
+  very_bitter: 'bg-[#b86b5c]',
+};
+
+function extractionTimeStatus(timeS, minT, maxT) {
+  const t = Number(timeS) || 0;
+  if (t >= minT && t <= maxT) return 'inRange';
+  if (t < minT) return 'under';
+  return 'over';
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dial');
   const [darkMode, setDarkMode] = useState(true);
@@ -732,12 +753,8 @@ export default function App() {
     return isToday ? `Today • ${time}` : `${d.toLocaleDateString()} • ${time}`;
   };
 
-  const shotTimeTone = (timeS, minT, maxT) => {
-    const t = Number(timeS) || 0;
-    if (t >= minT && t <= maxT) return 'text-emerald-400';
-    if (t < minT) return 'text-amber-400';
-    return 'text-rose-400';
-  };
+  const shotTimeTone = (timeS, minT, maxT) =>
+    EXTRACTION_TIME_COLORS[extractionTimeStatus(timeS, minT, maxT)].label;
 
   const preInfusionFromNotes = (notes) => {
     if (!notes) return null;
@@ -1678,30 +1695,38 @@ export default function App() {
                 {shots.length < 2 ? (
                   <p className={`text-xs ${subTextClass}`}>Log at least 2 shots to view trend graph.</p>
                 ) : (
-                  <div className={`h-36 w-full flex items-end gap-1.5 pt-6 px-2 border-b ${ui.headerBorder} pb-2`}>
-                    {shots.slice(0, 15).reverse().map((s, idx) => {
-                      const heightPx = Math.min(Math.max(((s.actualTimeS || 0) / 45) * 110, 15), 110);
-                      const recipeForShot = recipes.find(r => r.beanId === s.beanId);
-                      const minT = recipeForShot?.targetTimeMinS || 27;
-                      const maxT = recipeForShot?.targetTimeMaxS || 32;
-                      const isOptimal = (s.actualTimeS || 0) >= minT && (s.actualTimeS || 0) <= maxT;
-                      const isFast = (s.actualTimeS || 0) < minT;
-                      
-                      return (
-                        <div key={idx} className="flex-1 flex flex-col items-center gap-1 group">
-                          <span className="text-[9px] font-mono opacity-80">{s.actualTimeS || 0}s</span>
-                          <div 
-                            style={{ height: `${heightPx}px` }} 
-                            className={`w-full rounded-t transition-all ${isOptimal ? 'bg-emerald-500' : isFast ? 'bg-amber-500' : 'bg-rose-500'}`}
-                          />
-                        </div>
-                      );
-                    })}
+                  <div className={`h-36 w-full overflow-hidden pt-6 px-1 border-b ${ui.headerBorder} pb-2`}>
+                    <div
+                      className="grid h-full items-end gap-1 min-w-0"
+                      style={{ gridTemplateColumns: `repeat(${Math.min(shots.length, 15)}, minmax(0, 1fr))` }}
+                    >
+                      {shots.slice(0, 15).reverse().map((s, idx) => {
+                        const heightPx = Math.min(Math.max(((s.actualTimeS || 0) / 45) * 110, 15), 110);
+                        const recipeForShot = recipes.find(r => r.beanId === s.beanId);
+                        const minT = recipeForShot?.targetTimeMinS || 27;
+                        const maxT = recipeForShot?.targetTimeMaxS || 32;
+                        const status = extractionTimeStatus(s.actualTimeS, minT, maxT);
+                        const colors = EXTRACTION_TIME_COLORS[status];
+
+                        return (
+                          <div key={idx} className="flex min-w-0 flex-col items-center gap-1">
+                            <span className={`text-[8px] font-mono tabular-nums truncate w-full text-center ${colors.label}`}>
+                              {s.actualTimeS || 0}s
+                            </span>
+                            <div
+                              style={{ height: `${heightPx}px` }}
+                              className={`w-full max-w-full rounded-t transition-all ${colors.bar}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
-                <div className={`flex justify-end gap-3 text-[9px] ${ui.muted} pt-1`}>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> In range</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500" /> Out</span>
+                <div className={`flex flex-wrap justify-end gap-x-3 gap-y-1 text-[9px] ${ui.muted} pt-1`}>
+                  <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${EXTRACTION_TIME_COLORS.under.dot}`} /> Under</span>
+                  <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${EXTRACTION_TIME_COLORS.inRange.dot}`} /> In range</span>
+                  <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${EXTRACTION_TIME_COLORS.over.dot}`} /> Over</span>
                 </div>
               </div>
             )}
@@ -1726,9 +1751,11 @@ export default function App() {
                 <h3 className={ui.sectionTitle}>Taste profile breakdown</h3>
                 <div className="space-y-2 text-xs">
                   {[
-                    { label: 'Balanced / Good', count: tasteCounts.good, color: 'bg-emerald-500' },
-                    { label: 'Sour / Very Sour', count: tasteCounts.sour + tasteCounts.very_sour, color: 'bg-amber-500' },
-                    { label: 'Bitter / Very Bitter', count: tasteCounts.bitter + tasteCounts.very_bitter, color: 'bg-rose-500' },
+                    { label: 'Very sour', count: tasteCounts.very_sour, color: TASTE_CHART_COLORS.very_sour },
+                    { label: 'Sour', count: tasteCounts.sour, color: TASTE_CHART_COLORS.sour },
+                    { label: 'Balanced', count: tasteCounts.good, color: TASTE_CHART_COLORS.good },
+                    { label: 'Bitter', count: tasteCounts.bitter, color: TASTE_CHART_COLORS.bitter },
+                    { label: 'Very bitter', count: tasteCounts.very_bitter, color: TASTE_CHART_COLORS.very_bitter },
                   ].map(item => {
                     const pct = totalShots > 0 ? Math.round((item.count / totalShots) * 100) : 0;
                     return (
@@ -1935,7 +1962,7 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v3.0
+            Espresso Dial-In • v4.1
           </span>
         </footer>
 
