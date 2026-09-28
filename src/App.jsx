@@ -526,6 +526,33 @@ export default function App() {
 
   const dynamicRec = lastShot ? getAgeAdjustedRecommendation(lastShot, activeBean, mockDate) : null;
 
+  const beanShotsForGrinder = activeBean
+    ? shots.filter(s => s.beanId === activeBean.id && s.grinderModel === grinderModel)
+    : [];
+  const hasLoggedShotForBean = beanShots.length > 0;
+  const initialGrindSetting = activeBean && grinderModel && beanShotsForGrinder.length === 0
+    ? getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate)
+    : null;
+
+  const currentGrindLabel = grinderModel === 'Sette 270Wi'
+    ? `${setteMacro}-${setteMicro}`
+    : `${sunbeamSetting}`;
+
+  const formatFlairRecipeLines = (profile) => {
+    if (!profile) return [];
+    const lines = [];
+    if (profile.preinfusionPressure) {
+      lines.push(`Pre-infusion: ${profile.preinfusionPressure} bar · ${profile.preinfusionTime || '—'}s`);
+    }
+    if (profile.peakPressure) {
+      lines.push(`Hold: ${profile.peakPressure} bar → ${profile.peakEndYield || '—'}g`);
+    }
+    if (profile.taperPressure) {
+      lines.push(`Taper: ${profile.taperPressure} bar`);
+    }
+    return lines;
+  };
+
   const applyRecommendation = async () => {
     if (!dynamicRec || !dynamicRec.recommendedSetting) return;
     const recSet = dynamicRec.recommendedSetting;
@@ -607,66 +634,70 @@ export default function App() {
     very_bitter: shots.filter(s => s.tasteProfile === 'very_bitter').length,
   };
 
+  // Keep accentColor state for settings UI but treat all as amber premium
   const themes = {
     amber: {
-      primary: 'bg-amber-600 hover:bg-amber-500 text-white font-semibold',
-      badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
-      text: 'text-amber-600 dark:text-amber-400',
-      bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-amber-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-amber-50/60 via-orange-50/30 to-slate-50 text-slate-900',
-      card: darkMode ? 'bg-slate-900/90 border-amber-950/40 text-slate-100 shadow-md' : 'bg-white border-amber-200 text-slate-900 shadow-sm'
+      primary: 'bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold',
+      badge: 'bg-[rgba(200,138,75,0.12)] text-[#c88a4b] border-[rgba(200,138,75,0.25)]',
+      text: 'text-[#c88a4b]',
+      bgWash: 'bg-[#121110] text-[#f5f2eb]',
+      card: 'bg-[#1a1815] border-[#2e2b26] text-[#f5f2eb] shadow-sm',
     },
     emerald: {
-      primary: 'bg-emerald-600 hover:bg-emerald-500 text-white font-semibold',
-      badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-      text: 'text-emerald-600 dark:text-emerald-400',
-      bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-emerald-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-emerald-50/60 via-teal-50/30 to-slate-50 text-slate-900',
-      card: darkMode ? 'bg-slate-900/90 border-emerald-950/40 text-slate-100 shadow-md' : 'bg-white border-emerald-200 text-slate-900 shadow-sm'
+      primary: 'bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold',
+      badge: 'bg-[rgba(200,138,75,0.12)] text-[#c88a4b] border-[rgba(200,138,75,0.25)]',
+      text: 'text-[#c88a4b]',
+      bgWash: 'bg-[#121110] text-[#f5f2eb]',
+      card: 'bg-[#1a1815] border-[#2e2b26] text-[#f5f2eb] shadow-sm',
     },
     indigo: {
-      primary: 'bg-indigo-600 hover:bg-indigo-500 text-white font-semibold',
-      badge: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
-      text: 'text-indigo-600 dark:text-indigo-400',
-      bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-indigo-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-indigo-50/60 via-blue-50/30 to-slate-50 text-slate-900',
-      card: darkMode ? 'bg-slate-900/90 border-indigo-950/40 text-slate-100 shadow-md' : 'bg-white border-indigo-200 text-slate-900 shadow-sm'
+      primary: 'bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold',
+      badge: 'bg-[rgba(200,138,75,0.12)] text-[#c88a4b] border-[rgba(200,138,75,0.25)]',
+      text: 'text-[#c88a4b]',
+      bgWash: 'bg-[#121110] text-[#f5f2eb]',
+      card: 'bg-[#1a1815] border-[#2e2b26] text-[#f5f2eb] shadow-sm',
     },
     rose: {
-      primary: 'bg-rose-600 hover:bg-rose-500 text-white font-semibold',
-      badge: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
-      text: 'text-rose-600 dark:text-rose-400',
-      bgWash: darkMode ? 'bg-gradient-to-br from-slate-950 via-rose-950/20 to-slate-950 text-slate-100' : 'bg-gradient-to-br from-rose-50/60 via-pink-50/30 to-slate-50 text-slate-900',
-      card: darkMode ? 'bg-slate-900/90 border-rose-950/40 text-slate-100 shadow-md' : 'bg-white border-rose-200 text-slate-900 shadow-sm'
-    }
+      primary: 'bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold',
+      badge: 'bg-[rgba(200,138,75,0.12)] text-[#c88a4b] border-[rgba(200,138,75,0.25)]',
+      text: 'text-[#c88a4b]',
+      bgWash: 'bg-[#121110] text-[#f5f2eb]',
+      card: 'bg-[#1a1815] border-[#2e2b26] text-[#f5f2eb] shadow-sm',
+    },
   };
 
   const currentTheme = themes[accentColor] || themes.amber;
-  const inputClass = darkMode ? 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400';
-  const labelClass = darkMode ? 'text-slate-300 font-semibold' : 'text-slate-700 font-bold';
-  const subTextClass = darkMode ? 'text-slate-400' : 'text-slate-600';
+  const inputClass = 'bg-[#211e1a] border-[#2e2b26] text-[#f5f2eb] placeholder-[#6b6457] focus:border-[#c88a4b] focus:outline-none transition-colors';
+  const labelClass = 'text-[#a09880] font-semibold tracking-wide';
+  const subTextClass = 'text-[#a09880]';
 
   if (!grinderModel) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full space-y-6 shadow-2xl text-center">
-          <div className="flex justify-center">
-            <Coffee className="w-12 h-12 text-amber-500" />
+      <div className="min-h-screen bg-[#121110] text-[#f5f2eb] flex items-center justify-center p-6">
+        <div className="bg-[#1a1815] border border-[#2e2b26] p-8 rounded-2xl max-w-sm w-full space-y-8 shadow-2xl">
+          <div className="flex flex-col items-center gap-4">
+            <img src="/logo.jpg" alt="Espresso Dial-In" className="w-16 h-16 rounded-xl object-cover" />
+            <div className="text-center">
+              <h1 className="text-xl font-bold text-[#f5f2eb] tracking-tight">Espresso Dial-In</h1>
+              <p className="text-xs text-[#6b6457] mt-1 tracking-wide uppercase">Precision dial-in assistant</p>
+            </div>
           </div>
           <div>
-            <h2 className="text-lg font-bold">Welcome to Espresso Dial-In</h2>
-            <p className="text-xs text-slate-400 mt-1">Please select your primary espresso grinder to configure your baseline calibration logic.</p>
-          </div>
-          <div className="space-y-3">
-            <button
-              onClick={() => handleSaveGrinderSetup('Sette 270Wi')}
-              className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl text-sm transition-colors shadow"
-            >
-              Baratza Sette 270Wi
-            </button>
-            <button
-              onClick={() => handleSaveGrinderSetup('Sunbeam Barista Max')}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 rounded-xl text-sm transition-colors border border-slate-700"
-            >
-              Sunbeam Barista Max
-            </button>
+            <p className="text-sm text-[#a09880] text-center mb-6">Select your grinder to configure your calibration baseline.</p>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleSaveGrinderSetup('Sette 270Wi')}
+                className="w-full bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold py-4 rounded-xl text-sm transition-colors"
+              >
+                Baratza Sette 270Wi
+              </button>
+              <button
+                onClick={() => handleSaveGrinderSetup('Sunbeam Barista Max')}
+                className="w-full bg-[#211e1a] hover:bg-[#2e2b26] text-[#f5f2eb] font-bold py-4 rounded-xl text-sm transition-colors border border-[#2e2b26]"
+              >
+                Sunbeam Barista Max
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -674,41 +705,41 @@ export default function App() {
   }
 
   return (
-    <div className={`min-h-screen ${currentTheme.bgWash} transition-colors duration-300 relative overflow-hidden`}>
+    <div className={`min-h-screen bg-[#121110] text-[#f5f2eb] relative`}>
       
       {/* FULL-SCREEN ACTIVE TIMER OVERLAY */}
       {timerRunning && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md p-6 animate-in fade-in duration-200">
-          <button onClick={handleCancelTimer} className="absolute top-6 right-6 p-4 text-slate-400 hover:text-white transition-colors">
-            <X className="w-8 h-8" />
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0d0b09]/97 p-6">
+          <button onClick={handleCancelTimer} className="absolute top-6 right-6 p-4 text-[#6b6457] hover:text-[#f5f2eb] transition-colors">
+            <X className="w-7 h-7" />
           </button>
           
-          <div className="flex flex-col items-center justify-center mb-16 space-y-2">
-            <span className="text-amber-500 font-bold tracking-[0.2em] uppercase text-sm">
+          <div className="flex flex-col items-center justify-center mb-16 space-y-3">
+            <span className="text-[#c88a4b] font-semibold tracking-[0.25em] uppercase text-xs">
               {usePreInfusion && preInfusionPhase ? 'Pre-infusing' : 'Extracting'}
             </span>
-            <div className={`text-[8rem] leading-none font-black font-mono tracking-tighter ${usePreInfusion && preInfusionPhase ? 'text-indigo-400' : 'text-amber-500'}`}>
+            <div className={`text-[8rem] leading-none font-black font-mono tracking-tighter ${usePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#f5f2eb]'}`}>
               {formatTime(timerSeconds)}
             </div>
             {usePreInfusion && !preInfusionPhase && preInfusionSeconds > 0 && (
-              <p className="text-slate-400 text-xl font-medium mt-4">
-                Pre-infusion logged: <span className="text-white">{preInfusionSeconds}s</span>
+              <p className="text-[#6b6457] text-lg font-medium mt-4">
+                Pre-infusion: <span className="text-[#a09880]">{preInfusionSeconds}s</span>
               </p>
             )}
           </div>
           
-          <div className="w-full max-w-sm flex flex-col gap-6">
+          <div className="w-full max-w-sm flex flex-col gap-4">
             {usePreInfusion && preInfusionPhase && (
               <button 
                 onClick={handleEndPreInfusion} 
-                className="w-full py-8 text-3xl font-black rounded-[2rem] bg-indigo-600 text-white shadow-[0_0_40px_rgba(79,70,229,0.4)] active:scale-95 transition-all"
+                className="w-full py-7 text-2xl font-black rounded-2xl bg-[#211e1a] border border-[#c88a4b]/40 text-[#c88a4b] active:scale-95 transition-all"
               >
                 End Pre-infusion
               </button>
             )}
             <button 
               onClick={handleStopTimer} 
-              className={`w-full py-8 text-3xl font-black rounded-[2rem] text-white shadow-2xl active:scale-95 transition-all ${usePreInfusion && preInfusionPhase ? 'bg-rose-900/50 text-rose-300 border border-rose-800/50' : 'bg-rose-600 shadow-[0_0_40px_rgba(225,29,72,0.4)]'}`}
+              className={`w-full py-7 text-2xl font-black rounded-2xl text-[#121110] active:scale-95 transition-all ${usePreInfusion && preInfusionPhase ? 'bg-[#2e2b26] text-[#6b6457] border border-[#3d3830]' : 'bg-[#c88a4b] hover:bg-[#e0a660]'}`}
             >
               Stop Shot
             </button>
@@ -729,341 +760,390 @@ export default function App() {
         </div>
       )}
 
-      <div className="max-w-xl mx-auto p-4 pb-28">
+      {/* Main scrollable content — padded for fixed bottom nav (+ log bar on dial) */}
+      <div className={`max-w-xl mx-auto px-4 pt-5 ${activeTab === 'dial' && activeBeansList.length > 0 ? 'pb-40' : 'pb-24'}`}>
         
-        <header className="flex items-center justify-between border-b border-slate-300 dark:border-slate-800 pb-4 mb-6">
-          <div className="flex items-center space-x-3 cursor-pointer select-none group" onClick={handleLogoClick} title="App Logo">
-            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-500">
-              <Coffee className="w-5 h-5" />
+        <header className="flex items-center justify-between pb-5 mb-6 border-b border-[#2e2b26]">
+          <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick} title="Espresso Dial-In">
+            <img src="/logo.jpg" alt="Logo" className="w-8 h-8 rounded-lg object-cover" />
+            <div>
+              <h1 className="text-base font-bold text-[#f5f2eb] tracking-tight leading-none">Espresso Dial-In</h1>
+              <p className="text-[10px] text-[#6b6457] tracking-widest uppercase mt-0.5">Precision dial-in</p>
             </div>
-            <h1 className="text-xl font-black tracking-tight text-slate-100">Espresso Dial-In</h1>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsSettingsOpen(true)}
-              className={`p-2 ${subTextClass} hover:opacity-100 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'} border rounded-lg shadow-sm`}
+              className="p-2 text-[#6b6457] hover:text-[#c88a4b] transition-colors"
               title="Settings"
             >
-              <Settings className="w-4 h-4" />
+              <Settings className="w-5 h-5" />
             </button>
           </div>
         </header>
 
-        <div className={`flex ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200 border-slate-300'} p-1 rounded-xl mb-6 text-sm font-medium border shadow-sm`}>
-          <button
-            onClick={() => setActiveTab('dial')}
-            className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'dial' ? `${currentTheme.primary} shadow` : subTextClass}`}
-          >
-            Dial
-          </button>
-          <button
-            onClick={() => setActiveTab('beans')}
-            className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'beans' ? `${currentTheme.primary} shadow` : subTextClass}`}
-          >
-            <PlusCircle className="w-4 h-4" /> Beans
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'history' ? `${currentTheme.primary} shadow` : subTextClass}`}
-          >
-            <History className="w-4 h-4" /> History
-          </button>
-          <button
-            onClick={handleStatsTabClick}
-            className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'stats' ? `${currentTheme.primary} shadow` : subTextClass}`}
-          >
-            <BarChart2 className="w-4 h-4" /> Stats
-          </button>
-        </div>
+        {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
 
         {activeTab === 'dial' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {activeBeansList.length === 0 ? (
-              <div className={`${currentTheme.card} p-8 rounded-2xl text-center border`}>
-                <p className={`${subTextClass} mb-4`}>No active coffee bean profiles configured in the system.</p>
-                <button onClick={() => setActiveTab('beans')} className={`${currentTheme.primary} px-4 py-2.5 rounded-xl text-sm font-semibold shadow`}>
-                  Add Your First Coffee Bean
+              <div className="bg-[#1a1815] border border-[#2e2b26] p-10 rounded-2xl text-center space-y-4">
+                <p className="text-[#6b6457] text-sm">No active coffee bean profiles.</p>
+                <button onClick={() => setActiveTab('beans')} className="bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold px-6 py-3 rounded-xl text-sm transition-colors">
+                  Add Your First Bean
                 </button>
               </div>
             ) : (
               <>
-                <div className={`${currentTheme.card} p-4 rounded-2xl border space-y-3`}>
-                  <div className="flex justify-between items-center flex-wrap gap-2">
-                    <label className={`text-xs uppercase font-bold ${labelClass}`}>Active Coffee Profile</label>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {activeBean?.storageType === 'frozen' && (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={handleThawNewBag}
-                            className={`text-[10px] ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'} border px-2.5 py-1 rounded-lg ${currentTheme.text} font-bold hover:opacity-80`}
-                          >
-                            Thaw New Bag Today
-                          </button>
-                          {activeBean.thawHistory && activeBean.thawHistory.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={handleReverseThaw}
-                              className={`text-[10px] bg-indigo-950/30 border border-indigo-800 px-2.5 py-1 rounded-lg text-indigo-400 font-bold hover:opacity-80 flex items-center gap-1`}
-                            >
-                              <RotateCcw className="w-3 h-3" /> Undo Thaw
-                            </button>
-                          )}
-                        </div>
-                      )}
+                {/* ── BEAN ─────────────────────────────────────────────── */}
+                <div className="bg-[#1a1815] border border-[#2e2b26] p-4 rounded-2xl space-y-3">
+                  <div className="flex justify-between items-start gap-3 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] uppercase tracking-widest text-[#6b6457] mb-0.5">Bean</p>
                       <select
                         value={activeBean?.id || ''}
                         onChange={(e) => setSelectedBeanId(e.target.value)}
-                        className={`${inputClass} border rounded-lg px-3 py-1.5 text-sm ${currentTheme.text} font-semibold focus:outline-none`}
+                        className="bg-transparent text-[#f5f2eb] font-bold text-sm focus:outline-none w-full truncate"
                       >
                         {activeBeansList.map(b => (
-                          <option key={b.id} value={b.id}>{b.name} ({b.roaster}) [Rating: {b.rating ? Number(b.rating).toFixed(1) : 'N/A'}]</option>
+                          <option key={b.id} value={b.id} className="bg-[#1a1815]">{b.name} — {b.roaster}</option>
                         ))}
                       </select>
+                      {activeBean && (
+                        <p className="text-[10px] text-[#6b6457] mt-0.5">
+                          {activeBean.roastType} roast · {activeBean.storageType}
+                          {beanAgeInfo ? ` · ${beanAgeInfo.daysOld}d effective` : ''}
+                          {lastBrewDaysAgo > 0 ? ` · last shot ${lastBrewDaysAgo}d ago` : ''}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {activeBean?.storageType === 'frozen' && (
+                        <button
+                          type="button"
+                          onClick={handleThawNewBag}
+                          className="text-[10px] bg-[#211e1a] border border-[#3d3830] px-2.5 py-1.5 rounded-lg text-[#c88a4b] font-semibold hover:border-[#c88a4b]/50 transition-colors"
+                        >
+                          Thaw New Bag
+                        </button>
+                      )}
+                      {activeBean?.storageType === 'frozen' && activeBean.thawHistory?.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleReverseThaw}
+                          className="text-[10px] bg-[#211e1a] border border-[#3d3830] px-2 py-1.5 rounded-lg text-[#a09880] hover:text-[#f5f2eb] transition-colors flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
-                        className="text-[10px] bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-lg text-slate-300 font-bold hover:bg-slate-700"
-                        title="Mark Bag as Finished"
+                        className="text-[10px] bg-[#211e1a] border border-[#3d3830] px-2.5 py-1.5 rounded-lg text-[#6b6457] font-semibold hover:text-[#a09880] transition-colors"
                       >
                         Mark Finished
                       </button>
                     </div>
                   </div>
 
-                  {activeRecipe && (
-                    <div className={`text-xs ${subTextClass} flex justify-between border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} pt-2`}>
-                      <span>Target Dose: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetDoseG || 18}g</strong></span>
-                      <span>Target Yield: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetYieldG || 36}g</strong></span>
-                      <span>Target Time: <strong className={darkMode ? 'text-slate-100' : 'text-slate-900'}>{activeRecipe.targetTimeMinS || 27}-{activeRecipe.targetTimeMaxS || 32}s</strong></span>
-                    </div>
-                  )}
-
-                  {beanAgeInfo && beanAgeInfo.notice && (
-                    <p className={`text-xs ${currentTheme.text} ${darkMode ? 'bg-amber-950/20 border-amber-800/30' : 'bg-amber-50 border-amber-200'} p-2 rounded-lg border font-medium`}>
+                  {beanAgeInfo?.notice && (
+                    <p className="text-[10px] text-[#c88a4b] bg-[rgba(200,138,75,0.08)] border border-[rgba(200,138,75,0.2)] p-2.5 rounded-lg">
                       {beanAgeInfo.notice}
                     </p>
                   )}
                 </div>
 
-                {lastShot && dynamicRec && (
-                  <div ref={recommendationRef} className={`${currentTheme.card} border ${darkMode ? 'border-amber-500/40' : 'border-amber-400'} p-4 rounded-2xl space-y-3 shadow-sm`}>
-                    <div className={`flex items-center justify-between border-b ${darkMode ? 'border-slate-800' : 'border-slate-200'} pb-2`}>
-                      <span className={`text-xs font-bold uppercase ${currentTheme.text}`}>Grind Adjustment Recommendation</span>
-                      <span className={`text-[10px] ${subTextClass}`}>{new Date(lastShot.timestamp).toLocaleTimeString()}</span>
-                    </div>
-
-                    {dynamicRec.ageWarning && (
-                      <div className="flex items-start gap-2 bg-indigo-950/40 border border-indigo-800/50 p-2.5 rounded-xl text-xs text-indigo-300">
-                        <Flame className="w-4 h-4 shrink-0 text-indigo-400" />
-                        <span>{dynamicRec.ageWarning}</span>
-                      </div>
-                    )}
-
-                    {dynamicRec.warning && (
-                      <div className="flex items-start gap-2 bg-rose-950/40 border border-rose-800/50 p-2.5 rounded-xl text-xs text-rose-300">
-                        <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                        <span>{dynamicRec.warning}</span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
+                {/* ── RECIPE ───────────────────────────────────────────── */}
+                {activeRecipe && (
+                  <div className="bg-[#1a1815] border border-[#2e2b26] p-4 rounded-2xl space-y-3">
+                    <p className="text-[10px] uppercase tracking-widest text-[#6b6457]">Recipe</p>
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
                       <div>
-                        <p className={`text-xs ${subTextClass}`}>Next Recommended Setting:</p>
-                        <p className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                          {lastShot.grinderModel === 'Sette 270Wi'
-                            ? `${dynamicRec.recommendedSetting?.macro || 13}-${dynamicRec.recommendedSetting?.micro || 'E'}`
-                            : `Setting ${dynamicRec.recommendedSetting?.setting || 15}`}
-                        </p>
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Dose</p>
+                        <p className="text-[#f5f2eb] font-bold">{activeRecipe.targetDoseG || 18}g</p>
                       </div>
-                      <span className={`${currentTheme.badge} border px-3 py-1 rounded-full text-xs font-semibold`}>
-                        {lastShot.grinderModel}
-                      </span>
+                      <div>
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Yield</p>
+                        <p className="text-[#f5f2eb] font-bold">{activeRecipe.targetYieldG || 36}g</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Time</p>
+                        <p className="text-[#f5f2eb] font-bold">{activeRecipe.targetTimeMinS || 27}–{activeRecipe.targetTimeMaxS || 32}s</p>
+                      </div>
+                      {activeRecipe.brewTemperatureC && (
+                        <div>
+                          <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Temp</p>
+                          <p className="text-[#f5f2eb] font-bold">{activeRecipe.brewTemperatureC}°C</p>
+                        </div>
+                      )}
                     </div>
-                    <p className={`text-xs ${darkMode ? 'text-slate-200' : 'text-slate-800'} leading-relaxed font-medium`}>{dynamicRec.originalReason}</p>
-
-                    {dynamicRec.flairWaterTempAdvice && (
-                      <p className="text-xs bg-cyan-950/35 text-cyan-300 border border-cyan-800/40 p-2.5 rounded-xl">
-                        {dynamicRec.flairWaterTempAdvice}
-                      </p>
+                    {flairEnabled && formatFlairRecipeLines(activeRecipe.flairProfile).length > 0 && (
+                      <div className="pt-2 border-t border-[#2e2b26] space-y-1">
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Flair profile</p>
+                        {formatFlairRecipeLines(activeRecipe.flairProfile).map((line) => (
+                          <p key={line} className="text-[11px] text-[#a09880]">{line}</p>
+                        ))}
+                      </div>
                     )}
+                  </div>
+                )}
 
-                    {dynamicRec.subRecommendation && (
-                      <p className="text-xs bg-indigo-950/30 text-indigo-300 border border-indigo-800/40 p-2.5 rounded-xl">
-                        {dynamicRec.subRecommendation}
+                {/* ── CURRENT GRIND ────────────────────────────────────── */}
+                <div className="bg-[#1a1815] border border-[#2e2b26] p-4 rounded-2xl flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-[#6b6457] mb-1">Current grind</p>
+                    <p className="text-2xl font-black text-[#f5f2eb] font-mono leading-none">{currentGrindLabel}</p>
+                  </div>
+                  <span className="text-[10px] bg-[rgba(200,138,75,0.12)] text-[#c88a4b] border border-[rgba(200,138,75,0.25)] px-2.5 py-1 rounded-full font-semibold text-center max-w-[9rem]">
+                    {grinderModel}
+                  </span>
+                </div>
+
+                {/* ── LATEST SHOT ──────────────────────────────────────── */}
+                {lastShot && (
+                  <div className="bg-[#211e1a] border border-[#2e2b26] p-4 rounded-2xl">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-[10px] uppercase tracking-widest text-[#6b6457]">Latest shot</p>
+                      <p className="text-[10px] text-[#6b6457]">
+                        {new Date(lastShot.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </p>
-                    )}
-
-                    <div className={`pt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} flex items-center justify-between text-xs`}>
-                      <span className={subTextClass}>Last Shot: {lastShot.actualTimeS || 0}s ({lastShot.tasteProfile?.replace('_', ' ') || 'unknown'})</span>
-                      <button
-                        type="button"
-                        onClick={applyRecommendation}
-                        className={`${currentTheme.primary} px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow`}
-                      >
-                        Apply Rec <ArrowRight className="w-3 h-3" />
-                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                      <span className="font-bold text-[#f5f2eb]">{lastShot.actualTimeS || 0}s</span>
+                      <span className="text-[#a09880]">·</span>
+                      <span className="font-bold text-[#f5f2eb]">{lastShot.actualYieldG || 0}g</span>
+                      <span className="text-[#a09880]">·</span>
+                      <span className="font-semibold text-[#c88a4b] capitalize">{lastShot.tasteProfile?.replace('_', ' ') || 'no taste logged'}</span>
                     </div>
                   </div>
                 )}
 
-                <form onSubmit={handleLogShot} className="space-y-4">
-                  {beanShots.length === 0 && (
-                    <div className={`${darkMode ? 'bg-indigo-950/20 border-indigo-950/40 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-800'} p-3 rounded-xl border text-xs flex items-center gap-2`}>
-                      <span>💡 Cold-start baseline auto-applied (factored in bean age and Grind History Trend).</span>
+                {/* ── NEXT SHOT RECOMMENDATION HERO ─────────────────────── */}
+                {lastShot && dynamicRec ? (
+                  <div ref={recommendationRef} className="bg-[#1a1815] border-2 border-[rgba(200,138,75,0.45)] p-5 rounded-2xl space-y-4 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#c88a4b]">Next shot</p>
+
+                    <div>
+                      <p className="text-2xl sm:text-3xl font-black text-[#f5f2eb] leading-tight tracking-tight uppercase">
+                        {dynamicRec.originalReason?.split('—')[0]?.trim() || dynamicRec.originalReason}
+                      </p>
+                      {dynamicRec.originalReason?.includes('—') && (
+                        <p className="text-sm text-[#a09880] mt-2">
+                          {dynamicRec.originalReason.split('—').slice(1).join('—').trim()}
+                        </p>
+                      )}
                     </div>
-                  )}
+
+                    <div className="flex items-center justify-between bg-[#211e1a] border border-[#2e2b26] rounded-xl px-4 py-3">
+                      <div>
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider mb-0.5">Set grinder to</p>
+                        <p className="text-3xl font-black text-[#f5f2eb] font-mono">
+                          {lastShot.grinderModel === 'Sette 270Wi'
+                            ? `${dynamicRec.recommendedSetting?.macro || 13}-${dynamicRec.recommendedSetting?.micro || 'E'}`
+                            : `${dynamicRec.recommendedSetting?.setting || 15}`}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={applyRecommendation}
+                        className="text-xs bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold px-4 py-2.5 rounded-lg flex items-center gap-1 transition-colors min-h-[44px]"
+                      >
+                        Apply <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {dynamicRec.ageWarning && (
+                      <div className="flex items-start gap-2 bg-[rgba(200,138,75,0.06)] border border-[rgba(200,138,75,0.2)] p-3 rounded-xl text-xs text-[#c88a4b]">
+                        <Flame className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>{dynamicRec.ageWarning}</span>
+                      </div>
+                    )}
+                    {dynamicRec.warning && (
+                      <div className="flex items-start gap-2 bg-[rgba(180,60,60,0.08)] border border-[rgba(180,60,60,0.2)] p-3 rounded-xl text-xs text-[#d08080]">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>{dynamicRec.warning}</span>
+                      </div>
+                    )}
+
+                    {dynamicRec.flairWaterTempAdvice && (
+                      <div className="border-t border-[#2e2b26] pt-3 space-y-1">
+                        <p className="text-[10px] uppercase tracking-widest text-[#6b6457] font-semibold">Temperature</p>
+                        <p className="text-xs text-[#a09880]">{dynamicRec.flairWaterTempAdvice}</p>
+                      </div>
+                    )}
+
+                    {dynamicRec.subRecommendation && (
+                      <p className="text-xs text-[#a09880] bg-[#211e1a] border border-[#2e2b26] p-3 rounded-xl">
+                        {dynamicRec.subRecommendation}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  !hasLoggedShotForBean && initialGrindSetting && (
+                    <div ref={recommendationRef} className="bg-[#1a1815] border-2 border-[rgba(200,138,75,0.35)] p-5 rounded-2xl space-y-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#c88a4b]">Next shot</p>
+                      <p className="text-sm text-[#a09880]">Start with your initial grind recommendation</p>
+                      <p className="text-2xl font-black text-[#f5f2eb] font-mono">
+                        {grinderModel === 'Sette 270Wi'
+                          ? `${initialGrindSetting.macro}-${initialGrindSetting.micro}`
+                          : initialGrindSetting.setting}
+                      </p>
+                      <p className="text-xs text-[#6b6457]">Record your first shot to start dialling in.</p>
+                    </div>
+                  )
+                )}
+
+                {/* ── SHOT LOG FORM ─────────────────────────────────────── */}
+                <form onSubmit={handleLogShot} className="space-y-4">
 
                   {validationError && (
-                    <div className="bg-rose-950/80 border border-rose-800 p-3 rounded-xl text-xs text-rose-300 font-semibold flex items-center gap-2 animate-bounce">
+                    <div className="bg-[rgba(180,60,60,0.12)] border border-[rgba(180,60,60,0.3)] p-3 rounded-xl text-xs text-[#d08080] font-semibold flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 shrink-0" />
                       <span>{validationError}</span>
                     </div>
                   )}
 
-                  {/* Inline Shot Timer (Pre-Launch View) */}
-                  <div className={`${currentTheme.card} p-3 rounded-2xl border flex flex-col gap-3`}>
+                  {/* Timer */}
+                  <div className="bg-[#1a1815] border border-[#2e2b26] p-4 rounded-2xl">
                     <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className={`text-[10px] uppercase font-bold ${labelClass}`}>Live Shot Timer</span>
-                        <span className={`text-2xl font-mono font-black ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>
-                          {formatTime(timerSeconds)}
-                        </span>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-[#6b6457] mb-1">Shot Timer</p>
+                        <span className="text-3xl font-black font-mono text-[#f5f2eb]">{formatTime(timerSeconds)}</span>
                       </div>
                       <div className="flex gap-2">
-                        <button type="button" onClick={handleStartTimer} className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow transition-colors">
-                          <Play className="w-5 h-5 fill-current" />
+                        <button type="button" onClick={handleStartTimer} className="px-5 py-3 bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
+                          <Play className="w-4 h-4 fill-current" /> Start
                         </button>
-                        <button type="button" onClick={handleResetTimer} className={`p-3 ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'} rounded-xl shadow-sm transition-colors hover:opacity-80`}>
-                          <RotateCcw className="w-5 h-5" />
+                        <button type="button" onClick={handleResetTimer} className="p-3 bg-[#211e1a] border border-[#2e2b26] text-[#a09880] rounded-xl hover:text-[#f5f2eb] transition-colors">
+                          <RotateCcw className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  <div ref={grindSettingsRef} className={`${currentTheme.card} p-4 rounded-2xl border transition-all duration-300 ${highlightGrind ? 'ring-4 ring-amber-500 animate-pulse border-amber-500' : ''}`}>
-                    <div className="flex justify-between items-center mb-2">
-                      <label className={`text-xs uppercase font-bold ${labelClass}`}>Grind Setting Used</label>
-                      <span className={`text-[10px] ${currentTheme.text} font-semibold uppercase`}>Active Grinder: {grinderModel}</span>
+                  {/* Grind setting */}
+                  <div ref={grindSettingsRef} className={`bg-[#1a1815] border border-[#2e2b26] p-4 rounded-2xl transition-all duration-300 ${highlightGrind ? 'ring-2 ring-[#c88a4b] border-[#c88a4b]/60' : ''}`}>
+                    <div className="flex justify-between items-center mb-3">
+                      <p className="text-[10px] uppercase tracking-widest text-[#6b6457]">Grind Setting Used</p>
+                      <span className="text-[10px] text-[#c88a4b] font-semibold">{grinderModel}</span>
                     </div>
 
                     {grinderModel === 'Sette 270Wi' ? (
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <span className={`text-xs ${subTextClass}`}>Macro (1-31)</span>
+                          <label className="text-xs text-[#6b6457] block mb-1.5">Macro (1–31)</label>
                           <input
                             type="number"
-                            min="1"
-                            max="31"
+                            min="1" max="31"
                             value={setteMacro}
                             onChange={(e) => setSetteMacro(e.target.value)}
-                            className={`w-full ${inputClass} border rounded-lg p-2.5 text-center text-lg font-bold mt-1 focus:outline-none`}
+                            className="w-full bg-[#211e1a] border border-[#2e2b26] text-[#f5f2eb] rounded-xl p-3 text-center text-2xl font-black focus:border-[#c88a4b] focus:outline-none transition-colors"
                           />
                         </div>
                         <div>
-                          <span className={`text-xs ${subTextClass}`}>Micro (A-I)</span>
+                          <label className="text-xs text-[#6b6457] block mb-1.5">Micro (A–I)</label>
                           <select
                             value={setteMicro}
                             onChange={(e) => setSetteMicro(e.target.value)}
-                            className={`w-full ${inputClass} border rounded-lg p-2.5 text-center text-lg font-bold mt-1 focus:outline-none`}
+                            className="w-full bg-[#211e1a] border border-[#2e2b26] text-[#f5f2eb] rounded-xl p-3 text-center text-2xl font-black focus:border-[#c88a4b] focus:outline-none transition-colors"
                           >
                             {['A','B','C','D','E','F','G','H','I'].map(m => (
-                              <option key={m} value={m}>{m}</option>
+                              <option key={m} value={m} className="bg-[#1a1815]">{m}</option>
                             ))}
                           </select>
                         </div>
                       </div>
                     ) : (
                       <div>
-                        <span className={`text-xs ${subTextClass}`}>Linear Dial Setting (1-30)</span>
+                        <label className="text-xs text-[#6b6457] block mb-1.5">Dial Setting (1–30)</label>
                         <input
                           type="number"
-                          min="1"
-                          max="30"
+                          min="1" max="30"
                           value={sunbeamSetting}
                           onChange={(e) => setSunbeamSetting(e.target.value)}
-                          className={`w-full ${inputClass} border rounded-lg p-2.5 text-center text-lg font-bold mt-1 focus:outline-none`}
+                          className="w-full bg-[#211e1a] border border-[#2e2b26] text-[#f5f2eb] rounded-xl p-3 text-center text-2xl font-black focus:border-[#c88a4b] focus:outline-none transition-colors"
                         />
                       </div>
                     )}
 
-                    <div className={`mt-4 flex items-center justify-between border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} pt-3`}>
-                      <span className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>Was grinder purged before shot?</span>
+                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-[#2e2b26]">
+                      <span className="text-sm text-[#a09880]">Grinder purged?</span>
                       <button
                         type="button"
                         onClick={() => setWasPurged(!wasPurged)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${wasPurged ? 'bg-emerald-600 text-white' : 'bg-rose-900/60 text-rose-300 border border-rose-700'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${wasPurged ? 'bg-[rgba(200,138,75,0.12)] text-[#c88a4b] border border-[rgba(200,138,75,0.3)]' : 'bg-[rgba(180,60,60,0.1)] text-[#d08080] border border-[rgba(180,60,60,0.2)]'}`}
                       >
-                        {wasPurged ? 'Yes (Purged)' : 'No (Unpurged ⚠️)'}
+                        {wasPurged ? 'Yes — Purged' : 'No — Unpurged ⚠️'}
                       </button>
                     </div>
                   </div>
 
+                  {/* Dose / Yield / Time */}
                   <div className="grid grid-cols-3 gap-2">
-                    <div className={`${currentTheme.card} p-3 rounded-2xl border`}>
-                      <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Dose (g)</label>
+                    <div className="bg-[#1a1815] border border-[#2e2b26] p-3 rounded-2xl">
+                      <label className="text-[10px] uppercase tracking-widest text-[#6b6457] block mb-2">Dose (g)</label>
                       <input
-                        type="number"
-                        step="0.1"
+                        type="number" step="0.1"
                         value={actualDoseG}
                         onChange={(e) => setActualDoseG(e.target.value)}
-                        className={`w-full ${inputClass} border rounded-lg p-2 text-center text-md font-bold`}
+                        className="w-full bg-transparent text-[#f5f2eb] text-center text-xl font-black focus:outline-none"
                       />
                     </div>
-                    <div className={`${currentTheme.card} p-3 rounded-2xl border`} ref={yieldInputRef}>
-                      <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Yield (g)*</label>
+                    <div className="bg-[#1a1815] border border-[#2e2b26] p-3 rounded-2xl" ref={yieldInputRef}>
+                      <label className="text-[10px] uppercase tracking-widest text-[#6b6457] block mb-2">Yield (g) *</label>
                       <input
-                        type="number"
-                        step="0.1"
-                        placeholder="e.g. 36"
+                        type="number" step="0.1"
+                        placeholder="36"
                         value={actualYieldG}
                         onChange={(e) => setActualYieldG(e.target.value)}
-                        className={`w-full ${inputClass} border rounded-lg p-2 text-center text-md font-bold`}
+                        className="w-full bg-transparent text-[#f5f2eb] placeholder-[#6b6457] text-center text-xl font-black focus:outline-none"
                       />
-                      <span className={`text-[9px] ${currentTheme.text} block text-center mt-1 font-semibold`}>Ratio: 1:{brewRatio}</span>
+                      <p className="text-[9px] text-[#c88a4b] text-center mt-1">1:{brewRatio}</p>
                     </div>
-                    <div className={`${currentTheme.card} p-3 rounded-2xl border`} ref={timeInputRef}>
-                      <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Time (s)*</label>
+                    <div className="bg-[#1a1815] border border-[#2e2b26] p-3 rounded-2xl" ref={timeInputRef}>
+                      <label className="text-[10px] uppercase tracking-widest text-[#6b6457] block mb-2">Time (s) *</label>
                       <input
                         type="number"
-                        placeholder="e.g. 28"
+                        placeholder="28"
                         value={actualTimeS}
                         onChange={(e) => setActualTimeS(e.target.value)}
-                        className={`w-full ${inputClass} border rounded-lg p-2 text-center text-md font-bold`}
+                        className="w-full bg-transparent text-[#f5f2eb] placeholder-[#6b6457] text-center text-xl font-black focus:outline-none"
                       />
                     </div>
                   </div>
 
+                  {/* Flair active target (read-only) */}
                   {flairEnabled && activeRecipe?.flairProfile && (
-                    <div className={`${currentTheme.card} p-3 rounded-2xl border flex flex-col gap-1`}>
-                      <span className={`text-[10px] uppercase font-bold ${labelClass}`}>Active Flair Target</span>
-                      <div className={`text-[10px] flex flex-wrap gap-2 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                        {activeRecipe.brewTemperatureC && <span>🌡️ Temp: {activeRecipe.brewTemperatureC}°C</span>}
-                        {activeRecipe.flairProfile.preinfusionPressure && <span>💧 Pre: {activeRecipe.flairProfile.preinfusionPressure}bar / {activeRecipe.flairProfile.preinfusionTime}s</span>}
-                        {activeRecipe.flairProfile.peakPressure && <span>⚡ Peak: {activeRecipe.flairProfile.peakPressure}bar to {activeRecipe.flairProfile.peakEndYield}g</span>}
-                        {activeRecipe.flairProfile.taperPressure && <span>📉 Taper: {activeRecipe.flairProfile.taperPressure}bar</span>}
+                    <div className="bg-[#1a1815] border border-[#2e2b26] p-3 rounded-2xl">
+                      <p className="text-[10px] uppercase tracking-widest text-[#6b6457] mb-2">Active Flair Target</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#a09880]">
+                        {activeRecipe.brewTemperatureC && <span>{activeRecipe.brewTemperatureC}°C</span>}
+                        {activeRecipe.flairProfile.preinfusionPressure && <span>Pre {activeRecipe.flairProfile.preinfusionPressure} bar · {activeRecipe.flairProfile.preinfusionTime}s</span>}
+                        {activeRecipe.flairProfile.peakPressure && <span>Hold {activeRecipe.flairProfile.peakPressure} bar → {activeRecipe.flairProfile.peakEndYield}g</span>}
+                        {activeRecipe.flairProfile.taperPressure && <span>Taper {activeRecipe.flairProfile.taperPressure} bar</span>}
                       </div>
                     </div>
                   )}
 
-                  <div className={`${currentTheme.card} p-4 rounded-2xl border space-y-3`} ref={tasteInputRef}>
-                    <label className={`text-xs uppercase font-bold ${labelClass} block`}>Extraction Taste Profile (Required)*</label>
-                    <div className="grid grid-cols-5 gap-1">
+                  {/* Taste selector */}
+                  <div className="bg-[#1a1815] border border-[#2e2b26] p-4 rounded-2xl space-y-3" ref={tasteInputRef}>
+                    <label className="text-[10px] uppercase tracking-widest text-[#6b6457]">Extraction Taste *</label>
+                    <div className="grid grid-cols-5 gap-1.5">
                       {[
-                        { id: 'very_sour', label: 'Very Sour' },
+                        { id: 'very_sour', label: 'V.Sour' },
                         { id: 'sour', label: 'Sour' },
                         { id: 'good', label: 'Balanced' },
                         { id: 'bitter', label: 'Bitter' },
-                        { id: 'very_bitter', label: 'Very Bitter' }
+                        { id: 'very_bitter', label: 'V.Bitter' }
                       ].map(f => (
                         <button
                           type="button"
                           key={f.id}
                           onClick={() => setTasteProfile(f.id)}
-                          className={`py-2 text-[10px] font-bold rounded-lg border transition-all ${
+                          className={`py-3 text-[10px] font-bold rounded-xl border transition-all ${
                             tasteProfile === f.id
-                              ? `${currentTheme.primary} border-transparent shadow`
-                              : `${darkMode ? 'bg-slate-950 text-slate-300 border-slate-800' : 'bg-slate-100 text-slate-800 border-slate-300 font-medium'}`
+                              ? 'bg-[#c88a4b] border-[#c88a4b] text-[#121110]'
+                              : 'bg-[#211e1a] text-[#a09880] border-[#2e2b26] hover:border-[#3d3830]'
                           }`}
                         >
                           {f.label}
@@ -1071,38 +1151,41 @@ export default function App() {
                       ))}
                     </div>
 
-                    <div className={`pt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'} flex items-center justify-between`}>
-                      <span className={`text-xs ${labelClass}`}>Shot Rating (1–5 Stars, Optional)</span>
+                    {/* Star rating */}
+                    <div className="flex items-center justify-between pt-2 border-t border-[#2e2b26]">
+                      <span className="text-xs text-[#6b6457]">Shot rating (optional)</span>
                       <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
+                        {[1,2,3,4,5].map(star => (
                           <button
                             type="button"
                             key={star}
                             onClick={() => setShotRating(star)}
-                            className={`p-1 ${shotRating !== null && star <= shotRating ? 'text-amber-400' : 'text-slate-400'}`}
+                            className={`p-1 transition-colors ${shotRating !== null && star <= shotRating ? 'text-[#c88a4b]' : 'text-[#3d3830] hover:text-[#6b6457]'}`}
                           >
-                            <Star className="w-4 h-4 fill-current" />
+                            <Star className="w-5 h-5 fill-current" />
                           </button>
                         ))}
                       </div>
                     </div>
                   </div>
 
+                  {/* Notes */}
                   <input
                     type="text"
-                    placeholder="Notes (e.g. puck prep, channeling, 130g vacuum batch)"
+                    placeholder="Notes — puck prep, channeling, batch size…"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    className={`w-full ${currentTheme.card} border rounded-xl p-3 text-sm focus:outline-none`}
+                    className="w-full bg-[#1a1815] border border-[#2e2b26] rounded-xl p-3 text-sm text-[#f5f2eb] placeholder-[#6b6457] focus:border-[#c88a4b] focus:outline-none transition-colors"
                   />
 
-                  <div className={`fixed bottom-0 left-0 right-0 p-3 ${darkMode ? 'bg-slate-950/90 border-slate-800' : 'bg-white/90 border-slate-200'} backdrop-blur border-t z-40 shadow-2xl`}>
+                  {/* Submit — fixed above tab bar */}
+                  <div className="fixed bottom-[4.25rem] left-0 right-0 p-3 bg-[#121110]/95 border-t border-[#2e2b26] backdrop-blur z-40">
                     <div className="max-w-xl mx-auto">
                       <button
                         type="submit"
-                        className={`w-full ${currentTheme.primary} font-bold py-3.5 rounded-xl shadow-lg transition-colors`}
+                        className="w-full bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-black py-4 rounded-xl shadow-lg transition-colors text-sm tracking-wide"
                       >
-                        Log Shot & Calculate Grind Adjustment
+                        Log Shot
                       </button>
                     </div>
                   </div>
@@ -1116,7 +1199,7 @@ export default function App() {
           <div className="space-y-6">
             <form onSubmit={handleSaveBean} className={`${currentTheme.card} p-5 rounded-2xl border space-y-4 relative overflow-hidden`}>
               {isEditingBean && (
-                <div className="absolute top-0 left-0 right-0 bg-amber-500 text-amber-950 text-[10px] font-black uppercase text-center py-1">
+                <div className="absolute top-0 left-0 right-0 bg-[#c88a4b] text-[#121110] text-[10px] font-black uppercase text-center py-1">
                   Editing Mode Active
                 </div>
               )}
@@ -1417,6 +1500,12 @@ export default function App() {
 
         {activeTab === 'history' && (
           <div className="space-y-4">
+            {activeBean && (
+              <div className="bg-[#211e1a] border border-[#2e2b26] p-3 rounded-xl text-xs text-[#a09880] flex justify-between gap-2">
+                <span>{beanShots.length} shot{beanShots.length === 1 ? '' : 's'} on {activeBean.name}</span>
+                <span className="text-[#6b6457]">{activeBeansList.length} active bean{activeBeansList.length === 1 ? '' : 's'}</span>
+              </div>
+            )}
             <div className={`flex justify-between items-center ${currentTheme.card} p-3 rounded-2xl border`}>
               <span className={`text-xs font-bold uppercase ${labelClass}`}>Filter History Log</span>
               <select
@@ -1432,7 +1521,7 @@ export default function App() {
             </div>
 
             {filteredShots.length === 0 ? (
-              <p className="text-slate-500 text-sm">No shots logged yet.</p>
+              <p className={`text-sm ${subTextClass}`}>No shots logged yet.</p>
             ) : (
               filteredShots.map(s => {
                 const bean = beans.find(b => b.id === s.beanId);
@@ -1805,6 +1894,35 @@ export default function App() {
         </footer>
 
       </div>
+
+      {/* Fixed bottom tab bar */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#121110]/98 border-t border-[#2e2b26] backdrop-blur safe-area-pb">
+        <div className="max-w-xl mx-auto flex items-stretch justify-around px-1">
+          {[
+            { id: 'dial', label: 'Dial', icon: Coffee, onClick: () => setActiveTab('dial') },
+            { id: 'beans', label: 'Beans', icon: PlusCircle, onClick: () => setActiveTab('beans') },
+            { id: 'history', label: 'History', icon: History, onClick: () => setActiveTab('history') },
+            { id: 'stats', label: 'Stats', icon: BarChart2, onClick: handleStatsTabClick },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={tab.onClick}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 min-h-[52px] transition-colors ${
+                  isActive ? 'text-[#c88a4b]' : 'text-[#6b6457] hover:text-[#a09880]'
+                }`}
+              >
+                <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
+                <span className="text-[10px] font-bold uppercase tracking-wide">{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
       <Analytics />
     </div>
   );

@@ -3,9 +3,15 @@
   "short_name": "EspressoDial",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#f59e0b",
+  "background_color": "#121110",
+  "theme_color": "#c88a4b",
   "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
     {
       "src": "/icon.svg",
       "sizes": "any",
