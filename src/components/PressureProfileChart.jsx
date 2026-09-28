@@ -24,30 +24,37 @@ function buildSmoothProfilePath(profile, w, h, compact) {
   const maxP = Math.max(pPre, pPeak, pTaper, 1);
   const yFor = (p) => padT + chartH - (p / maxP) * chartH;
 
-  const preDur = Math.max(preT, 6);
-  const totalSec = Math.max(preDur + 28, 36);
+  const preDur = Math.max(preT, 4);
+  const rampDur = 4;
+  const holdDur = 22;
+  const taperDur = 8;
+  const totalSec = preDur + rampDur + holdDur + taperDur;
 
   const x = (t) => padL + (t / totalSec) * chartW;
-  const x0 = x(0);
-  const xPreEnd = x(preDur);
-  const xRampEnd = x(preDur + 4);
-  const xHoldEnd = x(preDur + 22);
-  const xEnd = x(totalSec);
 
-  const yStart = yFor(pPre * 0.35);
+  const t0 = 0;
+  const t1 = preDur * 0.55;
+  const t2 = preDur;
+  const t3 = preDur + rampDur;
+  const t4 = preDur + rampDur + holdDur;
+  const t5 = totalSec;
+
+  const y0 = yFor(pPre * 0.25);
   const yPre = yFor(pPre);
   const yPeak = yFor(pPeak);
   const yTaper = yFor(pTaper);
 
+  // Cubic segments with strictly increasing time (monotonic X)
   const stroke = [
-    `M ${x0} ${yStart}`,
-    `Q ${x(xPreEnd * 0.45)} ${yStart} ${xPreEnd} ${yPre}`,
-    `Q ${xRampEnd - (xRampEnd - xPreEnd) * 0.35} ${yPre} ${xRampEnd} ${yPeak}`,
-    `Q ${(xRampEnd + xHoldEnd) / 2} ${yPeak} ${xHoldEnd} ${yPeak}`,
-    `Q ${xHoldEnd + (xEnd - xHoldEnd) * 0.4} ${yPeak} ${xEnd} ${yTaper}`,
+    `M ${x(t0)} ${y0}`,
+    `C ${x(t0 + 1)} ${y0} ${x(t1 - 0.5)} ${yPre} ${x(t1)} ${yPre}`,
+    `L ${x(t2)} ${yPre}`,
+    `C ${x(t2 + 1)} ${yPre} ${x(t3 - 1)} ${yPeak} ${x(t3)} ${yPeak}`,
+    `L ${x(t4)} ${yPeak}`,
+    `C ${x(t4 + 2)} ${yPeak} ${x(t5 - 1)} ${yTaper} ${x(t5)} ${yFor(pTaper * 0.9)}`,
   ].join(' ');
 
-  const area = `${stroke} L ${xEnd} ${yBase} L ${x0} ${yBase} Z`;
+  const area = `${stroke} L ${x(t5)} ${yBase} L ${x(t0)} ${yBase} Z`;
 
   return { stroke, area, maxP, totalSec, padL, padT, chartH, yBase };
 }
@@ -75,7 +82,7 @@ export function PressureProfileChart({ profile, progress = null, compact = false
   return (
     <div className={`relative w-full ${compact ? 'h-[5.5rem]' : 'h-[6.25rem]'}`}>
       <div className="absolute inset-0 rounded-[10px] bg-[#121110] border border-[#232323] overflow-hidden">
-        <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-full" preserveAspectRatio="none" aria-hidden>
+        <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-full" preserveAspectRatio="xMidYMid meet" aria-hidden>
           {[0, 1, 2, 3].map((i) => (
             <line
               key={i}
