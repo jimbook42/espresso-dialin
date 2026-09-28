@@ -1,27 +1,54 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { adjustSunbeam } from '../utils/grinderLogic';
 
 const SETTE_MICROS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
-const SWIPE_THRESHOLD_PX = 12;
-const SPIN_DEG_PER_STEP = 18;
-const MAX_SPIN_DEG = 54;
+const SWIPE_THRESHOLD_PX = 14;
+const VISIBLE_TICKS = 9;
+const CENTER_TICK = 4;
 
-function stepDelta(prev, next, dialKind) {
-  if (dialKind === 'micro') {
-    const a = SETTE_MICROS.indexOf(prev ?? 'E');
-    const b = SETTE_MICROS.indexOf(next ?? 'E');
-    const from = a === -1 ? 4 : a;
-    const to = b === -1 ? 4 : b;
-    return to - from;
-  }
-  const from = parseInt(prev, 10) || 0;
-  const to = parseInt(next, 10) || 0;
-  return to - from;
-}
+const DIAL_CONFIG = {
+  macro: { valueIndex: (v) => (parseInt(v, 10) || 13) - 1 },
+  micro: {
+    valueIndex: (v) => {
+      const idx = SETTE_MICROS.indexOf(v || 'E');
+      return idx === -1 ? 4 : idx;
+    },
+  },
+  sunbeam: { valueIndex: (v) => (parseInt(v, 10) || 15) - 1 },
+};
 
-function SpinningTickScale({ rotationDeg, isDragging, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }) {
-  const ticks = Array.from({ length: 9 }, (_, i) => i);
+function SpinningTickScale({
+  valueIndex,
+  dragOffsetPx,
+  isDragging,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}) {
+  const viewportRef = useRef(null);
+  const [tickSpacing, setTickSpacing] = useState(0);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return undefined;
+
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setTickSpacing(w / (VISIBLE_TICKS - 1));
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const translateX = tickSpacing > 0 ? CENTER_TICK * tickSpacing - (CENTER_TICK + valueIndex) * tickSpacing + dragOffsetPx : 0;
+
+  const stripLength = 120;
+
   return (
     <div
       className="mt-2.5 touch-none cursor-grab active:cursor-grabbing select-none"
@@ -31,64 +58,55 @@ function SpinningTickScale({ rotationDeg, isDragging, onPointerDown, onPointerMo
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       role="slider"
-      aria-label="Drag to adjust grind"
+      aria-label="Drag to spin grind dial"
     >
       <div className="py-2 -my-2">
-      <div
-        className="flex justify-between items-end px-0.5 h-4"
-        style={{
-          transform: `rotate(${rotationDeg}deg)`,
-          transformOrigin: '50% 220%',
-          transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.34, 1.1, 0.64, 1)',
-        }}
-      >
-        {ticks.map((i) => {
-          const isCenter = i === 4;
-          return (
-            <div
-              key={i}
-              className={`rounded-full ${isCenter ? 'w-0.5 h-3.5 bg-[#e0a660]' : 'w-px h-2'}`}
-              style={!isCenter ? { backgroundColor: 'var(--tick-strong, #6b6457)' } : undefined}
-            />
-          );
-        })}
-      </div>
+        <div ref={viewportRef} className="relative h-4 w-full overflow-hidden px-0.5">
+          {tickSpacing > 0 && (
+            <>
+              <div
+                className="absolute inset-0 bottom-0 top-auto h-4"
+                style={{
+                  transform: `translateX(${translateX}px)`,
+                  transition: isDragging ? 'none' : 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)',
+                  willChange: 'transform',
+                }}
+              >
+                {Array.from({ length: stripLength }, (_, i) => (
+                  <div
+                    key={i}
+                    className="absolute bottom-0 w-px h-2 rounded-full"
+                    style={{
+                      left: i * tickSpacing,
+                      backgroundColor: 'var(--tick-strong, #6b6457)',
+                    }}
+                  />
+                ))}
+              </div>
+              <div
+                className="absolute bottom-0 left-1/2 w-0.5 h-3.5 -translate-x-1/2 rounded-full bg-[#e0a660] pointer-events-none z-[1]"
+                aria-hidden
+              />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
+  const config = DIAL_CONFIG[dialKind];
   const dragRef = useRef({ active: false, lastX: 0, acc: 0 });
-  const prevDisplayRef = useRef(display);
-  const [dragRotation, setDragRotation] = useState(0);
-  const [kickRotation, setKickRotation] = useState(0);
+  const [dragOffsetPx, setDragOffsetPx] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const totalRotation = kickRotation + dragRotation;
-
-  useEffect(() => {
-    const prev = prevDisplayRef.current;
-    if (prev === display) return;
-
-    const delta = stepDelta(prev, display, dialKind);
-    prevDisplayRef.current = display;
-
-    if (delta === 0) return;
-
-    const steps = Math.min(Math.abs(delta), 3);
-    const deg = Math.sign(delta) * steps * SPIN_DEG_PER_STEP;
-    const clamped = Math.max(-MAX_SPIN_DEG, Math.min(MAX_SPIN_DEG, deg));
-
-    setKickRotation(clamped);
-    const timer = window.setTimeout(() => setKickRotation(0), 40);
-    return () => window.clearTimeout(timer);
-  }, [display, dialKind]);
+  const valueIndex = config.valueIndex(display);
 
   const endDrag = useCallback(() => {
     dragRef.current.active = false;
     setIsDragging(false);
-    setDragRotation(0);
+    setDragOffsetPx(0);
   }, []);
 
   const handlePointerDown = (e) => {
@@ -103,20 +121,15 @@ function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
     const dx = e.clientX - dragRef.current.lastX;
     dragRef.current.lastX = e.clientX;
     dragRef.current.acc += dx;
-    setDragRotation((r) => {
-      const next = r + dx * 0.35;
-      return Math.max(-MAX_SPIN_DEG, Math.min(MAX_SPIN_DEG, next));
-    });
+    setDragOffsetPx((o) => o - dx);
 
     while (dragRef.current.acc >= SWIPE_THRESHOLD_PX) {
       onInc();
       dragRef.current.acc -= SWIPE_THRESHOLD_PX;
-      setDragRotation(0);
     }
     while (dragRef.current.acc <= -SWIPE_THRESHOLD_PX) {
       onDec();
       dragRef.current.acc += SWIPE_THRESHOLD_PX;
-      setDragRotation(0);
     }
   };
 
@@ -133,7 +146,8 @@ function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
         </button>
       </div>
       <SpinningTickScale
-        rotationDeg={totalRotation}
+        valueIndex={valueIndex}
+        dragOffsetPx={dragOffsetPx}
         isDragging={isDragging}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
