@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, generateId, calculateRecommendation, calculateEffectiveBeanAge, getInitialGrindRecommendation, getAgeAdjustedRecommendation, getIdealFreezeWindow } from './utils/grinderLogic';
+import {
+  db,
+  generateId,
+  calculateRecommendation,
+  calculateEffectiveBeanAge,
+  getInitialGrindRecommendation,
+  getAgeAdjustedRecommendation,
+  getIdealFreezeWindow,
+  classifyShotOutcome,
+  getRecommendationEvidenceContext,
+  recipeContextForShot,
+} from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle } from 'lucide-react';
 import { PressureProfileChart } from './components/PressureProfileChart';
@@ -503,8 +514,9 @@ export default function App() {
         actualDose: parsedDose, 
         actualYield: parsedYield, 
         tasteProfile, 
-        lastShotGrind, 
-        recommendationFollowed 
+        lastShotGrind,
+        recommendationFollowed,
+        previousShot: lastShot || null,
       },
       activeRecipe,
       recentBeanShots,
@@ -557,6 +569,15 @@ export default function App() {
   };
 
   const dynamicRec = lastShot ? getAgeAdjustedRecommendation(lastShot, activeBean, mockDate) : null;
+  const lastShotOutcome =
+    lastShot && activeRecipe
+      ? classifyShotOutcome(lastShot, recipeContextForShot(lastShot, activeRecipe))
+      : null;
+  const recommendationEvidenceContext =
+    dynamicRec?.evidenceContext ||
+    (activeRecipe && beanShots.length > 0
+      ? getRecommendationEvidenceContext(beanShots, activeRecipe, flairEnabled)
+      : null);
 
   const beanShotsForGrinder = activeBean
     ? shots.filter(s => s.beanId === activeBean.id && s.grinderModel === grinderModel)
@@ -1012,7 +1033,14 @@ export default function App() {
 
                   <div className="flex items-end gap-3 flex-wrap">
                     <p className={`text-5xl sm:text-6xl font-black font-mono leading-none ${ui.text}`}>{recommendedGrindDisplay}</p>
-                    <span className={`text-[10px] ${ui.cardInset} px-2.5 py-1 rounded-lg mb-1 font-semibold ${ui.sub}`}>{grinderBadgeLabel}</span>
+                    <div className="flex flex-col gap-1.5 mb-1">
+                      <span className={`text-[10px] ${ui.cardInset} px-2.5 py-1 rounded-lg font-semibold ${ui.sub}`}>{grinderBadgeLabel}</span>
+                      {lastShotOutcome?.statusLabel && (
+                        <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md text-center ${lastShotOutcome.isDialledIn ? ui.badge : `${ui.cardInset} ${ui.muted}`}`}>
+                          {lastShotOutcome.statusLabel}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {dynamicRec?.originalReason && (
@@ -1022,8 +1050,16 @@ export default function App() {
                         : dynamicRec.originalReason}
                     </p>
                   )}
+                  {recommendationEvidenceContext && (
+                    <p className={`text-[10px] ${ui.muted}`}>{recommendationEvidenceContext}</p>
+                  )}
                   {!dynamicRec && !hasLoggedShotForBean && (
-                    <p className={`text-sm ${ui.sub}`}>Start here, then log your first shot to begin dialling in.</p>
+                    <>
+                      <p className={`text-sm ${ui.sub}`}>Start here, then log your first shot to begin dialling in.</p>
+                      {initialGrindSetting && (
+                        <p className={`text-[10px] ${ui.muted}`}>Based on previous bean history</p>
+                      )}
+                    </>
                   )}
 
                   {dynamicRec?.flairWaterTempAdvice && (
@@ -1044,7 +1080,7 @@ export default function App() {
                   <div className={`flex items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
                     <p className={`text-xs ${ui.muted}`}>
                       {lastShot
-                        ? `Last shot ${lastShot.actualTimeS || 0}s (${lastShot.tasteProfile?.replace('_', ' ') || '—'}) · logging ${currentGrindLabel}`
+                        ? `Last shot ${lastShot.actualTimeS || 0}s (${lastShot.tasteProfile?.replace('_', ' ') || '—'})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''} · logging ${currentGrindLabel}`
                         : `Logging grind ${currentGrindLabel}`}
                     </p>
                     {lastShot && dynamicRec?.recommendedSetting && (
@@ -1551,6 +1587,7 @@ export default function App() {
                 const maxT = recipeForShot?.targetTimeMaxS || 32;
                 const preSec = preInfusionFromNotes(s.notes);
                 const peakBar = s.flairProfile?.peakPressure;
+                const shotOutcome = classifyShotOutcome(s, recipeContextForShot(s, recipeForShot || {}));
                 return (
                   <div key={s.id} className={`${ui.card} p-4 rounded-2xl space-y-3`}>
                     <div className="flex justify-between items-start gap-2">
@@ -1558,6 +1595,11 @@ export default function App() {
                         <span className={`text-sm font-bold ${ui.accentText}`}>
                           {bean ? `${bean.name} [${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown bean'}
                         </span>
+                        {shotOutcome.statusLabel && (
+                          <span className={`ml-2 text-[9px] font-bold uppercase tracking-wide ${shotOutcome.isDialledIn ? ui.accentText : ui.muted}`}>
+                            {shotOutcome.statusLabel}
+                          </span>
+                        )}
                         <p className={`text-[10px] ${ui.muted} mt-0.5`}>
                           {formatShotWhen(s.timestamp)} • <span className={`${ui.strong} font-mono`}>{grindStr}</span>
                           {s.recommendationFollowed === false && <span className="text-rose-400 font-bold ml-2">Rec not followed</span>}

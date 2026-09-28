@@ -45,6 +45,106 @@ export function adjustSunbeam(currentSetting, stepShift) {
   return Math.min(Math.max(setting + stepShift, 1), 30);
 }
 
+/** Recipe + optional Flair context for evidence (current recipe targets). */
+export function shotMatchesRecipeContext(shot, recipe, flairEnabled = false) {
+  const targetDose = recipe?.targetDoseG ?? 18;
+  const targetYield = recipe?.targetYieldG ?? 36;
+  if (Math.abs((shot.actualDoseG || 0) - targetDose) > 0.5) return false;
+  if (Math.abs((shot.actualYieldG || 0) - targetYield) > 1.5) return false;
+
+  if (!flairEnabled || !recipe?.flairProfile) return true;
+
+  const p1 = shot.flairProfile || {};
+  const p2 = recipe.flairProfile || {};
+  if (p1.preinfusionPressure !== p2.preinfusionPressure) return false;
+  if (p1.peakPressure !== p2.peakPressure) return false;
+  if (p1.taperPressure !== p2.taperPressure) return false;
+  if (p1.preinfusion !== p2.preinfusion) return false;
+  return true;
+}
+
+export function recipeContextForShot(shot, recipe = {}) {
+  return {
+    targetTimeMinS: shot.targetTimeMinS ?? recipe.targetTimeMinS ?? 27,
+    targetTimeMaxS: shot.targetTimeMaxS ?? recipe.targetTimeMaxS ?? 32,
+    targetDoseG: recipe.targetDoseG ?? 18,
+    targetYieldG: recipe.targetYieldG ?? 36,
+    brewTemperatureC: shot.brewTemperatureC ?? recipe.brewTemperatureC,
+    flairProfile: shot.flairProfile ?? recipe.flairProfile,
+  };
+}
+
+/** Derived shot state for the active recipe context (not persisted). */
+export function classifyShotOutcome(shot, recipe) {
+  const ctx = recipeContextForShot(shot, recipe);
+  const time = Number(shot.actualTimeS ?? shot.actualTime ?? 0);
+  const yieldG = Number(shot.actualYieldG ?? shot.actualYield ?? 0);
+  const taste = shot.tasteProfile;
+  const targetMin = ctx.targetTimeMinS;
+  const targetMax = ctx.targetTimeMaxS;
+  const targetYield = ctx.targetYieldG ?? 36;
+
+  const isTimeInRange = time >= targetMin && time <= targetMax;
+  const isSour = taste === 'sour' || taste === 'very_sour';
+  const isBitter = taste === 'bitter' || taste === 'very_bitter';
+  const isNegativeTaste = isSour || isBitter;
+  const isGoodTaste = taste === 'good' || taste === 'balanced';
+  const yieldDelta = yieldG - targetYield;
+  const hasYieldIssue = isTimeInRange && Math.abs(yieldDelta) >= 3.5;
+
+  const isDialledIn = isTimeInRange && isGoodTaste && !hasYieldIssue;
+
+  let statusLabel = null;
+  if (isDialledIn) statusLabel = 'DIALLED IN';
+  else if (isTimeInRange) statusLabel = 'IN RANGE';
+
+  return {
+    isDialledIn,
+    isTimeInRange,
+    isNegativeTaste,
+    hasYieldIssue,
+    statusLabel,
+  };
+}
+
+export function shotResultImproved(previousShot, currentShotData, recipe) {
+  if (!previousShot) return false;
+  const prev = classifyShotOutcome(previousShot, recipeContextForShot(previousShot, recipe));
+  const curr = classifyShotOutcome(
+    {
+      actualTimeS: currentShotData.actualTime,
+      actualYieldG: currentShotData.actualYield,
+      tasteProfile: currentShotData.tasteProfile,
+      targetTimeMinS: recipe.targetTimeMinS,
+      targetTimeMaxS: recipe.targetTimeMaxS,
+    },
+    recipe
+  );
+
+  if (curr.isDialledIn && !prev.isDialledIn) return true;
+
+  const targetMid = ((recipe.targetTimeMinS || 27) + (recipe.targetTimeMaxS || 32)) / 2;
+  const prevTime = Number(previousShot.actualTimeS ?? 0);
+  const currTime = Number(currentShotData.actualTime ?? 0);
+  const prevDist = Math.abs(prevTime - targetMid);
+  const currDist = Math.abs(currTime - targetMid);
+
+  if (curr.isTimeInRange && !prev.isTimeInRange && currDist <= prevDist) return true;
+  if (prev.isNegativeTaste && !curr.isNegativeTaste && curr.isTimeInRange) return true;
+  if (currDist + 0.5 < prevDist && !curr.isNegativeTaste) return true;
+
+  return false;
+}
+
+export function getRecommendationEvidenceContext(recentShots, recipe, flairEnabled = false) {
+  const sorted = [...recentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const comparable = sorted.filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled));
+  if (comparable.length === 0) return null;
+  const count = Math.min(comparable.length, 3);
+  if (count >= 2) return `Based on ${count} recent shots with this recipe`;
+  return 'Based on recent shots with this recipe';
+}
+
 export function getIdealFreezeWindow(roastType) {
   switch (roastType) {
     case 'Light': return { min: 14, max: 21, label: '14–21 days post-roast' };
@@ -110,11 +210,8 @@ export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = []
     const recipe = recipes.find(r => r.beanId === s.beanId);
     if (!recipe) return false;
 
-    const isTimeInRange = s.actualTimeS >= recipe.targetTimeMinS && s.actualTimeS <= recipe.targetTimeMaxS;
-    const isTasteGood = s.tasteProfile === 'good' || s.tasteProfile === 'balanced';
-    const wasFollowed = s.recommendationFollowed !== false;
-    
-    return isTimeInRange && isTasteGood && wasFollowed;
+    const ctx = recipeContextForShot(s, recipe);
+    return classifyShotOutcome(s, ctx).isDialledIn;
   }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   if (successfulShots.length === 0) return null;
@@ -174,7 +271,8 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
     originalReason: lastShot.recommendation.reason,
     warning: lastShot.recommendation.warning,
     subRecommendation: lastShot.recommendation.subRecommendation,
-    flairWaterTempAdvice: lastShot.recommendation.flairWaterTempAdvice
+    flairWaterTempAdvice: lastShot.recommendation.flairWaterTempAdvice,
+    evidenceContext: lastShot.recommendation.evidenceContext,
   };
 }
 
@@ -184,22 +282,16 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
   
   let bestShot = null;
   if (beanShots.length > 0) {
-    const sameRecipeShots = beanShots.filter(s => 
-      Math.abs((s.actualDoseG || 0) - (currentRecipe.targetDoseG || 18)) < 0.5 &&
-      Math.abs((s.actualYieldG || 0) - (currentRecipe.targetYieldG || 36)) < 1.5
-    );
-    
-    const sameFlairShots = sameRecipeShots.filter(s => {
-      const p1 = s.flairProfile || {};
-      const p2 = currentRecipe.flairProfile || {};
-      return p1.preinfusionPressure === p2.preinfusionPressure &&
-             p1.peakPressure === p2.peakPressure &&
-             p1.taperPressure === p2.taperPressure;
-    });
+    const sortedBeanShots = [...beanShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const sameRecipeShots = sortedBeanShots.filter((s) => shotMatchesRecipeContext(s, currentRecipe, Boolean(currentRecipe.flairProfile)));
 
-    if (sameFlairShots.length > 0) bestShot = sameFlairShots[0];
+    const dialledInRecipeShots = sameRecipeShots.filter((s) =>
+      classifyShotOutcome(s, recipeContextForShot(s, currentRecipe)).isDialledIn
+    );
+
+    if (dialledInRecipeShots.length > 0) bestShot = dialledInRecipeShots[0];
     else if (sameRecipeShots.length > 0) bestShot = sameRecipeShots[0];
-    else bestShot = beanShots[0];
+    else bestShot = sortedBeanShots[0];
   }
 
   if (bestShot) {
@@ -243,7 +335,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     actualYield,
     tasteProfile,
     lastShotGrind,
-    recommendationFollowed = true
+    recommendationFollowed = true,
+    previousShot = null,
   } = shotData;
 
   const targetMin = recipe.targetTimeMinS || 27;
@@ -265,7 +358,12 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   }
 
   if (!recommendationFollowed) {
-    warning = warning ? warning + " ⚠️ Previous grind recommendation was not followed." : "⚠️ Previous grind recommendation was not followed.";
+    const improved = shotResultImproved(previousShot, shotData, recipe);
+    if (!improved) {
+      warning = warning
+        ? `${warning} Previous grind recommendation was not followed and the result did not clearly improve.`
+        : 'Previous grind recommendation was not followed and the result did not clearly improve.';
+    }
   }
 
   const yieldDelta = actualYield - targetYield;
@@ -317,41 +415,38 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   const currentTemp = recipe.brewTemperatureC;
   const currentFlairProfile = flairEnabled ? recipe.flairProfile : null;
 
-  if (isTimeInRange && currentTemp && (isSour || isBitter)) {
-    const qualifyingHistory = recentShots.filter(s => {
-      const tMin = s.targetTimeMinS || targetMin;
-      const tMax = s.targetTimeMaxS || targetMax;
-      if (!(s.actualTimeS >= tMin && s.actualTimeS <= tMax)) return false;
-      
-      if (Math.abs(s.actualDoseG - shotData.actualDose) > 0.5) return false;
-      if (Math.abs(s.actualYieldG - shotData.actualYield) > 1.5) return false;
+  const currentOutcome = classifyShotOutcome(
+    { actualTimeS: actualTime, actualYieldG: actualYield, tasteProfile, targetTimeMinS: targetMin, targetTimeMaxS: targetMax },
+    recipe
+  );
+
+  if (isTimeInRange && currentTemp && (isSour || isBitter) && !currentOutcome.isDialledIn) {
+    const qualifyingHistory = recentShots.filter((s) => {
+      const ctx = recipeContextForShot(s, recipe);
+      const outcome = classifyShotOutcome(s, ctx);
+      if (!outcome.isTimeInRange || outcome.isDialledIn) return false;
+      if (!shotMatchesRecipeContext(s, recipe, flairEnabled)) return false;
 
       const temp = s.brewTemperatureC || (s.flairProfile && s.flairProfile.waterTempC);
       if (!temp || temp !== currentTemp) return false;
 
-      const p1 = s.flairProfile || {};
-      const p2 = currentFlairProfile || {};
-      if (p1.preinfusionPressure !== p2.preinfusionPressure) return false;
-      if (p1.peakPressure !== p2.peakPressure) return false;
-      if (p1.taperPressure !== p2.taperPressure) return false;
-      if (p1.preinfusion !== p2.preinfusion) return false;
-
       if (!s.tasteProfile) return false;
-
       return true;
     });
 
-    const allQualifying = [{ tasteProfile: shotData.tasteProfile }, ...qualifyingHistory];
+    const allQualifying = [{ tasteProfile }, ...qualifyingHistory.map((s) => ({ tasteProfile: s.tasteProfile }))];
 
     if (allQualifying.length >= 3) {
       const recent3 = allQualifying.slice(0, 3);
-      const allSour = recent3.every(s => s.tasteProfile === 'sour' || s.tasteProfile === 'very_sour');
-      const allBitter = recent3.every(s => s.tasteProfile === 'bitter' || s.tasteProfile === 'very_bitter');
+      const allSour = recent3.every((s) => s.tasteProfile === 'sour' || s.tasteProfile === 'very_sour');
+      const allBitter = recent3.every((s) => s.tasteProfile === 'bitter' || s.tasteProfile === 'very_bitter');
 
       if (allSour) {
-        flairWaterTempAdvice = "Temperature Advisory: 3+ consistent sour shots. Increase brew water by approx +1–2°C.";
+        flairWaterTempAdvice =
+          'Persistent sourness despite shots in target time — consider increasing Flair temperature 1–2°C.';
       } else if (allBitter) {
-        flairWaterTempAdvice = "Temperature Advisory: 3+ consistent bitter shots. Decrease brew water by approx -1–2°C.";
+        flairWaterTempAdvice =
+          'Persistent bitterness despite shots in target time — consider decreasing Flair temperature 1–2°C.';
       }
     }
   }
@@ -380,5 +475,20 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     recommendedSetting = { setting: adjustSunbeam(sunbeamSetting || 15, shift) };
   }
 
-  return { recommendedSetting, reason, warning, subRecommendation, flairWaterTempAdvice };
+  const sortedRecent = [...recentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const evidenceContext = getRecommendationEvidenceContext(sortedRecent, recipe, flairEnabled);
+  const shotOutcome = classifyShotOutcome(
+    { actualTimeS: actualTime, actualYieldG: actualYield, tasteProfile, targetTimeMinS: targetMin, targetTimeMaxS: targetMax },
+    recipe
+  );
+
+  return {
+    recommendedSetting,
+    reason,
+    warning,
+    subRecommendation,
+    flairWaterTempAdvice,
+    evidenceContext,
+    shotOutcome,
+  };
 }

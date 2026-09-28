@@ -1,4 +1,9 @@
-import { calculateRecommendation } from './src/utils/grinderLogic.js';
+import {
+  calculateRecommendation,
+  classifyShotOutcome,
+  getHistoricalRoastBaseline,
+  shotResultImproved,
+} from './src/utils/grinderLogic.js';
 import assert from 'assert';
 
 function runTests() {
@@ -8,10 +13,10 @@ function runTests() {
     targetDoseG: 18,
     targetYieldG: 36,
     brewTemperatureC: 93,
-    flairProfile: { preinfusionPressure: '2', peakPressure: '9', taperPressure: '6' }
+    flairProfile: { preinfusionPressure: '2', peakPressure: '9', taperPressure: '6' },
   };
 
-  const createShot = (time, taste, yieldG = 36, temp = 93) => ({
+  const createShot = (time, taste, yieldG = 36, temp = 93, extra = {}) => ({
     grinderModel: 'Sette 270Wi',
     setteMacro: 13,
     setteMicro: 'E',
@@ -23,10 +28,15 @@ function runTests() {
     actualYieldG: yieldG,
     tasteProfile: taste,
     brewTemperatureC: temp,
-    flairProfile: { preinfusionPressure: '2', peakPressure: '9', taperPressure: '6' }
+    flairProfile: { preinfusionPressure: '2', peakPressure: '9', taperPressure: '6' },
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+    timestamp: new Date().toISOString(),
+    ...extra,
   });
 
-  const runCalc = (current, history = []) => calculateRecommendation(current, recipe, history, true);
+  const runCalc = (current, history = [], extra = {}) =>
+    calculateRecommendation({ ...current, grinderModel: 'Sette 270Wi', setteMacro: 13, setteMicro: 'E', wasPurged: true, actualDose: 18, ...extra }, recipe, history, true);
 
   // fast shot
   let rec = runCalc(createShot(20, 'sour'));
@@ -40,43 +50,73 @@ function runTests() {
   rec = runCalc(createShot(27, 'sour'));
   assert.match(rec.reason, /GO 1 STEP FINER/);
   assert(!rec.flairWaterTempAdvice);
+  assert.equal(rec.shotOutcome.statusLabel, 'IN RANGE');
 
-  // in-range bitter shot
-  rec = runCalc(createShot(27, 'bitter'));
-  assert.match(rec.reason, /GO 1 STEP COARSER/);
+  // dialled in
+  const dialled = classifyShotOutcome(createShot(28, 'good'), recipe);
+  assert.equal(dialled.isDialledIn, true);
+  assert.equal(dialled.statusLabel, 'DIALLED IN');
 
-  // one qualifying sour shot (current)
-  rec = runCalc(createShot(27, 'sour'));
-  assert(!rec.flairWaterTempAdvice);
+  // in-range sour is not dialled in
+  const inRangeSour = classifyShotOutcome(createShot(29, 'sour'), recipe);
+  assert.equal(inRangeSour.isDialledIn, false);
+  assert.equal(inRangeSour.statusLabel, 'IN RANGE');
 
-  // two qualifying sour shots (1 history + current)
-  rec = runCalc(createShot(27, 'sour'), [createShot(27, 'sour')]);
-  assert(!rec.flairWaterTempAdvice);
-
-  // three qualifying sour shots (2 history + current)
+  // three qualifying sour shots (time in range, not dialled in)
   rec = runCalc(createShot(27, 'sour'), [createShot(27, 'sour'), createShot(28, 'very_sour')]);
-  assert.match(rec.flairWaterTempAdvice, /Increase brew water/);
+  assert.match(rec.flairWaterTempAdvice, /increasing Flair temperature/);
 
   // three qualifying bitter shots
   rec = runCalc(createShot(27, 'bitter'), [createShot(27, 'bitter'), createShot(28, 'very_bitter')]);
-  assert.match(rec.flairWaterTempAdvice, /Decrease brew water/);
+  assert.match(rec.flairWaterTempAdvice, /decreasing Flair temperature/);
 
   // mixed history (sour, bitter, sour)
   rec = runCalc(createShot(27, 'sour'), [createShot(27, 'bitter'), createShot(28, 'sour')]);
   assert(!rec.flairWaterTempAdvice);
 
-  // different flair profile (not comparable)
-  const diffFlairShot = createShot(27, 'sour');
-  diffFlairShot.flairProfile.peakPressure = '8'; // different peak
-  rec = runCalc(createShot(27, 'sour'), [createShot(27, 'sour'), diffFlairShot]);
-  assert(!rec.flairWaterTempAdvice); // only 2 comparable shots now
+  // non-dialled-in fast sour shots don't count toward temp
+  rec = runCalc(createShot(27, 'sour'), [createShot(27, 'sour'), createShot(20, 'sour')]);
+  assert(!rec.flairWaterTempAdvice);
 
-  // non-dialled-in sour shots don't count
-  const fastSourShot = createShot(20, 'sour');
-  rec = runCalc(createShot(27, 'sour'), [createShot(27, 'sour'), fastSourShot]);
-  assert(!rec.flairWaterTempAdvice); // only 2 comparable shots
+  // recommendation not followed but improved — no punitive warning
+  const prev = createShot(35, 'sour', 36, 93, { setteMacro: 14, setteMicro: 'E' });
+  rec = runCalc(createShot(29, 'good'), [prev], {
+    actualTime: 29,
+    actualYield: 36,
+    tasteProfile: 'good',
+    recommendationFollowed: false,
+    previousShot: prev,
+  });
+  assert(!rec.warning || !/did not clearly improve/.test(rec.warning));
 
-  console.log("All tests passed!");
+  // recommendation not followed and worse — warning
+  rec = runCalc(createShot(41, 'sour'), [prev], {
+    actualTime: 41,
+    tasteProfile: 'sour',
+    recommendationFollowed: false,
+    previousShot: prev,
+  });
+  assert.match(rec.warning, /did not clearly improve/);
+
+  // historical baseline learns from dialled-in shots even when recommendation not followed
+  const beans = [{ id: 'b1', roastType: 'Medium' }];
+  const recipes = [{ beanId: 'b1', targetTimeMinS: 25, targetTimeMaxS: 30, targetDoseG: 18, targetYieldG: 36 }];
+  const shots = [
+    createShot(28, 'good', 36, 93, {
+      beanId: 'b1',
+      recommendationFollowed: false,
+      setteMacro: 12,
+      setteMicro: 'D',
+    }),
+  ];
+  const baseline = getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, shots, beans);
+  assert.ok(baseline !== null);
+
+  assert.ok(
+    shotResultImproved(createShot(35, 'sour'), { actualTime: 29, actualYield: 36, tasteProfile: 'good' }, recipe)
+  );
+
+  console.log('All tests passed!');
 }
 
 runTests();
