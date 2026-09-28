@@ -18,7 +18,6 @@ export default function App() {
   const [easterEggActive, setEasterEggActive] = useState(false);
   const [chartType, setChartType] = useState('timeline');
 
-  const [showFlair, setShowFlair] = useState(false);
   const [showPastBeans, setShowPastBeans] = useState(true);
   const [showFinishedBeans, setShowFinishedBeans] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -56,7 +55,20 @@ export default function App() {
     isFinished: false
   });
   
-  const [newRecipe, setNewRecipe] = useState({ targetDoseG: 18, targetYieldG: '', targetTimeMinS: 27, targetTimeMaxS: 32 });
+  const [newRecipe, setNewRecipe] = useState({ 
+    targetDoseG: 18, 
+    targetYieldG: '', 
+    targetTimeMinS: 27, 
+    targetTimeMaxS: 32,
+    brewTemperatureC: 93,
+    flairProfile: {
+      preinfusionPressure: '',
+      preinfusionTime: '',
+      peakPressure: '',
+      peakEndYield: '',
+      taperPressure: ''
+    }
+  });
 
   const [grinderModel, setGrinderModel] = useState('');
   const [flairEnabled, setFlairEnabled] = useState(false);
@@ -71,11 +83,6 @@ export default function App() {
   const [tasteProfile, setTasteProfile] = useState('');
   const [shotRating, setShotRating] = useState(null);
   const [notes, setNotes] = useState('');
-
-  const [waterTempC, setWaterTempC] = useState(93);
-  const [flairPreinfusion, setFlairPreinfusion] = useState('10s @ 1-2 bar');
-  const [flairExtraction, setFlairExtraction] = useState('9 bar to yield');
-  const [flairRampDown, setFlairRampDown] = useState('Ramp down to 5 bar');
 
   const timeInputRef = useRef(null);
   const yieldInputRef = useRef(null);
@@ -296,7 +303,14 @@ export default function App() {
   const cancelEditBean = () => {
     setIsEditingBean(false);
     setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false });
-    setNewRecipe({ targetDoseG: 18, targetYieldG: '', targetTimeMinS: 27, targetTimeMaxS: 32 });
+    setNewRecipe({ 
+      targetDoseG: 18, 
+      targetYieldG: '', 
+      targetTimeMinS: 27, 
+      targetTimeMaxS: 32,
+      brewTemperatureC: 93,
+      flairProfile: { preinfusionPressure: '', preinfusionTime: '', peakPressure: '', peakEndYield: '', taperPressure: '' }
+    });
   };
 
   const handleUpdateBeanRating = async (beanId, val) => {
@@ -483,7 +497,10 @@ export default function App() {
       beanAgeDays: ageData.daysOld,
       storageType: activeBean.storageType || 'bag',
       recommendationFollowed,
-      flairProfile: flairEnabled && showFlair ? { waterTempC, preinfusion: flairPreinfusion, extraction: flairExtraction, rampDown: flairRampDown } : null,
+      targetTimeMinS: activeRecipe.targetTimeMinS,
+      targetTimeMaxS: activeRecipe.targetTimeMaxS,
+      brewTemperatureC: activeRecipe.brewTemperatureC || null,
+      flairProfile: flairEnabled && activeRecipe.flairProfile ? { ...activeRecipe.flairProfile } : null,
       recommendation: rec,
       notes: usePreInfusion && preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes
     };
@@ -1017,55 +1034,15 @@ export default function App() {
                     </div>
                   </div>
 
-                  {flairEnabled && (
-                    <div className={`${currentTheme.card} p-4 rounded-2xl border space-y-3`}>
-                      <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => setShowFlair(!showFlair)}>
-                        <span className={`text-xs uppercase font-bold ${labelClass}`}>Flair Manual Pressure Profile (Optional)</span>
-                        {showFlair ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  {flairEnabled && activeRecipe?.flairProfile && (
+                    <div className={`${currentTheme.card} p-3 rounded-2xl border flex flex-col gap-1`}>
+                      <span className={`text-[10px] uppercase font-bold ${labelClass}`}>Active Flair Target</span>
+                      <div className={`text-[10px] flex flex-wrap gap-2 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                        {activeRecipe.brewTemperatureC && <span>🌡️ Temp: {activeRecipe.brewTemperatureC}°C</span>}
+                        {activeRecipe.flairProfile.preinfusionPressure && <span>💧 Pre: {activeRecipe.flairProfile.preinfusionPressure}bar / {activeRecipe.flairProfile.preinfusionTime}s</span>}
+                        {activeRecipe.flairProfile.peakPressure && <span>⚡ Peak: {activeRecipe.flairProfile.peakPressure}bar to {activeRecipe.flairProfile.peakEndYield}g</span>}
+                        {activeRecipe.flairProfile.taperPressure && <span>📉 Taper: {activeRecipe.flairProfile.taperPressure}bar</span>}
                       </div>
-
-                      {showFlair && (
-                        <div className={`space-y-3 pt-3 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                          <div>
-                            <label className={`text-[10px] uppercase font-bold ${labelClass} block mb-1`}>Water Temp (°C)</label>
-                            <input
-                              type="number"
-                              value={waterTempC}
-                              onChange={(e) => setWaterTempC(e.target.value)}
-                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm font-bold`}
-                            />
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <span className={`text-[9px] ${subTextClass} block`}>Preinfusion</span>
-                              <input
-                                type="text"
-                                value={flairPreinfusion}
-                                onChange={(e) => setFlairPreinfusion(e.target.value)}
-                                className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
-                              />
-                            </div>
-                            <div>
-                              <span className={`text-[9px] ${subTextClass} block`}>Extraction</span>
-                              <input
-                                type="text"
-                                value={flairExtraction}
-                                onChange={(e) => setFlairExtraction(e.target.value)}
-                                className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
-                              />
-                            </div>
-                            <div>
-                              <span className={`text-[9px] ${subTextClass} block`}>Ramp Down</span>
-                              <input
-                                type="text"
-                                value={flairRampDown}
-                                onChange={(e) => setFlairRampDown(e.target.value)}
-                                className={`w-full ${inputClass} border rounded-lg p-1.5 text-xs`}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -1281,7 +1258,7 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 mb-2">
                   <div>
                     <span className={`text-xs ${subTextClass}`}>Min Time (s)</span>
                     <input
@@ -1301,6 +1278,70 @@ export default function App() {
                     />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className={`text-xs ${subTextClass}`}>Brew Temp (°C)</span>
+                    <input
+                      type="number"
+                      value={newRecipe.brewTemperatureC || ''}
+                      onChange={(e) => setNewRecipe({ ...newRecipe, brewTemperatureC: parseInt(e.target.value, 10) })}
+                      className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                    />
+                  </div>
+                </div>
+
+                {flairEnabled && (
+                  <div className={`pt-4 mt-2 border-t ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                    <h3 className={`text-xs uppercase font-bold ${currentTheme.text} mb-3`}>Flair Pressure Profile</h3>
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div>
+                        <span className={`text-[10px] ${subTextClass}`}>Pre-infuse Pressure (bar)</span>
+                        <input
+                          type="number" step="0.1"
+                          value={newRecipe.flairProfile?.preinfusionPressure || ''}
+                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionPressure: e.target.value } })}
+                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                        />
+                      </div>
+                      <div>
+                        <span className={`text-[10px] ${subTextClass}`}>Pre-infuse Time (s)</span>
+                        <input
+                          type="number" step="0.1"
+                          value={newRecipe.flairProfile?.preinfusionTime || ''}
+                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionTime: e.target.value } })}
+                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                        />
+                      </div>
+                      <div>
+                        <span className={`text-[10px] ${subTextClass}`}>Peak/Hold Pressure (bar)</span>
+                        <input
+                          type="number" step="0.1"
+                          value={newRecipe.flairProfile?.peakPressure || ''}
+                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, peakPressure: e.target.value } })}
+                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                        />
+                      </div>
+                      <div>
+                        <span className={`text-[10px] ${subTextClass}`}>Peak Ends at Yield (g)</span>
+                        <input
+                          type="number" step="0.1"
+                          value={newRecipe.flairProfile?.peakEndYield || ''}
+                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, peakEndYield: e.target.value } })}
+                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                        />
+                      </div>
+                      <div>
+                        <span className={`text-[10px] ${subTextClass}`}>Taper Pressure (bar)</span>
+                        <input
+                          type="number" step="0.1"
+                          value={newRecipe.flairProfile?.taperPressure || ''}
+                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperPressure: e.target.value } })}
+                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button
@@ -1426,12 +1467,22 @@ export default function App() {
                       <div><span className={`block text-[9px] ${subTextClass}`}>TIME</span><strong className={darkMode ? 'text-white' : 'text-slate-900'}>{s.actualTimeS || 0}s</strong></div>
                       <div><span className={`block text-[9px] ${subTextClass}`}>TASTE</span><strong className={`${currentTheme.text} capitalize`}>{s.tasteProfile?.replace('_', ' ') || 'Unknown'}</strong></div>
                     </div>
-                    {s.flairProfile && (
+                    {(s.flairProfile || s.brewTemperatureC) && (
                       <div className={`text-[10px] ${darkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-100 border-slate-300'} p-2 rounded border flex flex-wrap gap-2`}>
-                        <span>🌡️ Water: {s.flairProfile.waterTempC || 93}°C</span>
-                        <span>💧 Pre: {s.flairProfile.preinfusion || 'N/A'}</span>
-                        <span>⚡ Ext: {s.flairProfile.extraction || 'N/A'}</span>
-                        <span>📉 Ramp: {s.flairProfile.rampDown || 'N/A'}</span>
+                        { (s.brewTemperatureC || s.flairProfile?.waterTempC) && <span>🌡️ Water: {s.brewTemperatureC || s.flairProfile.waterTempC}°C</span> }
+                        { s.flairProfile && s.flairProfile.preinfusion !== undefined ? (
+                          <>
+                            <span>💧 Pre: {s.flairProfile.preinfusion || 'N/A'}</span>
+                            <span>⚡ Ext: {s.flairProfile.extraction || 'N/A'}</span>
+                            <span>📉 Ramp: {s.flairProfile.rampDown || 'N/A'}</span>
+                          </>
+                        ) : s.flairProfile ? (
+                          <>
+                            <span>💧 Pre: {s.flairProfile.preinfusionPressure || 'N/A'} bar / {s.flairProfile.preinfusionTime || 'N/A'}s</span>
+                            <span>⚡ Peak: {s.flairProfile.peakPressure || 'N/A'} bar until {s.flairProfile.peakEndYield || 'N/A'}g</span>
+                            <span>📉 Taper: {s.flairProfile.taperPressure || 'N/A'} bar</span>
+                          </>
+                        ) : null }
                       </div>
                     )}
                     {s.notes && <p className={`text-xs ${subTextClass} italic`}>"{s.notes}"</p>}
