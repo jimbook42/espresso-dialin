@@ -5,8 +5,6 @@
 }
 
 body {
-  background-color: #121110;
-  color: #f5f2eb;
   min-height: 100vh;
   margin: 0;
   font-family: var(--font-sans);
@@ -16,23 +14,46 @@ body {
   overflow-x: hidden;
 }
 
+html[data-theme="dark"] {
+  --tick-muted: #5a5248;
+  --tick-strong: #8a8276;
+}
+
+html[data-theme="light"] {
+  --tick-muted: #b8aea0;
+  --tick-strong: #6b6358;
+}
+
 /* Custom subtle scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-::-webkit-scrollbar-track {
+html[data-theme="dark"] ::-webkit-scrollbar-track {
   background: #121110;
 }
 
-::-webkit-scrollbar-thumb {
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   background: #2e2b26;
   border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: #3d3830;
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f4f0e8;
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #d4cbbd;
+  border-radius: 3px;
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #b8aea0;
 }
 
 /* Remove spin buttons on numeric inputs for cleaner steppers */

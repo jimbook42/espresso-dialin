@@ -56,7 +56,43 @@ function buildSmoothProfilePath(profile, w, h, compact) {
 
   const area = `${stroke} L ${x(t5)} ${yBase} L ${x(t0)} ${yBase} Z`;
 
-  return { stroke, area, maxP, totalSec, padL, padT, chartH, yBase };
+  return { stroke, area, maxP, totalSec, padL, padT, chartH, yBase, chartW, yFor, pPre, pPeak, pTaper, preDur, rampDur, taperDur };
+}
+
+function pressureAtElapsed(built, tSec) {
+  const { preDur, rampDur, taperDur, totalSec, pPre, pPeak, pTaper } = built;
+  const t1 = preDur * 0.55;
+  const t2 = preDur;
+  const t3 = preDur + rampDur;
+  const t4 = preDur + rampDur + (totalSec - preDur - rampDur - taperDur);
+  const t = Math.min(Math.max(tSec, 0), totalSec);
+  const pStart = pPre * 0.25;
+  const pEnd = pTaper * 0.9;
+
+  if (t <= t1) {
+    const frac = t1 > 0 ? t / t1 : 1;
+    return pStart + (pPre - pStart) * frac;
+  }
+  if (t <= t2) return pPre;
+  if (t <= t3) {
+    const frac = rampDur > 0 ? (t - t2) / rampDur : 1;
+    return pPre + (pPeak - pPre) * frac;
+  }
+  if (t <= t4) return pPeak;
+  if (t <= totalSec) {
+    const frac = taperDur > 0 ? (t - t4) / taperDur : 1;
+    return pPeak + (pEnd - pPeak) * frac;
+  }
+  return pEnd;
+}
+
+function markerAtProgress(built, progress) {
+  const p = Math.min(1, Math.max(0, progress));
+  const tSec = p * built.totalSec;
+  const pressure = pressureAtElapsed(built, tSec);
+  const x = built.padL + p * built.chartW;
+  const y = built.yFor(pressure);
+  return { x, y, tSec };
 }
 
 /** Smooth Flair-style pressure curve (display only). */
@@ -74,10 +110,8 @@ export function PressureProfileChart({ profile, progress = null, compact = false
   const chartW = w - padL - padR;
   const chartH = h - padT - padB;
 
-  const progressX =
-    progress != null && hasData
-      ? padL + Math.min(1, Math.max(0, progress)) * chartW
-      : null;
+  const marker =
+    progress != null && hasData ? markerAtProgress(built, progress) : null;
 
   return (
     <div className={`relative w-full ${compact ? 'h-[5.5rem]' : 'h-[6.25rem]'}`}>
@@ -113,18 +147,18 @@ export function PressureProfileChart({ profile, progress = null, compact = false
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
-              {progressX != null && (
+              {marker != null && (
                 <>
                   <line
-                    x1={progressX}
-                    x2={progressX}
+                    x1={marker.x}
+                    x2={marker.x}
                     y1={padT}
                     y2={padT + chartH}
                     stroke="#f5f2eb"
                     strokeWidth="1"
                     opacity="0.25"
                   />
-                  <circle cx={progressX} cy={padT + chartH * 0.45} r="3.5" fill={AMBER} />
+                  <circle cx={marker.x} cy={marker.y} r="3.5" fill={AMBER} stroke="#121110" strokeWidth="1" />
                 </>
               )}
               <text x={padL + 2} y={padT + 2} fill="#5a5754" fontSize="9" fontFamily="system-ui, sans-serif">
