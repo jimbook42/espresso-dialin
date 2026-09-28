@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db, generateId, calculateRecommendation, calculateEffectiveBeanAge, getInitialGrindRecommendation, getAgeAdjustedRecommendation, getIdealFreezeWindow } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle } from 'lucide-react';
+import { PressureProfileChart } from './components/PressureProfileChart';
 import { Analytics } from '@vercel/analytics/react';
 
 export default function App() {
@@ -33,7 +34,8 @@ export default function App() {
   
   // Timer State
   const [timerRunning, setTimerRunning] = useState(false);
-  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [timerTicks, setTimerTicks] = useState(0);
+  const timerSeconds = timerTicks / 10;
   const [usePreInfusion, setUsePreInfusion] = useState(false);
   const [preInfusionPhase, setPreInfusionPhase] = useState(false);
   const [preInfusionSeconds, setPreInfusionSeconds] = useState(0);
@@ -109,27 +111,34 @@ export default function App() {
 
   const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
 
-  // Timer Logic
+  // Timer Logic (0.1s resolution for mobile fullscreen display)
   useEffect(() => {
-    let interval = null;
-    if (timerRunning) {
-      interval = setInterval(() => {
-        setTimerSeconds(s => s + 1);
-      }, 1000);
-    } else if (!timerRunning && timerSeconds !== 0) {
-      clearInterval(interval);
-    }
+    if (!timerRunning) return undefined;
+    const interval = setInterval(() => {
+      setTimerTicks((t) => t + 1);
+    }, 100);
     return () => clearInterval(interval);
-  }, [timerRunning, timerSeconds]);
+  }, [timerRunning]);
 
   const formatTime = (totalSeconds) => {
     const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
+    const secs = Math.floor(totalSeconds % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  const formatTimerLive = (totalSeconds) => {
+    const whole = Math.floor(totalSeconds);
+    const mins = Math.floor(whole / 60);
+    const secs = whole % 60;
+    const tenths = Math.floor((totalSeconds - whole) * 10);
+    if (mins > 0) {
+      return `${mins}:${String(secs).padStart(2, '0')}.${tenths}`;
+    }
+    return `0:${String(secs).padStart(2, '0')}.${tenths}`;
+  };
+
   const handleStartTimer = () => {
-    setTimerSeconds(0);
+    setTimerTicks(0);
     setPreInfusionSeconds(0);
     if (usePreInfusion) setPreInfusionPhase(true);
     setTimerRunning(true);
@@ -144,22 +153,29 @@ export default function App() {
     setTimerRunning(false);
     let finalExtractionTime = timerSeconds;
     if (usePreInfusion && !preInfusionPhase) {
-      finalExtractionTime = timerSeconds - preInfusionSeconds;
+      finalExtractionTime = Math.max(0, timerSeconds - preInfusionSeconds);
     }
-    setActualTimeS(finalExtractionTime);
+    setActualTimeS(Math.round(finalExtractionTime));
   };
 
   const handleCancelTimer = () => {
     setTimerRunning(false);
-    setTimerSeconds(0);
+    setTimerTicks(0);
     setPreInfusionSeconds(0);
+    setPreInfusionPhase(false);
   };
 
   const handleResetTimer = () => {
     setTimerRunning(false);
-    setTimerSeconds(0);
+    setTimerTicks(0);
     setPreInfusionSeconds(0);
     setPreInfusionPhase(false);
+  };
+
+  const handleTimerSurfaceTap = (e) => {
+    if (e.target.closest('[data-timer-dismiss]')) return;
+    if (usePreInfusion && preInfusionPhase) handleEndPreInfusion();
+    else handleStopTimer();
   };
 
   useEffect(() => {
@@ -538,6 +554,16 @@ export default function App() {
     ? `${setteMacro}-${setteMicro}`
     : `${sunbeamSetting}`;
 
+  const timerWindowSeconds =
+    (usePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
+    (activeRecipe?.targetTimeMaxS || 32) +
+    6;
+  const timerDisplaySeconds =
+    usePreInfusion && timerRunning && !preInfusionPhase
+      ? Math.max(0, timerSeconds - preInfusionSeconds)
+      : timerSeconds;
+  const timerProgress = timerRunning ? Math.min(1, timerSeconds / timerWindowSeconds) : 0;
+
   const formatFlairRecipeLines = (profile) => {
     if (!profile) return [];
     const lines = [];
@@ -707,42 +733,109 @@ export default function App() {
   return (
     <div className={`min-h-screen bg-[#121110] text-[#f5f2eb] relative`}>
       
-      {/* FULL-SCREEN ACTIVE TIMER OVERLAY */}
+      {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
       {timerRunning && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0d0b09]/97 p-6">
-          <button onClick={handleCancelTimer} className="absolute top-6 right-6 p-4 text-[#6b6457] hover:text-[#f5f2eb] transition-colors">
-            <X className="w-7 h-7" />
-          </button>
-          
-          <div className="flex flex-col items-center justify-center mb-16 space-y-3">
-            <span className="text-[#c88a4b] font-semibold tracking-[0.25em] uppercase text-xs">
-              {usePreInfusion && preInfusionPhase ? 'Pre-infusing' : 'Extracting'}
-            </span>
-            <div className={`text-[8rem] leading-none font-black font-mono tracking-tighter ${usePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#f5f2eb]'}`}>
-              {formatTime(timerSeconds)}
+        <div
+          className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+          onClick={handleTimerSurfaceTap}
+          role="presentation"
+        >
+          <div className="h-14 px-4 flex items-center justify-between border-b border-[#1e1e1e] shrink-0">
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${timerRunning ? 'bg-[#3dd68c] animate-pulse' : 'bg-[#5a5754]'}`} />
+              <span className="text-[11px] tracking-[0.14em] font-semibold text-[#9a9690] uppercase">
+                {usePreInfusion && preInfusionPhase
+                  ? 'Pre-infusion'
+                  : usePreInfusion
+                    ? `Extraction · pre ${preInfusionSeconds.toFixed(1)}s`
+                    : 'Extracting'}
+              </span>
             </div>
-            {usePreInfusion && !preInfusionPhase && preInfusionSeconds > 0 && (
-              <p className="text-[#6b6457] text-lg font-medium mt-4">
-                Pre-infusion: <span className="text-[#a09880]">{preInfusionSeconds}s</span>
-              </p>
-            )}
-          </div>
-          
-          <div className="w-full max-w-sm flex flex-col gap-4">
-            {usePreInfusion && preInfusionPhase && (
-              <button 
-                onClick={handleEndPreInfusion} 
-                className="w-full py-7 text-2xl font-black rounded-2xl bg-[#211e1a] border border-[#c88a4b]/40 text-[#c88a4b] active:scale-95 transition-all"
-              >
-                End Pre-infusion
-              </button>
-            )}
-            <button 
-              onClick={handleStopTimer} 
-              className={`w-full py-7 text-2xl font-black rounded-2xl text-[#121110] active:scale-95 transition-all ${usePreInfusion && preInfusionPhase ? 'bg-[#2e2b26] text-[#6b6457] border border-[#3d3830]' : 'bg-[#c88a4b] hover:bg-[#e0a660]'}`}
+            <button
+              type="button"
+              data-timer-dismiss
+              onClick={(e) => { e.stopPropagation(); handleCancelTimer(); }}
+              className="w-9 h-9 rounded-full bg-[#1e1e1e] border border-[#262626] flex items-center justify-center"
+              aria-label="Cancel timer"
             >
-              Stop Shot
+              <X className="w-4 h-4 text-[#9a9690]" />
             </button>
+          </div>
+
+          <div className="flex-1 flex flex-col items-center justify-center px-5 min-h-0 pointer-events-none">
+            {flairEnabled && activeRecipe?.flairProfile && (
+              <div className="w-full max-w-sm mb-6 opacity-35">
+                <PressureProfileChart profile={activeRecipe.flairProfile} progress={timerProgress} compact />
+              </div>
+            )}
+
+            {usePreInfusion && !preInfusionPhase && (
+              <div className="flex flex-wrap gap-2 justify-center mb-4">
+                <span className="px-3 py-1.5 rounded-full bg-[#1e1e1e] border border-[#262626] text-[11px] text-[#6b6457]">
+                  Total <span className="text-[#f5f2eb] font-semibold tabular-nums">{timerSeconds.toFixed(1)}s</span>
+                </span>
+                <span className="px-3 py-1.5 rounded-full bg-[#1a2a1e] border border-[#2a3a2e] text-[11px] text-[#3dd68c] font-medium tabular-nums">
+                  Shot {timerDisplaySeconds.toFixed(1)}s
+                </span>
+              </div>
+            )}
+
+            <div
+              className={`text-[clamp(3.75rem,20vw,5.25rem)] font-bold tabular-nums tracking-[-0.06em] leading-[0.9] ${
+                usePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#ede9e3]'
+              }`}
+            >
+              {formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
+            </div>
+            <p className="text-[13px] text-[#6b6457] mt-4 text-center">
+              {usePreInfusion && preInfusionPhase
+                ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
+                : usePreInfusion
+                  ? `Total ${timerSeconds.toFixed(1)}s · extraction`
+                  : 'Total extraction time'}
+            </p>
+          </div>
+
+          <div className="px-4 pb-6 pt-2 space-y-4 max-w-md mx-auto w-full">
+            <div className="w-full h-1 bg-[#1e1e1e] rounded-full overflow-hidden pointer-events-none">
+              <div
+                className="h-full bg-[#c88a4b] transition-[width] duration-100 ease-linear"
+                style={{ width: `${timerProgress * 100}%` }}
+              />
+            </div>
+
+            <p className="text-center text-[11px] text-[#4a4846] pointer-events-none">
+              {usePreInfusion && preInfusionPhase
+                ? 'Tap anywhere to end pre-infusion'
+                : 'Tap anywhere to stop and fill shot time'}
+            </p>
+
+            <div className="flex flex-col gap-3 pointer-events-auto">
+              {usePreInfusion && preInfusionPhase ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleEndPreInfusion(); }}
+                  className="w-full min-h-[64px] rounded-[18px] bg-[#ede6dd] text-[#121212] font-bold text-[15px] active:scale-[0.99]"
+                >
+                  End pre-infusion
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleStopTimer(); }}
+                  className="w-full min-h-[72px] rounded-[20px] bg-[#ede6dd] text-[#121212] font-bold text-base active:scale-[0.99] shadow-[0_12px_32px_rgba(237,230,221,0.2)]"
+                >
+                  Stop shot
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleCancelTimer(); }}
+                className="w-full min-h-[48px] rounded-[14px] bg-[#1e1e1e] border border-[#262626] text-[13px] font-medium text-[#6b6457]"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -785,7 +878,7 @@ export default function App() {
         {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
 
         {activeTab === 'dial' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {activeBeansList.length === 0 ? (
               <div className="bg-[#1a1815] border border-[#2e2b26] p-10 rounded-2xl text-center space-y-4">
                 <p className="text-[#6b6457] text-sm">No active coffee bean profiles.</p>
@@ -855,34 +948,50 @@ export default function App() {
 
                 {/* ── RECIPE ───────────────────────────────────────────── */}
                 {activeRecipe && (
-                  <div className="bg-[#1a1815] border border-[#2e2b26] p-4 rounded-2xl space-y-3">
+                  <div className="bg-[#1a1815] border border-[#2e2b26] p-5 rounded-2xl space-y-4">
                     <p className="text-[10px] uppercase tracking-widest text-[#6b6457]">Recipe</p>
-                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
-                      <div>
-                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Dose</p>
-                        <p className="text-[#f5f2eb] font-bold">{activeRecipe.targetDoseG || 18}g</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                      <div className="bg-[#211e1a] border border-[#2e2b26] rounded-xl p-3">
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider mb-1">Dose</p>
+                        <p className="text-[#f5f2eb] font-bold text-lg">{activeRecipe.targetDoseG || 18}g</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Yield</p>
-                        <p className="text-[#f5f2eb] font-bold">{activeRecipe.targetYieldG || 36}g</p>
+                      <div className="bg-[#211e1a] border border-[#2e2b26] rounded-xl p-3">
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider mb-1">Yield</p>
+                        <p className="text-[#f5f2eb] font-bold text-lg">{activeRecipe.targetYieldG || 36}g</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Time</p>
-                        <p className="text-[#f5f2eb] font-bold">{activeRecipe.targetTimeMinS || 27}–{activeRecipe.targetTimeMaxS || 32}s</p>
+                      <div className="bg-[#211e1a] border border-[#2e2b26] rounded-xl p-3">
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider mb-1">Time</p>
+                        <p className="text-[#f5f2eb] font-bold text-lg">{activeRecipe.targetTimeMinS || 27}–{activeRecipe.targetTimeMaxS || 32}s</p>
                       </div>
-                      {activeRecipe.brewTemperatureC && (
-                        <div>
-                          <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Temp</p>
-                          <p className="text-[#f5f2eb] font-bold">{activeRecipe.brewTemperatureC}°C</p>
-                        </div>
-                      )}
+                      <div className="bg-[#211e1a] border border-[#2e2b26] rounded-xl p-3">
+                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider mb-1">Temp</p>
+                        <p className="text-[#f5f2eb] font-bold text-lg">{activeRecipe.brewTemperatureC ? `${activeRecipe.brewTemperatureC}°C` : '—'}</p>
+                      </div>
                     </div>
-                    {flairEnabled && formatFlairRecipeLines(activeRecipe.flairProfile).length > 0 && (
-                      <div className="pt-2 border-t border-[#2e2b26] space-y-1">
-                        <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Flair profile</p>
-                        {formatFlairRecipeLines(activeRecipe.flairProfile).map((line) => (
-                          <p key={line} className="text-[11px] text-[#a09880]">{line}</p>
-                        ))}
+                    {flairEnabled && (
+                      <div className="pt-1 border-t border-[#2e2b26] space-y-3">
+                        <div className="flex items-end justify-between gap-2">
+                          <p className="text-[10px] text-[#6b6457] uppercase tracking-wider">Pressure profile</p>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('beans')}
+                            className="text-[10px] text-[#c88a4b] font-semibold hover:text-[#e0a660]"
+                          >
+                            Edit on Beans
+                          </button>
+                        </div>
+                        <div className="bg-[#211e1a]/80 border border-[#2e2b26] rounded-xl px-3 py-2">
+                          <PressureProfileChart profile={activeRecipe.flairProfile} />
+                        </div>
+                        {formatFlairRecipeLines(activeRecipe.flairProfile).length > 0 ? (
+                          <div className="space-y-1.5">
+                            {formatFlairRecipeLines(activeRecipe.flairProfile).map((line) => (
+                              <p key={line} className="text-[11px] text-[#a09880]">{line}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-[#6b6457]">Add pre-infusion, hold, and taper on the Beans tab to populate this chart.</p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -920,7 +1029,7 @@ export default function App() {
 
                 {/* ── NEXT SHOT RECOMMENDATION HERO ─────────────────────── */}
                 {lastShot && dynamicRec ? (
-                  <div ref={recommendationRef} className="bg-[#1a1815] border-2 border-[rgba(200,138,75,0.45)] p-5 rounded-2xl space-y-4 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
+                  <div ref={recommendationRef} className="bg-[#1a1815] border-2 border-[rgba(200,138,75,0.45)] p-6 rounded-2xl space-y-5 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
                     <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#c88a4b]">Next shot</p>
 
                     <div>
@@ -1003,22 +1112,22 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Timer */}
-                  <div className="bg-[#1a1815] border border-[#2e2b26] p-4 rounded-2xl">
-                    <div className="flex items-center justify-between">
+                  <div className="bg-[#1a1815] border border-[#2e2b26] p-5 rounded-2xl space-y-4">
+                    <div className="flex items-center justify-between gap-4">
                       <div>
-                        <p className="text-[10px] uppercase tracking-widest text-[#6b6457] mb-1">Shot Timer</p>
-                        <span className="text-3xl font-black font-mono text-[#f5f2eb]">{formatTime(timerSeconds)}</span>
+                        <p className="text-[10px] uppercase tracking-widest text-[#6b6457] mb-2">Shot timer</p>
+                        <span className="text-4xl font-black font-mono text-[#f5f2eb] tabular-nums">{formatTime(timerSeconds)}</span>
                       </div>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={handleStartTimer} className="px-5 py-3 bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
+                      <div className="flex gap-2 shrink-0">
+                        <button type="button" onClick={handleStartTimer} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
                           <Play className="w-4 h-4 fill-current" /> Start
                         </button>
-                        <button type="button" onClick={handleResetTimer} className="p-3 bg-[#211e1a] border border-[#2e2b26] text-[#a09880] rounded-xl hover:text-[#f5f2eb] transition-colors">
+                        <button type="button" onClick={handleResetTimer} className="p-3.5 min-h-[48px] min-w-[48px] bg-[#211e1a] border border-[#2e2b26] text-[#a09880] rounded-xl hover:text-[#f5f2eb] transition-colors">
                           <RotateCcw className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
+                    <p className="text-[10px] text-[#6b6457]">Fullscreen timer: tap anywhere to end pre-infusion, then tap again to stop.</p>
                   </div>
 
                   {/* Grind setting */}
@@ -1112,16 +1221,20 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Flair active target (read-only) */}
                   {flairEnabled && activeRecipe?.flairProfile && (
-                    <div className="bg-[#1a1815] border border-[#2e2b26] p-3 rounded-2xl">
-                      <p className="text-[10px] uppercase tracking-widest text-[#6b6457] mb-2">Active Flair Target</p>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#a09880]">
-                        {activeRecipe.brewTemperatureC && <span>{activeRecipe.brewTemperatureC}°C</span>}
-                        {activeRecipe.flairProfile.preinfusionPressure && <span>Pre {activeRecipe.flairProfile.preinfusionPressure} bar · {activeRecipe.flairProfile.preinfusionTime}s</span>}
-                        {activeRecipe.flairProfile.peakPressure && <span>Hold {activeRecipe.flairProfile.peakPressure} bar → {activeRecipe.flairProfile.peakEndYield}g</span>}
-                        {activeRecipe.flairProfile.taperPressure && <span>Taper {activeRecipe.flairProfile.taperPressure} bar</span>}
+                    <div className="bg-[#1a1815] border border-[#2e2b26] p-5 rounded-2xl space-y-3">
+                      <div className="flex justify-between items-center gap-2">
+                        <p className="text-[10px] uppercase tracking-widest text-[#6b6457]">Shot target</p>
+                        {activeRecipe.brewTemperatureC && (
+                          <span className="text-xs font-bold text-[#f5f2eb]">{activeRecipe.brewTemperatureC}°C</span>
+                        )}
                       </div>
+                      <div className="bg-[#211e1a] border border-[#2e2b26] rounded-xl px-3 py-2">
+                        <PressureProfileChart profile={activeRecipe.flairProfile} compact />
+                      </div>
+                      {formatFlairRecipeLines(activeRecipe.flairProfile).map((line) => (
+                        <p key={line} className="text-[11px] text-[#a09880]">{line}</p>
+                      ))}
                     </div>
                   )}
 
