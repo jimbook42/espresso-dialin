@@ -458,7 +458,7 @@ export default function App() {
     }
 
     const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
-    const recentBeanShots = shots.filter(s => s.beanId === activeBean.id).slice(0, 5);
+    const recentBeanShots = shots.filter(s => s.beanId === activeBean.id);
 
     const rec = calculateRecommendation(
       { 

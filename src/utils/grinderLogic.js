@@ -179,10 +179,30 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
 
 export function getInitialGrindRecommendation(grinderModel, roastType, activeBean, recipes = [], allShots = [], beans = [], mockDateOverride = null) {
   const beanShots = allShots.filter(s => s.beanId === activeBean?.id && s.grinderModel === grinderModel);
+  const currentRecipe = recipes.find(r => r.beanId === activeBean?.id) || {};
   
+  let bestShot = null;
   if (beanShots.length > 0) {
-    const lastBeanShot = beanShots[0];
-    const adjustedRec = getAgeAdjustedRecommendation(lastBeanShot, activeBean, mockDateOverride);
+    const sameRecipeShots = beanShots.filter(s => 
+      Math.abs((s.actualDoseG || 0) - (currentRecipe.targetDoseG || 18)) < 0.5 &&
+      Math.abs((s.actualYieldG || 0) - (currentRecipe.targetYieldG || 36)) < 1.5
+    );
+    
+    const sameFlairShots = sameRecipeShots.filter(s => {
+      const p1 = s.flairProfile || {};
+      const p2 = currentRecipe.flairProfile || {};
+      return p1.preinfusionPressure === p2.preinfusionPressure &&
+             p1.peakPressure === p2.peakPressure &&
+             p1.taperPressure === p2.taperPressure;
+    });
+
+    if (sameFlairShots.length > 0) bestShot = sameFlairShots[0];
+    else if (sameRecipeShots.length > 0) bestShot = sameRecipeShots[0];
+    else bestShot = beanShots[0];
+  }
+
+  if (bestShot) {
+    const adjustedRec = getAgeAdjustedRecommendation(bestShot, activeBean, mockDateOverride);
     
     if (adjustedRec && adjustedRec.recommendedSetting) {
       if (grinderModel === 'Sette 270Wi') {
@@ -192,9 +212,9 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
       }
     } else {
       if (grinderModel === 'Sette 270Wi') {
-        return { macro: lastBeanShot.setteMacro || 13, micro: lastBeanShot.setteMicro || 'E' };
+        return { macro: bestShot.setteMacro || 13, micro: bestShot.setteMicro || 'E' };
       } else {
-        return { setting: lastBeanShot.sunbeamSetting || 15 };
+        return { setting: bestShot.sunbeamSetting || 15 };
       }
     }
   }
@@ -263,18 +283,18 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   if (isTimeInRange) {
     if (tasteProfile === 'very_sour') {
       shift = grinderModel === 'Sette 270Wi' ? -2 : -1;
-      reason = "Shot is in range but tastes very sour. Go slightly finer.";
+      reason = `GO ${Math.abs(shift)} STEP(S) FINER — Shot is in range but tastes very sour.`;
     } else if (tasteProfile === 'sour') {
       shift = -1;
-      reason = "Shot is in range but tastes sour. Go slightly finer.";
+      reason = `GO 1 STEP FINER — Shot is in range but tastes sour.`;
     } else if (tasteProfile === 'bitter') {
       shift = 1;
-      reason = "Shot is in range but tastes bitter. Go slightly coarser.";
+      reason = `GO 1 STEP COARSER — Shot is in range but tastes bitter.`;
     } else if (tasteProfile === 'very_bitter') {
       shift = grinderModel === 'Sette 270Wi' ? 2 : 1;
-      reason = "Shot is in range but tastes very bitter. Go slightly coarser.";
+      reason = `GO ${Math.abs(shift)} STEP(S) COARSER — Shot is in range but tastes very bitter.`;
     } else {
-      reason = "Balanced and in range. Keep this setting.";
+      reason = "KEEP GRIND — Balanced and in range.";
     }
   } else {
     const sensitivity = grinderModel === 'Sette 270Wi' ? 1.25 : 4.5;
@@ -282,21 +302,57 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     if (shift === 0) shift = timeDelta < 0 ? -1 : 1;
 
     const absShift = Math.abs(shift);
-    const direction = shift < 0 ? "finer" : "coarser";
+    const direction = shift < 0 ? "FINER" : "COARSER";
     const secOff = Math.abs(Math.round(timeDelta));
 
     if (grinderModel === 'Sette 270Wi') {
-      let sizeDesc = absShift >= 16 ? "Very large" : absShift >= 10 ? "Large" : absShift >= 6 ? "Moderate" : absShift >= 3 ? "Small" : "Very small";
-      reason = `${sizeDesc} adjustment — shot was ${secOff}s off target midpoint. Go ${absShift} micro steps ${direction}.`;
+      reason = `GO ${absShift} MICRO STEP(S) ${direction} — Shot was ${secOff}s off target midpoint.`;
     } else {
-      reason = `Shot was ${secOff}s off target midpoint. Go ${absShift} setting(s) ${direction}.`;
+      reason = `GO ${absShift} SETTING(S) ${direction} — Shot was ${secOff}s off target midpoint.`;
     }
   }
 
   let flairWaterTempAdvice = null;
-  if (flairEnabled && isTimeInRange) {
-    if (isSour) flairWaterTempAdvice = "Flair Temperature Advisory: Time is dialed in but flavor is sour. Increase brew water by 1-2°C.";
-    if (isBitter) flairWaterTempAdvice = "Flair Temperature Advisory: Time is dialed in but flavor is bitter. Decrease brew water by 1-2°C.";
+  const currentTemp = recipe.brewTemperatureC;
+  const currentFlairProfile = flairEnabled ? recipe.flairProfile : null;
+
+  if (isTimeInRange && currentTemp && (isSour || isBitter)) {
+    const qualifyingHistory = recentShots.filter(s => {
+      const tMin = s.targetTimeMinS || targetMin;
+      const tMax = s.targetTimeMaxS || targetMax;
+      if (!(s.actualTimeS >= tMin && s.actualTimeS <= tMax)) return false;
+      
+      if (Math.abs(s.actualDoseG - shotData.actualDose) > 0.5) return false;
+      if (Math.abs(s.actualYieldG - shotData.actualYield) > 1.5) return false;
+
+      const temp = s.brewTemperatureC || (s.flairProfile && s.flairProfile.waterTempC);
+      if (!temp || temp !== currentTemp) return false;
+
+      const p1 = s.flairProfile || {};
+      const p2 = currentFlairProfile || {};
+      if (p1.preinfusionPressure !== p2.preinfusionPressure) return false;
+      if (p1.peakPressure !== p2.peakPressure) return false;
+      if (p1.taperPressure !== p2.taperPressure) return false;
+      if (p1.preinfusion !== p2.preinfusion) return false;
+
+      if (!s.tasteProfile) return false;
+
+      return true;
+    });
+
+    const allQualifying = [{ tasteProfile: shotData.tasteProfile }, ...qualifyingHistory];
+
+    if (allQualifying.length >= 3) {
+      const recent3 = allQualifying.slice(0, 3);
+      const allSour = recent3.every(s => s.tasteProfile === 'sour' || s.tasteProfile === 'very_sour');
+      const allBitter = recent3.every(s => s.tasteProfile === 'bitter' || s.tasteProfile === 'very_bitter');
+
+      if (allSour) {
+        flairWaterTempAdvice = "Temperature Advisory: 3+ consistent sour shots. Increase brew water by approx +1–2°C.";
+      } else if (allBitter) {
+        flairWaterTempAdvice = "Temperature Advisory: 3+ consistent bitter shots. Decrease brew water by approx -1–2°C.";
+      }
+    }
   }
 
   let subRecommendation = null;
