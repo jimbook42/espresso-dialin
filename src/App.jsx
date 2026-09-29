@@ -12,10 +12,12 @@ import {
   recipeContextForShot,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList } from 'lucide-react';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { SetteGrindControls, SunbeamGrindControl } from './components/GrindControls';
 import { SettingsToggle } from './components/SettingsToggle';
+import { BrewGuide } from './components/BrewGuide';
+import { normalizeBrewAccessories } from './brewGuide/steps';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
 
@@ -62,6 +64,9 @@ export default function App() {
   const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
   const shots = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []) || [];
   const settingsSetting = useLiveQuery(() => db.settings.get('global'), []) || null;
+  const brewGuideEnabled = Boolean(settingsSetting?.brewGuideEnabled);
+  const brewGuideSetupComplete = Boolean(settingsSetting?.brewGuideSetupComplete);
+  const brewGuideAccessories = normalizeBrewAccessories(settingsSetting?.brewGuideAccessories);
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
@@ -283,6 +288,21 @@ export default function App() {
     setDarkMode(next);
     const currentSettings = await db.settings.get('global') || { id: 'global' };
     await db.settings.put({ ...currentSettings, darkMode: next });
+  };
+
+  const handleToggleBrewGuide = async (val) => {
+    if (!val && activeTab === 'brew') setActiveTab('dial');
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({ ...currentSettings, brewGuideEnabled: val });
+  };
+
+  const handleSaveBrewAccessories = async (accessories) => {
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({
+      ...currentSettings,
+      brewGuideAccessories: normalizeBrewAccessories(accessories),
+      brewGuideSetupComplete: true,
+    });
   };
 
   const handleLogoClick = () => {
@@ -1279,6 +1299,26 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === 'brew' && brewGuideEnabled && (
+          <BrewGuide
+            ui={ui}
+            accessories={brewGuideAccessories}
+            setupComplete={brewGuideSetupComplete}
+            onSaveAccessories={handleSaveBrewAccessories}
+            onOpenDial={() => setActiveTab('dial')}
+            dial={{
+              beanName: activeBean?.name || '',
+              doseG: activeRecipe?.targetDoseG,
+              yieldG: activeRecipe?.targetYieldG,
+              timeMinS: activeRecipe?.targetTimeMinS,
+              timeMaxS: activeRecipe?.targetTimeMaxS,
+              brewTemperatureC: activeRecipe?.brewTemperatureC,
+              grinderModel,
+              grindLabel: recommendedGrindDisplay,
+            }}
+          />
+        )}
+
         {activeTab === 'beans' && (
           <div className="space-y-6">
             <form onSubmit={handleSaveBean} className={`${ui.card} p-5 rounded-2xl space-y-4 relative overflow-hidden`}>
@@ -1818,7 +1858,7 @@ export default function App() {
 
         {isSettingsOpen && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className={`${ui.card} p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
+            <div className={`${ui.card} p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl max-h-[92vh] overflow-y-auto`}>
               <div className={`flex items-center justify-between border-b pb-3 ${ui.modalDivider}`}>
                 <div className="flex items-center gap-2">
                   <Sliders className={`w-5 h-5 ${ui.accentText}`} />
@@ -1854,6 +1894,13 @@ export default function App() {
                       <span className={`text-[10px] ${ui.muted}`}>Two-phase timer: pre → shot</span>
                     </div>
                     <SettingsToggle checked={usePreInfusion} onChange={handleTogglePreInfusion} label="Track pre-infusion time" />
+                  </div>
+                  <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Brew Guide</span>
+                      <span className={`text-[10px] ${ui.muted}`}>Step-by-step shot prep from your Dial-In recipe</span>
+                    </div>
+                    <SettingsToggle checked={brewGuideEnabled} onChange={handleToggleBrewGuide} label="Brew Guide" />
                   </div>
                 </div>
 
@@ -1973,6 +2020,9 @@ export default function App() {
         <div className="max-w-xl mx-auto flex items-stretch gap-1 p-1.5">
           {[
             { id: 'dial', label: 'Dial', icon: Coffee, onClick: () => setActiveTab('dial') },
+            ...(brewGuideEnabled
+              ? [{ id: 'brew', label: 'Brew Guide', icon: ClipboardList, onClick: () => setActiveTab('brew') }]
+              : []),
             { id: 'beans', label: 'Beans', icon: PlusCircle, onClick: () => setActiveTab('beans') },
             { id: 'history', label: 'History', icon: History, onClick: () => setActiveTab('history') },
             { id: 'stats', label: 'Stats', icon: BarChart2, onClick: handleStatsTabClick },
@@ -1992,7 +2042,7 @@ export default function App() {
                   <span className="absolute top-1.5 left-3 w-1.5 h-1.5 rounded-full bg-[#c88a4b]" aria-hidden />
                 )}
                 <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
-                <span className="text-[10px] font-bold uppercase tracking-wide">{tab.label}</span>
+                <span className={brewGuideEnabled ? 'text-[9px] font-bold uppercase tracking-wide text-center leading-tight' : 'text-[10px] font-bold uppercase tracking-wide'}>{tab.label}</span>
               </button>
             );
           })}

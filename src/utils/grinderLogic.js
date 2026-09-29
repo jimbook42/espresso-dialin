@@ -7,7 +7,7 @@ db.version(17).stores({
   beans: 'id, name, roaster, roastDate, storageType, postThawStorage, freezeDate, thawDate, rating, isFinished, createdAt',
   recipes: 'id, beanId, targetDoseG, targetYieldG, targetTimeMinS, targetTimeMaxS',
   shots: 'id, beanId, timestamp, grinderModel, setteMacro, setteMicro, sunbeamSetting',
-  // settings row also stores darkMode (UI only); no schema bump — Dexie keeps existing shot/bean data at v17
+  // settings row also stores darkMode and Brew Guide config (UI only); no schema bump — Dexie keeps existing shot/bean data at v17
   settings: 'id, grinderModel, flairEnabled, preInfusionEnabled, lastSetteMacro, lastSetteMicro, lastSunbeamSetting'
 });
 

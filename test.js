@@ -4,6 +4,7 @@ import {
   getHistoricalRoastBaseline,
   shotResultImproved,
 } from './src/utils/grinderLogic.js';
+import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
 import assert from 'assert';
 
 function runTests() {
@@ -116,6 +117,7 @@ function runTests() {
     shotResultImproved(createShot(35, 'sour'), { actualTime: 29, actualYield: 36, tasteProfile: 'good' }, recipe)
   );
 
+  runBrewGuideTests();
   console.log('All tests passed!');
 }
 
