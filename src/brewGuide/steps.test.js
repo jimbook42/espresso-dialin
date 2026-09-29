@@ -9,6 +9,7 @@ import {
   grindSettingChanged,
   normalizeBrewAccessories,
 } from './steps.js';
+import { runSunbeamGuideTests } from './sunbeam.test.js';
 
 const DIAL = {
   beanName: 'House Espresso',
@@ -24,24 +25,15 @@ const DIAL = {
 
 const CORE = [
   'recipe',
-  'power',
-  'water',
-  'warmCup',
-  'emptyCup',
-  'dryCup',
-  'portafilter',
+  'warmup',
+  'cup',
   'grindSetting',
-  'weigh',
-  'loadHopper',
+  'dose',
   'grind',
-  'verifyDose',
-  'preheat',
   'extract',
-  'knockPuck',
-  'rinsePortafilter',
-  'rinseGroup',
-  'readyMachine',
-  'logShot',
+  'yield',
+  'clean',
+  'taste',
 ];
 
 const FORBIDDEN = {
@@ -64,7 +56,8 @@ function ids(accessories, dial = DIAL) {
 }
 
 function stepText(step) {
-  return [step.title, step.instruction, step.note, step.help, step.highlight, step.highlightLabel, step.stopAt, step.timeLabel, ...(step.metrics || []).map((metric) => `${metric.label} ${metric.value}`)]
+  const helpText = (step.helps || []).map((item) => `${item.name} ${item.text}`).join(' ');
+  return [step.title, step.instruction, step.note, step.help, helpText, step.highlight, step.highlightLabel, step.stopAt, step.timeLabel, ...(step.metrics || []).map((metric) => `${metric.label} ${metric.value}`)]
     .filter(Boolean)
     .join(' ');
 }
@@ -87,12 +80,24 @@ function assertOrder(stepIds, sequence) {
   }
 }
 
+function needsPuck(accessories) {
+  return Boolean(
+    accessories.dosingCup
+    || accessories.blindShaker
+    || accessories.wdt
+    || accessories.distributor
+    || accessories.selfLevellingTamper
+    || accessories.puckScreen
+  );
+}
+
 function assertWorkflow(accessories, dial) {
   const steps = buildBrewSteps(accessories, dial);
   const stepIds = steps.map((item) => item.id);
   assert.equal(new Set(stepIds).size, stepIds.length, `duplicate ids ${stepIds.join(' → ')}`);
   const text = steps.map(stepText).join('\n');
-  assertNo(text, /cup warmer|steam|wand|milk|10\s*[–-]\s*15\s*kg/i);
+  assertNo(text, /cup warmer|steam|wand|milk|machine stopped|10\s*[–-]\s*15\s*kg/i);
+  assert.ok(stepIds.length <= 12, `too many steps: ${stepIds.join(' → ')}`);
 
   for (const item of steps) {
     assert.ok(item.title.trim().length > 0);
@@ -103,76 +108,63 @@ function assertWorkflow(accessories, dial) {
     if (!accessories[key]) assertNo(text, pattern);
   }
 
-  assertOrder(stepIds, CORE);
-
-  const changed = grindSettingChanged(dial);
-  if (changed) {
-    assertOrder(stepIds, ['grindSetting', 'purge', 'discardPurge', 'weigh', 'loadHopper', 'grind']);
-    const purge = steps.find((item) => item.id === 'purge');
-    const doseLabel = String(dial.doseG);
-    assert.match(purge.instruction, /do not use the dose/i);
-    assert.doesNotMatch(`${purge.instruction} ${purge.help || ''}`, new RegExp(`\\b${doseLabel}\\s*g\\b`, 'i'));
-    assert.match(steps.find((item) => item.id === 'loadHopper').instruction, /do not fill the hopper/i);
-  } else {
-    assert.equal(stepIds.includes('purge'), false);
-    assert.equal(stepIds.includes('discardPurge'), false);
+  const helpIds = steps.flatMap((item) => (item.helps || []).map((help) => help.id));
+  for (const item of BREW_ACCESSORIES) {
+    if (accessories[item.id]) assert.ok(helpIds.includes(item.id), `missing help for ${item.id}`);
+    else assert.equal(helpIds.includes(item.id), false, `unexpected help for ${item.id}`);
   }
 
-  if (accessories.rdt) assertOrder(stepIds, ['weigh', 'rdt', 'loadHopper']);
-  else assert.equal(stepIds.includes('rdt'), false);
+  assertOrder(stepIds, CORE);
 
-  const external = Boolean(accessories.dosingCup || accessories.blindShaker);
+  const grindSetting = steps.find((item) => item.id === 'grindSetting');
+  const dose = steps.find((item) => item.id === 'dose');
+  const changed = grindSettingChanged(dial);
+  const doseLabel = String(dial.doseG);
+  if (changed) {
+    assert.match(grindSetting.instruction, /purge a small amount of fresh beans/i);
+    assert.match(grindSetting.instruction, /separate from the dose/i);
+    assert.doesNotMatch(grindSetting.instruction, new RegExp(`\\b${doseLabel}\\s*g\\b`, 'i'));
+    assert.ok(stepIds.indexOf('grindSetting') < stepIds.indexOf('dose'));
+  } else if (!dial.previousGrindLabel) {
+    assert.match(grindSetting.instruction, /if the grind setting changed, purge/i);
+  } else {
+    assertNo(grindSetting.instruction, /purge/i);
+  }
+  assert.match(dose.instruction, /do not fill the hopper/i);
+  assert.match(dose.instruction, new RegExp(`${doseLabel}`));
+  if (accessories.rdt) assert.match(dose.instruction, /spray/i);
+
   const grind = steps.find((item) => item.id === 'grind');
   if (accessories.dosingCup) assert.match(grind.instruction, /dosing cup/i);
   else if (accessories.blindShaker) assert.match(grind.instruction, /blind shaker/i);
   else assert.match(grind.instruction, /basket/i);
 
-  if (accessories.blindShaker) assertOrder(stepIds, ['verifyDose', 'shake']);
-  else assert.equal(stepIds.includes('shake'), false);
-
-  if (external) {
-    assertOrder(stepIds, ['verifyDose', 'transfer']);
-    const transfer = steps.find((item) => item.id === 'transfer');
-    if (accessories.dosingFunnel) assert.match(transfer.instruction, /dosing funnel/i);
-    else assert.match(transfer.instruction, /carefully/i);
-    assert.equal(stepIds.includes('prepFunnel'), false);
+  const puck = steps.find((item) => item.id === 'puck');
+  if (needsPuck(accessories)) {
+    assert.ok(puck, `expected a puck step in ${stepIds.join(' → ')}`);
+    assertOrder(stepIds, ['grind', 'puck', 'extract']);
+    if (accessories.dosingFunnel && (accessories.dosingCup || accessories.blindShaker)) {
+      assert.match(puck.instruction, /dosing funnel/i);
+    }
+    if (!accessories.dosingFunnel && (accessories.dosingCup || accessories.blindShaker)) {
+      assertNo(puck.instruction, /funnel/i);
+    }
+    if (accessories.wdt) assert.match(puck.instruction, /clumps/i);
+    if (accessories.dosingFunnel && (accessories.wdt || accessories.distributor || accessories.selfLevellingTamper || accessories.puckScreen || accessories.dosingCup || accessories.blindShaker)) {
+      assert.match(puck.instruction, /lift the dosing funnel/i);
+    }
   } else {
-    assert.equal(stepIds.includes('transfer'), false);
-    assert.equal(stepIds.includes('shake'), false);
+    assert.equal(puck, undefined);
+    if (accessories.dosingFunnel) assert.match(grind.instruction, /lift the dosing funnel/i);
   }
-
-  if (accessories.dosingFunnel && !external) {
-    assertOrder(stepIds, ['prepFunnel', 'grind', 'verifyDose', 'removeFunnel']);
-  }
-
-  if (accessories.dosingFunnel) {
-    if (accessories.wdt) assertOrder(stepIds, ['wdt', 'removeFunnel']);
-    if (accessories.distributor) assertOrder(stepIds, ['removeFunnel', 'distribute']);
-    if (accessories.selfLevellingTamper) assertOrder(stepIds, ['removeFunnel', 'tamp']);
-  } else {
-    assert.equal(stepIds.includes('prepFunnel'), false);
-    assert.equal(stepIds.includes('removeFunnel'), false);
-  }
-
-  const puck = [];
-  if (external) puck.push('transfer');
-  if (accessories.wdt) puck.push('wdt');
-  if (accessories.dosingFunnel) puck.push('removeFunnel');
-  if (accessories.distributor) puck.push('distribute');
-  if (accessories.selfLevellingTamper) puck.push('tamp');
-  if (accessories.puckScreen) puck.push('screen');
-  if (puck.length) assertOrder(stepIds, puck);
-
-  assert.equal(stepIds.includes('wdt'), Boolean(accessories.wdt));
-  assert.equal(stepIds.includes('distribute'), Boolean(accessories.distributor));
-  assert.equal(stepIds.includes('tamp'), Boolean(accessories.selfLevellingTamper));
-  assert.equal(stepIds.includes('screen'), Boolean(accessories.puckScreen));
 
   const extract = steps.find((item) => item.id === 'extract');
   assert.equal(extract.kind, 'timer');
   assert.equal(extract.stopAt, brewStopYield(dial.yieldG));
+  assert.equal(steps.find((item) => item.id === 'yield').kind, 'yield');
+  assert.equal(steps.at(-1).id, 'taste');
   assert.equal(steps.at(-1).kind, 'handoff');
-  assert.match(steps.find((item) => item.id === 'weigh').instruction, new RegExp(`${dial.doseG}`));
+  assert.match(steps.at(-1).instruction, /tasted/i);
 }
 
 export function runBrewGuideTests() {
@@ -201,29 +193,27 @@ export function runBrewGuideTests() {
 
   const withPrep = { ...none(), dosingCup: true, wdt: true, distributor: true };
   assert.deepEqual(ids(withPrep), [
-    ...CORE.slice(0, CORE.indexOf('verifyDose') + 1),
-    'transfer',
-    'wdt',
-    'distribute',
-    ...CORE.slice(CORE.indexOf('preheat')),
+    ...CORE.slice(0, CORE.indexOf('grind') + 1),
+    'puck',
+    ...CORE.slice(CORE.indexOf('extract')),
   ]);
-
-  const careful = buildBrewSteps({ ...none(), dosingCup: true }, DIAL).find((item) => item.id === 'transfer');
-  assert.match(careful.instruction, /carefully/i);
-  assertNo(careful.instruction, /funnel/i);
-
-  const withFunnel = buildBrewSteps({ ...none(), dosingCup: true, dosingFunnel: true }, DIAL).find((item) => item.id === 'transfer');
-  assert.match(withFunnel.instruction, /dosing funnel/i);
+  const prepPuck = buildBrewSteps(withPrep, DIAL).find((item) => item.id === 'puck');
+  assert.match(prepPuck.instruction, /dosing cup/i);
+  assert.match(prepPuck.instruction, /clumps/i);
+  assert.match(prepPuck.instruction, /distributor/i);
+  assertNo(prepPuck.instruction, /funnel/i);
 
   const direct = blob(none());
   assertNo(direct, /funnel|dosing cup|shaker|clump|distributor|tamper|puck screen|spray|static|\brdt\b/i);
   assert.match(direct, /do not fill the hopper/i);
-  assertNo(direct, /purge the grinder/i);
+  assertNo(direct, /purge/i);
+
+  const unknown = blob(none(), { ...DIAL, previousGrindLabel: '' });
+  assert.match(unknown, /if the grind setting changed, purge/i);
 
   const funnelOnBasket = ids({ ...none(), dosingFunnel: true, wdt: true, distributor: true });
-  assertOrder(funnelOnBasket, ['prepFunnel', 'grind', 'wdt', 'removeFunnel', 'distribute']);
-  assert.equal(funnelOnBasket.includes('transfer'), false);
-  assert.equal(funnelOnBasket.includes('tamp'), false);
+  assertOrder(funnelOnBasket, ['grind', 'puck', 'extract']);
+  assert.match(buildBrewSteps({ ...none(), dosingFunnel: true, wdt: true }, DIAL).find((item) => item.id === 'puck').instruction, /lift the dosing funnel/i);
 
   const changedDial = { ...DIAL, previousGrindLabel: '12' };
   const cupShakerFunnel = ids({
@@ -239,48 +229,40 @@ export function runBrewGuideTests() {
   }, changedDial);
   assert.deepEqual(cupShakerFunnel, [
     'recipe',
-    'power',
-    'water',
-    'warmCup',
-    'emptyCup',
-    'dryCup',
-    'portafilter',
+    'warmup',
+    'cup',
     'grindSetting',
-    'purge',
-    'discardPurge',
-    'weigh',
-    'rdt',
-    'loadHopper',
+    'dose',
     'grind',
-    'verifyDose',
-    'shake',
-    'transfer',
-    'wdt',
-    'removeFunnel',
-    'distribute',
-    'tamp',
-    'screen',
-    'preheat',
+    'puck',
     'extract',
-    'knockPuck',
-    'rinsePortafilter',
-    'rinseGroup',
-    'readyMachine',
-    'logShot',
+    'yield',
+    'clean',
+    'taste',
   ]);
+  assert.match(buildBrewSteps({
+    ...none(),
+    dosingCup: true,
+    dosingFunnel: true,
+    blindShaker: true,
+    wdt: true,
+    distributor: true,
+    selfLevellingTamper: true,
+    puckScreen: true,
+    rdt: true,
+  }, changedDial).find((item) => item.id === 'grindSetting').instruction, /purge a small amount of fresh beans/i);
 
   const shakerOnly = buildBrewSteps({ ...none(), blindShaker: true }, DIAL);
   assert.match(shakerOnly.find((item) => item.id === 'grind').instruction, /blind shaker/i);
-  assert.match(shakerOnly.find((item) => item.id === 'transfer').instruction, /carefully/i);
+  assert.match(shakerOnly.find((item) => item.id === 'puck').instruction, /shaker/i);
   assertNo(blob({ ...none(), blindShaker: true }), /dosing cup|funnel/);
 
-  const purge = buildBrewSteps(none(), changedDial).find((item) => item.id === 'purge');
-  assert.match(purge.help, /1–2 second/);
-  assert.match(purge.help, /beans/);
-  assert.match(purge.instruction, /do not use the dose/i);
-  assert.doesNotMatch(`${purge.instruction} ${purge.help}`, /18\s*g/i);
-  const settePurge = buildBrewSteps(none(), { ...changedDial, grinderModel: 'Sette 270Wi', grindLabel: '13-E', previousGrindLabel: '12-A' }).find((item) => item.id === 'purge');
-  assertNo(settePurge.help, /sunbeam manual/i);
+  const purgeStep = buildBrewSteps(none(), changedDial).find((item) => item.id === 'grindSetting');
+  assert.match(purgeStep.instruction, /fresh beans/i);
+  assert.match(purgeStep.instruction, /separate from the dose/i);
+  assert.doesNotMatch(purgeStep.instruction, /18\s*g/i);
+  const settePurge = buildBrewSteps(none(), { ...changedDial, grinderModel: 'Sette 270Wi', grindLabel: '13-E', previousGrindLabel: '12-A' }).find((item) => item.id === 'grindSetting');
+  assertNo(settePurge.instruction, /sunbeam manual|hopper empty/i);
 
   const sunbeam = blob(none(), DIAL).toLowerCase();
   assert.match(sunbeam, /house espresso/);
@@ -340,5 +322,6 @@ export function runBrewGuideTests() {
   assert.match(schema, /db\.version\(17\)/);
   assert.equal(/db\.version\(18\)/.test(schema), false);
 
+  runSunbeamGuideTests();
   console.log('Brew Guide tests passed!');
 }

@@ -1,4 +1,4 @@
-/** Brew Guide accessories and the one-step Sunbeam Barista Max workflow they shape. */
+/** Brew Guide accessories and the espresso workflow they shape. */
 
 export const BREW_ACCESSORIES = [
   {
@@ -120,12 +120,32 @@ export function brewDialSummary(dial = {}) {
 }
 
 function step(partial) {
-  return partial;
+  const lines = partial.lines?.filter(Boolean);
+  const helps = partial.helps?.filter((item) => item?.text);
+  return {
+    ...partial,
+    lines,
+    helps: helps?.length ? helps : undefined,
+    instruction: partial.instruction || (lines || []).join(' '),
+  };
+}
+
+function toolHelp(accessories, ids) {
+  const wanted = new Set(ids);
+  return BREW_ACCESSORIES
+    .filter((item) => wanted.has(item.id) && accessories[item.id])
+    .map((item) => ({ id: item.id, name: item.name, text: item.explanation }));
+}
+
+function needsPuck(accessories, groundsLeaveTheBasket) {
+  if (groundsLeaveTheBasket || accessories.blindShaker) return true;
+  if (accessories.wdt || accessories.distributor || accessories.selfLevellingTamper || accessories.puckScreen) return true;
+  return false;
 }
 
 /**
- * One screen per action. Dose, yield, time, grinder and grind setting come from Dial-In.
- * Purge beans are separate from the weighed recipe dose.
+ * Related actions share a screen. Dose, yield, time, grinder and grind setting come from Dial-In.
+ * A grind-setting change purges with separate beans, before the recipe dose is weighed.
  */
 export function buildBrewSteps(rawAccessories, dial = {}) {
   const accessories = normalizeBrewAccessories(rawAccessories);
@@ -148,64 +168,88 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
   const usesShaker = accessories.blindShaker;
   const groundsLeaveTheBasket = usesCup || usesShaker;
 
+  const grindLines = [`Set the ${grinder} to this.`];
+  if (changed) {
+    grindLines.push(previous
+      ? `The setting changed from ${previous}. Purge a small amount of fresh beans through the grinder, then discard those grounds.`
+      : 'The setting changed. Purge a small amount of fresh beans through the grinder, then discard those grounds.');
+    grindLines.push(isSunbeam
+      ? 'Keep the purge separate from the dose. A short run is enough — do not run the hopper empty.'
+      : 'Keep the purge separate from the dose.');
+  } else if (!previous) {
+    grindLines.push('If the grind setting changed, purge a little fresh coffee through and discard it before you weigh the dose.');
+  }
+
+  const doseLines = [`Weigh ${dose}g of ${bean}.`];
+  if (accessories.rdt) doseLines.push('Add a tiny spray of water and mix it through.');
+  doseLines.push(`Put only that ${dose}g in the empty hopper. Do not fill the hopper.`);
+
+  const grindDoseLines = [];
+  if (usesCup) {
+    grindDoseLines.push(`Grind all ${dose}g into the dosing cup and check it is ${dose}g.`);
+  } else if (usesShaker) {
+    grindDoseLines.push(`Grind all ${dose}g into the blind shaker and check it is ${dose}g.`);
+  } else if (usesFunnel) {
+    grindDoseLines.push(`Fit the dosing funnel, grind all ${dose}g into the basket, and check the portafilter is ${dose}g.`);
+    if (!needsPuck(accessories, false)) grindDoseLines.push('Lift the dosing funnel off.');
+  } else {
+    grindDoseLines.push(`Grind all ${dose}g into the basket and check the portafilter is ${dose}g.`);
+  }
+
+  const puckLines = [];
+  if (usesShaker) {
+    puckLines.push(usesCup
+      ? 'Tip the grounds into the blind shaker and shake until they look even.'
+      : 'Shake the grounds until they look even.');
+  }
+  if (groundsLeaveTheBasket) {
+    if (usesFunnel && usesShaker) puckLines.push('Place the dosing funnel on the portafilter and tip the grounds in from the shaker.');
+    else if (usesFunnel && usesCup) puckLines.push('Place the dosing funnel on the portafilter and tip the grounds in from the dosing cup.');
+    else if (usesShaker) puckLines.push('Tip the grounds from the shaker into the basket.');
+    else puckLines.push('Tip the grounds from the dosing cup into the basket.');
+  }
+  if (accessories.wdt) puckLines.push('Gently break up clumps and distribute the grounds.');
+  if (usesFunnel && needsPuck(accessories, groundsLeaveTheBasket)) {
+    puckLines.push('Lift the dosing funnel off.');
+  }
+  if (accessories.distributor) puckLines.push('Use the distributor to level the coffee bed evenly.');
+  if (accessories.selfLevellingTamper) puckLines.push('Place the tamper squarely and press once consistently.');
+  if (accessories.puckScreen) {
+    puckLines.push(accessories.selfLevellingTamper
+      ? 'Place the puck screen flat on the tamped puck.'
+      : 'Place the puck screen flat on the coffee.');
+  }
+
   const steps = [];
 
   steps.push(step({
     id: 'recipe',
     icon: 'recipe',
     title: 'This shot',
-    instruction: 'Use these Dial-In values for this shot.',
+    instruction: 'From Dial-In.',
     metrics: summary.metrics,
   }));
 
   steps.push(step({
-    id: 'power',
+    id: 'warmup',
     icon: 'power',
-    title: 'Turn the machine on',
-    instruction: 'Turn the Sunbeam Barista Max on and let it heat.',
+    title: 'Heat up',
+    lines: [
+      'Turn the machine on and let it heat.',
+      'Check there is enough water.',
+      'Portafilter and basket clean and dry.',
+    ],
   }));
 
   steps.push(step({
-    id: 'water',
-    icon: 'water',
-    title: 'Check the water',
-    instruction: 'Check the tank has enough water for this shot.',
-  }));
-
-  steps.push(step({
-    id: 'warmCup',
+    id: 'cup',
     icon: 'cup',
     title: 'Warm the cup',
-    instruction: 'Fill the cup with hot water from the machine and let it stand.',
+    lines: [
+      'Fill the cup with hot water from the machine.',
+      'Empty it and dry it.',
+    ],
   }));
-
-  steps.push(step({
-    id: 'emptyCup',
-    icon: 'empty',
-    title: 'Empty the cup',
-    instruction: 'Tip the water out of the cup.',
-  }));
-
-  steps.push(step({
-    id: 'dryCup',
-    icon: 'dry',
-    title: 'Dry the cup',
-    instruction: 'Dry the cup.',
-  }));
-
-  steps.push(step({
-    id: 'portafilter',
-    icon: 'portafilter',
-    title: 'Check the portafilter',
-    instruction: 'Make sure the portafilter and basket are clean and dry.',
-  }));
-
-  let grindInstruction = `Set the ${grinder} to this.`;
-  if (changed) {
-    grindInstruction = `Set the ${grinder} to this. It changed since your last shot${previous ? ` (${previous})` : ''}, so purge next.`;
-  } else if (previous) {
-    grindInstruction = `Set the ${grinder} to this. It matches your last shot, so no purge.`;
-  }
 
   steps.push(step({
     id: 'grindSetting',
@@ -213,200 +257,49 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     title: 'Set the grind',
     highlightLabel: grindSettingLabel,
     highlight: grindLabel,
-    instruction: grindInstruction,
+    lines: grindLines,
   }));
 
-  if (changed) {
-    steps.push(step({
-      id: 'purge',
-      icon: 'purge',
-      title: 'Purge the grinder',
-      instruction: 'Put a small amount of fresh beans in the empty hopper and grind them through. Do not use the dose for this shot.',
-      help: isSunbeam
-        ? 'The Sunbeam manual’s 1–2 second purge after a grind change is this short run of fresh beans. Do not run the hopper empty, and do not use the beans you will weigh next.'
-        : 'A short run of fresh beans clears the previous setting. Keep those beans separate from the dose you will weigh next.',
-    }));
+  const grindHelpIds = [];
+  if (usesCup) grindHelpIds.push('dosingCup');
+  else if (usesShaker) grindHelpIds.push('blindShaker');
+  else if (usesFunnel) grindHelpIds.push('dosingFunnel');
 
-    steps.push(step({
-      id: 'discardPurge',
-      icon: 'discard',
-      title: 'Discard the purge',
-      instruction: 'Throw those purge grounds away. Leave the hopper empty.',
-    }));
-  }
+  const puckHelpIds = [];
+  if (usesShaker && usesCup) puckHelpIds.push('blindShaker');
+  if (usesFunnel && groundsLeaveTheBasket) puckHelpIds.push('dosingFunnel');
+  if (accessories.wdt) puckHelpIds.push('wdt');
+  if (accessories.distributor) puckHelpIds.push('distributor');
+  if (accessories.selfLevellingTamper) puckHelpIds.push('selfLevellingTamper');
+  if (accessories.puckScreen) puckHelpIds.push('puckScreen');
 
   steps.push(step({
-    id: 'weigh',
+    id: 'dose',
     icon: 'weigh',
-    title: 'Weigh the dose',
+    title: 'Dose',
     highlightLabel: 'Dose',
     highlight: `${dose}g`,
-    instruction: `Weigh ${dose}g of ${bean}. This is the dose you will grind.`,
+    lines: doseLines,
+    helps: toolHelp(accessories, ['rdt']),
   }));
-
-  if (accessories.rdt) {
-    steps.push(step({
-      id: 'rdt',
-      icon: 'rdt',
-      title: 'RDT',
-      instruction: 'Add a tiny spray of water to the beans and mix them through.',
-      help: 'A light mist is enough. There is no set amount.',
-    }));
-  }
 
   steps.push(step({
-    id: 'loadHopper',
-    icon: 'load',
-    title: 'Load the hopper',
-    instruction: `The hopper is empty. Add only the ${dose}g you just weighed. Do not fill the hopper.`,
+    id: 'grind',
+    icon: 'grind',
+    title: 'Grind',
+    lines: grindDoseLines,
+    helps: toolHelp(accessories, grindHelpIds),
   }));
 
-  if (!groundsLeaveTheBasket && usesFunnel) {
+  if (puckLines.length) {
     steps.push(step({
-      id: 'prepFunnel',
-      icon: 'funnel',
-      title: 'Fit the funnel',
-      instruction: 'Place the dosing funnel on the portafilter.',
+      id: 'puck',
+      icon: 'portafilter',
+      title: 'Prepare the puck',
+      lines: puckLines,
+      helps: toolHelp(accessories, puckHelpIds),
     }));
   }
-
-  if (usesCup) {
-    steps.push(step({
-      id: 'grind',
-      icon: 'grind',
-      title: 'Grind the dose',
-      instruction: `Grind all ${dose}g into the dosing cup.`,
-    }));
-    steps.push(step({
-      id: 'verifyDose',
-      icon: 'weigh',
-      title: 'Check the dose',
-      highlightLabel: 'Dose',
-      highlight: `${dose}g`,
-      instruction: `Check the dosing cup weighs ${dose}g.`,
-    }));
-  } else if (usesShaker) {
-    steps.push(step({
-      id: 'grind',
-      icon: 'grind',
-      title: 'Grind the dose',
-      instruction: `Grind all ${dose}g into the blind shaker.`,
-    }));
-    steps.push(step({
-      id: 'verifyDose',
-      icon: 'weigh',
-      title: 'Check the dose',
-      highlightLabel: 'Dose',
-      highlight: `${dose}g`,
-      instruction: `Check the blind shaker holds ${dose}g.`,
-    }));
-  } else {
-    steps.push(step({
-      id: 'grind',
-      icon: 'grind',
-      title: 'Grind the dose',
-      instruction: usesFunnel
-        ? `Grind all ${dose}g through the funnel into the basket.`
-        : `Hold the portafilter steady and grind all ${dose}g into the basket.`,
-    }));
-    steps.push(step({
-      id: 'verifyDose',
-      icon: 'weigh',
-      title: 'Check the dose',
-      highlightLabel: 'Dose',
-      highlight: `${dose}g`,
-      instruction: `Weigh the portafilter and check the grounds are ${dose}g.`,
-    }));
-  }
-
-  if (usesShaker) {
-    steps.push(step({
-      id: 'shake',
-      icon: 'shake',
-      title: 'Shake the grounds',
-      instruction: usesCup
-        ? 'Tip the grounds into the blind shaker and shake until they look even.'
-        : 'Shake the grounds until they look even.',
-    }));
-  }
-
-  if (groundsLeaveTheBasket) {
-    let instruction = 'Transfer the grounds carefully into the basket.';
-    if (usesFunnel && usesShaker) {
-      instruction = 'Place the dosing funnel on the portafilter and tip the grounds in from the shaker.';
-    } else if (usesFunnel && usesCup) {
-      instruction = 'Place the dosing funnel on the portafilter and tip the grounds in from the dosing cup.';
-    } else if (usesShaker) {
-      instruction = 'Tip the grounds from the shaker carefully into the basket.';
-    } else if (usesCup) {
-      instruction = 'Tip the grounds from the dosing cup carefully into the basket.';
-    }
-    steps.push(step({
-      id: 'transfer',
-      icon: 'transfer',
-      title: 'Transfer to the basket',
-      instruction,
-    }));
-  }
-
-  if (accessories.wdt) {
-    steps.push(step({
-      id: 'wdt',
-      icon: 'wdt',
-      title: 'WDT',
-      instruction: 'Gently break up clumps and distribute the grounds.',
-      help: usesFunnel ? 'Leave the dosing funnel on while you do this.' : undefined,
-    }));
-  }
-
-  if (usesFunnel) {
-    steps.push(step({
-      id: 'removeFunnel',
-      icon: 'funnel',
-      title: 'Remove the funnel',
-      instruction: 'Lift the dosing funnel off so the basket rim is clear.',
-    }));
-  }
-
-  if (accessories.distributor) {
-    steps.push(step({
-      id: 'distribute',
-      icon: 'distribute',
-      title: 'Level the bed',
-      instruction: 'Use the distributor to level the coffee bed evenly.',
-    }));
-  }
-
-  if (accessories.selfLevellingTamper) {
-    steps.push(step({
-      id: 'tamp',
-      icon: 'tamp',
-      title: 'Tamp',
-      instruction: 'Place the tamper squarely and press once consistently.',
-      help: 'One press. The tamper levels itself.',
-    }));
-  }
-
-  if (accessories.puckScreen) {
-    steps.push(step({
-      id: 'screen',
-      icon: 'screen',
-      title: 'Add the puck screen',
-      instruction: accessories.selfLevellingTamper
-        ? 'Place the puck screen flat on the tamped puck.'
-        : 'Place the puck screen flat on the coffee.',
-    }));
-  }
-
-  steps.push(step({
-    id: 'preheat',
-    icon: 'preheat',
-    title: 'Last check',
-    highlightLabel: 'Target yield',
-    highlight: `${yieldG}g`,
-    instruction: 'The cup should still be warm. Lock in the portafilter. Put the scale under the cup if you have one.',
-    help: `Target time is ${timeMin}–${timeMax} seconds.`,
-  }));
 
   steps.push(step({
     id: 'extract',
@@ -418,47 +311,40 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     stopAt,
     timeLabel: `${timeMin}–${timeMax}s`,
     instruction: stopAt
-      ? `Stop the machine around ${stopAt}g.`
-      : `Brew toward ${yieldG}g and stop a little early so the rest can finish flowing.`,
-    note: 'The app cannot see the scale. This is only a reminder.',
-    help: 'Start the timer as the shot starts. Tap when you stop the machine, let the cup reach the target, then stop the timer and take the cup off the scale.',
+      ? `Lock in, cup on the scale. Stop the machine around ${stopAt}g.`
+      : `Lock in, cup on the scale. Brew toward ${yieldG}g.`,
+    note: 'The timer does not read the scale.',
   }));
 
   steps.push(step({
-    id: 'knockPuck',
-    icon: 'discard',
-    title: 'Remove the puck',
-    instruction: 'Knock the puck out.',
+    id: 'yield',
+    kind: 'yield',
+    icon: 'weigh',
+    title: 'Yield',
+    highlightLabel: 'Target',
+    highlight: `${yieldG}g`,
+    instruction: 'Enter the yield in the cup. It is sent to Dial-In with the shot time.',
   }));
 
   steps.push(step({
-    id: 'rinsePortafilter',
+    id: 'clean',
     icon: 'rinse',
-    title: 'Rinse the portafilter',
-    instruction: 'Rinse the basket and portafilter.',
+    title: 'Clean up',
+    lines: [
+      'Knock the puck out.',
+      'Rinse the basket and portafilter.',
+      'Rinse the group head.',
+      'Leave the machine ready for next time.',
+    ],
   }));
 
   steps.push(step({
-    id: 'rinseGroup',
-    icon: 'rinse',
-    title: 'Rinse the group',
-    instruction: 'Rinse the group head.',
-  }));
-
-  steps.push(step({
-    id: 'readyMachine',
-    icon: 'ready',
-    title: 'Leave it ready',
-    instruction: 'Leave the machine ready for the next use.',
-  }));
-
-  steps.push(step({
-    id: 'logShot',
+    id: 'taste',
     kind: 'handoff',
     icon: 'log',
-    title: 'Log the shot',
-    instruction: 'Dial-In already has this coffee, recipe, dose, grind setting and the shot time. Enter the yield you weighed.',
-    help: 'This opens the existing shot form. It does not save a second record.',
+    title: 'Taste',
+    instruction: 'Time and yield are filled in. Mark the taste to record how this shot tasted.',
+    doneLabel: 'Mark the taste',
   }));
 
   return steps;

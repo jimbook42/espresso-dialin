@@ -131,18 +131,27 @@ export default function App() {
   const tasteInputRef = useRef(null);
   const recommendationRef = useRef(null);
   const grindSettingsRef = useRef(null);
-  
+  const brewTempDefaultRef = useRef('');
   const [validationError, setValidationError] = useState('');
   const [highlightGrind, setHighlightGrind] = useState(false);
 
   useEffect(() => {
     if (settingsSetting) {
-      if (settingsSetting.grinderModel) setGrinderModel(settingsSetting.grinderModel);
+      if (settingsSetting.grinderModel) {
+        setGrinderModel(settingsSetting.grinderModel);
+        if (!isEditingBean && brewTempDefaultRef.current !== settingsSetting.grinderModel) {
+          brewTempDefaultRef.current = settingsSetting.grinderModel;
+          const nextTemp = settingsSetting.grinderModel === 'Sunbeam Barista Max' ? 92 : 93;
+          setNewRecipe((prev) => (
+            prev.brewTemperatureC === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp }
+          ));
+        }
+      }
       if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
       if (settingsSetting.preInfusionEnabled !== undefined) setUsePreInfusion(settingsSetting.preInfusionEnabled);
       if (settingsSetting.darkMode !== undefined) setDarkMode(settingsSetting.darkMode);
     }
-  }, [settingsSetting]);
+  }, [settingsSetting, isEditingBean]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
@@ -270,6 +279,13 @@ export default function App() {
 
   const handleSaveGrinderSetup = async (model) => {
     setGrinderModel(model);
+    if (!isEditingBean) {
+      brewTempDefaultRef.current = model;
+      const nextTemp = model === 'Sunbeam Barista Max' ? 92 : 93;
+      setNewRecipe((prev) => (
+        prev.brewTemperatureC === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp }
+      ));
+    }
     const currentSettings = await db.settings.get('global') || { id: 'global' };
     await db.settings.put({ ...currentSettings, grinderModel: model });
   };
@@ -395,7 +411,7 @@ export default function App() {
       targetYieldG: '', 
       targetTimeMinS: 27, 
       targetTimeMaxS: 32,
-      brewTemperatureC: 93,
+      brewTemperatureC: grinderModel === 'Sunbeam Barista Max' ? 92 : 93,
       flairProfile: { preinfusionPressure: '', preinfusionTime: '', peakPressure: '', peakEndYield: '', taperPressure: '' }
     });
   };
@@ -753,7 +769,7 @@ export default function App() {
   const subTextClass = ui.sub;
 
   const previousGrindLabel = (() => {
-    const shot = beanShotsForGrinder[0];
+    const shot = shots.find((s) => s.grinderModel === grinderModel);
     if (!shot) return '';
     if (grinderModel === 'Sette 270Wi') {
       if (shot.setteMacro == null || shot.setteMacro === '') return '';
@@ -806,12 +822,12 @@ export default function App() {
     setActualTimeS('');
   };
 
-  const handleBrewHandoff = (timeS) => {
+  const handleBrewHandoff = ({ timeS, yieldG } = {}) => {
     if (activeRecipe && activeRecipe.targetDoseG != null && activeRecipe.targetDoseG !== '') {
       setActualDoseG(activeRecipe.targetDoseG);
     }
     if (timeS != null && timeS !== '') setActualTimeS(timeS);
-    setActualYieldG('');
+    if (yieldG != null && yieldG !== '' && Number(yieldG) > 0) setActualYieldG(yieldG);
     setWasPurged(true);
     if (lastShot && dynamicRec?.recommendedSetting && lastShot.grinderModel === grinderModel) {
       const recSet = dynamicRec.recommendedSetting;
@@ -825,8 +841,8 @@ export default function App() {
     setBrewTimerHost(false);
     setActiveTab('dial');
     window.setTimeout(() => {
-      yieldInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      yieldInputRef.current?.querySelector('input')?.focus();
+      tasteInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      tasteInputRef.current?.querySelector('button')?.focus();
     }, 200);
   };
 
@@ -1552,6 +1568,9 @@ export default function App() {
                       className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                     />
                     <span className={`text-[9px] ${ui.muted} text-center block`}>°C</span>
+                    {grinderModel === 'Sunbeam Barista Max' && (
+                      <span className={`text-[10px] ${ui.muted} text-center block mt-1`}>92°C is the system default.</span>
+                    )}
                   </div>
                 </div>
 
@@ -1961,7 +1980,7 @@ export default function App() {
                   <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
                     <div>
                       <span className={`font-bold block ${ui.text}`}>Brew Guide</span>
-                      <span className={`text-[10px] ${ui.muted}`}>Step-by-step shot prep from your Dial-In recipe</span>
+                      <span className={`text-[10px] ${ui.muted}`}>Shot steps from Dial-In, plus Barista Max guides</span>
                     </div>
                     <SettingsToggle checked={brewGuideEnabled} onChange={handleToggleBrewGuide} label="Brew Guide" />
                   </div>
@@ -2072,7 +2091,7 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v4.1
+            Espresso Dial-In • v4.2
           </span>
         </footer>
 
