@@ -121,9 +121,9 @@ function MenuCard({ ui, icon: Icon, title, detail, onClick }) {
   );
 }
 
-function scrollStepCardIntoView(cardEl) {
-  if (!cardEl) return;
-  const top = cardEl.getBoundingClientRect().top + window.scrollY;
+function scrollStepHeaderIntoView(headerEl) {
+  if (!headerEl) return;
+  const top = headerEl.getBoundingClientRect().top + window.scrollY;
   const offset = 12;
   window.scrollTo({ top: Math.max(0, top - offset), behavior: 'auto' });
 }
@@ -171,12 +171,12 @@ function SectionMenu({ ui, title, detail, onBack, children }) {
 
 function GuideFlow({ ui, guide, onBack }) {
   const [index, setIndex] = useState(0);
-  const stepCardRef = useRef(null);
+  const stepHeaderRef = useRef(null);
   const step = guide.steps[index];
   const stepNumber = index + 1;
 
   useEffect(() => {
-    scrollStepCardIntoView(stepCardRef.current);
+    scrollStepHeaderIntoView(stepHeaderRef.current);
   }, [index]);
 
   const goBack = () => {
@@ -192,7 +192,7 @@ function GuideFlow({ ui, guide, onBack }) {
   return (
     <div className="flex flex-col gap-5 pb-44">
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
+        <div ref={stepHeaderRef} className="flex items-center justify-between gap-3">
           <BackButton ui={ui} onClick={goBack} />
           <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${ui.muted}`} aria-live="polite">
             Step {stepNumber} of {guide.steps.length}
@@ -210,7 +210,7 @@ function GuideFlow({ ui, guide, onBack }) {
         </div>
       </div>
 
-      <div ref={stepCardRef} className={`${ui.card} p-6 space-y-4 rounded-2xl`}>
+      <div className={`${ui.card} p-6 space-y-4 rounded-2xl`}>
         <h2 className={`text-[1.75rem] leading-tight font-black tracking-tight ${ui.text}`}>{step.title}</h2>
         <StepActions actions={step.actions} ui={ui} />
         <ul className={`space-y-2 text-base leading-relaxed ${ui.sub}`}>
@@ -262,7 +262,7 @@ export function BrewGuide({
   const [draft, setDraft] = useState(() => normalizeBrewAccessories(accessories));
   const [sessionAccessories, setSessionAccessories] = useState(null);
   const workflowAccessories = sessionAccessories ?? normalizeBrewAccessories(accessories);
-  const stepCardRef = useRef(null);
+  const stepHeaderRef = useRef(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [extractPhase, setExtractPhase] = useState('idle');
@@ -276,7 +276,7 @@ export function BrewGuide({
   const summary = brewDialSummary(dial);
 
   useEffect(() => {
-    scrollStepCardIntoView(stepCardRef.current);
+    scrollStepHeaderIntoView(stepHeaderRef.current);
   }, [screen, index]);
 
   useEffect(() => {
@@ -602,7 +602,7 @@ export function BrewGuide({
   return (
     <div className="flex flex-col gap-5 pb-44">
       <div className="space-y-3" data-timer-dismiss>
-        <div className="flex items-center justify-between gap-3">
+        <div ref={stepHeaderRef} className="flex items-center justify-between gap-3">
           <BackButton ui={ui} onClick={goBack} />
           <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${ui.muted}`} aria-live="polite">
             Step {stepNumber} of {steps.length}
@@ -621,7 +621,6 @@ export function BrewGuide({
       </div>
 
       <div
-        ref={stepCardRef}
         className={`${ui.card} ${step.kind === 'timer' ? 'p-4 space-y-3' : 'p-6 space-y-4'} rounded-2xl ${timerLive ? 'cursor-pointer' : ''}`}
         onClick={timerLive ? handleTimerSurface : undefined}
         role={timerLive ? 'presentation' : undefined}

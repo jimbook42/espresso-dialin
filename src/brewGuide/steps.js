@@ -419,7 +419,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     icon: 'log',
     title: 'Your shot details are ready in Dial-In',
     instruction: 'Your shot time and yield have been carried over to the Dial-In screen. Select how the shot tasted, then log the shot to get your next grind recommendation.',
-    doneLabel: 'Go to Dial-In',
+    doneLabel: 'Go to Dial-in to mark taste',
   }));
 
   return steps;

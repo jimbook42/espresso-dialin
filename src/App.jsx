@@ -516,7 +516,9 @@ export default function App() {
     }
     if (!tasteProfile) {
       setValidationError('Taste profile selection is required.');
+      setHighlightTaste(true);
       tasteInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      tasteInputRef.current?.querySelector('button')?.focus();
       return;
     }
 
@@ -1324,7 +1326,7 @@ export default function App() {
 
                   {/* Taste selector */}
                   <div
-                    className={`${ui.card} p-4 rounded-2xl space-y-3 transition-all duration-300 ${highlightTaste ? 'ring-2 ring-[#c88a4b]/80 shadow-[0_0_0_4px_rgba(200,138,75,0.12)]' : ''}`}
+                    className={`${ui.card} p-4 rounded-2xl space-y-3 transition-all duration-300 ${highlightTaste ? 'ring-2 ring-[#c88a4b]/80 taste-attention-pulse' : ''}`}
                     ref={tasteInputRef}
                   >
                     <label className={ui.fieldLabel}>Extraction taste *</label>
