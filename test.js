@@ -9,9 +9,12 @@ import {
   getAgeAdjustedRecommendation,
   getHistoricalRoastBaseline,
   getInitialGrindRecommendation,
+  KNOWN_ISSUE_REASONS,
+  knownIssueReasonLabel,
   recipeContextForShot,
   setteToNumeric,
   shotEligibleForLearning,
+  shotIsSevereChoke,
   shotMatchesRecipeContext,
   shotResultImproved,
 } from './src/utils/grinderLogic.js';
@@ -131,8 +134,10 @@ async function runTests() {
   runBrewGuideTests();
   runDecafRegressionTests();
   runKnownIssueLearningTests();
+  runSevereDeviationTests();
   await runDecafPersistenceTests();
   await runKnownIssuePersistenceTests();
+  await runLegacyShotDataTests();
   console.log('All tests passed!');
 }
 
@@ -843,6 +848,390 @@ async function runDecafPersistenceTests() {
   assert.equal(storedShot.tasteProfile, 'good');
   assert.equal(storedShot.actualTimeS, 28);
   assert.equal((await db.recipes.get('legacy-recipe')).targetYieldG, 36);
+  assert.equal(db.verno, 17);
+
+  db.close();
+}
+
+function runSevereDeviationTests() {
+  const recipe = {
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+    targetDoseG: 18,
+    targetYieldG: 36,
+    brewTemperatureC: 93,
+  };
+  const outsideYieldWarning = /far outside the target time and yield/;
+  const setteShot = (time, taste, yieldG, extra = {}) => ({
+    grinderModel: 'Sette 270Wi',
+    setteMacro: 13,
+    setteMicro: 'E',
+    wasPurged: true,
+    actualTime: time,
+    actualYield: yieldG,
+    actualDose: 18,
+    tasteProfile: taste,
+    ...extra,
+  });
+  const sunbeamShot = (time, taste, yieldG) => ({
+    grinderModel: 'Sunbeam Barista Max',
+    sunbeamSetting: 15,
+    wasPurged: true,
+    actualTime: time,
+    actualYield: yieldG,
+    actualDose: 18,
+    tasteProfile: taste,
+  });
+
+  assert.equal(KNOWN_ISSUE_REASONS.stopped_early, 'Shot stopped early');
+  assert.equal(knownIssueReasonLabel('stopped_early'), 'Shot stopped early');
+
+  const fast = calculateRecommendation(setteShot(20, 'sour', 36), recipe, [], false);
+  assert.match(fast.reason, /GO \d+ MICRO STEP\(S\) FINER — Shot was \d+s off target midpoint/);
+  assert.deepEqual(fast.recommendedSetting, { macro: 12, micro: 'H' });
+  assert.equal(fast.shotOutcome.isSevereChoke, false);
+  assert.equal(fast.shotOutcome.isDialledIn, false);
+  assert.ok(!fast.warning || !outsideYieldWarning.test(fast.warning));
+  assert.equal(shotEligibleForLearning({ actualTimeS: 20, actualYieldG: 36, tasteProfile: 'sour' }), true);
+
+  const fastShort = calculateRecommendation(setteShot(20, 'sour', 30), recipe, [], false);
+  assert.deepEqual(fastShort.recommendedSetting, fast.recommendedSetting);
+  assert.match(fastShort.reason, /FINER/);
+  assert.match(fastShort.warning, outsideYieldWarning);
+  assert.equal(fastShort.shotOutcome.isSevereChoke, false);
+  assert.equal(shotEligibleForLearning({ actualTimeS: 20, actualYieldG: 30, tasteProfile: 'sour' }), true);
+
+  const fastNearYield = calculateRecommendation(setteShot(20, 'sour', 33), recipe, [], false);
+  assert.deepEqual(fastNearYield.recommendedSetting, fast.recommendedSetting);
+  assert.ok(!fastNearYield.warning || !outsideYieldWarning.test(fastNearYield.warning));
+
+  const slow = calculateRecommendation(setteShot(40, 'bitter', 36), recipe, [], false);
+  assert.match(slow.reason, /GO \d+ MICRO STEP\(S\) COARSER — Shot was \d+s off target midpoint/);
+  assert.deepEqual(slow.recommendedSetting, { macro: 14, micro: 'F' });
+  assert.equal(slow.shotOutcome.isSevereChoke, false);
+  assert.ok(!slow.warning || !outsideYieldWarning.test(slow.warning));
+
+  const slowBoundary = calculateRecommendation(setteShot(35, 'bitter', 36), recipe, [], false);
+  assert.match(slowBoundary.reason, /off target midpoint/);
+  assert.equal(slowBoundary.shotOutcome.isSevereChoke, false);
+
+  const inRangeShort = calculateRecommendation(setteShot(28, 'good', 32.5), recipe, [], false);
+  assert.equal(inRangeShort.reason, 'KEEP GRIND — Balanced and in range.');
+  assert.match(inRangeShort.warning, /hit target time but under-yielded/);
+  assert.ok(!outsideYieldWarning.test(inRangeShort.warning));
+  assert.equal(inRangeShort.shotOutcome.isDialledIn, false);
+
+  assert.equal(shotIsSevereChoke(60, 10, 25, 30, 36), true);
+  assert.equal(shotIsSevereChoke(60, 10, 27, 32, 36), true);
+  assert.equal(shotIsSevereChoke(60, 36, 25, 30, 36), false);
+  assert.equal(shotIsSevereChoke(20, 10, 25, 30, 36), false);
+  assert.equal(shotIsSevereChoke(35, 10, 25, 30, 36), true);
+  assert.equal(shotIsSevereChoke(34, 10, 25, 30, 36), false);
+  assert.equal(shotIsSevereChoke(40, 30, 25, 30, 36), false);
+
+  const choke = calculateRecommendation(setteShot(60, 'sour', 10), recipe, [], false);
+  const rawSlow = calculateRecommendation(setteShot(60, 'sour', 36), recipe, [], false);
+  assert.equal(choke.shotOutcome.isSevereChoke, true);
+  assert.equal(choke.shotOutcome.isDialledIn, false);
+  assert.equal(choke.shotOutcome.statusLabel, null);
+  assert.deepEqual(choke.recommendedSetting, slowBoundary.recommendedSetting);
+  assert.deepEqual(choke.recommendedSetting, { macro: 14, micro: 'B' });
+  assert.notDeepEqual(choke.recommendedSetting, rawSlow.recommendedSetting);
+  assert.equal(setteToNumeric(choke.recommendedSetting.macro, choke.recommendedSetting.micro) - setteToNumeric(13, 'E'), 6);
+  assert.notEqual(
+    setteToNumeric(choke.recommendedSetting.macro, choke.recommendedSetting.micro) - setteToNumeric(13, 'E'),
+    Math.round((60 - 27.5) / 1.25)
+  );
+  assert.notEqual(
+    setteToNumeric(choke.recommendedSetting.macro, choke.recommendedSetting.micro) - setteToNumeric(13, 'E'),
+    Math.round((((60 / 10) * 36) - 27.5) / 1.25)
+  );
+  assert.match(choke.reason, /Severe choke detected — shot produced very little yield over an extended time\. Go substantially coarser\./);
+  assert.doesNotMatch(choke.reason, /extrapolat|CHOKED SHOT/i);
+  assert.equal(Object.hasOwn(choke, 'extrapolatedTime'), false);
+  assert.match(choke.reason, /COARSER/);
+  assert.doesNotMatch(choke.reason, /FINER/);
+  assert.ok(!choke.warning || !outsideYieldWarning.test(choke.warning));
+
+  const yieldMissSlow = calculateRecommendation(setteShot(40, 'bitter', 30), recipe, [], false);
+  assert.equal(yieldMissSlow.shotOutcome.isSevereChoke, false);
+  assert.deepEqual(yieldMissSlow.recommendedSetting, slow.recommendedSetting);
+  assert.match(yieldMissSlow.reason, /off target midpoint/);
+  assert.match(yieldMissSlow.warning, outsideYieldWarning);
+  assert.equal(shotEligibleForLearning({ actualTimeS: 40, actualYieldG: 30, tasteProfile: 'bitter' }), true);
+
+  const sunFast = calculateRecommendation(sunbeamShot(20, 'sour', 36), recipe, [], false);
+  const sunSlow = calculateRecommendation(sunbeamShot(40, 'bitter', 36), recipe, [], false);
+  const sunChoke = calculateRecommendation(sunbeamShot(60, 'bitter', 10), recipe, [], false);
+  const sunRaw = calculateRecommendation(sunbeamShot(60, 'bitter', 36), recipe, [], false);
+  const sunBoundary = calculateRecommendation(sunbeamShot(35, 'bitter', 36), recipe, [], false);
+  assert.deepEqual(sunFast.recommendedSetting, { setting: 13 });
+  assert.deepEqual(sunSlow.recommendedSetting, { setting: 18 });
+  assert.match(sunFast.reason, /off target midpoint/);
+  assert.match(sunSlow.reason, /off target midpoint/);
+  assert.deepEqual(sunChoke.recommendedSetting, { setting: 17 });
+  assert.deepEqual(sunChoke.recommendedSetting, sunBoundary.recommendedSetting);
+  assert.notDeepEqual(sunChoke.recommendedSetting, sunRaw.recommendedSetting);
+  assert.match(sunChoke.reason, /SETTING\(S\) COARSER/);
+  assert.match(sunChoke.reason, /Severe choke detected/);
+  assert.doesNotMatch(JSON.stringify(sunChoke), /extrapolat/i);
+
+  const sunInRange = calculateRecommendation(sunbeamShot(28, 'very_bitter', 36), recipe, [], false);
+  assert.deepEqual(sunInRange.recommendedSetting, { setting: 16 });
+  const setteInRange = calculateRecommendation(setteShot(28, 'very_bitter', 36), recipe, [], false);
+  assert.deepEqual(setteInRange.recommendedSetting, { macro: 13, micro: 'G' });
+
+  const mockDate = '2026-09-20T12:00:00.000Z';
+  const bean = { id: 'b1', roastType: 'Medium', roastDate: '2026-09-01', storageType: 'bag' };
+  const recipes = [{ beanId: 'b1', ...recipe }];
+  const age = calculateEffectiveBeanAge(bean, mockDate).daysOld;
+  const dialled = {
+    id: 'dialled',
+    beanId: 'b1',
+    grinderModel: 'Sette 270Wi',
+    setteMacro: 10,
+    setteMicro: 'A',
+    actualTimeS: 28,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'good',
+    timestamp: '2026-09-18T10:00:00.000Z',
+    beanAgeDays: age,
+    recommendationFollowed: true,
+    recommendation: {
+      recommendedSetting: { macro: 10, micro: 'A' },
+      reason: 'KEEP GRIND — Balanced and in range.',
+    },
+  };
+  const chokeRecord = {
+    id: 'choke',
+    beanId: 'b1',
+    grinderModel: 'Sette 270Wi',
+    setteMacro: 13,
+    setteMicro: 'E',
+    actualTimeS: 60,
+    actualYieldG: 10,
+    actualDoseG: 18,
+    tasteProfile: 'sour',
+    timestamp: '2026-09-19T10:00:00.000Z',
+    beanAgeDays: age,
+    recommendation: choke,
+  };
+  assert.equal(classifyShotOutcome(chokeRecord, recipe).isDialledIn, false);
+  assert.equal(classifyShotOutcome(chokeRecord, recipe).isSevereChoke, true);
+  assert.equal(getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [chokeRecord], [bean]), null);
+  assert.equal(getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [dialled, chokeRecord], [bean]), setteToNumeric(10, 'A'));
+
+  const newestFirst = [chokeRecord, dialled];
+  const learningAfterChoke = newestFirst.find((s) => s.beanId === 'b1' && shotEligibleForLearning(s));
+  assert.equal(learningAfterChoke.id, 'choke');
+  assert.deepEqual(
+    getAgeAdjustedRecommendation(learningAfterChoke, bean, mockDate).recommendedSetting,
+    choke.recommendedSetting
+  );
+
+  const stopped = {
+    ...chokeRecord,
+    id: 'stopped',
+    actualDoseG: 18.0,
+    actualYieldG: 10,
+    actualTimeS: 60,
+    tasteProfile: 'bitter',
+    setteMacro: 13,
+    setteMicro: 'E',
+    notes: 'aborted',
+    recommendationFollowed: false,
+    excludeFromLearning: true,
+    knownIssueReason: 'stopped_early',
+    recommendation: {
+      recommendedSetting: { macro: 20, micro: 'I' },
+      reason: 'should not be applied',
+    },
+  };
+  const history = [stopped, dialled];
+  assert.equal(history.length, 2);
+  assert.equal(stopped.actualDoseG, 18);
+  assert.equal(stopped.actualYieldG, 10);
+  assert.equal(stopped.actualTimeS, 60);
+  assert.equal(shotEligibleForLearning(stopped), false);
+  const learningAfterStop = history.find((s) => s.beanId === 'b1' && shotEligibleForLearning(s));
+  assert.equal(learningAfterStop.id, 'dialled');
+  assert.deepEqual(
+    getAgeAdjustedRecommendation(learningAfterStop, bean, mockDate).recommendedSetting,
+    dialled.recommendation.recommendedSetting
+  );
+  assert.notDeepEqual(
+    getAgeAdjustedRecommendation(learningAfterStop, bean, mockDate).recommendedSetting,
+    stopped.recommendation.recommendedSetting
+  );
+  assert.deepEqual(
+    getInitialGrindRecommendation('Sette 270Wi', 'Medium', bean, recipes, history, [bean], mockDate),
+    getInitialGrindRecommendation('Sette 270Wi', 'Medium', bean, recipes, [dialled], [bean], mockDate)
+  );
+  assert.equal(
+    getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, history, [bean]),
+    getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [dialled], [bean])
+  );
+
+  const followedReference = getAgeAdjustedRecommendation(learningAfterStop, bean, mockDate).recommendedSetting;
+  assert.deepEqual(followedReference, { macro: 10, micro: 'A' });
+
+  const afterStoppedHistory = calculateRecommendation(
+    setteShot(22, 'sour', 36, { previousShot: learningAfterStop }),
+    recipe,
+    history,
+    false
+  );
+  const afterDialledOnly = calculateRecommendation(
+    setteShot(22, 'sour', 36, { previousShot: dialled }),
+    recipe,
+    [dialled],
+    false
+  );
+  assert.deepEqual(afterStoppedHistory.recommendedSetting, afterDialledOnly.recommendedSetting);
+  assert.equal(afterStoppedHistory.flairWaterTempAdvice, afterDialledOnly.flairWaterTempAdvice);
+
+  const notBaseline = (overrides) => ({
+    ...dialled,
+    id: `nb-${overrides.tasteProfile || 'x'}-${overrides.actualTimeS}`,
+    ...overrides,
+  });
+  const baselineShots = [
+    notBaseline({ tasteProfile: 'sour', id: 'sour' }),
+    notBaseline({ tasteProfile: 'bitter', id: 'bitter' }),
+    notBaseline({ actualTimeS: 20, tasteProfile: 'good', id: 'fast' }),
+    notBaseline({ actualYieldG: 30, tasteProfile: 'good', id: 'yield' }),
+    notBaseline({ excludeFromLearning: true, knownIssueReason: 'puck_prep', id: 'issue' }),
+    notBaseline({ excludeFromLearning: true, knownIssueReason: 'stopped_early', id: 'stopped-dialled' }),
+  ];
+  assert.equal(getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, baselineShots, [bean]), null);
+  assert.equal(classifyShotOutcome(baselineShots.find((s) => s.id === 'sour'), recipe).isDialledIn, false);
+  assert.equal(classifyShotOutcome(baselineShots.find((s) => s.id === 'bitter'), recipe).isDialledIn, false);
+  assert.equal(classifyShotOutcome(baselineShots.find((s) => s.id === 'fast'), recipe).isDialledIn, false);
+  assert.equal(classifyShotOutcome(baselineShots.find((s) => s.id === 'yield'), recipe).isDialledIn, false);
+
+  const decafBean = { id: 'decaf', roastType: 'Medium', roastDate: '2026-09-01', storageType: 'bag', isDecaf: true };
+  const decafStopped = {
+    ...dialled,
+    id: 'decaf-stopped',
+    beanId: 'decaf',
+    excludeFromLearning: true,
+    knownIssueReason: 'stopped_early',
+  };
+  assert.equal(
+    getHistoricalRoastBaseline('Sette 270Wi', 'Medium', [{ beanId: 'decaf', ...recipe }], [decafStopped], [decafBean], 'decaf'),
+    null
+  );
+}
+
+async function runLegacyShotDataTests() {
+  assert.equal(db.verno, 17);
+  await db.open();
+  await db.transaction('rw', db.beans, db.recipes, db.shots, db.settings, async () => {
+    await db.beans.clear();
+    await db.recipes.clear();
+    await db.shots.clear();
+    await db.settings.clear();
+  });
+
+  const legacyBean = {
+    id: 'legacy-bean',
+    name: 'House',
+    roaster: 'Local',
+    roastType: 'Medium',
+    roastDate: '2026-01-01',
+    storageType: 'bag',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+  const legacyRecipe = {
+    id: 'legacy-recipe',
+    beanId: 'legacy-bean',
+    targetDoseG: 18,
+    targetYieldG: 36,
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+  };
+  const legacyShot = {
+    id: 'legacy-shot',
+    beanId: 'legacy-bean',
+    timestamp: '2026-01-05T00:00:00.000Z',
+    grinderModel: 'Sette 270Wi',
+    setteMacro: 12,
+    setteMicro: 'C',
+    actualTimeS: 28,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'good',
+  };
+  const legacySettings = {
+    id: 'global',
+    grinderModel: 'Sette 270Wi',
+    flairEnabled: false,
+    darkMode: true,
+  };
+
+  await db.beans.add(legacyBean);
+  await db.recipes.add(legacyRecipe);
+  await db.shots.add(legacyShot);
+  await db.settings.add(legacySettings);
+
+  const loadedBean = await db.beans.get('legacy-bean');
+  const loadedRecipe = await db.recipes.get('legacy-recipe');
+  const loadedShot = await db.shots.get('legacy-shot');
+  const loadedSettings = await db.settings.get('global');
+  assert.equal(loadedBean.name, 'House');
+  assert.equal(Object.hasOwn(loadedBean, 'isDecaf'), false);
+  assert.equal(loadedRecipe.targetYieldG, 36);
+  assert.equal(loadedShot.setteMacro, 12);
+  assert.equal(loadedShot.setteMicro, 'C');
+  assert.equal(loadedShot.tasteProfile, 'good');
+  assert.equal(Object.hasOwn(loadedShot, 'excludeFromLearning'), false);
+  assert.equal(shotEligibleForLearning(loadedShot), true);
+  assert.equal(loadedSettings.grinderModel, 'Sette 270Wi');
+  assert.equal(loadedSettings.darkMode, true);
+
+  await db.shots.add({
+    id: 'stopped-shot',
+    beanId: 'legacy-bean',
+    timestamp: '2026-01-06T00:00:00.000Z',
+    grinderModel: 'Sette 270Wi',
+    setteMacro: 13,
+    setteMicro: 'E',
+    actualDoseG: 18,
+    actualYieldG: 10,
+    actualTimeS: 60,
+    tasteProfile: 'bitter',
+    notes: 'stopped the shot',
+    excludeFromLearning: true,
+    knownIssueReason: 'stopped_early',
+  });
+
+  const keptLegacyShot = await db.shots.get('legacy-shot');
+  const keptBean = await db.beans.get('legacy-bean');
+  const keptRecipe = await db.recipes.get('legacy-recipe');
+  const keptSettings = await db.settings.get('global');
+  const stoppedShot = await db.shots.get('stopped-shot');
+  assert.equal(keptLegacyShot.setteMacro, 12);
+  assert.equal(keptLegacyShot.actualYieldG, 36);
+  assert.equal(Object.hasOwn(keptLegacyShot, 'excludeFromLearning'), false);
+  assert.equal(keptBean.name, 'House');
+  assert.equal(keptBean.roastDate, '2026-01-01');
+  assert.equal(keptRecipe.targetTimeMinS, 25);
+  assert.equal(keptSettings.darkMode, true);
+  assert.equal(keptSettings.flairEnabled, false);
+  assert.equal(stoppedShot.actualDoseG, 18);
+  assert.equal(stoppedShot.actualYieldG, 10);
+  assert.equal(stoppedShot.actualTimeS, 60);
+  assert.equal(stoppedShot.tasteProfile, 'bitter');
+  assert.equal(stoppedShot.setteMacro, 13);
+  assert.equal(stoppedShot.notes, 'stopped the shot');
+  assert.equal(stoppedShot.excludeFromLearning, true);
+  assert.equal(stoppedShot.knownIssueReason, 'stopped_early');
+  assert.equal(shotEligibleForLearning(stoppedShot), false);
+  assert.equal(await db.beans.count(), 1);
+  assert.equal(await db.recipes.count(), 1);
+  assert.equal(await db.shots.count(), 2);
+  assert.equal(await db.settings.count(), 1);
   assert.equal(db.verno, 17);
 
   db.close();

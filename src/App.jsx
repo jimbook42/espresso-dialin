@@ -1292,7 +1292,7 @@ export default function App() {
                   <div className={`flex items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
                     <p className={`text-xs ${ui.muted}`}>
                       {lastLoggedShot
-                        ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${lastLoggedShot.tasteProfile?.replace('_', ' ') || '—'})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ' · not used for learning' : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
+                        ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${lastLoggedShot.tasteProfile?.replace('_', ' ') || '—'})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ` · kept in history, not used for learning${lastLoggedShot.knownIssueReason ? ` (${knownIssueReasonLabel(lastLoggedShot.knownIssueReason)})` : ''}` : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
                         : `Logging grind ${currentGrindLabel}`}
                     </p>
                     {lastLearningShot && dynamicRec?.recommendedSetting && (

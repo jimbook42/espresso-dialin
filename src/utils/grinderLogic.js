@@ -33,8 +33,12 @@ export function shotEligibleForLearning(shot) {
 export const KNOWN_ISSUE_REASONS = {
   puck_prep: 'Puck prep issue',
   overheated: 'Grounds/beans overheated or left exposed',
+  stopped_early: 'Shot stopped early',
   other: 'Other known issue',
 };
+
+/** In-range yield miss that blocks a dialled-in result and raises a yield warning. */
+const MATERIAL_YIELD_DELTA_G = 3.5;
 
 export function knownIssueReasonLabel(reasonKey) {
   return KNOWN_ISSUE_REASONS[reasonKey] || KNOWN_ISSUE_REASONS.other;
@@ -123,6 +127,40 @@ export function recipeContextForShot(shot, recipe = {}) {
   };
 }
 
+/**
+ * Severe choke: the shot is at least one full target window past targetMax
+ * AND yield is at or below half the recipe target. That is a stalled
+ * extraction, not a completed shot that finished a few grams short.
+ * Elapsed time is not a target-yield extraction and is not scaled up to one.
+ */
+export function shotIsSevereChoke(actualTimeS, actualYieldG, targetTimeMinS, targetTimeMaxS, targetYieldG) {
+  const targetMin = Number(targetTimeMinS);
+  const targetMax = Number(targetTimeMaxS);
+  const targetYield = Number(targetYieldG);
+  const time = Number(actualTimeS);
+  const yieldG = Number(actualYieldG);
+  if (![targetMin, targetMax, targetYield, time, yieldG].every(Number.isFinite)) return false;
+  if (targetYield <= 0 || targetMax < targetMin) return false;
+
+  const windowS = targetMax - targetMin;
+  const substantiallySlower = time >= targetMax + windowS;
+  const substantiallyUnderYield = yieldG <= targetYield / 2;
+  return substantiallySlower && substantiallyUnderYield;
+}
+
+/**
+ * Coarse steps for a severe choke, using the same seconds-per-step sensitivity
+ * as a normal out-of-range shot. The clock stops counting at the choke
+ * boundary (one target window past targetMax). Extra seconds are ignored.
+ */
+function severeChokeCoarseShift(grinderModel, targetMin, targetMax) {
+  const windowS = Math.max(targetMax - targetMin, 0);
+  const cappedDelta = 1.5 * windowS;
+  const sensitivity = grinderModel === 'Sette 270Wi' ? 1.25 : 4.5;
+  const shift = Math.round(cappedDelta / sensitivity);
+  return shift > 0 ? shift : 1;
+}
+
 /** Derived shot state for the active recipe context (not persisted). */
 export function classifyShotOutcome(shot, recipe) {
   const ctx = recipeContextForShot(shot, recipe);
@@ -139,7 +177,8 @@ export function classifyShotOutcome(shot, recipe) {
   const isNegativeTaste = isSour || isBitter;
   const isGoodTaste = taste === 'good' || taste === 'balanced';
   const yieldDelta = yieldG - targetYield;
-  const hasYieldIssue = isTimeInRange && Math.abs(yieldDelta) >= 3.5;
+  const hasYieldIssue = isTimeInRange && Math.abs(yieldDelta) >= MATERIAL_YIELD_DELTA_G;
+  const isSevereChoke = shotIsSevereChoke(time, yieldG, targetMin, targetMax, targetYield);
 
   const isDialledIn = isTimeInRange && isGoodTaste && !hasYieldIssue;
 
@@ -152,6 +191,7 @@ export function classifyShotOutcome(shot, recipe) {
     isTimeInRange,
     isNegativeTaste,
     hasYieldIssue,
+    isSevereChoke,
     statusLabel,
   };
 }
@@ -442,19 +482,32 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   }
 
   const yieldDelta = actualYield - targetYield;
-  if (isTimeInRange && Math.abs(yieldDelta) >= 3.5) {
+  const severeChoke = shotIsSevereChoke(actualTime, actualYield, targetMin, targetMax, targetYield);
+  if (isTimeInRange && Math.abs(yieldDelta) >= MATERIAL_YIELD_DELTA_G) {
     if (yieldDelta < 0) {
       warning = warning ? warning + " Shot hit target time but under-yielded." : "Shot hit target time but under-yielded (restricted flow).";
     } else {
       warning = warning ? warning + " Shot hit target time but over-yielded." : "Shot hit target time but over-yielded (high flow / channeling).";
     }
+  } else if (!isTimeInRange && !severeChoke && Math.abs(yieldDelta) >= MATERIAL_YIELD_DELTA_G) {
+    const outsideYieldWarning = "Shot was far outside the target time and yield. Check that the shot was stopped at the intended yield and puck preparation was normal before relying heavily on this result.";
+    warning = warning ? `${warning} ${outsideYieldWarning}` : outsideYieldWarning;
   }
 
   if (timeDelta < 0 && isBitter) {
     warning = (warning ? warning + " " : "") + "Shot ran fast but tasted bitter. Uneven extraction likely. Check puck prep before large grind changes.";
   }
 
-  if (isTimeInRange) {
+  if (severeChoke) {
+    shift = severeChokeCoarseShift(grinderModel, targetMin, targetMax);
+    const absShift = Math.abs(shift);
+    const chokeReason = "Severe choke detected — shot produced very little yield over an extended time. Go substantially coarser.";
+    if (grinderModel === 'Sette 270Wi') {
+      reason = `GO ${absShift} MICRO STEP(S) COARSER — ${chokeReason}`;
+    } else {
+      reason = `GO ${absShift} SETTING(S) COARSER — ${chokeReason}`;
+    }
+  } else if (isTimeInRange) {
     if (tasteProfile === 'very_sour') {
       shift = grinderModel === 'Sette 270Wi' ? -2 : -1;
       reason = `GO ${Math.abs(shift)} STEP(S) FINER — Shot is in range but tastes very sour.`;
