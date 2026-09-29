@@ -12,14 +12,19 @@ import {
   FlaskConical,
   Funnel,
   Pin,
+  Play,
+  Power,
+  RotateCcw,
   Scale,
+  Timer,
+  Trash2,
 } from 'lucide-react';
 import { SettingsToggle } from './SettingsToggle';
 import {
   BREW_ACCESSORIES,
   brewDialIsReady,
+  brewDialSummary,
   buildBrewSteps,
-  formatBrewAmount,
   normalizeBrewAccessories,
 } from '../brewGuide/steps';
 
@@ -36,8 +41,18 @@ const ACCESSORY_ICONS = {
 
 const STEP_ICONS = {
   recipe: Scale,
-  rdt: Droplets,
+  power: Power,
+  water: Droplets,
+  cup: Coffee,
+  empty: CupSoda,
+  dry: Coffee,
+  portafilter: Disc,
   grind: Bean,
+  purge: RotateCcw,
+  discard: Trash2,
+  weigh: Scale,
+  rdt: Droplets,
+  load: ArrowDown,
   shake: FlaskConical,
   transfer: ArrowDown,
   wdt: Pin,
@@ -45,7 +60,11 @@ const STEP_ICONS = {
   distribute: CircleDot,
   tamp: ArrowDownToLine,
   screen: Disc,
+  preheat: Coffee,
+  timer: Timer,
+  rinse: Droplets,
   ready: Coffee,
+  log: ClipboardList,
 };
 
 function ToolMark({ icon: Icon, ui }) {
@@ -56,20 +75,77 @@ function ToolMark({ icon: Icon, ui }) {
   );
 }
 
-export function BrewGuide({ ui, accessories, setupComplete, onSaveAccessories, onOpenDial, dial }) {
+function StepHelp({ help, ui }) {
+  const [open, setOpen] = useState(false);
+  if (!help) return null;
+  return (
+    <div data-timer-dismiss>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={`min-h-[44px] text-sm font-bold ${ui.accentText}`}
+        aria-expanded={open}
+      >
+        {open ? 'Hide help' : 'Help'}
+      </button>
+      {open && <p className={`text-sm leading-relaxed ${ui.sub}`}>{help}</p>}
+    </div>
+  );
+}
+
+function MetricGrid({ metrics, ui }) {
+  if (!metrics?.length) return null;
+  return (
+    <div className="grid grid-cols-2 gap-2 pt-1">
+      {metrics.map((cell) => (
+        <div key={cell.label} className={`${ui.cardInset} rounded-xl p-3 text-center`}>
+          <p className={`text-[9px] uppercase tracking-wider ${ui.muted} mb-1`}>{cell.label}</p>
+          <p className={`text-base font-black tabular-nums break-words ${ui.text}`}>{cell.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function BrewGuide({
+  ui,
+  accessories,
+  setupComplete,
+  onSaveAccessories,
+  onOpenDial,
+  onOpenBeans,
+  hasActiveBean = true,
+  dial,
+  timer = { running: false, label: '0:00.0', usePreInfusion: false, preInfusionPhase: false },
+  onStartTimer = () => {},
+  onStopTimer = () => null,
+  onResetTimer = () => {},
+  onEndPreInfusion = () => {},
+  onHandoff = () => {},
+  onTimerHost = () => {},
+}) {
   const [screen, setScreen] = useState(setupComplete ? 'intro' : 'setup');
   const [draft, setDraft] = useState(() => normalizeBrewAccessories(accessories));
   const [stepIndex, setStepIndex] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [extractPhase, setExtractPhase] = useState('idle');
+  const [capturedTime, setCapturedTime] = useState(null);
 
   const steps = buildBrewSteps(accessories, dial);
   const index = Math.min(stepIndex, Math.max(steps.length - 1, 0));
   const step = steps[index];
   const canStart = brewDialIsReady(dial);
+  const summary = brewDialSummary(dial);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [screen, index]);
+
+  useEffect(() => {
+    const hosting = screen === 'steps' && step?.kind === 'timer';
+    onTimerHost(hosting);
+    return () => onTimerHost(false);
+  }, [screen, step?.kind, onTimerHost]);
 
   const openSetup = () => {
     setDraft(normalizeBrewAccessories(accessories));
@@ -88,8 +164,37 @@ export function BrewGuide({ ui, accessories, setupComplete, onSaveAccessories, o
 
   const start = () => {
     if (!canStart) return;
+    onResetTimer();
+    setCapturedTime(null);
+    setExtractPhase('idle');
     setStepIndex(0);
     setScreen('steps');
+  };
+
+  const finishTimer = () => {
+    const rounded = onStopTimer();
+    setCapturedTime(rounded);
+    setExtractPhase('stopped');
+  };
+
+  const resetExtract = () => {
+    onResetTimer();
+    setCapturedTime(null);
+    setExtractPhase('idle');
+  };
+
+  const handleTimerSurface = (event) => {
+    if (event.target.closest('[data-timer-dismiss]')) return;
+    if (step?.kind !== 'timer') return;
+    if (extractPhase === 'running') {
+      if (timer.usePreInfusion && timer.preInfusionPhase) {
+        onEndPreInfusion();
+        return;
+      }
+      setExtractPhase('finishing');
+      return;
+    }
+    if (extractPhase === 'finishing') finishTimer();
   };
 
   if (screen === 'setup') {
@@ -127,7 +232,7 @@ export function BrewGuide({ ui, accessories, setupComplete, onSaveAccessories, o
           })}
         </div>
 
-        <div className="space-y-2 pt-1">
+        <div className="space-y-2 pt-1 pb-16">
           <button
             type="button"
             onClick={saveSetup}
@@ -151,8 +256,6 @@ export function BrewGuide({ ui, accessories, setupComplete, onSaveAccessories, o
   }
 
   if (screen === 'intro') {
-    const dose = formatBrewAmount(dial.doseG);
-    const yieldG = formatBrewAmount(dial.yieldG);
     return (
       <div className="space-y-4">
         <div className={`${ui.card} p-6 rounded-2xl space-y-5`}>
@@ -165,18 +268,12 @@ export function BrewGuide({ ui, accessories, setupComplete, onSaveAccessories, o
           </div>
 
           {canStart ? (
-            <div className={`${ui.cardInset} rounded-xl p-4 space-y-1`}>
-              <p className={`text-sm font-bold ${ui.text}`}>{dial.beanName}</p>
-              <p className={`text-lg font-black tabular-nums ${ui.text}`}>
-                {dose}g in · {yieldG}g out · {dial.grindLabel}
-              </p>
-              <p className={`text-[11px] ${ui.sub}`}>
-                {dial.grinderModel} · {dial.timeMinS}–{dial.timeMaxS}s
-              </p>
-            </div>
+            <MetricGrid metrics={summary.metrics} ui={ui} />
           ) : (
             <p className={`text-sm leading-relaxed ${ui.sub}`}>
-              Choose a coffee on Dial-In first. Brew Guide uses that recipe and grind setting.
+              {hasActiveBean
+                ? 'Choose a coffee on Dial-In first. Brew Guide uses that recipe and grind setting.'
+                : 'No active coffee bean profiles.'}
             </p>
           )}
 
@@ -191,10 +288,10 @@ export function BrewGuide({ ui, accessories, setupComplete, onSaveAccessories, o
           ) : (
             <button
               type="button"
-              onClick={onOpenDial}
+              onClick={hasActiveBean ? onOpenDial : (onOpenBeans || onOpenDial)}
               className={`w-full min-h-[64px] rounded-xl text-base ${ui.primary}`}
             >
-              Go to Dial-In
+              {hasActiveBean ? 'Go to Dial-In' : 'Add your first bean'}
             </button>
           )}
 
@@ -212,17 +309,53 @@ export function BrewGuide({ ui, accessories, setupComplete, onSaveAccessories, o
 
   const StepIcon = STEP_ICONS[step.icon] || Coffee;
   const stepNumber = index + 1;
+  const timerLive = extractPhase === 'running' || extractPhase === 'finishing';
+  const doneDisabled = (step.kind === 'timer' && extractPhase !== 'stopped')
+    || (step.kind === 'handoff' && capturedTime == null);
+
+  const goBack = () => {
+    if (step.kind === 'timer' && timerLive) resetExtract();
+    if (index === 0) setScreen('intro');
+    else setStepIndex(index - 1);
+  };
+
+  const goDone = () => {
+    if (doneDisabled) return;
+    if (step.kind === 'handoff') {
+      const timeS = capturedTime;
+      setCapturedTime(null);
+      setExtractPhase('idle');
+      setStepIndex(0);
+      setScreen('intro');
+      onHandoff(timeS);
+      return;
+    }
+    if (index >= steps.length - 1) {
+      setStepIndex(0);
+      setScreen('intro');
+      return;
+    }
+    setStepIndex(index + 1);
+  };
+
+  let timerHint = 'Start the timer when you start the shot.';
+  if (extractPhase === 'running' && timer.usePreInfusion && timer.preInfusionPhase) {
+    timerHint = 'Tap anywhere to end pre-infusion.';
+  } else if (extractPhase === 'running') {
+    timerHint = 'Tap anywhere when you stop the machine.';
+  } else if (extractPhase === 'finishing') {
+    timerHint = `Let the rest of the espresso finish flowing until you reach ${step.highlight}, then take the cup off the scale. Tap anywhere to stop the timer.`;
+  } else if (extractPhase === 'stopped') {
+    timerHint = 'Take the cup off the scale if it is still there. The shot time is ready for Dial-In.';
+  }
 
   return (
-    <div className="flex flex-col gap-5 min-h-[calc(100dvh-16rem)]">
-      <div className="space-y-3">
+    <div className="flex flex-col gap-5 pb-44">
+      <div className="space-y-3" data-timer-dismiss>
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
-            onClick={() => {
-              if (index === 0) setScreen('intro');
-              else setStepIndex(index - 1);
-            }}
+            onClick={goBack}
             className={`min-h-[44px] px-1 text-sm font-bold ${ui.accentText}`}
           >
             Back
@@ -243,44 +376,117 @@ export function BrewGuide({ ui, accessories, setupComplete, onSaveAccessories, o
         </div>
       </div>
 
-      <div className={`${ui.card} p-6 rounded-2xl space-y-4`}>
-        <ToolMark icon={StepIcon} ui={ui} />
+      <div
+        className={`${ui.card} ${step.kind === 'timer' ? 'p-4 space-y-3' : 'p-6 space-y-4'} rounded-2xl ${timerLive ? 'cursor-pointer' : ''}`}
+        onClick={timerLive ? handleTimerSurface : undefined}
+        role={timerLive ? 'presentation' : undefined}
+      >
+        {step.kind !== 'timer' && <ToolMark icon={StepIcon} ui={ui} />}
         <h2 className={`text-[1.75rem] leading-tight font-black tracking-tight ${ui.text}`}>{step.title}</h2>
-        {step.highlight && (
-          <div>
-            {step.highlightLabel && <p className={`${ui.fieldLabel} mb-1`}>{step.highlightLabel}</p>}
-            <p className={`text-5xl font-black font-mono tabular-nums leading-none ${ui.text}`}>{step.highlight}</p>
-          </div>
-        )}
-        <p className={`text-base leading-relaxed ${ui.sub}`}>{step.instruction}</p>
-        {step.note && <p className={`text-sm leading-relaxed ${ui.muted}`}>{step.note}</p>}
-        {step.metrics && (
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            {step.metrics.map((cell) => (
-              <div key={cell.label} className={`${ui.cardInset} rounded-xl p-3 text-center`}>
-                <p className={`text-[9px] uppercase tracking-wider ${ui.muted} mb-1`}>{cell.label}</p>
-                <p className={`text-lg font-black tabular-nums ${ui.text}`}>{cell.value}</p>
+
+        {step.kind === 'timer' ? (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div className={`${ui.cardInset} rounded-xl p-3 text-center`}>
+                <p className={`text-[9px] uppercase tracking-wider ${ui.muted} mb-1`}>Target yield</p>
+                <p className={`text-2xl font-black tabular-nums ${ui.text}`}>{step.highlight}</p>
               </div>
-            ))}
-          </div>
+              <div className={`${ui.cardInset} rounded-xl p-3 text-center`}>
+                <p className={`text-[9px] uppercase tracking-wider ${ui.muted} mb-1`}>
+                  {step.stopAt ? 'Stop around' : 'Time'}
+                </p>
+                <p className={`text-2xl font-black tabular-nums ${ui.text}`}>
+                  {step.stopAt ? `${step.stopAt}g` : step.timeLabel}
+                </p>
+              </div>
+            </div>
+            {step.stopAt && (
+              <p className={`text-center text-sm ${ui.sub}`}>Aim for {step.timeLabel}</p>
+            )}
+            <p
+              className={`text-center text-[clamp(2.75rem,14vw,3.75rem)] font-black font-mono tabular-nums leading-none ${ui.text}`}
+              aria-live="polite"
+            >
+              {extractPhase === 'stopped' && capturedTime != null ? `${capturedTime}s` : (extractPhase === 'idle' ? '0:00.0' : timer.label)}
+            </p>
+            <p className={`text-base leading-relaxed text-center ${ui.sub}`}>{timerHint}</p>
+            {step.note && <p className={`text-sm leading-relaxed text-center ${ui.muted}`}>{step.note}</p>}
+            <StepHelp key={step.id} help={step.help} ui={ui} />
+            <div data-timer-dismiss>
+              {extractPhase === 'idle' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCapturedTime(null);
+                    setExtractPhase('running');
+                    onStartTimer();
+                  }}
+                  className={`w-full min-h-[64px] rounded-[20px] text-base flex items-center justify-center gap-2 ${ui.primary}`}
+                >
+                  <Play className="w-5 h-5 fill-current" aria-hidden />
+                  Start timer
+                </button>
+              )}
+              {extractPhase === 'running' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (timer.usePreInfusion && timer.preInfusionPhase) onEndPreInfusion();
+                    else setExtractPhase('finishing');
+                  }}
+                  className={`w-full min-h-[64px] rounded-[20px] text-base ${ui.primary}`}
+                >
+                  {timer.usePreInfusion && timer.preInfusionPhase ? 'End pre-infusion' : 'Machine stopped'}
+                </button>
+              )}
+              {extractPhase === 'finishing' && (
+                <button
+                  type="button"
+                  onClick={finishTimer}
+                  className={`w-full min-h-[64px] rounded-[20px] text-base ${ui.primary}`}
+                >
+                  Stop timer
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {step.highlight && (
+              <div>
+                {step.highlightLabel && <p className={`${ui.fieldLabel} mb-1`}>{step.highlightLabel}</p>}
+                <p className={`text-5xl font-black font-mono tabular-nums leading-none ${ui.text}`}>{step.highlight}</p>
+              </div>
+            )}
+            <p className={`text-base leading-relaxed ${ui.sub}`}>{step.instruction}</p>
+            {step.note && <p className={`text-sm leading-relaxed ${ui.muted}`}>{step.note}</p>}
+            <StepHelp key={step.id} help={step.help} ui={ui} />
+            <MetricGrid metrics={step.metrics} ui={ui} />
+          </>
         )}
       </div>
 
-      <div className="mt-auto">
-        <button
-          type="button"
-          onClick={() => {
-            if (index >= steps.length - 1) {
-              setStepIndex(0);
-              setScreen('intro');
-              return;
-            }
-            setStepIndex(index + 1);
-          }}
-          className={`w-full min-h-[72px] rounded-[20px] text-base active:scale-[0.99] ${ui.primary}`}
-        >
-          Done
-        </button>
+      <div className={`fixed bottom-[4.25rem] left-0 right-0 p-3 z-40 ${ui.dock} backdrop-blur`} data-timer-dismiss>
+        <div className="max-w-xl mx-auto space-y-2">
+          {step.kind === 'timer' && extractPhase !== 'idle' && (
+            <button
+              type="button"
+              onClick={resetExtract}
+              className={`w-full min-h-[44px] rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${ui.secondaryBtn}`}
+            >
+              <RotateCcw className="w-4 h-4" aria-hidden />
+              Reset
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={goDone}
+            disabled={doneDisabled}
+            className={`w-full min-h-[64px] rounded-[20px] text-base active:scale-[0.99] ${ui.primary} disabled:opacity-40`}
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -73,6 +73,7 @@ export default function App() {
   
   // Timer State
   const [timerRunning, setTimerRunning] = useState(false);
+  const [brewTimerHost, setBrewTimerHost] = useState(false);
   const [timerTicks, setTimerTicks] = useState(0);
   const timerSeconds = timerTicks / 10;
   const [usePreInfusion, setUsePreInfusion] = useState(false);
@@ -201,7 +202,9 @@ export default function App() {
     if (usePreInfusion && !preInfusionPhase) {
       finalExtractionTime = Math.max(0, timerSeconds - preInfusionSeconds);
     }
-    setActualTimeS(Math.round(finalExtractionTime));
+    const rounded = Math.round(finalExtractionTime);
+    setActualTimeS(rounded);
+    return rounded;
   };
 
   const handleCancelTimer = () => {
@@ -749,6 +752,17 @@ export default function App() {
   const labelClass = ui.label;
   const subTextClass = ui.sub;
 
+  const previousGrindLabel = (() => {
+    const shot = beanShotsForGrinder[0];
+    if (!shot) return '';
+    if (grinderModel === 'Sette 270Wi') {
+      if (shot.setteMacro == null || shot.setteMacro === '') return '';
+      return `${shot.setteMacro}-${shot.setteMicro ?? ''}`;
+    }
+    if (shot.sunbeamSetting == null || shot.sunbeamSetting === '') return '';
+    return String(shot.sunbeamSetting);
+  })();
+
   const recommendedGrindDisplay = (() => {
     if (lastShot && dynamicRec?.recommendedSetting) {
       return lastShot.grinderModel === 'Sette 270Wi'
@@ -780,6 +794,40 @@ export default function App() {
     if (!notes) return null;
     const match = notes.match(/Pre-infusion:\s*([\d.]+)s/i);
     return match ? match[1] : null;
+  };
+
+  const handleBrewStartTimer = () => {
+    setActualTimeS('');
+    handleStartTimer();
+  };
+
+  const handleBrewResetTimer = () => {
+    handleResetTimer();
+    setActualTimeS('');
+  };
+
+  const handleBrewHandoff = (timeS) => {
+    if (activeRecipe && activeRecipe.targetDoseG != null && activeRecipe.targetDoseG !== '') {
+      setActualDoseG(activeRecipe.targetDoseG);
+    }
+    if (timeS != null && timeS !== '') setActualTimeS(timeS);
+    setActualYieldG('');
+    setWasPurged(true);
+    if (lastShot && dynamicRec?.recommendedSetting && lastShot.grinderModel === grinderModel) {
+      const recSet = dynamicRec.recommendedSetting;
+      if (grinderModel === 'Sette 270Wi' && recSet.macro) {
+        setSetteMacro(recSet.macro);
+        setSetteMicro(recSet.micro);
+      } else if (grinderModel === 'Sunbeam Barista Max' && recSet.setting) {
+        setSunbeamSetting(recSet.setting);
+      }
+    }
+    setBrewTimerHost(false);
+    setActiveTab('dial');
+    window.setTimeout(() => {
+      yieldInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      yieldInputRef.current?.querySelector('input')?.focus();
+    }, 200);
   };
 
   if (!grinderModel) {
@@ -819,7 +867,7 @@ export default function App() {
     <div className={`min-h-screen ${ui.page} relative`}>
       
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
-      {timerRunning && (
+      {timerRunning && !brewTimerHost && (
         <div
           className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           onClick={handleTimerSurfaceTap}
@@ -1306,6 +1354,20 @@ export default function App() {
             setupComplete={brewGuideSetupComplete}
             onSaveAccessories={handleSaveBrewAccessories}
             onOpenDial={() => setActiveTab('dial')}
+            onOpenBeans={() => setActiveTab('beans')}
+            hasActiveBean={activeBeansList.length > 0}
+            onStartTimer={handleBrewStartTimer}
+            onStopTimer={handleStopTimer}
+            onResetTimer={handleBrewResetTimer}
+            onEndPreInfusion={handleEndPreInfusion}
+            onHandoff={handleBrewHandoff}
+            onTimerHost={setBrewTimerHost}
+            timer={{
+              running: timerRunning,
+              label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
+              usePreInfusion,
+              preInfusionPhase,
+            }}
             dial={{
               beanName: activeBean?.name || '',
               doseG: activeRecipe?.targetDoseG,
@@ -1315,6 +1377,7 @@ export default function App() {
               brewTemperatureC: activeRecipe?.brewTemperatureC,
               grinderModel,
               grindLabel: recommendedGrindDisplay,
+              previousGrindLabel,
             }}
           />
         )}
