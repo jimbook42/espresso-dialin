@@ -11,6 +11,7 @@ import {
   getInitialGrindRecommendation,
   recipeContextForShot,
   setteToNumeric,
+  shotEligibleForLearning,
   shotMatchesRecipeContext,
   shotResultImproved,
 } from './src/utils/grinderLogic.js';
@@ -129,8 +130,237 @@ async function runTests() {
 
   runBrewGuideTests();
   runDecafRegressionTests();
+  runKnownIssueLearningTests();
   await runDecafPersistenceTests();
+  await runKnownIssuePersistenceTests();
   console.log('All tests passed!');
+}
+
+function runKnownIssueLearningTests() {
+  const recipe = {
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+    targetDoseG: 18,
+    targetYieldG: 36,
+    brewTemperatureC: 93,
+  };
+  const mockDate = '2026-09-20T12:00:00.000Z';
+  const bean = { id: 'b1', roastType: 'Medium', roastDate: '2026-09-01', storageType: 'bag' };
+  const recipes = [{ beanId: 'b1', ...recipe }];
+  const stableBeanAge = calculateEffectiveBeanAge(bean, mockDate).daysOld;
+
+  const dialledShot = (macro, micro, timestamp, extra = {}) => ({
+    id: `shot-${timestamp}`,
+    beanId: 'b1',
+    grinderModel: 'Sette 270Wi',
+    setteMacro: macro,
+    setteMicro: micro,
+    actualTimeS: 28,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'good',
+    timestamp,
+    recommendation: {
+      recommendedSetting: { macro, micro },
+      reason: 'KEEP GRIND — Balanced and in range.',
+    },
+    beanAgeDays: stableBeanAge,
+    ...extra,
+  });
+
+  assert.equal(shotEligibleForLearning({}), true);
+  assert.equal(shotEligibleForLearning({ excludeFromLearning: false }), true);
+  assert.equal(shotEligibleForLearning({ excludeFromLearning: true }), false);
+
+  const shotA = dialledShot(10, 'A', '2026-09-10T10:00:00.000Z');
+  const shotB = dialledShot(15, 'F', '2026-09-11T10:00:00.000Z', {
+    excludeFromLearning: true,
+    knownIssueReason: 'puck_prep',
+    recommendation: {
+      recommendedSetting: { macro: 14, micro: 'A' },
+      reason: 'GO 1 STEP COARSER — Shot is in range but tastes bitter.',
+    },
+  });
+
+  const initArgs = ['Sette 270Wi', 'Medium', bean, recipes];
+  const fromNoShots = getInitialGrindRecommendation(...initArgs, [], [bean], mockDate);
+  const fromExcludedOnly = getInitialGrindRecommendation(...initArgs, [shotB], [bean], mockDate);
+  const fromValid = getInitialGrindRecommendation(...initArgs, [shotA, shotB], [bean], mockDate);
+  assert.deepEqual(fromExcludedOnly, fromNoShots);
+  assert.notDeepEqual(fromExcludedOnly, { macro: 15, micro: 'F' });
+  assert.deepEqual(fromValid, { macro: 10, micro: 'A' });
+
+  const baselineWithExcluded = getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [shotA, shotB], [bean]);
+  const baselineValidOnly = getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [shotA], [bean]);
+  assert.deepEqual(baselineWithExcluded, baselineValidOnly);
+
+  const historyForC = [shotA, shotB];
+  const recAfterExcluded = calculateRecommendation(
+    {
+      grinderModel: 'Sette 270Wi',
+      setteMacro: 10,
+      setteMicro: 'A',
+      wasPurged: true,
+      actualTime: 20,
+      actualYield: 36,
+      actualDose: 18,
+      tasteProfile: 'sour',
+      previousShot: shotA,
+    },
+    recipe,
+    historyForC,
+    false
+  );
+  const recFromValidOnly = calculateRecommendation(
+    {
+      grinderModel: 'Sette 270Wi',
+      setteMacro: 10,
+      setteMicro: 'A',
+      wasPurged: true,
+      actualTime: 20,
+      actualYield: 36,
+      actualDose: 18,
+      tasteProfile: 'sour',
+      previousShot: shotA,
+    },
+    recipe,
+    [shotA],
+    false
+  );
+  assert.deepEqual(recAfterExcluded.recommendedSetting, recFromValidOnly.recommendedSetting);
+
+  const sourInRange = (timestamp) => ({
+    grinderModel: 'Sette 270Wi',
+    actualTimeS: 27,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'sour',
+    brewTemperatureC: 93,
+    timestamp,
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+  });
+  const withExcludedHistory = calculateRecommendation(
+    {
+      grinderModel: 'Sette 270Wi',
+      setteMacro: 13,
+      setteMicro: 'E',
+      wasPurged: true,
+      actualTime: 27,
+      actualYield: 36,
+      actualDose: 18,
+      tasteProfile: 'sour',
+    },
+    { ...recipe, flairProfile: { preinfusionPressure: '2', peakPressure: '9', taperPressure: '6' } },
+    [
+      sourInRange('2026-09-09T00:00:00.000Z'),
+      { ...sourInRange('2026-09-10T00:00:00.000Z'), excludeFromLearning: true },
+      sourInRange('2026-09-11T00:00:00.000Z'),
+    ],
+    true
+  );
+  const withoutExcluded = calculateRecommendation(
+    {
+      grinderModel: 'Sette 270Wi',
+      setteMacro: 13,
+      setteMicro: 'E',
+      wasPurged: true,
+      actualTime: 27,
+      actualYield: 36,
+      actualDose: 18,
+      tasteProfile: 'sour',
+    },
+    { ...recipe, flairProfile: { preinfusionPressure: '2', peakPressure: '9', taperPressure: '6' } },
+    [sourInRange('2026-09-09T00:00:00.000Z'), sourInRange('2026-09-11T00:00:00.000Z')],
+    true
+  );
+  assert.equal(withExcludedHistory.flairWaterTempAdvice, withoutExcluded.flairWaterTempAdvice);
+
+  const reIncluded = getInitialGrindRecommendation(
+    ...initArgs,
+    [{ ...shotB, excludeFromLearning: false }],
+    [bean],
+    mockDate
+  );
+  assert.deepEqual(reIncluded, { macro: 14, micro: 'A' });
+
+  const { recommendation: _dropRec, ...shotBGrindOnly } = shotB;
+  const reIncludedGrind = getInitialGrindRecommendation(
+    ...initArgs,
+    [{ ...shotBGrindOnly, excludeFromLearning: false }],
+    [bean],
+    mockDate
+  );
+  assert.deepEqual(reIncludedGrind, { macro: 15, micro: 'F' });
+}
+
+async function runKnownIssuePersistenceTests() {
+  await db.open();
+  await db.transaction('rw', db.beans, db.recipes, db.shots, async () => {
+    await db.beans.clear();
+    await db.recipes.clear();
+    await db.shots.clear();
+  });
+
+  const beanId = 'persist-bean';
+  await db.beans.add({
+    id: beanId,
+    name: 'Persist',
+    roaster: 'Local',
+    roastType: 'Medium',
+    roastDate: '2026-01-01',
+    storageType: 'bag',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+  await db.recipes.add({
+    id: 'persist-recipe',
+    beanId,
+    targetDoseG: 18,
+    targetYieldG: 36,
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+  });
+
+  const legacyShot = {
+    id: 'legacy-learning-shot',
+    beanId,
+    timestamp: '2026-01-02T00:00:00.000Z',
+    grinderModel: 'Sette 270Wi',
+    setteMacro: 13,
+    setteMicro: 'E',
+    actualTimeS: 28,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'good',
+  };
+  await db.shots.add(legacyShot);
+  const loadedLegacy = await db.shots.get('legacy-learning-shot');
+  assert.equal(shotEligibleForLearning(loadedLegacy), true);
+  assert.equal(Object.hasOwn(loadedLegacy, 'excludeFromLearning'), false);
+
+  await db.shots.add({
+    id: 'excluded-shot',
+    beanId,
+    timestamp: '2026-01-03T00:00:00.000Z',
+    grinderModel: 'Sette 270Wi',
+    setteMacro: 14,
+    setteMicro: 'A',
+    actualTimeS: 22,
+    actualYieldG: 30,
+    actualDoseG: 18,
+    tasteProfile: 'sour',
+    excludeFromLearning: true,
+    knownIssueReason: 'overheated',
+  });
+  const excluded = await db.shots.get('excluded-shot');
+  assert.equal(excluded.excludeFromLearning, true);
+  assert.equal(excluded.knownIssueReason, 'overheated');
+
+  await db.shots.update('excluded-shot', { excludeFromLearning: false, knownIssueReason: undefined });
+  assert.equal(shotEligibleForLearning(await db.shots.get('excluded-shot')), true);
+
+  assert.equal(db.verno, 17);
+  db.close();
 }
 
 /** Pre-feature roast baseline: every dialled-in shot of the roast, including ones later marked decaf. */

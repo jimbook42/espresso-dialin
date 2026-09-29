@@ -13,6 +13,9 @@ import {
   beanIsDecaf,
   decafContextNote,
   getHistoricalRoastBaseline,
+  shotEligibleForLearning,
+  KNOWN_ISSUE_REASONS,
+  knownIssueReasonLabel,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList } from 'lucide-react';
@@ -154,6 +157,8 @@ export default function App() {
   const [tasteProfile, setTasteProfile] = useState('');
   const [shotRating, setShotRating] = useState(null);
   const [notes, setNotes] = useState('');
+  const [excludeFromLearning, setExcludeFromLearning] = useState(false);
+  const [knownIssueReason, setKnownIssueReason] = useState('puck_prep');
 
   const doseInputRef = useRef(null);
   const timeInputRef = useRef(null);
@@ -198,7 +203,8 @@ export default function App() {
   const activeBeansList = beans.filter(b => !b?.isFinished);
   const activeBean = beans.find(b => b.id === selectedBeanId) || activeBeansList[0] || beans[0];
   const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
-  const lastShot = shots.find(s => s.beanId === activeBean?.id);
+  const lastLoggedShot = shots.find(s => s.beanId === activeBean?.id);
+  const lastLearningShot = shots.find((s) => s.beanId === activeBean?.id && shotEligibleForLearning(s));
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
 
   const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
@@ -280,7 +286,9 @@ export default function App() {
 
   useEffect(() => {
     if (activeBean && grinderModel) {
-      const currentBeanShots = shots.filter(s => s.beanId === activeBean.id && s.grinderModel === grinderModel);
+      const currentBeanShots = shots.filter(
+        (s) => s.beanId === activeBean.id && s.grinderModel === grinderModel && shotEligibleForLearning(s)
+      );
       
       if (currentBeanShots.length > 0) {
         const last = currentBeanShots[0];
@@ -521,6 +529,14 @@ export default function App() {
     }
   };
 
+  const handleToggleShotLearningExclusion = async (shot) => {
+    const nextExcluded = !shot.excludeFromLearning;
+    await db.shots.update(shot.id, {
+      excludeFromLearning: nextExcluded,
+      knownIssueReason: nextExcluded ? (shot.knownIssueReason || 'other') : undefined,
+    });
+  };
+
   const handleLogShot = async (e) => {
     e.preventDefault();
     setValidationError('');
@@ -592,26 +608,26 @@ export default function App() {
     }
 
     let recommendationFollowed = true;
-    if (lastShot && lastShot.recommendation?.recommendedSetting) {
+    if (lastLearningShot && lastLearningShot.recommendation?.recommendedSetting) {
       // Use age-adjusted recommendation for comparison so thaw/freshness shifts don't cause false flags
-      const adjustedRec = getAgeAdjustedRecommendation(lastShot, activeBean, mockDate);
-      const rec = adjustedRec?.recommendedSetting || lastShot.recommendation.recommendedSetting;
+      const adjustedRec = getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate);
+      const rec = adjustedRec?.recommendedSetting || lastLearningShot.recommendation.recommendedSetting;
 
-      if (lastShot.grinderModel === 'Sette 270Wi') {
+      if (lastLearningShot.grinderModel === 'Sette 270Wi') {
         if (finalMacro !== rec.macro || finalMicro !== rec.micro) {
           recommendationFollowed = false;
         }
-      } else if (lastShot.grinderModel === 'Sunbeam Barista Max') {
+      } else if (lastLearningShot.grinderModel === 'Sunbeam Barista Max') {
         if (finalSunbeam !== rec.setting) {
           recommendationFollowed = false;
         }
       }
     }
 
-    const lastShotGrind = lastShot ? {
-      setteMacro: lastShot.setteMacro,
-      setteMicro: lastShot.setteMicro,
-      sunbeamSetting: lastShot.sunbeamSetting
+    const lastShotGrind = lastLearningShot ? {
+      setteMacro: lastLearningShot.setteMacro,
+      setteMicro: lastLearningShot.setteMicro,
+      sunbeamSetting: lastLearningShot.sunbeamSetting
     } : null;
 
     let referenceNow = new Date();
@@ -623,7 +639,7 @@ export default function App() {
     }
 
     const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
-    const recentBeanShots = shots.filter(s => s.beanId === activeBean.id);
+    const recentBeanShots = shots.filter((s) => s.beanId === activeBean.id && shotEligibleForLearning(s));
 
     const rec = calculateRecommendation(
       { 
@@ -638,7 +654,7 @@ export default function App() {
         tasteProfile, 
         lastShotGrind,
         recommendationFollowed,
-        previousShot: lastShot || null,
+        previousShot: lastLearningShot || null,
       },
       activeRecipe,
       recentBeanShots,
@@ -668,7 +684,10 @@ export default function App() {
       brewTemperatureC: activeRecipe.brewTemperatureC || null,
       flairProfile: flairEnabled && activeRecipe.flairProfile ? { ...activeRecipe.flairProfile } : null,
       recommendation: rec,
-      notes: usePreInfusion && preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes
+      notes: usePreInfusion && preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes,
+      ...(excludeFromLearning
+        ? { excludeFromLearning: true, knownIssueReason: knownIssueReason || 'other' }
+        : {}),
     };
 
     try {
@@ -679,6 +698,8 @@ export default function App() {
       setShotRating(null);
       setNotes('');
       setTasteProfile('');
+      setExcludeFromLearning(false);
+      setKnownIssueReason('puck_prep');
       handleResetTimer();
 
       setTimeout(() => {
@@ -690,19 +711,19 @@ export default function App() {
     }
   };
 
-  const dynamicRec = lastShot ? getAgeAdjustedRecommendation(lastShot, activeBean, mockDate) : null;
+  const dynamicRec = lastLearningShot ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate) : null;
   const lastShotOutcome =
-    lastShot && activeRecipe
-      ? classifyShotOutcome(lastShot, recipeContextForShot(lastShot, activeRecipe))
+    lastLoggedShot && activeRecipe
+      ? classifyShotOutcome(lastLoggedShot, recipeContextForShot(lastLoggedShot, activeRecipe))
       : null;
   const recommendationEvidenceContext =
     dynamicRec?.evidenceContext ||
-    (activeRecipe && beanShots.length > 0
+    (activeRecipe && beanShots.some(shotEligibleForLearning)
       ? getRecommendationEvidenceContext(beanShots, activeRecipe, flairEnabled)
       : null);
 
   const beanShotsForGrinder = activeBean
-    ? shots.filter(s => s.beanId === activeBean.id && s.grinderModel === grinderModel)
+    ? shots.filter((s) => s.beanId === activeBean.id && s.grinderModel === grinderModel && shotEligibleForLearning(s))
     : [];
   const hasLoggedShotForBean = beanShots.length > 0;
   const decafNoteSource = !beanIsDecaf(activeBean)
@@ -752,12 +773,12 @@ export default function App() {
     
     const currentSettings = await db.settings.get('global') || { id: 'global' };
 
-    if (lastShot.grinderModel === 'Sette 270Wi' && recSet.macro) {
+    if (lastLearningShot.grinderModel === 'Sette 270Wi' && recSet.macro) {
       setGrinderModel('Sette 270Wi');
       setSetteMacro(recSet.macro);
       setSetteMicro(recSet.micro);
       await db.settings.put({ ...currentSettings, lastSetteMacro: recSet.macro, lastSetteMicro: recSet.micro });
-    } else if (lastShot.grinderModel === 'Sunbeam Barista Max' && recSet.setting) {
+    } else if (lastLearningShot.grinderModel === 'Sunbeam Barista Max' && recSet.setting) {
       setGrinderModel('Sunbeam Barista Max');
       setSunbeamSetting(recSet.setting);
       await db.settings.put({ ...currentSettings, lastSunbeamSetting: recSet.setting });
@@ -771,7 +792,7 @@ export default function App() {
   };
 
   const exportDataCSV = () => {
-    const headers = ['Timestamp', 'Bean', 'Grinder', 'Grind Setting', 'Purged', 'Dose(g)', 'Yield(g)', 'Ratio', 'Time(s)', 'Taste', 'Rating', 'Bean Age (Days)', 'Storage', 'Rec Followed', 'Notes'];
+    const headers = ['Timestamp', 'Bean', 'Grinder', 'Grind Setting', 'Purged', 'Dose(g)', 'Yield(g)', 'Ratio', 'Time(s)', 'Taste', 'Rating', 'Bean Age (Days)', 'Storage', 'Rec Followed', 'Excluded From Learning', 'Known Issue Reason', 'Notes'];
     const rows = shots.map(s => {
       const bean = beans.find(b => b.id === s.beanId);
       const grind = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro}-${s.setteMicro}` : s.sunbeamSetting;
@@ -790,6 +811,8 @@ export default function App() {
         s.beanAgeDays || 0,
         s.storageType || 'bag',
         s.recommendationFollowed !== false ? 'Yes' : 'No',
+        s.excludeFromLearning ? 'Yes' : 'No',
+        s.excludeFromLearning ? knownIssueReasonLabel(s.knownIssueReason) : '',
         `"${s.notes || ''}"`
       ];
     });
@@ -808,7 +831,7 @@ export default function App() {
   const filteredShots = historyFilterBeanId === 'all' ? shots : shots.filter(s => s.beanId === historyFilterBeanId);
 
   const referenceNow = mockDate ? new Date(mockDate) : new Date();
-  const lastBrewDaysAgo = lastShot ? Math.max(0, Math.floor((referenceNow - new Date(lastShot.timestamp)) / (1000 * 60 * 60 * 24))) : 0;
+  const lastBrewDaysAgo = lastLoggedShot ? Math.max(0, Math.floor((referenceNow - new Date(lastLoggedShot.timestamp)) / (1000 * 60 * 60 * 24))) : 0;
 
   const totalShots = shots.length;
   const compliantShots = shots.filter(s => {
@@ -850,8 +873,8 @@ export default function App() {
   })();
 
   const recommendedGrindDisplay = (() => {
-    if (lastShot && dynamicRec?.recommendedSetting) {
-      return lastShot.grinderModel === 'Sette 270Wi'
+    if (lastLearningShot && dynamicRec?.recommendedSetting) {
+      return lastLearningShot.grinderModel === 'Sette 270Wi'
         ? `${dynamicRec.recommendedSetting.macro || 13}-${dynamicRec.recommendedSetting.micro || 'E'}`
         : `${dynamicRec.recommendedSetting.setting || 15}`;
     }
@@ -899,7 +922,7 @@ export default function App() {
     if (timeS != null && timeS !== '') setActualTimeS(timeS);
     if (yieldG != null && yieldG !== '' && Number(yieldG) > 0) setActualYieldG(yieldG);
     setWasPurged(true);
-    if (lastShot && dynamicRec?.recommendedSetting && lastShot.grinderModel === grinderModel) {
+    if (lastLearningShot && dynamicRec?.recommendedSetting && lastLearningShot.grinderModel === grinderModel) {
       const recSet = dynamicRec.recommendedSetting;
       if (grinderModel === 'Sette 270Wi' && recSet.macro) {
         setSetteMacro(recSet.macro);
@@ -1268,11 +1291,11 @@ export default function App() {
 
                   <div className={`flex items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
                     <p className={`text-xs ${ui.muted}`}>
-                      {lastShot
-                        ? `Last shot ${lastShot.actualTimeS || 0}s (${lastShot.tasteProfile?.replace('_', ' ') || '—'})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''} · logging ${currentGrindLabel}`
+                      {lastLoggedShot
+                        ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${lastLoggedShot.tasteProfile?.replace('_', ' ') || '—'})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ' · not used for learning' : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
                         : `Logging grind ${currentGrindLabel}`}
                     </p>
-                    {lastShot && dynamicRec?.recommendedSetting && (
+                    {lastLearningShot && dynamicRec?.recommendedSetting && (
                       <button
                         type="button"
                         onClick={applyRecommendation}
@@ -1457,6 +1480,34 @@ export default function App() {
                     onChange={(e) => setNotes(e.target.value)}
                     className={`w-full ${inputClass} rounded-xl p-3 text-sm`}
                   />
+
+                  <div className={`${ui.card} p-4 rounded-2xl space-y-3`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <span className={`font-bold block text-sm ${ui.text}`}>Known issue — don&apos;t use for learning</span>
+                        <span className={`text-[10px] ${ui.muted}`}>Keep this shot in history without changing future grind advice.</span>
+                      </div>
+                      <SettingsToggle
+                        checked={excludeFromLearning}
+                        onChange={setExcludeFromLearning}
+                        label="Known issue — don't use for learning"
+                      />
+                    </div>
+                    {excludeFromLearning && (
+                      <div className="space-y-2 pt-1 border-t border-[#2e2b26]">
+                        <label className={ui.fieldLabel}>What happened?</label>
+                        <select
+                          value={knownIssueReason}
+                          onChange={(e) => setKnownIssueReason(e.target.value)}
+                          className={`w-full ${inputClass} border rounded-xl px-3 py-2.5 text-sm`}
+                        >
+                          {Object.entries(KNOWN_ISSUE_REASONS).map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Submit — fixed above tab bar */}
                   <div className={`fixed bottom-[4.25rem] left-0 right-0 p-3 ${ui.dock} backdrop-blur z-40`}>
@@ -1866,7 +1917,15 @@ export default function App() {
                         <p className={`text-[10px] ${ui.muted} mt-0.5`}>
                           {formatShotWhen(s.timestamp)} • <span className={`${ui.strong} font-mono`}>{grindStr}</span>
                           {s.recommendationFollowed === false && <span className="text-rose-400 font-bold ml-2">Rec not followed</span>}
+                          {s.excludeFromLearning && (
+                            <span className={`${ui.chip} font-semibold ml-2 px-1.5 py-0.5 rounded`}>
+                              Not used for learning
+                            </span>
+                          )}
                         </p>
+                        {s.excludeFromLearning && s.knownIssueReason && (
+                          <p className={`text-[10px] ${ui.sub} mt-0.5`}>{knownIssueReasonLabel(s.knownIssueReason)}</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {s.shotRating && (
@@ -1874,6 +1933,14 @@ export default function App() {
                             <Star className="w-3.5 h-3.5 fill-current" /> {s.shotRating}
                           </div>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleShotLearningExclusion(s)}
+                          className={`text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${s.excludeFromLearning ? 'bg-[rgba(200,138,75,0.15)] text-[#c88a4b]' : `${ui.chip} ${ui.muted}`}`}
+                          title={s.excludeFromLearning ? 'Include in grind learning again' : 'Mark as known issue — exclude from learning'}
+                        >
+                          {s.excludeFromLearning ? 'Use for learning' : 'Known issue'}
+                        </button>
                         <button type="button" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

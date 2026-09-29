@@ -6,6 +6,8 @@ export const db = new Dexie('EspressoDialDB');
 // isDecaf is a non-indexed property on the bean object. No version bump:
 // Dexie keeps existing beans, recipes, and shots. Beans saved before this
 // field existed omit it; readers treat a missing value as regular coffee.
+// excludeFromLearning / knownIssueReason are non-indexed shot properties.
+// Missing excludeFromLearning means the shot participates in learning (legacy behaviour).
 db.version(17).stores({
   beans: 'id, name, roaster, roastDate, storageType, postThawStorage, freezeDate, thawDate, rating, isFinished, createdAt',
   recipes: 'id, beanId, targetDoseG, targetYieldG, targetTimeMinS, targetTimeMaxS',
@@ -21,6 +23,21 @@ db.version(17).stores({
  */
 export function beanIsDecaf(bean) {
   return bean?.isDecaf === true;
+}
+
+/** Shots marked with a known non-grind issue stay in history but are omitted from learning. */
+export function shotEligibleForLearning(shot) {
+  return shot?.excludeFromLearning !== true;
+}
+
+export const KNOWN_ISSUE_REASONS = {
+  puck_prep: 'Puck prep issue',
+  overheated: 'Grounds/beans overheated or left exposed',
+  other: 'Other known issue',
+};
+
+export function knownIssueReasonLabel(reasonKey) {
+  return KNOWN_ISSUE_REASONS[reasonKey] || KNOWN_ISSUE_REASONS.other;
 }
 
 /**
@@ -169,7 +186,9 @@ export function shotResultImproved(previousShot, currentShotData, recipe) {
 }
 
 export function getRecommendationEvidenceContext(recentShots, recipe, flairEnabled = false) {
-  const sorted = [...recentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const sorted = [...recentShots]
+    .filter(shotEligibleForLearning)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   const comparable = sorted.filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled));
   if (comparable.length === 0) return null;
   const count = Math.min(comparable.length, 3);
@@ -236,6 +255,7 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
 
 export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = [], allShots = [], beans = [], decafScope = 'regular') {
   const successfulShots = allShots.filter(s => {
+    if (!shotEligibleForLearning(s)) return false;
     if (s.grinderModel !== grinderModel) return false;
     const bean = beans.find(b => b.id === s.beanId);
     if (!bean || bean.roastType !== roastType) return false;
@@ -317,7 +337,9 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
 }
 
 export function getInitialGrindRecommendation(grinderModel, roastType, activeBean, recipes = [], allShots = [], beans = [], mockDateOverride = null) {
-  const beanShots = allShots.filter(s => s.beanId === activeBean?.id && s.grinderModel === grinderModel);
+  const beanShots = allShots.filter(
+    (s) => s.beanId === activeBean?.id && s.grinderModel === grinderModel && shotEligibleForLearning(s)
+  );
   const currentRecipe = recipes.find(r => r.beanId === activeBean?.id) || {};
   
   let bestShot = null;
@@ -377,6 +399,7 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
 }
 
 export function calculateRecommendation(shotData, recipe, recentShots = [], flairEnabled = false) {
+  const learningRecentShots = recentShots.filter(shotEligibleForLearning);
   const {
     grinderModel,
     setteMacro,
@@ -473,7 +496,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   );
 
   if (isTimeInRange && currentTemp && (isSour || isBitter) && !currentOutcome.isDialledIn) {
-    const qualifyingHistory = recentShots.filter((s) => {
+    const qualifyingHistory = learningRecentShots.filter((s) => {
       const ctx = recipeContextForShot(s, recipe);
       const outcome = classifyShotOutcome(s, ctx);
       if (!outcome.isTimeInRange || outcome.isDialledIn) return false;
@@ -505,7 +528,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   let subRecommendation = null;
   if (isTimeInRange) {
-    const dialedInRecentShots = recentShots.filter(s => s.actualTimeS >= targetMin && s.actualTimeS <= targetMax);
+    const dialedInRecentShots = learningRecentShots.filter(s => s.actualTimeS >= targetMin && s.actualTimeS <= targetMax);
     const dialedInBitterCount = dialedInRecentShots.filter(s => s.tasteProfile === 'bitter' || s.tasteProfile === 'very_bitter').length;
     const dialedInSourCount = dialedInRecentShots.filter(s => s.tasteProfile === 'sour' || s.tasteProfile === 'very_sour').length;
 
@@ -527,7 +550,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     recommendedSetting = { setting: adjustSunbeam(sunbeamSetting || 15, shift) };
   }
 
-  const sortedRecent = [...recentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const sortedRecent = [...learningRecentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   const evidenceContext = getRecommendationEvidenceContext(sortedRecent, recipe, flairEnabled);
   const shotOutcome = classifyShotOutcome(
     { actualTimeS: actualTime, actualYieldG: actualYield, tasteProfile, targetTimeMinS: targetMin, targetTimeMaxS: targetMax },
