@@ -30,7 +30,7 @@ export function beanIsDecaf(bean) {
  * source:
  * - 'shots' — this bean already has logged results
  * - 'decaf-history' — starting point comes from other decaf shots of this roast
- * - 'roast-baseline' — no decaf history yet; same roast baseline as regular coffee
+ * - 'roast-baseline' — no decaf history yet; roast-class default plus the usual age adjustment
  */
 export function decafContextNote(bean, source = 'roast-baseline') {
   if (!beanIsDecaf(bean)) return null;
@@ -40,7 +40,7 @@ export function decafContextNote(bean, source = 'roast-baseline') {
   if (source === 'decaf-history') {
     return 'Decaf can behave differently from regular coffee, and that varies by the coffee. This starting grind follows your previous decaf shots for this roast, not a fixed decaf adjustment.';
   }
-  return 'Decaf can behave differently from regular coffee, and that varies by the coffee. This starting grind uses your usual roast baseline until you log a shot.';
+  return 'Decaf can behave differently from regular coffee, and that varies by the coffee. This starting grind uses this roast\'s usual baseline, not your regular-coffee dial-ins, until you log a shot.';
 }
 
 export function generateId() {
@@ -354,9 +354,11 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
 
   const ageData = calculateEffectiveBeanAge(activeBean, mockDateOverride);
   const decafBean = beanIsDecaf(activeBean);
-  // No shots for this bean yet. Previous decaf dial-ins of the same roast
-  // can set the start. With none, the regular roast baseline is used as-is.
-  let baseline = getHistoricalRoastBaseline(
+  // No shots for this bean yet. Same-roast decaf dial-ins are the decaf prior's
+  // evidence. Regular dial-ins stay out of that pool. With no decaf evidence,
+  // baseline stays null and the Light/Medium/Dark default below is the prior,
+  // then the existing age offset. There is no decaf grind-direction offset.
+  const baseline = getHistoricalRoastBaseline(
     grinderModel,
     roastType,
     recipes,
@@ -364,9 +366,6 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
     beans,
     decafBean ? 'decaf' : 'regular'
   );
-  if (baseline === null && decafBean) {
-    baseline = getHistoricalRoastBaseline(grinderModel, roastType, recipes, allShots, beans, 'regular');
-  }
 
   if (grinderModel === 'Sette 270Wi') {
     let baseNumeric = baseline !== null ? baseline : (roastType === 'Light' ? 15 * 9 + 2 : roastType === 'Dark' ? 12 * 9 + 5 : 13 * 9 + 4);

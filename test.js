@@ -226,7 +226,7 @@ function runDecafRegressionTests() {
   assert.equal(beanIsDecaf(decafBean), true);
   assert.equal(decafContextNote(legacyBean), null);
   assert.equal(decafContextNote(regularBean, 'shots'), null);
-  assert.match(decafContextNote(decafBean, 'roast-baseline'), /usual roast baseline/);
+  assert.match(decafContextNote(decafBean, 'roast-baseline'), /regular-coffee dial-ins/);
   assert.match(decafContextNote(decafBean, 'shots'), /logged shots/);
   assert.match(decafContextNote(decafBean, 'decaf-history'), /previous decaf shots/);
   assert.doesNotMatch(decafContextNote(decafBean, 'shots'), /always|fines|coarser|3–5|12–14/i);
@@ -259,7 +259,7 @@ function runDecafRegressionTests() {
     assert.deepEqual(live, previous, label);
   }
 
-  // Decaf with no decaf history uses the same starting grind as regular coffee.
+  // With no learned history, decaf uses the same roast-class default as regular coffee.
   const noHistoryBeans = [legacyBean, regularBean, decafBean];
   const noHistoryRecipes = noHistoryBeans.map(b => recipeFor(b.id));
   const regularStart = getInitialGrindRecommendation('Sette 270Wi', 'Medium', regularBean, noHistoryRecipes, [], noHistoryBeans, mockDate);
@@ -329,6 +329,75 @@ function runDecafRegressionTests() {
     getInitialGrindRecommendation('Sunbeam Barista Max', 'Medium', newDecaf, historyRecipes, sunbeamShots, historyBeans, mockDate),
     { setting: 20 }
   );
+
+  // Regular dial-ins are not a decaf prior. The start is the roast-class default plus age.
+  const regularOnlyMedium = [
+    dialled('reg-shot', 10, 'A', 20, '2026-09-18T00:00:00.000Z'),
+  ];
+  const priorBeans = [
+    historyBeans.find(b => b.id === 'reg-shot'),
+    newDecaf,
+    { ...newRegular, id: 'fresh-regular', roastDate: '2026-09-20' },
+    { ...newDecaf, id: 'fresh-decaf-prior', roastDate: '2026-09-20' },
+  ];
+  const priorRecipes = priorBeans.map(b => recipeFor(b.id));
+  const decafPrior = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newDecaf, priorRecipes, regularOnlyMedium, priorBeans, mockDate);
+  const regularFromHistory = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newRegular, priorRecipes, regularOnlyMedium, priorBeans, mockDate);
+  assert.deepEqual(regularFromHistory, { macro: 10, micro: 'A' });
+  assert.notDeepEqual(decafPrior, regularFromHistory);
+  assert.deepEqual(decafPrior, decafStart);
+
+  for (const roastType of ['Light', 'Medium', 'Dark']) {
+    const plain = { id: `plain-${roastType}`, roastType, roastDate, storageType: 'bag' };
+    const decafRoast = { id: `decaf-${roastType}`, roastType, roastDate, storageType: 'bag', isDecaf: true };
+    const learned = { id: `learned-${roastType}`, roastType, roastDate, storageType: 'bag', isDecaf: false };
+    const beansForRoast = [plain, decafRoast, learned];
+    const recipesForRoast = beansForRoast.map(b => recipeFor(b.id));
+    const learnedShot = [dialled(learned.id, 8, 'A', 8, '2026-09-18T00:00:00.000Z')];
+    const plainStart = getInitialGrindRecommendation('Sette 270Wi', roastType, plain, recipesForRoast, [], beansForRoast, mockDate);
+    const decafRoastStart = getInitialGrindRecommendation('Sette 270Wi', roastType, decafRoast, recipesForRoast, learnedShot, beansForRoast, mockDate);
+    const learnedStart = getInitialGrindRecommendation('Sette 270Wi', roastType, { ...plain, id: 'new-' + roastType }, recipesForRoast.concat(recipeFor('new-' + roastType)), learnedShot, beansForRoast.concat({ ...plain, id: 'new-' + roastType }), mockDate);
+    assert.deepEqual(decafRoastStart, plainStart, roastType);
+    assert.notDeepEqual(learnedStart, plainStart, roastType);
+  }
+
+  const freshDecafPrior = priorBeans.find(b => b.id === 'fresh-decaf-prior');
+  const freshRegular = priorBeans.find(b => b.id === 'fresh-regular');
+  const freshDecafStart = getInitialGrindRecommendation('Sette 270Wi', 'Medium', freshDecafPrior, priorRecipes, regularOnlyMedium, priorBeans, mockDate);
+  const freshRegularNoHistory = getInitialGrindRecommendation('Sette 270Wi', 'Medium', freshRegular, priorRecipes, [], priorBeans, mockDate);
+  assert.deepEqual(freshDecafStart, freshRegularNoHistory);
+  assert.notDeepEqual(freshDecafStart, decafPrior);
+  assert.deepEqual(
+    getInitialGrindRecommendation('Sunbeam Barista Max', 'Medium', freshDecafPrior, priorRecipes, [dialled('reg-shot', 10, 'A', 20, '2026-09-18T00:00:00.000Z', 'Sunbeam Barista Max')], priorBeans, mockDate),
+    getInitialGrindRecommendation('Sunbeam Barista Max', 'Medium', freshRegular, priorRecipes, [], priorBeans, mockDate)
+  );
+
+  const lightDecaf = { id: 'light-decaf', roastType: 'Light', roastDate, storageType: 'bag', isDecaf: true };
+  const crossRoastBeans = [lightDecaf, newDecaf];
+  const crossRoastRecipes = crossRoastBeans.map(b => recipeFor(b.id));
+  const crossRoastShots = [dialled('light-decaf', 18, 'C', 22, '2026-09-18T00:00:00.000Z')];
+  assert.deepEqual(
+    getInitialGrindRecommendation('Sette 270Wi', 'Medium', newDecaf, crossRoastRecipes, crossRoastShots, crossRoastBeans, mockDate),
+    decafStart
+  );
+
+  const ownAndOther = getInitialGrindRecommendation(
+    'Sette 270Wi',
+    'Medium',
+    decafBean,
+    [recipeFor('decaf'), recipeFor('decaf-shot')],
+    [
+      dialled('decaf-shot', 15, 'A', 20, '2026-09-18T00:00:00.000Z'),
+      {
+        ...dialled('decaf', 11, 'C', 12, '2026-09-19T00:00:00.000Z'),
+        beanAgeDays: calculateEffectiveBeanAge(decafBean, mockDate).daysOld,
+        recommendation: { recommendedSetting: { macro: 11, micro: 'C' }, reason: 'KEEP GRIND — Balanced and in range.' },
+      },
+    ],
+    [decafBean, historyBeans.find(b => b.id === 'decaf-shot')],
+    mockDate
+  );
+  assert.deepEqual(ownAndOther, { macro: 11, micro: 'C' });
 
   const age = calculateEffectiveBeanAge(decafBean, mockDate).daysOld;
   const followedShot = {
