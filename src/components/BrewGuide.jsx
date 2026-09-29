@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
   Bean,
   Brush,
+  ChevronLeft,
   CircleDot,
   ClipboardList,
   Coffee,
@@ -120,17 +121,45 @@ function MenuCard({ ui, icon: Icon, title, detail, onClick }) {
   );
 }
 
+function scrollStepCardIntoView(cardEl) {
+  if (!cardEl) return;
+  const top = cardEl.getBoundingClientRect().top + window.scrollY;
+  const offset = 12;
+  window.scrollTo({ top: Math.max(0, top - offset), behavior: 'auto' });
+}
+
+function BackButton({ ui, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`min-h-[44px] px-3 rounded-xl flex items-center gap-1.5 text-sm font-bold shrink-0 ${ui.secondaryBtn}`}
+    >
+      <ChevronLeft className="w-4 h-4" aria-hidden />
+      Back
+    </button>
+  );
+}
+
+function StepActions({ actions, ui }) {
+  if (!actions?.length) return null;
+  return (
+    <div className="space-y-4">
+      {actions.map((action) => (
+        <div key={action.title} className="space-y-1">
+          <p className={`text-sm font-black uppercase tracking-wide ${ui.accentText}`}>{action.title}</p>
+          <p className={`text-base leading-relaxed ${ui.sub}`}>{action.text}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SectionMenu({ ui, title, detail, onBack, children }) {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className={`min-h-[44px] px-1 text-sm font-bold ${ui.accentText}`}
-        >
-          Back
-        </button>
+        <BackButton ui={ui} onClick={onBack} />
         <p className={ui.pageTitle}>Brew Guide</p>
         <h2 className={`text-2xl font-black tracking-tight ${ui.text}`}>{title}</h2>
         <p className={`text-sm leading-relaxed ${ui.sub}`}>{detail}</p>
@@ -142,11 +171,12 @@ function SectionMenu({ ui, title, detail, onBack, children }) {
 
 function GuideFlow({ ui, guide, onBack }) {
   const [index, setIndex] = useState(0);
+  const stepCardRef = useRef(null);
   const step = guide.steps[index];
   const stepNumber = index + 1;
 
   useEffect(() => {
-    window.scrollTo(0, 0);
+    scrollStepCardIntoView(stepCardRef.current);
   }, [index]);
 
   const goBack = () => {
@@ -163,13 +193,7 @@ function GuideFlow({ ui, guide, onBack }) {
     <div className="flex flex-col gap-5 pb-44">
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={goBack}
-            className={`min-h-[44px] px-1 text-sm font-bold ${ui.accentText}`}
-          >
-            Back
-          </button>
+          <BackButton ui={ui} onClick={goBack} />
           <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${ui.muted}`} aria-live="polite">
             Step {stepNumber} of {guide.steps.length}
           </p>
@@ -186,8 +210,9 @@ function GuideFlow({ ui, guide, onBack }) {
         </div>
       </div>
 
-      <div className={`${ui.card} p-6 space-y-4 rounded-2xl`}>
+      <div ref={stepCardRef} className={`${ui.card} p-6 space-y-4 rounded-2xl`}>
         <h2 className={`text-[1.75rem] leading-tight font-black tracking-tight ${ui.text}`}>{step.title}</h2>
+        <StepActions actions={step.actions} ui={ui} />
         <ul className={`space-y-2 text-base leading-relaxed ${ui.sub}`}>
           {step.lines.map((line) => (
             <li key={line} className="flex gap-2">
@@ -235,20 +260,23 @@ export function BrewGuide({
   const [guideId, setGuideId] = useState('temperature');
   const [guideBack, setGuideBack] = useState('menu');
   const [draft, setDraft] = useState(() => normalizeBrewAccessories(accessories));
+  const [sessionAccessories, setSessionAccessories] = useState(null);
+  const workflowAccessories = sessionAccessories ?? normalizeBrewAccessories(accessories);
+  const stepCardRef = useRef(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [extractPhase, setExtractPhase] = useState('idle');
   const [capturedTime, setCapturedTime] = useState(null);
   const [yieldInput, setYieldInput] = useState('');
 
-  const steps = buildBrewSteps(accessories, dial);
+  const steps = buildBrewSteps(workflowAccessories, dial);
   const index = Math.min(stepIndex, Math.max(steps.length - 1, 0));
   const step = steps[index];
   const canStart = brewDialIsReady(dial);
   const summary = brewDialSummary(dial);
 
   useEffect(() => {
-    window.scrollTo(0, 0);
+    scrollStepCardIntoView(stepCardRef.current);
   }, [screen, index]);
 
   useEffect(() => {
@@ -265,7 +293,11 @@ export function BrewGuide({
   const saveSetup = async () => {
     setSaving(true);
     try {
-      await onSaveAccessories(draft);
+      const normalized = normalizeBrewAccessories(draft);
+      if (!setupComplete) {
+        await onSaveAccessories(normalized);
+      }
+      setSessionAccessories(normalized);
       setScreen('menu');
     } finally {
       setSaving(false);
@@ -352,7 +384,7 @@ export function BrewGuide({
             disabled={saving}
             className={`w-full min-h-[64px] rounded-xl text-base ${ui.primary} disabled:opacity-60`}
           >
-            {setupComplete ? 'Save' : 'Continue'}
+            {setupComplete ? 'Use for this brew' : 'Continue'}
           </button>
           {setupComplete && (
             <button
@@ -441,16 +473,16 @@ export function BrewGuide({
 
   if (screen === 'menu') {
     return (
-      <div className="space-y-4">
-        <div className="space-y-2">
+      <div className="min-h-[calc(100dvh-11rem)] flex flex-col justify-center gap-6 py-2">
+        <div className="space-y-2 text-center">
           <p className={ui.pageTitle}>Brew Guide</p>
-          <h2 className={`text-2xl font-black tracking-tight ${ui.text}`}>Sunbeam Barista Max</h2>
-          <p className={`text-sm leading-relaxed ${ui.sub}`}>
-            EM5300 / EM5300K. Start the shot, or open a machine guide.
+          <h2 className={`text-3xl font-black tracking-tight ${ui.text}`}>Sunbeam Barista Max</h2>
+          <p className={`text-sm leading-relaxed ${ui.sub} max-w-md mx-auto`}>
+            EM5300 / EM5300K. Start your espresso workflow, then open supporting guides below.
           </p>
         </div>
 
-        <div className={`${ui.card} p-5 rounded-2xl space-y-4`}>
+        <div className={`${ui.card} p-6 rounded-2xl space-y-4 shadow-lg`}>
           {canStart ? (
             <MetricGrid metrics={summary.metrics} ui={ui} />
           ) : (
@@ -477,9 +509,18 @@ export function BrewGuide({
               {hasActiveBean ? 'Go to Dial-In' : 'Add your first bean'}
             </button>
           )}
+          <button
+            type="button"
+            onClick={openSetup}
+            className={`w-full min-h-[52px] rounded-xl text-sm font-bold ${ui.ctaSoft}`}
+          >
+            Accessories
+          </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2 pt-1">
+          <p className={`${ui.sectionTitle} text-center`}>More guides</p>
+          <div className="space-y-2 opacity-95">
           <MenuCard
             ui={ui}
             icon={Thermometer}
@@ -508,15 +549,8 @@ export function BrewGuide({
             detail="Run the machine’s descale programme."
             onClick={() => openGuide('descale', 'menu')}
           />
+          </div>
         </div>
-
-        <button
-          type="button"
-          onClick={openSetup}
-          className={`w-full min-h-[48px] rounded-xl text-sm font-bold ${ui.secondaryBtn}`}
-        >
-          Accessories
-        </button>
       </div>
     );
   }
@@ -569,13 +603,7 @@ export function BrewGuide({
     <div className="flex flex-col gap-5 pb-44">
       <div className="space-y-3" data-timer-dismiss>
         <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={goBack}
-            className={`min-h-[44px] px-1 text-sm font-bold ${ui.accentText}`}
-          >
-            Back
-          </button>
+          <BackButton ui={ui} onClick={goBack} />
           <p className={`text-[10px] font-bold uppercase tracking-[0.18em] ${ui.muted}`} aria-live="polite">
             Step {stepNumber} of {steps.length}
           </p>
@@ -593,6 +621,7 @@ export function BrewGuide({
       </div>
 
       <div
+        ref={stepCardRef}
         className={`${ui.card} ${step.kind === 'timer' ? 'p-4 space-y-3' : 'p-6 space-y-4'} rounded-2xl ${timerLive ? 'cursor-pointer' : ''}`}
         onClick={timerLive ? handleTimerSurface : undefined}
         role={timerLive ? 'presentation' : undefined}
@@ -665,6 +694,7 @@ export function BrewGuide({
                 <p className={`text-5xl font-black font-mono tabular-nums leading-none ${ui.text}`}>{step.highlight}</p>
               </div>
             )}
+            <StepActions actions={step.actions} ui={ui} />
             {step.lines?.length ? (
               <ul className={`space-y-2 text-base leading-relaxed ${ui.sub}`}>
                 {step.lines.map((line) => (
@@ -678,17 +708,25 @@ export function BrewGuide({
               <p className={`text-base leading-relaxed ${ui.sub}`}>{step.instruction}</p>
             )}
             {step.kind === 'yield' && (
-              <label className="block">
-                <span className={`${ui.fieldLabel} block mb-2`}>Yield (g)</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  value={yieldInput}
-                  onChange={(event) => setYieldInput(event.target.value)}
-                  className={`w-full bg-transparent text-center text-5xl font-black font-mono tabular-nums focus:outline-none ${ui.text}`}
-                />
-              </label>
+              <div className="space-y-3 pt-1">
+                <p className={`text-lg font-bold ${ui.text}`}>{step.yieldPrompt || 'What was the final yield?'}</p>
+                <label className="block">
+                  <span className={`${ui.fieldLabel} block mb-2`}>{step.yieldFieldLabel || 'Actual yield'}</span>
+                  <div className={`${ui.cardInset} rounded-xl border-2 border-[rgba(200,138,75,0.45)] p-4 flex items-center justify-center gap-2`}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.1"
+                      placeholder="36"
+                      aria-label="Actual yield in grams"
+                      value={yieldInput}
+                      onChange={(event) => setYieldInput(event.target.value)}
+                      className={`w-full min-w-0 bg-transparent text-center text-5xl font-black font-mono tabular-nums focus:outline-none ${ui.text}`}
+                    />
+                    <span className={`text-2xl font-bold ${ui.muted} shrink-0`}>g</span>
+                  </div>
+                </label>
+              </div>
             )}
             {step.note && <p className={`text-sm leading-relaxed ${ui.muted}`}>{step.note}</p>}
             <StepHelps key={step.id} helps={step.helps} ui={ui} />

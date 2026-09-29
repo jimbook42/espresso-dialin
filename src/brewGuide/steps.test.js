@@ -17,7 +17,7 @@ const DIAL = {
   yieldG: 36,
   timeMinS: 27,
   timeMaxS: 32,
-  brewTemperatureC: 93,
+  brewTemperatureC: 92,
   grinderModel: 'Sunbeam Barista Max',
   grindLabel: '15',
   previousGrindLabel: '15',
@@ -26,6 +26,7 @@ const DIAL = {
 const CORE = [
   'recipe',
   'warmup',
+  'preheat',
   'cup',
   'grindSetting',
   'dose',
@@ -57,7 +58,8 @@ function ids(accessories, dial = DIAL) {
 
 function stepText(step) {
   const helpText = (step.helps || []).map((item) => `${item.name} ${item.text}`).join(' ');
-  return [step.title, step.instruction, step.note, step.help, helpText, step.highlight, step.highlightLabel, step.stopAt, step.timeLabel, ...(step.metrics || []).map((metric) => `${metric.label} ${metric.value}`)]
+  const actionText = (step.actions || []).map((item) => `${item.title} ${item.text}`).join(' ');
+  return [step.title, step.instruction, actionText, step.note, step.help, helpText, step.highlight, step.highlightLabel, step.stopAt, step.timeLabel, ...(step.metrics || []).map((metric) => `${metric.label} ${metric.value}`)]
     .filter(Boolean)
     .join(' ');
 }
@@ -97,7 +99,7 @@ function assertWorkflow(accessories, dial) {
   assert.equal(new Set(stepIds).size, stepIds.length, `duplicate ids ${stepIds.join(' → ')}`);
   const text = steps.map(stepText).join('\n');
   assertNo(text, /cup warmer|steam|wand|milk|machine stopped|10\s*[–-]\s*15\s*kg/i);
-  assert.ok(stepIds.length <= 12, `too many steps: ${stepIds.join(' → ')}`);
+  assert.ok(stepIds.length <= 13, `too many steps: ${stepIds.join(' → ')}`);
 
   for (const item of steps) {
     assert.ok(item.title.trim().length > 0);
@@ -132,7 +134,7 @@ function assertWorkflow(accessories, dial) {
   }
   assert.match(dose.instruction, /do not fill the hopper/i);
   assert.match(dose.instruction, new RegExp(`${doseLabel}`));
-  if (accessories.rdt) assert.match(dose.instruction, /spray/i);
+  if (accessories.rdt) assert.match(dose.instruction, /use rdt/i);
 
   const grind = steps.find((item) => item.id === 'grind');
   if (accessories.dosingCup) assert.match(grind.instruction, /dosing cup/i);
@@ -149,7 +151,11 @@ function assertWorkflow(accessories, dial) {
     if (!accessories.dosingFunnel && (accessories.dosingCup || accessories.blindShaker)) {
       assertNo(puck.instruction, /funnel/i);
     }
-    if (accessories.wdt) assert.match(puck.instruction, /clumps/i);
+    if (accessories.wdt) {
+      assert.match(puck.instruction, /use the wdt/i);
+      assert.match(puck.instruction, /clumps/i);
+    }
+    if (accessories.distributor) assert.match(puck.instruction, /use the distributor/i);
     if (accessories.dosingFunnel && (accessories.wdt || accessories.distributor || accessories.selfLevellingTamper || accessories.puckScreen || accessories.dosingCup || accessories.blindShaker)) {
       assert.match(puck.instruction, /lift the dosing funnel/i);
     }
@@ -164,7 +170,7 @@ function assertWorkflow(accessories, dial) {
   assert.equal(steps.find((item) => item.id === 'yield').kind, 'yield');
   assert.equal(steps.at(-1).id, 'taste');
   assert.equal(steps.at(-1).kind, 'handoff');
-  assert.match(steps.at(-1).instruction, /tasted/i);
+  assert.match(steps.at(-1).instruction, /dial-in/i);
 }
 
 export function runBrewGuideTests() {
@@ -230,6 +236,7 @@ export function runBrewGuideTests() {
   assert.deepEqual(cupShakerFunnel, [
     'recipe',
     'warmup',
+    'preheat',
     'cup',
     'grindSetting',
     'dose',
@@ -271,7 +278,7 @@ export function runBrewGuideTests() {
   assert.match(sunbeam, /36g/);
   assert.match(sunbeam, /27/);
   assert.match(sunbeam, /32/);
-  assert.match(sunbeam, /93/);
+  assert.match(sunbeam, /92/);
   assert.match(sunbeam, /dial setting/);
   assert.match(sunbeam, /\b15\b/);
 
@@ -300,7 +307,7 @@ export function runBrewGuideTests() {
   assertNo(updated, /18g/);
   assertNo(updated, /36g/);
   assertNo(updated, /dial setting/);
-  assertNo(updated, /93/);
+  assertNo(updated, /92/);
 
   const keys = BREW_ACCESSORIES.map((item) => item.id);
   for (let mask = 0; mask < 256; mask += 1) {

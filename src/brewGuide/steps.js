@@ -121,13 +121,20 @@ export function brewDialSummary(dial = {}) {
 
 function step(partial) {
   const lines = partial.lines?.filter(Boolean);
+  const actions = partial.actions?.filter((item) => item?.title && item?.text);
   const helps = partial.helps?.filter((item) => item?.text);
+  const actionText = (actions || []).map((item) => `${item.title}. ${item.text}`);
   return {
     ...partial,
     lines,
+    actions: actions?.length ? actions : undefined,
     helps: helps?.length ? helps : undefined,
-    instruction: partial.instruction || (lines || []).join(' '),
+    instruction: partial.instruction || [...actionText, ...(lines || [])].join(' '),
   };
+}
+
+function accessoryAction(title, text) {
+  return { title, text };
 }
 
 function toolHelp(accessories, ids) {
@@ -181,43 +188,95 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
   }
 
   const doseLines = [`Weigh ${dose}g of ${bean}.`];
-  if (accessories.rdt) doseLines.push('Add a tiny spray of water and mix it through.');
   doseLines.push(`Put only that ${dose}g in the empty hopper. Do not fill the hopper.`);
+  const doseActions = [];
+  if (accessories.rdt) {
+    doseActions.push(accessoryAction(
+      'Use RDT',
+      'Lightly spray the beans with water using the RDT before grinding.',
+    ));
+  }
 
   const grindDoseLines = [];
+  const grindActions = [];
   if (usesCup) {
-    grindDoseLines.push(`Grind all ${dose}g into the dosing cup and check it is ${dose}g.`);
+    grindActions.push(accessoryAction(
+      'Use the dosing cup',
+      `Grind all ${dose}g into the dosing cup and check it is ${dose}g.`,
+    ));
   } else if (usesShaker) {
-    grindDoseLines.push(`Grind all ${dose}g into the blind shaker and check it is ${dose}g.`);
+    grindActions.push(accessoryAction(
+      'Use the blind shaker',
+      `Grind all ${dose}g into the blind shaker and check it is ${dose}g.`,
+    ));
   } else if (usesFunnel) {
-    grindDoseLines.push(`Fit the dosing funnel, grind all ${dose}g into the basket, and check the portafilter is ${dose}g.`);
+    grindActions.push(accessoryAction(
+      'Use the dosing funnel',
+      `Place the dosing funnel on the portafilter, grind all ${dose}g into the basket, and check the portafilter is ${dose}g.`,
+    ));
     if (!needsPuck(accessories, false)) grindDoseLines.push('Lift the dosing funnel off.');
   } else {
     grindDoseLines.push(`Grind all ${dose}g into the basket and check the portafilter is ${dose}g.`);
   }
 
   const puckLines = [];
-  if (usesShaker) {
-    puckLines.push(usesCup
-      ? 'Tip the grounds into the blind shaker and shake until they look even.'
-      : 'Shake the grounds until they look even.');
+  const puckActions = [];
+  if (usesShaker && usesCup) {
+    puckActions.push(accessoryAction(
+      'Use the blind shaker',
+      'Tip the grounds into the blind shaker and shake until they look even.',
+    ));
+  } else if (usesShaker) {
+    puckActions.push(accessoryAction(
+      'Use the blind shaker',
+      'Shake the grounds until they look even.',
+    ));
   }
   if (groundsLeaveTheBasket) {
-    if (usesFunnel && usesShaker) puckLines.push('Place the dosing funnel on the portafilter and tip the grounds in from the shaker.');
-    else if (usesFunnel && usesCup) puckLines.push('Place the dosing funnel on the portafilter and tip the grounds in from the dosing cup.');
-    else if (usesShaker) puckLines.push('Tip the grounds from the shaker into the basket.');
-    else puckLines.push('Tip the grounds from the dosing cup into the basket.');
+    if (usesFunnel && usesShaker) {
+      puckActions.push(accessoryAction(
+        'Use the dosing funnel',
+        'Place the dosing funnel on the portafilter and tip the grounds in from the blind shaker.',
+      ));
+    } else if (usesFunnel && usesCup) {
+      puckActions.push(accessoryAction(
+        'Use the dosing funnel',
+        'Place the dosing funnel on the portafilter and tip the grounds in from the dosing cup.',
+      ));
+    } else if (usesShaker) {
+      puckLines.push('Tip the grounds from the blind shaker into the basket.');
+    } else {
+      puckLines.push('Tip the grounds from the dosing cup into the basket.');
+    }
   }
-  if (accessories.wdt) puckLines.push('Gently break up clumps and distribute the grounds.');
+  if (accessories.wdt) {
+    puckActions.push(accessoryAction(
+      'Use the WDT',
+      'Gently use the WDT to break up clumps and distribute the grounds throughout the portafilter.',
+    ));
+  }
   if (usesFunnel && needsPuck(accessories, groundsLeaveTheBasket)) {
     puckLines.push('Lift the dosing funnel off.');
   }
-  if (accessories.distributor) puckLines.push('Use the distributor to level the coffee bed evenly.');
-  if (accessories.selfLevellingTamper) puckLines.push('Place the tamper squarely and press once consistently.');
+  if (accessories.distributor) {
+    puckActions.push(accessoryAction(
+      'Use the distributor',
+      'Use the distributor to evenly level the coffee grounds in the portafilter.',
+    ));
+  }
+  if (accessories.selfLevellingTamper) {
+    puckActions.push(accessoryAction(
+      'Use the self-levelling tamper',
+      'Place the self-levelling tamper squarely and press once consistently.',
+    ));
+  }
   if (accessories.puckScreen) {
-    puckLines.push(accessories.selfLevellingTamper
-      ? 'Place the puck screen flat on the tamped puck.'
-      : 'Place the puck screen flat on the coffee.');
+    puckActions.push(accessoryAction(
+      'Use the puck screen',
+      accessories.selfLevellingTamper
+        ? 'Place the puck screen flat on top of the tamped coffee puck.'
+        : 'Place the puck screen flat on top of the prepared coffee bed.',
+    ));
   }
 
   const steps = [];
@@ -237,8 +296,19 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     lines: [
       'Turn the machine on and let it heat.',
       'Check there is enough water.',
-      'Portafilter and basket clean and dry.',
     ],
+  }));
+
+  steps.push(step({
+    id: 'preheat',
+    icon: 'rinse',
+    title: 'Preheat the group',
+    lines: [
+      'Lock the empty portafilter and filter basket into the group head.',
+      'Run hot water through the group head to warm the group, portafilter, and basket.',
+      'Discard the water, remove the portafilter, and dry the basket and portafilter thoroughly before adding coffee.',
+    ],
+    note: 'This is a preheat rinse with water — not an espresso shot.',
   }));
 
   steps.push(step({
@@ -280,6 +350,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     highlightLabel: 'Dose',
     highlight: `${dose}g`,
     lines: doseLines,
+    actions: doseActions,
     helps: toolHelp(accessories, ['rdt']),
   }));
 
@@ -288,15 +359,17 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     icon: 'grind',
     title: 'Grind',
     lines: grindDoseLines,
+    actions: grindActions,
     helps: toolHelp(accessories, grindHelpIds),
   }));
 
-  if (puckLines.length) {
+  if (puckLines.length || puckActions.length) {
     steps.push(step({
       id: 'puck',
       icon: 'portafilter',
       title: 'Prepare the puck',
       lines: puckLines,
+      actions: puckActions,
       helps: toolHelp(accessories, puckHelpIds),
     }));
   }
@@ -323,7 +396,9 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     title: 'Yield',
     highlightLabel: 'Target',
     highlight: `${yieldG}g`,
-    instruction: 'Enter the yield in the cup. It is sent to Dial-In with the shot time.',
+    yieldPrompt: 'What was the final yield?',
+    yieldFieldLabel: 'Actual yield',
+    instruction: 'Enter the actual yield from the scale. It is sent to Dial-In with the shot time.',
   }));
 
   steps.push(step({
@@ -342,9 +417,9 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     id: 'taste',
     kind: 'handoff',
     icon: 'log',
-    title: 'Taste',
-    instruction: 'Time and yield are filled in. Mark the taste to record how this shot tasted.',
-    doneLabel: 'Mark the taste',
+    title: 'Your shot details are ready in Dial-In',
+    instruction: 'Your shot time and yield have been carried over to the Dial-In screen. Select how the shot tasted, then log the shot to get your next grind recommendation.',
+    doneLabel: 'Go to Dial-In',
   }));
 
   return steps;

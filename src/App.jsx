@@ -134,6 +134,8 @@ export default function App() {
   const brewTempDefaultRef = useRef('');
   const [validationError, setValidationError] = useState('');
   const [highlightGrind, setHighlightGrind] = useState(false);
+  const [highlightTaste, setHighlightTaste] = useState(false);
+  const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
 
   useEffect(() => {
     if (settingsSetting) {
@@ -142,9 +144,13 @@ export default function App() {
         if (!isEditingBean && brewTempDefaultRef.current !== settingsSetting.grinderModel) {
           brewTempDefaultRef.current = settingsSetting.grinderModel;
           const nextTemp = settingsSetting.grinderModel === 'Sunbeam Barista Max' ? 92 : 93;
-          setNewRecipe((prev) => (
-            prev.brewTemperatureC === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp }
-          ));
+          setNewRecipe((prev) => {
+            const current = prev.brewTemperatureC;
+            const isUnset = current === '' || current === null || current === undefined;
+            const isFactoryDefault = current === 92 || current === 93;
+            if (!isUnset && !isFactoryDefault) return prev;
+            return current === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp };
+          });
         }
       }
       if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
@@ -277,17 +283,26 @@ export default function App() {
     }
   }, [selectedBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
 
-  const handleSaveGrinderSetup = async (model) => {
+  const handleSaveGrinderSetup = async (model, options = {}) => {
+    const { brewGuideEnabled: brewGuideChoice } = options;
     setGrinderModel(model);
     if (!isEditingBean) {
       brewTempDefaultRef.current = model;
       const nextTemp = model === 'Sunbeam Barista Max' ? 92 : 93;
-      setNewRecipe((prev) => (
-        prev.brewTemperatureC === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp }
-      ));
+      setNewRecipe((prev) => {
+        const current = prev.brewTemperatureC;
+        const isUnset = current === '' || current === null || current === undefined;
+        const isFactoryDefault = current === 92 || current === 93;
+        if (!isUnset && !isFactoryDefault) return prev;
+        return current === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp };
+      });
     }
     const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({ ...currentSettings, grinderModel: model });
+    await db.settings.put({
+      ...currentSettings,
+      grinderModel: model,
+      ...(typeof brewGuideChoice === 'boolean' ? { brewGuideEnabled: brewGuideChoice } : {}),
+    });
   };
 
   const handleToggleFlairSetting = async (val) => {
@@ -839,6 +854,7 @@ export default function App() {
       }
     }
     setBrewTimerHost(false);
+    setHighlightTaste(true);
     setActiveTab('dial');
     window.setTimeout(() => {
       tasteInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -859,15 +875,28 @@ export default function App() {
           </div>
           <div>
             <p className="text-sm text-[#a09880] text-center mb-6">Select your grinder to configure your calibration baseline.</p>
+            <div className="space-y-4 mb-4">
+              <div className={`bg-[#211e1a] border border-[#2e2b26] rounded-xl p-4 flex items-center justify-between gap-3`}>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-[#f5f2eb]">Would you like to use the Brew Guide?</p>
+                  <p className="text-[11px] text-[#6b6457] mt-1">You can change these settings later in Settings.</p>
+                </div>
+                <SettingsToggle
+                  checked={setupBrewGuideEnabled}
+                  onChange={setSetupBrewGuideEnabled}
+                  label="Brew Guide"
+                />
+              </div>
+            </div>
             <div className="space-y-3">
               <button
-                onClick={() => handleSaveGrinderSetup('Sette 270Wi')}
+                onClick={() => handleSaveGrinderSetup('Sette 270Wi', { brewGuideEnabled: setupBrewGuideEnabled })}
                 className="w-full bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold py-4 rounded-xl text-sm transition-colors"
               >
                 Baratza Sette 270Wi
               </button>
               <button
-                onClick={() => handleSaveGrinderSetup('Sunbeam Barista Max')}
+                onClick={() => handleSaveGrinderSetup('Sunbeam Barista Max', { brewGuideEnabled: setupBrewGuideEnabled })}
                 className="w-full bg-[#211e1a] hover:bg-[#2e2b26] text-[#f5f2eb] font-bold py-4 rounded-xl text-sm transition-colors border border-[#2e2b26]"
               >
                 Sunbeam Barista Max
@@ -1294,7 +1323,10 @@ export default function App() {
                   </div>
 
                   {/* Taste selector */}
-                  <div className={`${ui.card} p-4 rounded-2xl space-y-3`} ref={tasteInputRef}>
+                  <div
+                    className={`${ui.card} p-4 rounded-2xl space-y-3 transition-all duration-300 ${highlightTaste ? 'ring-2 ring-[#c88a4b]/80 shadow-[0_0_0_4px_rgba(200,138,75,0.12)]' : ''}`}
+                    ref={tasteInputRef}
+                  >
                     <label className={ui.fieldLabel}>Extraction taste *</label>
                     <div className="grid grid-cols-5 gap-1.5">
                       {[
@@ -1307,7 +1339,10 @@ export default function App() {
                         <button
                           type="button"
                           key={f.id}
-                          onClick={() => setTasteProfile(f.id)}
+                          onClick={() => {
+                            setTasteProfile(f.id);
+                            setHighlightTaste(false);
+                          }}
                           className={`py-3 text-[10px] font-bold rounded-xl border transition-all ${
                             tasteProfile === f.id
                               ? 'bg-[#c88a4b] border-[#c88a4b] text-[#121110]'
@@ -1569,7 +1604,7 @@ export default function App() {
                     />
                     <span className={`text-[9px] ${ui.muted} text-center block`}>°C</span>
                     {grinderModel === 'Sunbeam Barista Max' && (
-                      <span className={`text-[10px] ${ui.muted} text-center block mt-1`}>92°C is the system default.</span>
+                      <span className={`text-[10px] ${ui.muted} text-center block mt-1`}>92°C is the Barista Max&apos;s default temperature.</span>
                     )}
                   </div>
                 </div>
