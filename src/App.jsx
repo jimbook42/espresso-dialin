@@ -42,6 +42,31 @@ function extractionTimeStatus(timeS, minT, maxT) {
   return 'over';
 }
 
+const EMPTY_SHOT_FIELD_HIGHLIGHTS = { dose: false, yield: false, time: false, taste: false };
+
+function formatMissingShotFields(keys) {
+  const labels = { dose: 'dose', yield: 'yield', time: 'time', taste: 'taste' };
+  const parts = keys.map((key) => labels[key]);
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+}
+
+function shotLogValidationMessage(missing) {
+  if (missing.length === 1) {
+    if (missing[0] === 'taste') return 'Taste profile selection is required.';
+    if (missing[0] === 'dose') return 'Dose is required and must be a number.';
+    if (missing[0] === 'yield') return 'Yield is required and must be a number.';
+    return 'Extraction time is required and must be a number.';
+  }
+  const list = formatMissingShotFields(missing);
+  return `${list.charAt(0).toUpperCase()}${list.slice(1)} are required.`;
+}
+
+function shotFieldAttentionClass(active) {
+  return active ? 'ring-2 ring-[#c88a4b]/80 taste-attention-pulse' : '';
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dial');
   const [darkMode, setDarkMode] = useState(true);
@@ -126,6 +151,7 @@ export default function App() {
   const [shotRating, setShotRating] = useState(null);
   const [notes, setNotes] = useState('');
 
+  const doseInputRef = useRef(null);
   const timeInputRef = useRef(null);
   const yieldInputRef = useRef(null);
   const tasteInputRef = useRef(null);
@@ -134,7 +160,7 @@ export default function App() {
   const brewTempDefaultRef = useRef('');
   const [validationError, setValidationError] = useState('');
   const [highlightGrind, setHighlightGrind] = useState(false);
-  const [highlightTaste, setHighlightTaste] = useState(false);
+  const [shotFieldHighlights, setShotFieldHighlights] = useState(EMPTY_SHOT_FIELD_HIGHLIGHTS);
   const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
 
   useEffect(() => {
@@ -498,29 +524,43 @@ export default function App() {
     const parsedYield = parseFloat(actualYieldG);
     const parsedDose = parseFloat(actualDoseG);
 
+    const missing = [];
+    const highlights = { ...EMPTY_SHOT_FIELD_HIGHLIGHTS };
     if (isNaN(parsedDose)) {
-      setValidationError('Dose is required and must be a number.');
-      return;
+      missing.push('dose');
+      highlights.dose = true;
     }
     if (isNaN(parsedYield)) {
-      setValidationError('Yield is required and must be a number.');
-      yieldInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      yieldInputRef.current?.focus();
-      return;
+      missing.push('yield');
+      highlights.yield = true;
     }
     if (isNaN(parsedTime)) {
-      setValidationError('Extraction time is required and must be a number.');
-      timeInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      timeInputRef.current?.focus();
-      return;
+      missing.push('time');
+      highlights.time = true;
     }
     if (!tasteProfile) {
-      setValidationError('Taste profile selection is required.');
-      setHighlightTaste(true);
-      tasteInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      tasteInputRef.current?.querySelector('button')?.focus();
+      missing.push('taste');
+      highlights.taste = true;
+    }
+    if (missing.length > 0) {
+      setValidationError(shotLogValidationMessage(missing));
+      setShotFieldHighlights(highlights);
+      const focusOrder = [
+        ['dose', doseInputRef, 'input'],
+        ['yield', yieldInputRef, 'input'],
+        ['time', timeInputRef, 'input'],
+        ['taste', tasteInputRef, 'button'],
+      ];
+      for (const [key, ref, focusSelector] of focusOrder) {
+        if (!highlights[key]) continue;
+        ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (focusSelector === 'button') ref.current?.querySelector('button')?.focus();
+        else ref.current?.querySelector('input')?.focus();
+        break;
+      }
       return;
     }
+    setShotFieldHighlights(EMPTY_SHOT_FIELD_HIGHLIGHTS);
 
     let finalMacro = null;
     let finalMicro = null;
@@ -856,7 +896,7 @@ export default function App() {
       }
     }
     setBrewTimerHost(false);
-    setHighlightTaste(true);
+    setShotFieldHighlights({ ...EMPTY_SHOT_FIELD_HIGHLIGHTS, taste: true });
     setActiveTab('dial');
     window.setTimeout(() => {
       tasteInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1292,33 +1332,51 @@ export default function App() {
 
                   {/* Dose / Yield / Time */}
                   <div className="grid grid-cols-3 gap-2">
-                    <div className={`${ui.card} p-3 rounded-2xl`}>
+                    <div
+                      ref={doseInputRef}
+                      className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.dose)}`}
+                    >
                       <label className={`${ui.fieldLabel} block mb-2`}>Dose (g)</label>
                       <input
                         type="number" step="0.1"
                         value={actualDoseG}
-                        onChange={(e) => setActualDoseG(e.target.value)}
+                        onChange={(e) => {
+                          setActualDoseG(e.target.value);
+                          setShotFieldHighlights((prev) => ({ ...prev, dose: false }));
+                        }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                       />
                     </div>
-                    <div className={`${ui.card} p-3 rounded-2xl`} ref={yieldInputRef}>
+                    <div
+                      ref={yieldInputRef}
+                      className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.yield)}`}
+                    >
                       <label className={`${ui.fieldLabel} block mb-2`}>Yield (g) *</label>
                       <input
                         type="number" step="0.1"
                         placeholder="36"
                         value={actualYieldG}
-                        onChange={(e) => setActualYieldG(e.target.value)}
+                        onChange={(e) => {
+                          setActualYieldG(e.target.value);
+                          setShotFieldHighlights((prev) => ({ ...prev, yield: false }));
+                        }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
                       />
                       <p className={`text-[9px] ${ui.accentText} text-center mt-1`}>1:{brewRatio}</p>
                     </div>
-                    <div className={`${ui.card} p-3 rounded-2xl`} ref={timeInputRef}>
+                    <div
+                      ref={timeInputRef}
+                      className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.time)}`}
+                    >
                       <label className={`${ui.fieldLabel} block mb-2`}>Time (s) *</label>
                       <input
                         type="number"
                         placeholder="28"
                         value={actualTimeS}
-                        onChange={(e) => setActualTimeS(e.target.value)}
+                        onChange={(e) => {
+                          setActualTimeS(e.target.value);
+                          setShotFieldHighlights((prev) => ({ ...prev, time: false }));
+                        }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
                       />
                     </div>
@@ -1326,7 +1384,7 @@ export default function App() {
 
                   {/* Taste selector */}
                   <div
-                    className={`${ui.card} p-4 rounded-2xl space-y-3 transition-all duration-300 ${highlightTaste ? 'ring-2 ring-[#c88a4b]/80 taste-attention-pulse' : ''}`}
+                    className={`${ui.card} p-4 rounded-2xl space-y-3 transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.taste)}`}
                     ref={tasteInputRef}
                   >
                     <label className={ui.fieldLabel}>Extraction taste *</label>
@@ -1343,7 +1401,7 @@ export default function App() {
                           key={f.id}
                           onClick={() => {
                             setTasteProfile(f.id);
-                            setHighlightTaste(false);
+                            setShotFieldHighlights((prev) => ({ ...prev, taste: false }));
                           }}
                           className={`py-3 text-[10px] font-bold rounded-xl border transition-all ${
                             tasteProfile === f.id
