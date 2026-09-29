@@ -10,6 +10,9 @@ import {
   classifyShotOutcome,
   getRecommendationEvidenceContext,
   recipeContextForShot,
+  beanIsDecaf,
+  decafContextNote,
+  getHistoricalRoastBaseline,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList } from 'lucide-react';
@@ -119,7 +122,8 @@ export default function App() {
     thawDate: '',
     thawHistory: [],
     rating: '',
-    isFinished: false
+    isFinished: false,
+    isDecaf: false
   });
   
   const [newRecipe, setNewRecipe] = useState({ 
@@ -412,21 +416,22 @@ export default function App() {
 
     try {
       const sanitized = sanitizeRating(newBean.rating);
+      const beanToSave = { ...newBean, rating: sanitized !== '' ? sanitized : null, isDecaf: beanIsDecaf(newBean) };
       
       if (isEditingBean && newBean.id) {
-        await db.beans.update(newBean.id, { ...newBean, rating: sanitized !== '' ? sanitized : null });
+        await db.beans.update(newBean.id, beanToSave);
         const existingRecipe = recipes.find(r => r.beanId === newBean.id);
         if (existingRecipe) {
           await db.recipes.update(existingRecipe.id, { ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36 });
         }
       } else {
         const beanId = generateId();
-        await db.beans.add({ ...newBean, rating: sanitized !== '' ? sanitized : null, id: beanId, isFinished: false, thawHistory: [], createdAt: new Date().toISOString() });
+        await db.beans.add({ ...beanToSave, id: beanId, isFinished: false, thawHistory: [], createdAt: new Date().toISOString() });
         await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: generateId(), beanId });
         setSelectedBeanId(beanId);
       }
 
-      setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false });
+      setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
       setIsEditingBean(false);
       setActiveTab('dial');
     } catch (err) {
@@ -446,7 +451,7 @@ export default function App() {
 
   const cancelEditBean = () => {
     setIsEditingBean(false);
-    setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false });
+    setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
     setNewRecipe({ 
       targetDoseG: 18, 
       targetYieldG: '', 
@@ -700,6 +705,14 @@ export default function App() {
     ? shots.filter(s => s.beanId === activeBean.id && s.grinderModel === grinderModel)
     : [];
   const hasLoggedShotForBean = beanShots.length > 0;
+  const decafNoteSource = !beanIsDecaf(activeBean)
+    ? null
+    : hasLoggedShotForBean
+      ? 'shots'
+      : (grinderModel && getHistoricalRoastBaseline(grinderModel, activeBean?.roastType, recipes, shots, beans, 'decaf') !== null)
+        ? 'decaf-history'
+        : 'roast-baseline';
+  const decafNote = decafNoteSource ? decafContextNote(activeBean, decafNoteSource) : null;
   const initialGrindSetting = activeBean && grinderModel && beanShotsForGrinder.length === 0
     ? getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate)
     : null;
@@ -1119,7 +1132,7 @@ export default function App() {
                       >
                         {activeBeansList.map(b => (
                           <option key={b.id} value={b.id} className="bg-[#1a1815]">
-                            {b.name} ({b.roaster}){b.rating ? ` [${Number(b.rating).toFixed(1)}]` : ''}
+                            {b.name} ({b.roaster}){beanIsDecaf(b) ? ' · Decaf' : ''}{b.rating ? ` [${Number(b.rating).toFixed(1)}]` : ''}
                           </option>
                         ))}
                       </select>
@@ -1159,6 +1172,7 @@ export default function App() {
                   <div className="flex flex-wrap items-center gap-2 text-[11px]">
                     <span className={ui.sub}>
                       {activeBean?.storageType} • {activeBean?.roastType} roast
+                      {beanIsDecaf(activeBean) ? ' • Decaf' : ''}
                       {activeRecipe?.brewTemperatureC ? ` • ${activeRecipe.brewTemperatureC}°C` : ''}
                     </span>
                     {beanAgeInfo && (
@@ -1224,6 +1238,9 @@ export default function App() {
                   )}
                   {recommendationEvidenceContext && (
                     <p className={`text-[10px] ${ui.muted}`}>{recommendationEvidenceContext}</p>
+                  )}
+                  {decafNote && (
+                    <p className={`text-[10px] ${ui.accentText} ${ui.freezeHint} p-2.5 rounded-lg`}>{decafNote}</p>
                   )}
                   {!dynamicRec && !hasLoggedShotForBean && (
                     <>
@@ -1575,6 +1592,18 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <span className={`font-bold block text-sm ${ui.text}`}>Decaf</span>
+                  <span className={`text-[10px] ${ui.muted}`}>Caffeine has been removed. Grind advice still follows your shots.</span>
+                </div>
+                <SettingsToggle
+                  checked={newBean.isDecaf === true}
+                  onChange={(checked) => setNewBean({ ...newBean, isDecaf: checked })}
+                  label="Decaf"
+                />
+              </div>
+
               {newBean.storageType === 'frozen' && (
                 <div className={`space-y-3 ${ui.freezeHint} p-3 rounded-xl`}>
                   <div className="flex flex-col text-xs space-y-1">
@@ -1769,7 +1798,7 @@ export default function App() {
                             <span className={`font-bold ${ui.text} block`}>
                               {b.name} {b.isFinished && <span className={`text-[9px] ${ui.chip} px-1.5 py-0.5 rounded ml-1`}>Finished</span>}
                             </span>
-                            <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast ({b.storageType})</span>
+                            <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast ({b.storageType}){beanIsDecaf(b) ? ' • Decaf' : ''}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">

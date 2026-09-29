@@ -2,7 +2,10 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('EspressoDialDB');
 
-// Bumped to version 17 to accommodate persisted current grind settings
+// Bumped to version 17 to accommodate persisted current grind settings.
+// isDecaf is a non-indexed property on the bean object. No version bump:
+// Dexie keeps existing beans, recipes, and shots. Beans saved before this
+// field existed omit it; readers treat a missing value as regular coffee.
 db.version(17).stores({
   beans: 'id, name, roaster, roastDate, storageType, postThawStorage, freezeDate, thawDate, rating, isFinished, createdAt',
   recipes: 'id, beanId, targetDoseG, targetYieldG, targetTimeMinS, targetTimeMaxS',
@@ -10,6 +13,35 @@ db.version(17).stores({
   // settings row also stores darkMode and Brew Guide config (UI only); no schema bump — Dexie keeps existing shot/bean data at v17
   settings: 'id, grinderModel, flairEnabled, preInfusionEnabled, lastSetteMacro, lastSetteMicro, lastSunbeamSetting'
 });
+
+/**
+ * True only when the bean was explicitly marked decaf.
+ * Missing, false, and any other value stay regular coffee.
+ * Do not infer decaf from the name, roaster, or shot history.
+ */
+export function beanIsDecaf(bean) {
+  return bean?.isDecaf === true;
+}
+
+/**
+ * Explainability only. Does not change grind, age, yield, taste, or warnings.
+ * Regular and legacy beans return null so their recommendation UI is unchanged.
+ *
+ * source:
+ * - 'shots' — this bean already has logged results
+ * - 'decaf-history' — starting point comes from other decaf shots of this roast
+ * - 'roast-baseline' — no decaf history yet; same roast baseline as regular coffee
+ */
+export function decafContextNote(bean, source = 'roast-baseline') {
+  if (!beanIsDecaf(bean)) return null;
+  if (source === 'shots') {
+    return 'Decaf can behave differently from regular coffee, and that varies by the coffee. This grind follows your logged shots, not a fixed decaf adjustment.';
+  }
+  if (source === 'decaf-history') {
+    return 'Decaf can behave differently from regular coffee, and that varies by the coffee. This starting grind follows your previous decaf shots for this roast, not a fixed decaf adjustment.';
+  }
+  return 'Decaf can behave differently from regular coffee, and that varies by the coffee. This starting grind uses your usual roast baseline until you log a shot.';
+}
 
 export function generateId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -202,11 +234,19 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
   return { daysOld: effectiveDays, recommendedOffsetSette: offsetSette, recommendedOffsetSunbeam: offsetSunbeam, notice };
 }
 
-export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = [], allShots = [], beans = []) {
+export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = [], allShots = [], beans = [], decafScope = 'regular') {
   const successfulShots = allShots.filter(s => {
     if (s.grinderModel !== grinderModel) return false;
     const bean = beans.find(b => b.id === s.beanId);
     if (!bean || bean.roastType !== roastType) return false;
+    // Explicit decaf shots stay in their own pool so they cannot move regular baselines.
+    // Legacy beans omit isDecaf and remain in the regular pool.
+    const shotIsDecaf = beanIsDecaf(bean);
+    if (decafScope === 'decaf') {
+      if (!shotIsDecaf) return false;
+    } else if (shotIsDecaf) {
+      return false;
+    }
     const recipe = recipes.find(r => r.beanId === s.beanId);
     if (!recipe) return false;
 
@@ -313,7 +353,20 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
   }
 
   const ageData = calculateEffectiveBeanAge(activeBean, mockDateOverride);
-  const baseline = getHistoricalRoastBaseline(grinderModel, roastType, recipes, allShots, beans);
+  const decafBean = beanIsDecaf(activeBean);
+  // No shots for this bean yet. Previous decaf dial-ins of the same roast
+  // can set the start. With none, the regular roast baseline is used as-is.
+  let baseline = getHistoricalRoastBaseline(
+    grinderModel,
+    roastType,
+    recipes,
+    allShots,
+    beans,
+    decafBean ? 'decaf' : 'regular'
+  );
+  if (baseline === null && decafBean) {
+    baseline = getHistoricalRoastBaseline(grinderModel, roastType, recipes, allShots, beans, 'regular');
+  }
 
   if (grinderModel === 'Sette 270Wi') {
     let baseNumeric = baseline !== null ? baseline : (roastType === 'Light' ? 15 * 9 + 2 : roastType === 'Dark' ? 12 * 9 + 5 : 13 * 9 + 4);
