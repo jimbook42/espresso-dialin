@@ -714,6 +714,7 @@ function runDecafRegressionTests() {
   assert.deepEqual(fast.recommendedSetting, { macro: 12, micro: 'H' });
   assert.notDeepEqual(fast.recommendedSetting, slow.recommendedSetting);
   assert.deepEqual(Object.keys(fast).sort(), [
+    'engineStats',
     'evidenceContext',
     'flairWaterTempAdvice',
     'reason',

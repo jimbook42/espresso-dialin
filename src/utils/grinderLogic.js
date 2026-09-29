@@ -236,6 +236,20 @@ export function getRecommendationEvidenceContext(recentShots, recipe, flairEnabl
   return 'Based on recent shots with this recipe';
 }
 
+function freshnessOffsetsForEffectiveDays(effectiveDays) {
+  const days = Math.max(0, Math.floor(Number(effectiveDays) || 0));
+  let offsetSette = 0;
+  let offsetSunbeam = 0;
+  if (days <= 3) { offsetSette = -3; offsetSunbeam = -2; }
+  else if (days <= 7) { offsetSette = -2; offsetSunbeam = -1; }
+  else if (days <= 14) { offsetSette = -1; offsetSunbeam = 0; }
+  else if (days <= 30) { offsetSette = 0; offsetSunbeam = 0; }
+  else if (days <= 45) { offsetSette = 1; offsetSunbeam = 1; }
+  else if (days <= 60) { offsetSette = 2; offsetSunbeam = 1; }
+  else { offsetSette = 3; offsetSunbeam = 2; }
+  return { offsetSette, offsetSunbeam };
+}
+
 export function getIdealFreezeWindow(roastType) {
   switch (roastType) {
     case 'Light': return { min: 14, max: 21, label: '14–21 days post-roast' };
@@ -277,15 +291,7 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
     effectiveDays = Math.max(0, Math.floor((today - roastDate) / (1000 * 60 * 60 * 24)));
   }
 
-  let offsetSette = 0;
-  let offsetSunbeam = 0;
-  if (effectiveDays <= 3) { offsetSette = -3; offsetSunbeam = -2; }
-  else if (effectiveDays <= 7) { offsetSette = -2; offsetSunbeam = -1; }
-  else if (effectiveDays <= 14) { offsetSette = -1; offsetSunbeam = 0; }
-  else if (effectiveDays <= 30) { offsetSette = 0; offsetSunbeam = 0; }
-  else if (effectiveDays <= 45) { offsetSette = 1; offsetSunbeam = 1; }
-  else if (effectiveDays <= 60) { offsetSette = 2; offsetSunbeam = 1; }
-  else { offsetSette = 3; offsetSunbeam = 2; }
+  const { offsetSette, offsetSunbeam } = freshnessOffsetsForEffectiveDays(effectiveDays);
 
   const storageLabels = { frozen: 'Frozen Storage', vacuum: 'Vacuum Sealed Bag', bag: 'Standard Bag' };
   let notice = `(${storageLabels[storageType] || 'Standard'} • ${bean.roastType} Roast) Effective age: ${effectiveDays} days.`;
@@ -610,6 +616,9 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     recipe
   );
 
+  const sensitivity = grinderModel === 'Sette 270Wi' ? 1.25 : 4.5;
+  const shiftUnit = grinderModel === 'Sette 270Wi' ? 'micro' : 'macro';
+
   return {
     recommendedSetting,
     reason,
@@ -618,5 +627,73 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     flairWaterTempAdvice,
     evidenceContext,
     shotOutcome,
+    engineStats: {
+      timeDelta,
+      yieldDelta,
+      targetMid,
+      targetYield,
+      sensitivity,
+      shift,
+      shiftUnit,
+      severeChoke: severeChoke,
+      tasteOverride: isTimeInRange && tasteProfile !== 'good' && tasteProfile !== 'balanced',
+    },
+  };
+}
+
+/** Diagnostics for shot history "Stats for Nerds" — safe for legacy shots missing engineStats. */
+export function getShotEngineStats(shot, recipe = {}) {
+  const rec = shot?.recommendation;
+  const stored = rec?.engineStats;
+  const ctx = recipeContextForShot(shot, recipe);
+  const actualTime = Number(shot?.actualTimeS ?? shot?.actualTime ?? 0);
+  const actualYield = Number(shot?.actualYieldG ?? shot?.actualYield ?? 0);
+  const targetMin = ctx.targetTimeMinS;
+  const targetMax = ctx.targetTimeMaxS;
+  const targetMid = stored?.targetMid ?? (targetMin + targetMax) / 2;
+  const targetYield = stored?.targetYield ?? ctx.targetYieldG ?? 36;
+  const grinderModel = shot?.grinderModel || 'Sette 270Wi';
+  const sensitivity = stored?.sensitivity ?? (grinderModel === 'Sette 270Wi' ? 1.25 : 4.5);
+  const timeDelta = stored?.timeDelta ?? actualTime - targetMid;
+  const yieldDelta = stored?.yieldDelta ?? actualYield - targetYield;
+  const shift = stored?.shift ?? null;
+  const shiftUnit = stored?.shiftUnit ?? (grinderModel === 'Sette 270Wi' ? 'micro' : 'macro');
+
+  let shiftSummary = rec?.reason || null;
+  if (shift !== null && shift !== 0) {
+    const abs = Math.abs(shift);
+    const dir = shift < 0 ? 'finer' : 'coarser';
+    const stepLabel = shiftUnit === 'micro' ? 'micro step(s)' : 'setting(s)';
+    shiftSummary = `${shift > 0 ? '+' : '-'}${abs} ${stepLabel} ${dir}${rec?.reason ? ` — ${rec.reason}` : ''}`;
+  } else if (shift === 0 && rec?.reason) {
+    shiftSummary = rec.reason;
+  }
+
+  const beanAgeDays = shot?.beanAgeDays;
+  let ageOffsetNote = null;
+  if (beanAgeDays !== undefined && beanAgeDays !== null) {
+    const { offsetSette, offsetSunbeam } = freshnessOffsetsForEffectiveDays(beanAgeDays);
+    const offsetSteps = grinderModel === 'Sette 270Wi' ? offsetSette : offsetSunbeam;
+    if (offsetSteps !== 0) {
+      ageOffsetNote = `Effective age ${beanAgeDays}d → freshness offset ${offsetSteps > 0 ? '+' : ''}${offsetSteps} ${shiftUnit} step(s) on starting grind only`;
+    } else {
+      ageOffsetNote = `Effective age ${beanAgeDays}d — no freshness grind offset at log time`;
+    }
+  }
+
+  return {
+    timeDelta,
+    yieldDelta,
+    targetMid,
+    targetYield,
+    sensitivity,
+    shift,
+    shiftUnit,
+    shiftSummary: shiftSummary || 'No recommendation recorded for this shot.',
+    ageOffsetNote,
+    evidenceContext: rec?.evidenceContext || null,
+    warning: rec?.warning || null,
+    severeChoke: stored?.severeChoke ?? false,
+    tasteOverride: stored?.tasteOverride ?? false,
   };
 }

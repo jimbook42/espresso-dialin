@@ -18,7 +18,9 @@ import {
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info } from 'lucide-react';
+import { HowItWorksModal } from './components/HowItWorksModal';
+import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { SetteGrindControls, SunbeamGrindControl } from './components/GrindControls';
 import { SettingsToggle } from './components/SettingsToggle';
@@ -77,6 +79,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dial');
   const [darkMode, setDarkMode] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [expandedShotStatsIds, setExpandedShotStatsIds] = useState(() => new Set());
 
   const [logoClickCount, setLogoClickCount] = useState(0);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
@@ -98,6 +102,7 @@ export default function App() {
   const brewGuideEnabled = Boolean(settingsSetting?.brewGuideEnabled);
   const brewGuideSetupComplete = Boolean(settingsSetting?.brewGuideSetupComplete);
   const brewGuideAccessories = normalizeBrewAccessories(settingsSetting?.brewGuideAccessories);
+  const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
@@ -366,6 +371,21 @@ export default function App() {
     if (!val && activeTab === 'brew') setActiveTab('dial');
     const currentSettings = await db.settings.get('global') || { id: 'global' };
     await db.settings.put({ ...currentSettings, brewGuideEnabled: val });
+  };
+
+  const handleToggleStatsForNerds = async (val) => {
+    if (!val) setExpandedShotStatsIds(new Set());
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({ ...currentSettings, statsForNerdsEnabled: val });
+  };
+
+  const toggleShotEngineStats = (shotId) => {
+    setExpandedShotStatsIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shotId)) next.delete(shotId);
+      else next.add(shotId);
+      return next;
+    });
   };
 
   const handleSaveBrewAccessories = async (accessories) => {
@@ -1970,6 +1990,25 @@ export default function App() {
                       )}
                       {peakBar && <span>{peakBar} bar</span>}
                     </div>
+
+                    {statsForNerdsEnabled && (
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleShotEngineStats(s.id)}
+                          className={`inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide ${ui.muted} hover:text-[#c88a4b] ${ui.chip} px-2 py-1 rounded-md`}
+                          aria-expanded={expandedShotStatsIds.has(s.id)}
+                        >
+                          <Info className="w-3 h-3" />
+                          {expandedShotStatsIds.has(s.id) ? 'Hide logic' : 'View logic'}
+                        </button>
+                        {expandedShotStatsIds.has(s.id) && (
+                          <div className="mt-2">
+                            <ShotEngineStatsPanel shot={s} recipe={recipeForShot || {}} ui={ui} />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -2129,6 +2168,8 @@ export default function App() {
           </div>
         )}
 
+        <HowItWorksModal open={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} ui={ui} />
+
         {isSettingsOpen && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
             <div className={`${ui.card} p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl max-h-[92vh] overflow-y-auto`}>
@@ -2190,6 +2231,26 @@ export default function App() {
                     {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
                     {darkMode ? 'Dark' : 'Light'}
                   </button>
+                </div>
+
+                <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsHowItWorksOpen(true);
+                      setIsSettingsOpen(false);
+                    }}
+                    className={`w-full font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 ${ui.secondaryBtn}`}
+                  >
+                    <Coffee className="w-4 h-4" /> How the Engine Works
+                  </button>
+                  <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Stats for Nerds</span>
+                      <span className={`text-[10px] ${ui.muted}`}>Show recommendation logic on shot history cards</span>
+                    </div>
+                    <SettingsToggle checked={statsForNerdsEnabled} onChange={handleToggleStatsForNerds} label="Stats for Nerds" />
+                  </div>
                 </div>
 
                 <div className={`pt-2 border-t ${ui.modalDivider}`}>
