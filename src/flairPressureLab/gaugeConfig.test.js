@@ -12,8 +12,9 @@ import { guideCircleStyle, previewAngleDeg, previewPointToVideo, videoRegionToPr
 import { cameraErrorMessage } from './cameraErrors.js';
 import { circularMedian, createAngleTracker, createRestCalibration, createRisingThreshold } from './smoothPressure.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
-import { createDiagnosticHistory } from './diagnosticHistory.js';
+import { createDiagnosticHistory, stabilityStats } from './diagnosticHistory.js';
 import {
+  analyzeGaugeImage,
   createGaugeTracker,
   locateGauge,
   matchGaugeRotation,
@@ -294,6 +295,75 @@ export function runFlairPressureLabTests() {
   assert.equal(trace[2].tracking, 'TRACKING');
   history.reset();
   assert.equal(history.length, 0);
+
+  const atRest = angleToBar(wrap360(40 - 0), { ...FLAIR_58_SCALE, zeroAngleDeg: 40 });
+  const gaugeTurned = angleToBar(wrap360(50 - 10), { ...FLAIR_58_SCALE, zeroAngleDeg: 40 });
+  const wrappedRest = angleToBar(wrap360(5 - 330), { ...FLAIR_58_SCALE, zeroAngleDeg: 35 });
+  const lifted = angleToBar(wrap360(85 - 0), { ...FLAIR_58_SCALE, zeroAngleDeg: 40 });
+  assert.equal(atRest, 0);
+  assert.ok(Math.abs(gaugeTurned) < 1e-6, `rotation leaked into pressure ${gaugeTurned}`);
+  assert.ok(Math.abs(wrapDelta(35, wrap360(5 - 330))) < 1e-6);
+  assert.ok(Math.abs(wrappedRest) < 1e-6, `wrap rest ${wrappedRest}`);
+  assert.ok(Math.abs(lifted - 2) < 0.02, `lifted ${lifted}`);
+
+  const stillTracker = createGaugeTracker();
+  const stillImage = makeGaugeImage(180, { cx: 92, cy: 88, radius: 40, needleDeg: 47, rotationDeg: 0 });
+  stillTracker.seed({ cx: 92, cy: 88, radius: 40 });
+  const stillReads = [];
+  for (let i = 0; i < 12; i += 1) stillReads.push(analyzeGaugeImage(stillImage, stillTracker));
+  const settled = stillReads.slice(4);
+  const anchor = settled[0];
+  for (const reading of settled) {
+    const centreStep = Math.hypot(reading.gauge.cx - anchor.gauge.cx, reading.gauge.cy - anchor.gauge.cy);
+    assert.ok(centreStep < 0.05, `stationary centre walked ${centreStep.toFixed(2)}`);
+    assert.equal(reading.angleDeg, anchor.angleDeg);
+    assert.ok(Math.abs(wrapDelta(anchor.relativeAngleDeg, reading.relativeAngleDeg)) < 0.05);
+    assert.ok(Math.abs(wrapDelta(anchor.gauge.rotationDeg, reading.gauge.rotationDeg)) < 0.05);
+    assert.equal(reading.gauge.held, false);
+  }
+
+  const shiftedImage = makeGaugeImage(180, { cx: 106, cy: 78, radius: 40, needleDeg: 47, rotationDeg: 0 });
+  let shiftedRead = null;
+  for (let i = 0; i < 4; i += 1) shiftedRead = analyzeGaugeImage(shiftedImage, stillTracker);
+  const follow = Math.hypot(shiftedRead.gauge.cx - 106, shiftedRead.gauge.cy - 78);
+  assert.ok(follow <= 6, `stillness gate blocked a real move ${follow.toFixed(1)}`);
+  assert.ok(Math.abs(wrapDelta(anchor.relativeAngleDeg, shiftedRead.relativeAngleDeg)) <= 8, `move changed relative ${anchor.relativeAngleDeg} -> ${shiftedRead.relativeAngleDeg}`);
+
+  const noisyTracker = createGaugeTracker();
+  noisyTracker.seed({ cx: 92, cy: 88, radius: 40 });
+  const noisyReads = [];
+  for (let i = 0; i < 10; i += 1) {
+    const frame = makeGaugeImage(180, {
+      cx: 92, cy: 88, radius: 40, needleDeg: 47, rotationDeg: 0, noise: 30, seed: 19 + i * 23,
+    });
+    noisyReads.push(analyzeGaugeImage(frame, noisyTracker));
+  }
+  const noisyTail = noisyReads.slice(3);
+  const noisyAnchor = noisyTail[0];
+  let noisyCentre = 0;
+  let noisyAngle = 0;
+  for (const reading of noisyTail) {
+    noisyCentre = Math.max(noisyCentre, Math.hypot(reading.gauge.cx - noisyAnchor.gauge.cx, reading.gauge.cy - noisyAnchor.gauge.cy));
+    noisyAngle = Math.max(noisyAngle, Math.abs(wrapDelta(noisyAnchor.relativeAngleDeg, reading.relativeAngleDeg)));
+  }
+  assert.ok(noisyCentre <= 2.5, `noisy centre walk ${noisyCentre.toFixed(2)}`);
+  assert.ok(noisyAngle <= 3, `noisy relative walk ${noisyAngle.toFixed(2)}`);
+
+  const stats = stabilityStats([
+    { gaugeX: 10, gaugeY: 10, rawGaugeX: 10, rawGaugeY: 12, gaugeRotation: 0, rawRotation: 0, rawAngle: 40, relativeAngle: 40, smoothedAngle: 40, pressure: 1 },
+    { gaugeX: 10, gaugeY: 10, rawGaugeX: 14, rawGaugeY: 12, gaugeRotation: 0, rawRotation: 5, rawAngle: 40, relativeAngle: 40, smoothedAngle: 40, pressure: 1 },
+    { gaugeX: 10, gaugeY: 10, rawGaugeX: 11, rawGaugeY: 15, gaugeRotation: 0, rawRotation: 0, rawAngle: 43, relativeAngle: 40, smoothedAngle: 40, pressure: 1.4 },
+  ]);
+  assert.equal(stats.centreDelta, 0);
+  assert.ok(stats.centreStd < 0.01);
+  assert.ok(stats.detectorCentreDelta > 1);
+  assert.ok(stats.detectorCentreStd > 1);
+  assert.equal(stats.rotationDelta, 0);
+  assert.ok(stats.detectorRotationStd > 1);
+  assert.equal(stats.screenDelta, 3);
+  assert.equal(stats.relativeDelta, 0);
+  assert.equal(stats.smoothedDelta, 0);
+  assert.ok(stats.pressureStd > 0.1);
 }
 
 function angDist(a, b) {
@@ -311,7 +381,14 @@ function makeGaugeImage(size, {
   gain = 1,
   bias = 0,
   shade = 0,
+  noise = 0,
+  seed = 1,
 } = {}) {
+  let state = seed >>> 0;
+  const rand = () => {
+    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
   const data = new Uint8ClampedArray(size * size * 4);
   const needleRad = (needleDeg * Math.PI) / 180;
   const needleCos = Math.cos(needleRad);
@@ -339,6 +416,7 @@ function makeGaugeImage(size, {
       const across = Math.abs(-dx * needleSin + dy * needleCos);
       if (along > radius * 0.16 && along < radius * 0.84 && across <= 1.6) value = 6;
       value = value * gain + bias + shade * (x / size) * 80;
+      if (noise) value += (rand() - 0.5) * noise;
       const index = (y * size + x) * 4;
       const channel = Math.max(0, Math.min(255, Math.round(value)));
       data[index] = channel;

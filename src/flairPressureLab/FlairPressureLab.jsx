@@ -14,7 +14,7 @@ import {
   wrap360,
 } from './gaugeConfig';
 import { DiagnosticTrace } from './DiagnosticTrace';
-import { createDiagnosticHistory } from './diagnosticHistory';
+import { createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { objectCoverMap, previewAngleDeg, previewPointToVideo, videoRegionToPreview } from './geometry';
 import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
 import {
@@ -249,8 +249,17 @@ export function FlairPressureLab() {
           ny: clamp(gauge.ny, 0.05, 0.95),
           nr: clamp(gauge.nr, 0.12, 0.48),
         };
-        regionRef.current = nextRegion;
-        setRegion(nextRegion);
+        const prevRegion = regionRef.current;
+        const minDim = Math.min(reading.videoWidth, reading.videoHeight);
+        const movedPx = Math.hypot(
+          (nextRegion.nx - prevRegion.nx) * reading.videoWidth,
+          (nextRegion.ny - prevRegion.ny) * reading.videoHeight,
+        );
+        const grewPx = Math.abs(nextRegion.nr - prevRegion.nr) * minDim;
+        if (movedPx > 0.5 || grewPx > 0.5) {
+          regionRef.current = nextRegion;
+          setRegion(nextRegion);
+        }
       }
 
       const record = (partial) => {
@@ -263,7 +272,10 @@ export function FlairPressureLab() {
           tracking: partial.tracking,
           gaugeX: gauge.cx,
           gaugeY: gauge.cy,
+          rawGaugeX: gauge.rawCx,
+          rawGaugeY: gauge.rawCy,
           gaugeRotation: gauge.rotationDeg,
+          rawRotation: gauge.rawRotationDeg,
           quality: reading.quality,
           gaugeConfidence: gauge.confidence,
           orientationConfidence: gauge.orientationConfidence,
@@ -376,6 +388,13 @@ export function FlairPressureLab() {
     return () => cancelAnimationFrame(raf);
   }, [status, videoRef]);
 
+  const stability = stabilityStats(trace);
+  const formatPair = (step, spread, digits, unit) => {
+    if (step == null && spread == null) return '—';
+    const left = step == null ? '—' : Number(step).toFixed(digits);
+    const right = spread == null ? '—' : Number(spread).toFixed(digits);
+    return `${left} / ${right}${unit}`;
+  };
   const ring = videoSize && frameBox.w
     ? videoRegionToPreview(region, videoSize.w, videoSize.h, frameBox.w, frameBox.h, mirrorPreview)
     : null;
@@ -584,6 +603,22 @@ export function FlairPressureLab() {
             <dd className={ui.text}>{formatNum(live.orientationConfidence, 2)}</dd>
             <dt>Jitter</dt>
             <dd className={ui.text}>{formatNum(live.jitter, 1)}°</dd>
+            <dt>Centre Δ / σ</dt>
+            <dd className={ui.text}>{formatPair(stability.centreDelta, stability.centreStd, 2, ' px')}</dd>
+            <dt>Detector centre Δ / σ</dt>
+            <dd className={ui.text}>{formatPair(stability.detectorCentreDelta, stability.detectorCentreStd, 2, ' px')}</dd>
+            <dt>Rotation Δ / σ</dt>
+            <dd className={ui.text}>{formatPair(stability.rotationDelta, stability.rotationStd, 2, '°')}</dd>
+            <dt>Detector rotation Δ / σ</dt>
+            <dd className={ui.text}>{formatPair(stability.detectorRotationDelta, stability.detectorRotationStd, 2, '°')}</dd>
+            <dt>Screen angle Δ / σ</dt>
+            <dd className={ui.text}>{formatPair(stability.screenDelta, stability.screenStd, 2, '°')}</dd>
+            <dt>Relative angle Δ / σ</dt>
+            <dd className={ui.text}>{formatPair(stability.relativeDelta, stability.relativeStd, 2, '°')}</dd>
+            <dt>Smoothed relative Δ / σ</dt>
+            <dd className={ui.text}>{formatPair(stability.smoothedDelta, stability.smoothedStd, 2, '°')}</dd>
+            <dt>Pressure σ</dt>
+            <dd className={ui.text}>{stability.pressureStd == null ? '—' : `${stability.pressureStd.toFixed(3)} bar`}</dd>
             <dt>Preview mirrored</dt>
             <dd className={ui.text}>{mirrorPreview ? 'yes' : 'no'}</dd>
             <dt>CV frame</dt>
@@ -596,7 +631,9 @@ export function FlairPressureLab() {
           <DiagnosticTrace samples={trace} />
           <p className={`text-[10px] ${ui.muted} leading-relaxed`}>
             Edge quality is an internal score, not a confidence percentage.
-            Pressure uses the needle angle relative to the gauge that is being followed, minus the rest angle.
+            Pressure uses the needle angle relative to the gauge that is being followed, minus the rest angle once.
+            Δ is the last frame and σ is the spread over the last three seconds. Applied centre and rotation stay still while the detector wobbles inside a small band. A real move still follows.
+            The dashed trace is that relative angle.
             Moving the whole gauge should not change the pressure. A weak rim score holds the last pressure instead of inventing one.
             The trace is the last 30 seconds in memory only. It is not written to shot history.
             The rising-edge line does not start a timer and is not saved.

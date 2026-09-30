@@ -1,5 +1,5 @@
 import { DIAGNOSTIC_HISTORY_MS } from './diagnosticHistory.js';
-import { wrap360, wrapDelta } from './gaugeConfig.js';
+import { wrapDelta } from './gaugeConfig.js';
 
 const STATE_COLOR = {
   CALIBRATING: '#a8a29e',
@@ -89,9 +89,7 @@ export function DiagnosticTrace({ samples }) {
 
   const pressure = samples.map((sample) => (sample.pressure == null ? null : sample.pressure));
   const raw = unwrap(samples, (sample) => sample.rawAngle);
-  const smoothed = unwrap(samples, (sample) => (
-    sample.smoothedAngle == null ? null : wrap360(sample.smoothedAngle + (sample.gaugeRotation || 0))
-  ));
+  const relative = unwrap(samples, (sample) => sample.relativeAngle);
   const quality = samples.map((sample) => (sample.quality == null ? null : sample.quality));
   const confidence = samples.map((sample) => (sample.gaugeConfidence == null ? null : sample.gaugeConfidence));
   const origin = samples.find((sample) => sample.gaugeX != null);
@@ -102,7 +100,7 @@ export function DiagnosticTrace({ samples }) {
     sample.gaugeY == null || origin?.gaugeY == null ? null : sample.gaugeY - origin.gaugeY
   ));
   const motion = extent([...dx, ...dy], 8);
-  const angles = extent([...raw, ...smoothed], 8);
+  const angles = extent([...raw, ...relative], 8);
 
   const unit = (value, min, max) => 1 - (value - min) / (max - min);
   const lane = (title, values, color, y, scale) => (
@@ -125,7 +123,7 @@ export function DiagnosticTrace({ samples }) {
         {lane('bar', pressure, '#e0c9a8', 2, { min: 0, max: 12 })}
         {lane('angle', raw, '#d6d3d1', 36, angles)}
         <path
-          d={linePath(samples, smoothed, xOf, (value) => 36 + unit(value, angles.min, angles.max) * 28)}
+          d={linePath(samples, relative, xOf, (value) => 36 + unit(value, angles.min, angles.max) * 28)}
           fill="none"
           stroke="#fafaf9"
           strokeWidth="1.1"
@@ -163,7 +161,7 @@ export function DiagnosticTrace({ samples }) {
         <text x="0" y="150" fill="#a8a29e" fontSize="8">state</text>
       </svg>
       <p className="text-[10px] text-[#a8a29e] leading-relaxed mt-1">
-        Amber is pressure. Gray is raw screen angle and the dashed line is the smoothed screen angle, both unwrapped from the first sample.
+        Amber is pressure. Gray is the raw screen needle and the dashed line is the gauge-relative needle, both unwrapped from the first sample.
         Green is needle score, blue is gauge confidence. Pink is gauge Δx and cyan is Δy, in pixels from the first sample in this window.
         The strip is tracking state. Nothing here is saved.
       </p>

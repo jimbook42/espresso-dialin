@@ -228,12 +228,34 @@ export function matchGaugeRotation(reference, current, {
   };
 }
 
+/**
+ * Stillness gates, measured on a frozen crop of a stationary synthetic dial.
+ * A fixed hub keeps the needle angle constant even when the rim score wanders.
+ * The old blend (half of every centre error, 0.35 of every radius error) moved
+ * the crop on identical frames, and the needle then jumped several degrees.
+ * Fractions are of the gauge radius, which is how the error scales in the
+ * 188px search image. Centre and rotation are gated separately.
+ * A centre shift inside the quiet band is ignored. A larger shift under
+ * one tenth of the radius has to agree for three frames. Rotation under
+ * one degree is ignored; a one-bin tick match has to repeat before it turns.
+ */
+const CENTRE_QUIET_FRACTION = 0.03;
+const CENTRE_IMMEDIATE_FRACTION = 0.1;
+const CENTRE_AGREE_FRACTION = 0.035;
+const RADIUS_QUIET_FRACTION = 0.05;
+const RADIUS_IMMEDIATE_FRACTION = 0.12;
+const ROTATION_QUIET_DEG = 1;
+const ROTATION_IMMEDIATE_DEG = 8;
+
 export function createGaugeTracker() {
   let pose = null;
   let baseRadius = 0;
   let reference = null;
   let referenceNeedleDeg = null;
   let recovering = false;
+  let centreCandidate = null;
+  let radiusCandidate = null;
+  let rotationCandidate = null;
 
   return {
     reset() {
@@ -242,6 +264,9 @@ export function createGaugeTracker() {
       reference = null;
       referenceNeedleDeg = null;
       recovering = false;
+      centreCandidate = null;
+      radiusCandidate = null;
+      rotationCandidate = null;
     },
     seed({ cx, cy, radius }) {
       pose = { cx, cy, radius, rotationDeg: 0 };
@@ -249,6 +274,9 @@ export function createGaugeTracker() {
       reference = null;
       referenceNeedleDeg = null;
       recovering = false;
+      centreCandidate = null;
+      radiusCandidate = null;
+      rotationCandidate = null;
     },
     getPose() {
       return pose ? { ...pose } : null;
@@ -285,40 +313,95 @@ export function createGaugeTracker() {
       const shift = Math.hypot(dx, dy);
       if (shift > pose.radius * 0.5 && found.confidence < 0.55) {
         recovering = true;
+        centreCandidate = null;
+        radiusCandidate = null;
         return {
           held: true,
           confidence: found.confidence,
           pose: { ...pose },
           profile: null,
           reacquired: false,
+          rawCx: video.cx,
+          rawCy: video.cy,
+          rawRadius: video.radius,
         };
       }
-      const alpha = shift > pose.radius * 0.08 ? 0.85 : 0.5;
+
+      const quiet = Math.max(1.25, pose.radius * CENTRE_QUIET_FRACTION);
+      const immediate = pose.radius * CENTRE_IMMEDIATE_FRACTION;
+      let nextCx = pose.cx;
+      let nextCy = pose.cy;
+      if (shift >= immediate) {
+        nextCx = pose.cx + 0.85 * dx;
+        nextCy = pose.cy + 0.85 * dy;
+        centreCandidate = null;
+      } else if (shift >= quiet) {
+        const agree = pose.radius * CENTRE_AGREE_FRACTION;
+        if (centreCandidate && Math.hypot(video.cx - centreCandidate.cx, video.cy - centreCandidate.cy) <= agree) {
+          centreCandidate = { cx: video.cx, cy: video.cy, hits: centreCandidate.hits + 1 };
+        } else {
+          centreCandidate = { cx: video.cx, cy: video.cy, hits: 1 };
+        }
+        if (centreCandidate.hits >= 3) {
+          nextCx = pose.cx + 0.6 * (centreCandidate.cx - pose.cx);
+          nextCy = pose.cy + 0.6 * (centreCandidate.cy - pose.cy);
+          centreCandidate = null;
+        }
+      } else {
+        centreCandidate = null;
+      }
+
+      const radiusDelta = video.radius - pose.radius;
+      const radiusQuiet = pose.radius * RADIUS_QUIET_FRACTION;
+      const radiusImmediate = pose.radius * RADIUS_IMMEDIATE_FRACTION;
+      let nextRadius = pose.radius;
+      if (Math.abs(radiusDelta) >= radiusImmediate) {
+        nextRadius = clamp(pose.radius + 0.45 * radiusDelta, baseRadius * 0.82, baseRadius * 1.2);
+        radiusCandidate = null;
+      } else if (Math.abs(radiusDelta) >= radiusQuiet) {
+        if (radiusCandidate != null && Math.abs(video.radius - radiusCandidate) <= radiusQuiet) {
+          nextRadius = clamp(pose.radius + 0.4 * radiusDelta, baseRadius * 0.82, baseRadius * 1.2);
+          radiusCandidate = null;
+        } else {
+          radiusCandidate = video.radius;
+        }
+      } else {
+        radiusCandidate = null;
+      }
+
       const reacquired = recovering;
       pose = {
-        cx: pose.cx + alpha * dx,
-        cy: pose.cy + alpha * dy,
-        radius: clamp(
-          pose.radius + 0.35 * (video.radius - pose.radius),
-          baseRadius * 0.82,
-          baseRadius * 1.2,
-        ),
+        cx: nextCx,
+        cy: nextCy,
+        radius: nextRadius,
         rotationDeg: pose.rotationDeg,
       };
       recovering = false;
-      const profile = measureRimProfile(found.edges, found.width, found.height, found.cx, found.cy, found.radius);
+      const profile = measureRimProfile(
+        found.edges,
+        found.width,
+        found.height,
+        (pose.cx - mapping.originX) * mapping.scale,
+        (pose.cy - mapping.originY) * mapping.scale,
+        pose.radius * mapping.scale,
+      );
       return {
         held: false,
         confidence: found.confidence,
         pose: { ...pose },
         profile,
         reacquired,
+        rawCx: video.cx,
+        rawCy: video.cy,
+        rawRadius: video.radius,
       };
     },
     trackOrientation(profile, needleDeg, { positionHeld = false, reacquired = false } = {}) {
       if (!pose || positionHeld || !profile || needleDeg == null) {
+        rotationCandidate = null;
         return {
           rotationDeg: pose ? pose.rotationDeg : 0,
+          rawRotationDeg: pose ? pose.rotationDeg : 0,
           confidence: 0,
           held: true,
         };
@@ -326,8 +409,9 @@ export function createGaugeTracker() {
       if (!reference) {
         reference = profile.slice();
         referenceNeedleDeg = needleDeg;
+        rotationCandidate = null;
         pose = { ...pose, rotationDeg: 0 };
-        return { rotationDeg: 0, confidence: 1, held: false, captured: true };
+        return { rotationDeg: 0, rawRotationDeg: 0, confidence: 1, held: false, captured: true };
       }
       const match = matchGaugeRotation(reference, profile, {
         previousDeg: pose.rotationDeg,
@@ -336,11 +420,35 @@ export function createGaugeTracker() {
         maxShiftDeg: reacquired ? 32 : 18,
       });
       if (!match.ok) {
-        return { rotationDeg: pose.rotationDeg, confidence: match.confidence, held: true };
+        rotationCandidate = null;
+        return {
+          rotationDeg: pose.rotationDeg,
+          rawRotationDeg: match.estimateDeg ?? pose.rotationDeg,
+          confidence: match.confidence,
+          held: true,
+        };
       }
-      const next = wrap360(pose.rotationDeg + 0.7 * wrapDelta(pose.rotationDeg, match.rotationDeg));
+      const delta = wrapDelta(pose.rotationDeg, match.rotationDeg);
+      const magnitude = Math.abs(delta);
+      let next = pose.rotationDeg;
+      if (magnitude < ROTATION_QUIET_DEG) {
+        rotationCandidate = null;
+      } else if (magnitude >= ROTATION_IMMEDIATE_DEG) {
+        next = wrap360(pose.rotationDeg + 0.8 * delta);
+        rotationCandidate = null;
+      } else if (rotationCandidate != null && Math.abs(wrapDelta(rotationCandidate, match.rotationDeg)) <= 3) {
+        next = wrap360(pose.rotationDeg + 0.65 * delta);
+        rotationCandidate = null;
+      } else {
+        rotationCandidate = match.rotationDeg;
+      }
       pose = { ...pose, rotationDeg: next };
-      return { rotationDeg: next, confidence: match.confidence, held: false };
+      return {
+        rotationDeg: next,
+        rawRotationDeg: match.estimateDeg,
+        confidence: match.confidence,
+        held: false,
+      };
     },
   };
 }
@@ -354,6 +462,25 @@ function squareCrop(videoW, videoH, cx, cy, pad) {
   return { originX, originY, size };
 }
 
+function resampleCrop(image, crop, maxOutput) {
+  const output = Math.min(crop.size, maxOutput);
+  const scale = output / crop.size;
+  const data = new Uint8ClampedArray(output * output * 4);
+  for (let y = 0; y < output; y += 1) {
+    for (let x = 0; x < output; x += 1) {
+      const sx = Math.min(image.width - 1, crop.originX + Math.floor(x / scale));
+      const sy = Math.min(image.height - 1, crop.originY + Math.floor(y / scale));
+      const src = (sy * image.width + sx) * 4;
+      const dst = (y * output + x) * 4;
+      data[dst] = image.data[src];
+      data[dst + 1] = image.data[src + 1];
+      data[dst + 2] = image.data[src + 2];
+      data[dst + 3] = 255;
+    }
+  }
+  return { image: { data, width: output, height: output }, scale };
+}
+
 function drawCrop(video, canvas, crop, maxOutput) {
   const output = Math.min(crop.size, maxOutput);
   const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -364,6 +491,82 @@ function drawCrop(video, canvas, crop, maxOutput) {
     image: context.getImageData(0, 0, output, output),
     scale: output / crop.size,
   };
+}
+
+function completeReading({
+  videoWidth,
+  videoHeight,
+  position,
+  tracker,
+  needleImage,
+  needleCrop,
+  needleScale,
+}) {
+  const center = position.pose;
+  const localRadius = center.radius * needleScale;
+  const detection = detectNeedleAngle(
+    needleImage,
+    (center.cx - needleCrop.originX) * needleScale,
+    (center.cy - needleCrop.originY) * needleScale,
+    localRadius * TIP_INNER_RATIO,
+    localRadius * OUTER_RADIUS_RATIO,
+  );
+  const orientation = tracker.trackOrientation(position.profile, detection.angleDeg, {
+    positionHeld: position.held,
+    reacquired: Boolean(position.reacquired),
+  });
+  const minDim = Math.min(videoWidth, videoHeight);
+  return {
+    ...detection,
+    relativeAngleDeg: wrap360(detection.angleDeg - orientation.rotationDeg),
+    videoWidth,
+    videoHeight,
+    gauge: {
+      nx: center.cx / videoWidth,
+      ny: center.cy / videoHeight,
+      nr: center.radius / minDim,
+      cx: center.cx,
+      cy: center.cy,
+      radius: center.radius,
+      rotationDeg: orientation.rotationDeg,
+      rawCx: position.rawCx ?? null,
+      rawCy: position.rawCy ?? null,
+      rawRotationDeg: orientation.rawRotationDeg ?? orientation.rotationDeg,
+      confidence: position.confidence,
+      orientationConfidence: orientation.confidence,
+      held: position.held,
+    },
+  };
+}
+
+/** Same crop-and-read path as the camera, for tests on a full frame. */
+export function analyzeGaugeImage(image, tracker) {
+  const videoWidth = image.width;
+  const videoHeight = image.height;
+  if (!videoWidth || !videoHeight || !tracker.getPose()) return null;
+  const pose = tracker.getPose();
+  const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * 1.9);
+  if (!trackCrop) return null;
+  const tracked = resampleCrop(image, trackCrop, 188);
+  const position = tracker.trackPosition(tracked.image, {
+    originX: trackCrop.originX,
+    originY: trackCrop.originY,
+    scale: tracked.scale,
+  });
+  if (!position) return null;
+  const center = position.pose;
+  const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
+  if (!needleCrop) return null;
+  const needle = resampleCrop(image, needleCrop, 420);
+  return completeReading({
+    videoWidth,
+    videoHeight,
+    position,
+    tracker,
+    needleImage: needle.image,
+    needleCrop,
+    needleScale: needle.scale,
+  });
 }
 
 /** Crop around the tracked gauge, update its pose, then read the needle from that pose. */
@@ -394,35 +597,13 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
   if (!needleCrop) return null;
   const needle = drawCrop(video, canvas, needleCrop, 420);
-  const localRadius = center.radius * needle.scale;
-  const detection = detectNeedleAngle(
-    needle.image,
-    (center.cx - needleCrop.originX) * needle.scale,
-    (center.cy - needleCrop.originY) * needle.scale,
-    localRadius * TIP_INNER_RATIO,
-    localRadius * OUTER_RADIUS_RATIO,
-  );
-  const orientation = tracker.trackOrientation(position.profile, detection.angleDeg, {
-    positionHeld: position.held,
-    reacquired: Boolean(position.reacquired),
-  });
-  const minDim = Math.min(videoWidth, videoHeight);
-  return {
-    ...detection,
-    relativeAngleDeg: wrap360(detection.angleDeg - orientation.rotationDeg),
+  return completeReading({
     videoWidth,
     videoHeight,
-    gauge: {
-      nx: center.cx / videoWidth,
-      ny: center.cy / videoHeight,
-      nr: center.radius / minDim,
-      cx: center.cx,
-      cy: center.cy,
-      radius: center.radius,
-      rotationDeg: orientation.rotationDeg,
-      confidence: position.confidence,
-      orientationConfidence: orientation.confidence,
-      held: position.held,
-    },
-  };
+    position,
+    tracker,
+    needleImage: needle.image,
+    needleCrop,
+    needleScale: needle.scale,
+  });
 }
