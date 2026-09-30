@@ -1,4 +1,4 @@
-import { wrap360, wrapDelta } from './gaugeConfig.js';
+import { FLIP_REJECT_DEG, REST_MAX_SPREAD_DEG, REST_MIN_QUALITY, REST_STABLE_SAMPLES, wrap360, wrapDelta } from './gaugeConfig.js';
 
 export function circularMedian(angles) {
   if (!angles?.length) return null;
@@ -25,6 +25,11 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 2, alpha = 
       if (angle == null) {
         angle = raw;
         return { angle, accepted: true };
+      }
+      if (Math.abs(wrapDelta(angle, raw)) >= FLIP_REJECT_DEG) {
+        pending = null;
+        pendingHits = 0;
+        return { angle, accepted: false, rejectedFlip: true };
       }
       if (Math.abs(wrapDelta(angle, raw)) > maxJumpDeg) {
         if (pending != null && Math.abs(wrapDelta(pending, raw)) <= 10) pendingHits += 1;
@@ -81,6 +86,43 @@ export function createAngleJitterTracker(windowSize = 6) {
       const mean = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length;
       const variance = deltas.reduce((sum, delta) => sum + (delta - mean) ** 2, 0) / (deltas.length - 1);
       return Math.sqrt(variance);
+    },
+  };
+}
+
+/** Collect a steady rest angle. A jump or a weak frame clears the window. */
+export function createRestCalibration({
+  minSamples = REST_STABLE_SAMPLES,
+  maxSpreadDeg = REST_MAX_SPREAD_DEG,
+  minQuality = REST_MIN_QUALITY,
+} = {}) {
+  let samples = [];
+  return {
+    reset() {
+      samples = [];
+    },
+    count() {
+      return samples.length;
+    },
+    push({ angleDeg, quality }) {
+      if (quality == null || quality < minQuality || angleDeg == null || Number.isNaN(angleDeg)) {
+        samples = [];
+        return { ready: false, reset: true, count: 0 };
+      }
+      if (samples.length) {
+        const mid = circularMedian(samples);
+        if (Math.abs(wrapDelta(mid, angleDeg)) > maxSpreadDeg) {
+          samples = [angleDeg];
+          return { ready: false, reset: true, count: 1 };
+        }
+      }
+      samples.push(angleDeg);
+      if (samples.length < minSamples) return { ready: false, reset: false, count: samples.length };
+      const zeroAngleDeg = circularMedian(samples);
+      const spread = Math.max(...samples.map((angle) => Math.abs(wrapDelta(zeroAngleDeg, angle))));
+      samples = [];
+      if (spread > maxSpreadDeg) return { ready: false, reset: true, count: 0, zeroAngleDeg: null };
+      return { ready: true, reset: false, count: minSamples, zeroAngleDeg };
     },
   };
 }

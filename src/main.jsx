@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import { PressureLabEntry } from './flairPressureLab/PressureLabEntry.jsx'
 
 const root = createRoot(document.getElementById('root'))
 const isFlairPressureLab =
@@ -20,6 +21,7 @@ if (isFlairPressureLab) {
     root.render(
       <StrictMode>
         <App />
+        <PressureLabEntry />
       </StrictMode>,
     )
   })

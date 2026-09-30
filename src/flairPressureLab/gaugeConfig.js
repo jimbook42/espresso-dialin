@@ -15,9 +15,14 @@ export const FLAIR_58_SCALE = {
 export const PROCESS_INTERVAL_MS = 125;
 export const EXTRACTION_START_BAR = 2;
 
-export const DEFAULT_RADIUS_FRACTION = 0.34;
-export const INNER_RADIUS_RATIO = 0.22;
+export const DEFAULT_RADIUS_FRACTION = 0.28;
+/** Score the pointer tip, not the short tail behind the hub. */
+export const TIP_INNER_RATIO = 0.46;
 export const OUTER_RADIUS_RATIO = 0.9;
+export const REST_STABLE_SAMPLES = 6;
+export const REST_MAX_SPREAD_DEG = 8;
+export const REST_MIN_QUALITY = 0.1;
+export const FLIP_REJECT_DEG = 140;
 
 export function wrap360(deg) {
   return ((deg % 360) + 360) % 360;
@@ -46,9 +51,29 @@ export function angleToBar(angleDeg, session) {
   return session.minBar + (delta / session.sweepDeg) * span;
 }
 
-export function classifyTrackingStatus({ calibrated, quality, jitterDeg, accepted }) {
+export function classifyTrackingStatus({ calibrated, quality, jitterDeg, accepted, heldFlip = false }) {
   if (!calibrated) return 'CALIBRATING';
+  if (heldFlip) return 'UNCERTAIN';
   if (quality == null || quality < 0.08) return 'LOST';
   if (!accepted || quality < 0.18 || jitterDeg > 12) return 'UNCERTAIN';
   return 'TRACKING';
+}
+
+/**
+ * The Flair needle has a short tail opposite the pointer.
+ * If the tail wins the score, prefer the opposite ray when it matches the last angle.
+ * A ~180° jump is held instead of accepted.
+ */
+export function selectForwardAngle({ angleDeg, peak = 0, oppositeScore = 0, previousAngle = null }) {
+  if (angleDeg == null) return { angleDeg: previousAngle, corrected: false, held: previousAngle != null };
+  const opposite = wrap360(angleDeg + 180);
+  if (previousAngle == null) return { angleDeg, corrected: false, held: false };
+  const toBest = Math.abs(wrapDelta(previousAngle, angleDeg));
+  const toOpposite = Math.abs(wrapDelta(previousAngle, opposite));
+  if (toBest <= 55) return { angleDeg, corrected: false, held: false };
+  if (toOpposite < toBest && toOpposite <= 55 && oppositeScore >= peak * 0.55) {
+    return { angleDeg: opposite, corrected: true, held: false };
+  }
+  if (toBest >= FLIP_REJECT_DEG) return { angleDeg: previousAngle, corrected: false, held: true };
+  return { angleDeg, corrected: false, held: false };
 }

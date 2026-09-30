@@ -1,4 +1,4 @@
-import { INNER_RADIUS_RATIO, OUTER_RADIUS_RATIO } from './gaugeConfig.js';
+import { OUTER_RADIUS_RATIO, TIP_INNER_RATIO } from './gaugeConfig.js';
 
 /**
  * Flair needle estimate when the dial center is already known from the alignment ring.
@@ -126,6 +126,10 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
     }
   }
 
+  const opposite = (best + 180) % 360;
+  const oppositeScore = scores[opposite]
+    || scoreRay(gray, edges, width, height, cx, cy, opposite, innerR, outerR);
+
   let second = 0;
   for (let deg = 0; deg < 360; deg += 2) {
     let distance = Math.abs(deg - best);
@@ -135,18 +139,18 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
   }
 
   const quality = bestScore <= 1 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
-  return { angleDeg: best, quality, peak: bestScore, second };
+  return { angleDeg: best, quality, peak: bestScore, second, oppositeScore };
 }
 
-/** Crop the unmirrored video around the alignment circle and estimate the needle. */
-export function readNeedleFromVideo(video, canvas, radiusFraction) {
+/** Crop the unmirrored video around the manual gauge circle and estimate the needle. */
+export function readNeedleFromVideo(video, canvas, region) {
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;
-  if (!videoWidth || !videoHeight) return null;
+  if (!videoWidth || !videoHeight || !region) return null;
 
-  const radius = Math.min(videoWidth, videoHeight) * radiusFraction;
-  const centerX = videoWidth / 2;
-  const centerY = videoHeight / 2;
+  const centerX = region.nx * videoWidth;
+  const centerY = region.ny * videoHeight;
+  const radius = region.nr * Math.min(videoWidth, videoHeight);
   const pad = Math.max(8, Math.round(radius * 1.05));
   let originX = Math.round(centerX - pad);
   let originY = Math.round(centerY - pad);
@@ -169,7 +173,7 @@ export function readNeedleFromVideo(video, canvas, radiusFraction) {
     image,
     (centerX - originX) * scale,
     (centerY - originY) * scale,
-    localRadius * INNER_RADIUS_RATIO,
+    localRadius * TIP_INNER_RATIO,
     localRadius * OUTER_RADIUS_RATIO,
   );
 
