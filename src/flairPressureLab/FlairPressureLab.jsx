@@ -15,7 +15,7 @@ import {
   wrapDelta,
 } from './gaugeConfig';
 import { DiagnosticTrace } from './DiagnosticTrace';
-import { createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
+import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, previewPointToVideo, videoRegionToPreview } from './geometry';
 import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
@@ -807,7 +807,7 @@ export function FlairPressureLab() {
             />
           )}
           <p className={`text-[10px] ${ui.muted}`}>
-            Development only. The report is the last 30 seconds held in memory. Copying does not upload or save it.
+            Development only. The report is the last {DIAGNOSTIC_WINDOW_MS / 1000} seconds held in memory. Copying does not upload or save it.
             {reportFallback ? ' Clipboard was blocked, so the report is in the box above.' : ''}
           </p>
           <p className={`text-[10px] ${ui.muted} leading-relaxed`}>
@@ -816,7 +816,7 @@ export function FlairPressureLab() {
             Δ is the last frame and σ is the spread over the last three seconds. Applied centre and rotation stay still while the detector wobbles inside a small band. A real move still follows.
             The dashed trace is that relative angle.
             Moving the whole gauge should not change the pressure. A weak rim score holds the last pressure instead of inventing one.
-            The trace is the last 30 seconds in memory only. It is not written to shot history.
+            The trace is the last {DIAGNOSTIC_WINDOW_MS / 1000} seconds in memory only. It is not written to shot history.
             The rising-edge line does not start a timer and is not saved.
           </p>
           <label className={`block text-sm ${ui.sub}`}>

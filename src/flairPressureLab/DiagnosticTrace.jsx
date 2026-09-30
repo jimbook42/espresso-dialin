@@ -1,4 +1,4 @@
-import { DIAGNOSTIC_HISTORY_MS } from './diagnosticHistory.js';
+import { DIAGNOSTIC_WINDOW_MS } from './diagnosticHistory.js';
 import { wrapDelta } from './gaugeConfig.js';
 
 const STATE_COLOR = {
@@ -71,12 +71,14 @@ function Lane({ title, samples, values, xOf, yOf, color, width, y, height }) {
   );
 }
 
-/** Last 30 seconds of lab readings. Render only — the buffer is not stored. */
+const diagnosticWindowSeconds = DIAGNOSTIC_WINDOW_MS / 1000;
+
+/** Lab readings for the configured in-memory window. Render only — the buffer is not stored. */
 export function DiagnosticTrace({ samples }) {
   if (!samples?.length) {
     return (
       <p className="text-[11px] text-[#a8a29e]">
-        The trace fills while the camera is running. It keeps about 30 seconds and clears when the camera stops.
+        The trace fills while the camera is running. It keeps about {diagnosticWindowSeconds} seconds and clears when the camera stops.
       </p>
     );
   }
@@ -84,8 +86,8 @@ export function DiagnosticTrace({ samples }) {
   const width = 320;
   const height = 168;
   const end = samples[samples.length - 1].t;
-  const start = end - DIAGNOSTIC_HISTORY_MS;
-  const xOf = (t) => 46 + ((t - start) / DIAGNOSTIC_HISTORY_MS) * (width - 50);
+  const start = end - DIAGNOSTIC_WINDOW_MS;
+  const xOf = (t) => 46 + ((t - start) / DIAGNOSTIC_WINDOW_MS) * (width - 50);
 
   const pressure = samples.map((sample) => (sample.pressure == null ? null : sample.pressure));
   const raw = unwrap(samples, (sample) => sample.rawAngle);
@@ -119,7 +121,7 @@ export function DiagnosticTrace({ samples }) {
 
   return (
     <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label="Pressure lab trace for the last 30 seconds">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label={`Pressure lab trace for the last ${diagnosticWindowSeconds} seconds`}>
         {lane('bar', pressure, '#e0c9a8', 2, { min: 0, max: 12 })}
         {lane('angle', raw, '#d6d3d1', 36, angles)}
         <path

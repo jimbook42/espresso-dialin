@@ -1,10 +1,11 @@
 /** Rolling lab trace. Memory only — never Dexie, shots, or the network. */
 import { wrapDelta } from './gaugeConfig.js';
 
-export const DIAGNOSTIC_HISTORY_MS = 30_000;
+/** How long the in-memory ring buffer keeps samples. Older samples are dropped. */
+export const DIAGNOSTIC_WINDOW_MS = 120_000;
 export const STABILITY_WINDOW = 24;
 
-export function createDiagnosticHistory({ durationMs = DIAGNOSTIC_HISTORY_MS } = {}) {
+export function createDiagnosticHistory({ durationMs = DIAGNOSTIC_WINDOW_MS } = {}) {
   let samples = [];
   return {
     reset() {

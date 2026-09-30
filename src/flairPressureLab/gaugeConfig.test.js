@@ -14,7 +14,7 @@ import { guideCircleStyle, previewAngleDeg, previewPointToVideo, videoRegionToPr
 import { cameraErrorMessage } from './cameraErrors.js';
 import { circularMedian, createAngleTracker, createRestCalibration, createRisingThreshold } from './smoothPressure.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
-import { createDiagnosticHistory, stabilityStats } from './diagnosticHistory.js';
+import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory.js';
 import { buildDiagnosticReport, formatLocalTimestamp } from './diagnosticReport.js';
 import {
   analyzeGaugeImage,
@@ -360,6 +360,19 @@ export function runFlairPressureLabTests() {
   history.reset();
   assert.equal(history.length, 0);
 
+  assert.equal(DIAGNOSTIC_WINDOW_MS, 120_000);
+  const wideHistory = createDiagnosticHistory();
+  wideHistory.push({ t: 0, pressure: 1 });
+  wideHistory.push({ t: 90_000, pressure: 2 });
+  wideHistory.push({ t: 120_000, pressure: 3 });
+  assert.equal(wideHistory.length, 3);
+  wideHistory.push({ t: 120_001, pressure: 4 });
+  const wideTrace = wideHistory.snapshot();
+  assert.equal(wideTrace.length, 3);
+  assert.equal(wideTrace[0].t, 90_000);
+  assert.equal(wideTrace[2].t, 120_001);
+  assert.equal(wideTrace[2].pressure, 4);
+
   const atRest = angleToBar(wrap360(40 - 0), { ...FLAIR_58_SCALE, zeroAngleDeg: 40 });
   const gaugeTurned = angleToBar(wrap360(50 - 10), { ...FLAIR_58_SCALE, zeroAngleDeg: 40 });
   const wrappedRest = angleToBar(wrap360(5 - 330), { ...FLAIR_58_SCALE, zeroAngleDeg: 35 });
@@ -602,6 +615,15 @@ export function runFlairPressureLabTests() {
   assert.ok(report.includes('Camera resolution: 1280×720'));
   assert.ok(report.includes('Calibration status: calibrated'));
   assert.ok(report.includes('Physical movement is user-confirmed externally.'));
+  assert.ok(report.includes('buffer 120s'));
+  assert.ok(report.includes('Smoothed pressure:'));
+  assert.ok(report.includes('Held pressure values:'));
+  assert.ok(report.includes('Last accepted centre: 108.0, 200.0 px'));
+  assert.ok(report.includes('Largest accepted centre displacement: 8.00 px'));
+  assert.ok(report.includes('Last accepted rotation: 9.00°'));
+  assert.ok(report.includes('Largest accepted rotation change: 9.00°'));
+  assert.ok(report.includes('Last accepted radius: 40.00 px'));
+  assert.ok(report.includes('SEARCHING:\n  N/A (track mode was not recorded)'));
   assert.ok(report.includes('Valid pressure samples: 2'));
   assert.ok(report.includes('Held-pressure samples: 1'));
   assert.ok(report.includes('First: 0.000 bar'));
@@ -671,6 +693,24 @@ export function runFlairPressureLabTests() {
   assert.ok(reacquireReport.includes('Reacquisition candidate rejected (reacquire-dial)'));
   assert.ok(reacquireReport.includes('Reacquisition candidate pending confirmation'));
   assert.ok(reacquireReport.includes('Reacquisition accepted; centre moved 52.0 px'));
+  assert.ok(reacquireReport.includes('Candidate centre X:'));
+  assert.ok(reacquireReport.includes('Candidate centre Y:'));
+  assert.ok(reacquireReport.includes('Candidate radius:'));
+  assert.ok(reacquireReport.includes('Candidate rotation:'));
+  assert.ok(reacquireReport.includes('Candidate rotation delta from last accepted pose:'));
+  assert.ok(reacquireReport.includes('Accepted reacquisition |rotation delta| greater than 30°: N/A'));
+  assert.ok(reacquireReport.includes('SEARCHING:\n  Samples: 2'));
+  assert.ok(reacquireReport.includes('Largest accepted centre displacement: 52.00 px'));
+  const rotationReport = buildDiagnosticReport([
+    { t: 1000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 0, gaugeX: 10, gaugeY: 20, gaugeRotation: 10, gaugeRadius: 30, trackMode: 'locked', reacquireAccepted: false },
+    { t: 2000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 0, gaugeX: 22, gaugeY: 20, gaugeRotation: 50, gaugeRadius: 30, trackMode: 'locked', searchFraction: 1.25, reacquireCx: 22, reacquireCy: 20, reacquireRadius: 31, reacquireRotation: 50, reacquireQuality: 0.7, reacquireHits: 3, reacquireAccepted: true },
+    { t: 3000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 0, gaugeX: 24, gaugeY: 20, gaugeRotation: 70, gaugeRadius: 30, trackMode: 'locked', searchFraction: 0.9, reacquireCx: 24, reacquireCy: 20, reacquireRadius: 30, reacquireRotation: 70, reacquireQuality: 0.8, reacquireHits: 3, reacquireAccepted: true },
+  ], { timestamp: when, calibrationStatus: 'calibrated' });
+  assert.ok(rotationReport.includes('Accepted reacquisition |rotation delta| greater than 30°: 1'));
+  assert.ok(rotationReport.includes('rotation Δ 40.0° from last accepted'));
+  assert.ok(rotationReport.includes('Largest accepted rotation change: 40.00°'));
+  assert.ok(rotationReport.includes('Largest accepted centre displacement: 12.00 px'));
+  assert.ok(rotationReport.includes('Reacquisition accepted: 2'));
   const bare = buildDiagnosticReport([{ t: 5, tracking: 'TRACKING', rawAngle: 1, relativeAngle: 1, smoothedAngle: 1, pressure: 1 }], {
     timestamp: when,
     calibrationStatus: 'not calibrated',

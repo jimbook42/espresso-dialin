@@ -2,7 +2,7 @@
  * Plain-text snapshot of the in-memory lab trace.
  * Reads recorded samples only. Does not change detection, tracking, or pressure.
  */
-import { DIAGNOSTIC_HISTORY_MS } from './diagnosticHistory.js';
+import { DIAGNOSTIC_WINDOW_MS } from './diagnosticHistory.js';
 import { EXTRACTION_START_BAR, REST_MAX_SPREAD_DEG, wrap360, wrapDelta } from './gaugeConfig.js';
 
 const LOST_SCORE = 0.08;
@@ -182,6 +182,44 @@ function separationMode(rows) {
   return { mode, count, total };
 }
 
+function lastFinite(samples, pick) {
+  for (let index = samples.length - 1; index >= 0; index -= 1) {
+    const value = pick(samples[index]);
+    if (finite(value)) return value;
+  }
+  return null;
+}
+
+function appliedCentreSteps(samples) {
+  const steps = [];
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1];
+    const current = samples[index];
+    if (!finite(previous.gaugeX) || !finite(previous.gaugeY) || !finite(current.gaugeX) || !finite(current.gaugeY)) continue;
+    steps.push(Math.hypot(current.gaugeX - previous.gaugeX, current.gaugeY - previous.gaugeY));
+  }
+  return steps;
+}
+
+/**
+ * Signed rotation from the previous applied pose to this frame's reacquisition candidate.
+ * The accepted frame already stores the new rotation, so the baseline is the prior sample.
+ */
+function reacquireRotationDeltas(samples) {
+  const deltas = new Array(samples.length).fill(null);
+  let previousApplied = null;
+  samples.forEach((sample, index) => {
+    const baseline = previousApplied != null
+      ? previousApplied
+      : (sample.reacquireAccepted === true ? null : sample.gaugeRotation);
+    if (finite(sample.reacquireRotation) && finite(baseline)) {
+      deltas[index] = wrapDelta(baseline, sample.reacquireRotation);
+    }
+    if (finite(sample.gaugeRotation)) previousApplied = sample.gaugeRotation;
+  });
+  return deltas;
+}
+
 function centreSpread(samples, pickX, pickY) {
   const xs = [];
   const ys = [];
@@ -215,7 +253,7 @@ export function buildDiagnosticReport(samples, context = {}) {
     push('Window: N/A (no samples)');
   } else {
     const span = rows[rows.length - 1].t - rows[0].t;
-    push(`Window: ${formatLocalTimestamp(new Date(rows[0].t))} → ${formatLocalTimestamp(new Date(rows[rows.length - 1].t))} (${(span / 1000).toFixed(2)}s between first and last sample, ${rows.length} samples, buffer ${DIAGNOSTIC_HISTORY_MS / 1000}s)`);
+    push(`Window: ${formatLocalTimestamp(new Date(rows[0].t))} → ${formatLocalTimestamp(new Date(rows[rows.length - 1].t))} (${(span / 1000).toFixed(2)}s between first and last sample, ${rows.length} samples, buffer ${DIAGNOSTIC_WINDOW_MS / 1000}s)`);
   }
   push(`Camera resolution: ${resolution}`);
   push(`Calibration status: ${calibration}`);
@@ -259,6 +297,35 @@ export function buildDiagnosticReport(samples, context = {}) {
     push(`Last: ${fmt(measured[measured.length - 1]?.rawPressure, 3)} bar`);
     push(`Valid pressure samples: ${measured.length}`);
     push(`Held-pressure samples: ${heldPressure}`);
+  }
+  const smoothedPressure = linearStats(rows.map((sample) => sample.pressure));
+  push('Smoothed pressure:');
+  push('Displayed bar on every frame that stored one, including frames that held the last value. Null readings are omitted.');
+  if (!smoothedPressure.n) {
+    push('Min: N/A');
+    push('Max: N/A');
+    push('Mean: N/A');
+    push('Standard deviation: N/A');
+  } else {
+    push(`Min: ${fmt(smoothedPressure.min, 3)} bar`);
+    push(`Max: ${fmt(smoothedPressure.max, 3)} bar`);
+    push(`Mean: ${fmt(smoothedPressure.mean, 3)} bar`);
+    push(`Standard deviation: ${fmt(smoothedPressure.sd, 3)} bar`);
+  }
+  if (!hasKey(rows, 'pressureMeasured')) {
+    push('Held pressure values: N/A (pressureMeasured was not recorded)');
+  } else {
+    const heldValues = rows
+      .filter((sample) => sample.pressureMeasured === false && sample.tracking !== 'CALIBRATING' && finite(sample.pressure))
+      .map((sample) => sample.pressure);
+    const heldStats = linearStats(heldValues);
+    push('Held pressure values:');
+    push('Displayed bar on frames that kept the last smoothed pressure instead of accepting a new needle sample.');
+    if (!heldStats.n) {
+      push('  Samples: 0');
+    } else {
+      push(statBlock(heldStats, 3, ' bar'));
+    }
   }
   push('');
 
@@ -334,6 +401,16 @@ export function buildDiagnosticReport(samples, context = {}) {
   push('Applied pose:');
   push(`  ΔX min/max/mean/SD: ${deltaLine(frameDeltas(rows, (sample) => sample.gaugeX), 2, 'px')}`);
   push(`  ΔY min/max/mean/SD: ${deltaLine(frameDeltas(rows, (sample) => sample.gaugeY), 2, 'px')}`);
+  const centreSteps = appliedCentreSteps(rows);
+  const largestCentre = centreSteps.length ? Math.max(...centreSteps) : null;
+  const lastCentreX = lastFinite(rows, (sample) => sample.gaugeX);
+  const lastCentreY = lastFinite(rows, (sample) => sample.gaugeY);
+  push(lastCentreX == null || lastCentreY == null
+    ? 'Last accepted centre: N/A'
+    : `Last accepted centre: ${fmt(lastCentreX, 1)}, ${fmt(lastCentreY, 1)} px`);
+  push(largestCentre == null
+    ? 'Largest accepted centre displacement: N/A'
+    : `Largest accepted centre displacement: ${fmt(largestCentre, 2)} px`);
   push('');
 
   push('GAUGE ROTATION');
@@ -342,6 +419,15 @@ export function buildDiagnosticReport(samples, context = {}) {
   push(statBlock(circularStats(rows.map((sample) => sample.rawRotation)), 2, '°'));
   push('Applied:');
   push(statBlock(circularStats(rows.map((sample) => sample.gaugeRotation)), 2, '°'));
+  const rotationSteps = frameDeltas(rows, (sample) => sample.gaugeRotation, true).map((step) => Math.abs(step));
+  const largestRotation = rotationSteps.length ? Math.max(...rotationSteps) : null;
+  const lastRotation = lastFinite(rows, (sample) => sample.gaugeRotation);
+  push(lastRotation == null
+    ? 'Last accepted rotation: N/A'
+    : `Last accepted rotation: ${fmt(lastRotation, 2)}°`);
+  push(largestRotation == null
+    ? 'Largest accepted rotation change: N/A'
+    : `Largest accepted rotation change: ${fmt(largestRotation, 2)}°`);
   push('');
 
   push('GAUGE RADIUS');
@@ -360,6 +446,10 @@ export function buildDiagnosticReport(samples, context = {}) {
     push('Applied:');
     push(statBlock(linearStats(rows.map((sample) => sample.gaugeRadius)), 2, ' px'));
   }
+  const lastRadius = lastFinite(rows, (sample) => sample.gaugeRadius);
+  push(lastRadius == null
+    ? 'Last accepted radius: N/A'
+    : `Last accepted radius: ${fmt(lastRadius, 2)} px`);
   push('');
 
   push('POSE DECISIONS');
@@ -401,6 +491,7 @@ export function buildDiagnosticReport(samples, context = {}) {
   }
   push('');
 
+  const rotationDeltas = reacquireRotationDeltas(rows);
   push('REACQUISITION');
   push('Searching is a separate gauge hunt. It does not write a new pose until the same dial is confirmed. Pending is a candidate waiting on more frames. none means that frame had no rejection.');
   push('Confirming frames count agreeing observations of the current candidate, including the first. Acceptance is the third observation. One non-matching frame can sit between them without clearing that count.');
@@ -444,6 +535,30 @@ export function buildDiagnosticReport(samples, context = {}) {
     push(quality.n
       ? `Candidate quality min/max/mean: ${fmt(quality.min, 3)} / ${fmt(quality.max, 3)} / ${fmt(quality.mean, 3)}`
       : 'Candidate quality: N/A');
+    push('Candidate centre X:');
+    push(statBlock(linearStats(rows.map((sample) => sample.reacquireCx)), 1, ' px'));
+    push('Candidate centre Y:');
+    push(statBlock(linearStats(rows.map((sample) => sample.reacquireCy)), 1, ' px'));
+    push('Candidate radius:');
+    push(statBlock(linearStats(rows.map((sample) => sample.reacquireRadius)), 2, ' px'));
+    push('Candidate rotation:');
+    push(statBlock(circularStats(rows.map((sample) => sample.reacquireRotation)), 2, '°'));
+    const signedDeltas = rotationDeltas.filter((value) => value != null);
+    const deltaStats = linearStats(signedDeltas);
+    push('Candidate rotation delta from last accepted pose:');
+    push('Signed degrees from the previous applied rotation to the candidate. Positive is clockwise.');
+    if (!deltaStats.n) {
+      push('  N/A');
+    } else {
+      push(statBlock(deltaStats, 2, '°'));
+    }
+    const acceptedWithDelta = rows.filter((sample, index) => sample.reacquireAccepted === true && rotationDeltas[index] != null).length;
+    const acceptedLarge = rows.filter((sample, index) => (
+      sample.reacquireAccepted === true && rotationDeltas[index] != null && Math.abs(rotationDeltas[index]) > 30
+    )).length;
+    push(acceptedWithDelta
+      ? `Accepted reacquisition |rotation delta| greater than 30°: ${acceptedLarge}`
+      : 'Accepted reacquisition |rotation delta| greater than 30°: N/A');
   }
   push('');
 
@@ -491,6 +606,16 @@ export function buildDiagnosticReport(samples, context = {}) {
     push(`  Samples: ${count}`);
     push(`  Approx duration: ${fmt(gapMs(rows, (sample) => sample.tracking === state) / 1000, 2)} s`);
   });
+  if (!hasKey(rows, 'trackMode')) {
+    push('SEARCHING:');
+    push('  N/A (track mode was not recorded)');
+  } else {
+    const searchingCount = rows.filter((sample) => sample.trackMode === 'searching').length;
+    push('SEARCHING:');
+    push(`  Samples: ${searchingCount}`);
+    push(`  Approx duration: ${fmt(gapMs(rows, (sample) => sample.trackMode === 'searching') / 1000, 2)} s`);
+    push('  Gauge track mode. A searching sample is also counted in its pressure state above.');
+  }
   push('');
 
   const pairs = [
@@ -571,6 +696,7 @@ export function buildDiagnosticReport(samples, context = {}) {
         const parts = ['Reacquisition accepted'];
         if (moved != null) parts.push(`centre moved ${moved.toFixed(1)} px`);
         if (finite(sample.reacquireQuality)) parts.push(`quality ${sample.reacquireQuality.toFixed(3)}`);
+        if (rotationDeltas[index] != null) parts.push(`rotation Δ ${rotationDeltas[index].toFixed(1)}° from last accepted`);
         events.push({ t: sample.t, text: parts.join('; ') });
       } else if (sample.reacquireRejectReason === 'reacquire-pending' && previous.reacquireRejectReason !== 'reacquire-pending') {
         const gap = finite(sample.reacquireCx) && finite(sample.reacquireCy) && finite(sample.gaugeX) && finite(sample.gaugeY)
