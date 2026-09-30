@@ -11,9 +11,12 @@ import {
   classifyTrackingStatus,
   clockwiseDelta,
   selectForwardAngle,
+  wrap360,
 } from './gaugeConfig';
+import { DiagnosticTrace } from './DiagnosticTrace';
+import { createDiagnosticHistory } from './diagnosticHistory';
 import { objectCoverMap, previewAngleDeg, previewPointToVideo, videoRegionToPreview } from './geometry';
-import { readNeedleFromVideo } from './needleFromFrame';
+import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
 import {
   createAngleJitterTracker,
   createAngleTracker,
@@ -48,6 +51,13 @@ const EMPTY_LIVE = {
   calibCount: 0,
   flipHeld: false,
   corrected: false,
+  screenAngle: null,
+  gaugeConfidence: null,
+  orientationConfidence: null,
+  gaugeRotation: null,
+  gaugeHeld: false,
+  gaugeX: null,
+  gaugeY: null,
 };
 
 function exitLab() {
@@ -93,7 +103,10 @@ export function FlairPressureLab() {
   const jitterRef = useRef(createAngleJitterTracker());
   const thresholdRef = useRef(createRisingThreshold(EXTRACTION_START_BAR));
   const calibRef = useRef(createRestCalibration());
+  const trackerRef = useRef(createGaugeTracker());
+  const historyRef = useRef(createDiagnosticHistory());
   const resizeObserverRef = useRef(null);
+  const [trace, setTrace] = useState([]);
 
   const frameRef = useCallback((node) => {
     resizeObserverRef.current?.disconnect();
@@ -111,7 +124,7 @@ export function FlairPressureLab() {
 
   useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
 
-  const forgetCalibration = useCallback(() => {
+  const resetReading = useCallback(({ clearHistory = false, clearTracker = true } = {}) => {
     sessionRef.current = null;
     lastAngleRef.current = null;
     calibRef.current.reset();
@@ -119,25 +132,30 @@ export function FlairPressureLab() {
     pressureRef.current.reset();
     jitterRef.current.reset();
     thresholdRef.current.reset();
+    if (clearTracker) trackerRef.current.reset();
+    if (clearHistory) {
+      historyRef.current.reset();
+      setTrace([]);
+    }
     setSession(null);
     setLive(EMPTY_LIVE);
   }, []);
 
   const handleStart = async () => {
-    forgetCalibration();
+    resetReading({ clearHistory: true, clearTracker: true });
     await start();
   };
 
   const handleStop = () => {
     stop();
-    forgetCalibration();
+    resetReading({ clearHistory: true, clearTracker: true });
     videoSizeRef.current = null;
     setVideoSize(null);
   };
 
   const handleRecalibrate = () => {
     if (status !== 'live') return;
-    forgetCalibration();
+    resetReading({ clearHistory: false, clearTracker: false });
   };
 
   const handleSweep = (value) => {
@@ -156,7 +174,7 @@ export function FlairPressureLab() {
     dragRef.current = { mode, pointerId: event.pointerId };
     event.currentTarget.setPointerCapture(event.pointerId);
     adjustingRef.current = true;
-    forgetCalibration();
+    resetReading({ clearHistory: true, clearTracker: true });
   };
 
   const pointerMove = (event) => {
@@ -213,8 +231,8 @@ export function FlairPressureLab() {
       last = now;
       const video = videoRef.current;
       if (!video || video.readyState < 2 || adjustingRef.current) return;
-      const reading = readNeedleFromVideo(video, canvas, regionRef.current);
-      if (!reading) return;
+      const reading = readTrackedGauge(video, canvas, regionRef.current, trackerRef.current);
+      if (!reading?.gauge) return;
 
       processed += 1;
       if (now - windowStart >= 1000) {
@@ -223,27 +241,63 @@ export function FlairPressureLab() {
         windowStart = now;
       }
 
+      const gauge = reading.gauge;
       const frame = { w: reading.videoWidth, h: reading.videoHeight };
-      const choice = selectForwardAngle({
-        angleDeg: reading.angleDeg,
-        peak: reading.peak,
-        oppositeScore: reading.oppositeScore,
-        previousAngle: lastAngleRef.current,
-      });
+      if (!gauge.held) {
+        const nextRegion = {
+          nx: clamp(gauge.nx, 0.05, 0.95),
+          ny: clamp(gauge.ny, 0.05, 0.95),
+          nr: clamp(gauge.nr, 0.12, 0.48),
+        };
+        regionRef.current = nextRegion;
+        setRegion(nextRegion);
+      }
+
+      const record = (partial) => {
+        historyRef.current.push({
+          t: Date.now(),
+          rawAngle: reading.angleDeg,
+          relativeAngle: reading.relativeAngleDeg,
+          smoothedAngle: partial.smoothedAngle ?? null,
+          pressure: partial.pressure ?? null,
+          tracking: partial.tracking,
+          gaugeX: gauge.cx,
+          gaugeY: gauge.cy,
+          gaugeRotation: gauge.rotationDeg,
+          quality: reading.quality,
+          gaugeConfidence: gauge.confidence,
+          orientationConfidence: gauge.orientationConfidence,
+        });
+        setTrace(historyRef.current.snapshot());
+      };
+
+      const gaugeFields = {
+        screenAngle: reading.angleDeg,
+        rawAngle: reading.relativeAngleDeg,
+        quality: reading.quality,
+        fps,
+        frame,
+        gaugeConfidence: gauge.confidence,
+        orientationConfidence: gauge.orientationConfidence,
+        gaugeRotation: gauge.rotationDeg,
+        gaugeHeld: gauge.held,
+        gaugeX: gauge.cx,
+        gaugeY: gauge.cy,
+      };
 
       if (!sessionRef.current) {
-        const result = calibRef.current.push({
-          angleDeg: reading.angleDeg,
-          quality: reading.quality,
-        });
+        const result = gauge.held
+          ? { ready: false, count: calibRef.current.count() }
+          : calibRef.current.push({
+            angleDeg: reading.relativeAngleDeg,
+            quality: reading.quality,
+          });
         if (!result.ready) {
+          record({ tracking: 'CALIBRATING', smoothedAngle: null, pressure: null });
           setLive({
             ...EMPTY_LIVE,
+            ...gaugeFields,
             tracking: 'CALIBRATING',
-            rawAngle: reading.angleDeg,
-            quality: reading.quality,
-            fps,
-            frame,
             calibCount: result.count,
           });
           return;
@@ -264,8 +318,14 @@ export function FlairPressureLab() {
         thresholdRef.current.reset();
       }
 
+      const choice = selectForwardAngle({
+        angleDeg: reading.relativeAngleDeg,
+        peak: reading.peak,
+        oppositeScore: reading.oppositeScore,
+        previousAngle: lastAngleRef.current,
+      });
       const weak = reading.quality == null || reading.quality < 0.08;
-      const blockSample = choice.held || weak;
+      const blockSample = gauge.held || choice.held || weak;
       let rawBar = null;
       let signalPaused = true;
       let signal = thresholdRef.current.get();
@@ -288,15 +348,18 @@ export function FlairPressureLab() {
         jitterDeg: jitter,
         accepted: Boolean(tracked.accepted) && !blockSample,
         heldFlip: choice.held || tracked.rejectedFlip,
+        gaugeHeld: gauge.held,
       });
+      const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
+      record({ tracking, smoothedAngle: tracked.angle, pressure: pressureBar });
       setLive({
         tracking,
         displayBar: tracking === 'TRACKING' || tracking === 'UNCERTAIN' ? pressureBar : null,
         pressureBar,
         rawBar,
-        rawAngle: reading.angleDeg,
         smoothedAngle: tracked.angle,
-        quality: reading.quality,
+        ...gaugeFields,
+        displayAngle: screenSmoothed,
         fps,
         frame,
         accepted: tracked.accepted && !blockSample,
@@ -317,20 +380,24 @@ export function FlairPressureLab() {
     ? videoRegionToPreview(region, videoSize.w, videoSize.h, frameBox.w, frameBox.h, mirrorPreview)
     : null;
   const cameraLive = status === 'live';
-  const showNeedle = cameraLive && Boolean(session) && live.smoothedAngle != null && (live.tracking === 'TRACKING' || live.tracking === 'UNCERTAIN');
-  const needleAngle = previewAngleDeg(live.smoothedAngle, mirrorPreview);
+  const showNeedle = cameraLive && Boolean(session) && live.displayAngle != null && (live.tracking === 'TRACKING' || live.tracking === 'UNCERTAIN');
+  const needleAngle = previewAngleDeg(live.displayAngle, mirrorPreview);
   const needleRad = ((needleAngle ?? 0) * Math.PI) / 180;
   const badge = cameraLive ? live.tracking : 'CALIBRATING';
   const pressureText = cameraLive && live.displayBar != null ? live.displayBar.toFixed(1) : '—';
   const caption = !cameraLive
     ? 'Start the front camera, then drag the ring onto the gauge.'
     : !session
-      ? `Hold still. Calibrating ${live.calibCount}/${REST_STABLE_SAMPLES}`
+      ? `At rest. Calibrating ${live.calibCount}/${REST_STABLE_SAMPLES}`
       : live.tracking === 'TRACKING'
         ? 'Ready'
-        : live.flipHeld
+        : live.gaugeHeld
+          ? 'Gauge lost. Holding the last pressure.'
+          : live.flipHeld
             ? 'Rejected a needle flip. Holding the last pressure.'
-            : 'Reading is unsteady.';
+            : live.tracking === 'LOST'
+              ? 'Needle lost.'
+              : 'Reading is unsteady. Holding the last pressure.';
 
   return (
     <div className={`min-h-dvh ${ui.page} flex flex-col`}>
@@ -354,11 +421,11 @@ export function FlairPressureLab() {
 
       <main className="flex-1 max-w-xl mx-auto w-full px-4 py-4 space-y-4 pb-10">
         <ol className={`text-sm ${ui.sub} space-y-1.5 list-decimal pl-5`}>
-          <li>Set the phone down where the whole gauge stays in view. Beside the Flair is fine. Leave it still.</li>
-          <li>Drag the ring onto the gauge face. Drag the dot to resize it.</li>
-          <li>At rest, calibration starts on its own once the needle is steady.</li>
+          <li>Put the phone where the whole gauge stays in frame. Beside the Flair is fine. Small movement is ok.</li>
+          <li>Drag the ring onto the gauge face. Drag the dot to resize it. That is the starting position.</li>
+          <li>At rest, calibration starts on its own once the needle is steady. The ring then follows the gauge.</li>
         </ol>
-        <p className={`text-xs ${ui.muted}`}>Nothing is saved. Do not hold the phone during the shot.</p>
+        <p className={`text-xs ${ui.muted}`}>Nothing is saved. A large or sudden move drops tracking and holds the last pressure until the gauge is found again.</p>
 
         <div ref={frameRef} className={`relative ${ui.card} rounded-2xl overflow-hidden aspect-[3/4] max-h-[62vh] mx-auto bg-black`}>
           <video
@@ -409,7 +476,7 @@ export function FlairPressureLab() {
             </div>
           )}
           <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] text-[#f5f2eb]/80 pointer-events-none">
-            Drag the ring onto the gauge
+            {session ? 'Ring follows the gauge' : 'Drag the ring onto the gauge'}
           </p>
         </div>
 
@@ -483,8 +550,10 @@ export function FlairPressureLab() {
             <dd className={ui.text}>{live.fps}</dd>
             <dt>Ring center</dt>
             <dd className={ui.text}>{region.nx.toFixed(2)}, {region.ny.toFixed(2)}</dd>
-            <dt>Raw angle</dt>
-            <dd className={ui.text}>{formatNum(live.rawAngle, 0)}°</dd>
+            <dt>Screen angle</dt>
+            <dd className={ui.text}>{formatNum(live.screenAngle, 0)}°</dd>
+            <dt>Relative angle</dt>
+            <dd className={ui.text}>{formatNum(live.rawAngle, 1)}°</dd>
             <dt>Smoothed angle</dt>
             <dd className={ui.text}>{formatNum(live.smoothedAngle, 1)}°</dd>
             <dt>Rest angle</dt>
@@ -504,7 +573,15 @@ export function FlairPressureLab() {
             <dt>Flip held</dt>
             <dd className={ui.text}>{live.flipHeld ? 'yes' : 'no'}</dd>
             <dt>Gauge follow</dt>
-            <dd className={ui.text}>none</dd>
+            <dd className={ui.text}>{!cameraLive || live.gaugeX == null ? '—' : live.gaugeHeld ? 'held' : 'following'}</dd>
+            <dt>Gauge centre</dt>
+            <dd className={ui.text}>{live.gaugeX == null ? '—' : `${Math.round(live.gaugeX)}, ${Math.round(live.gaugeY)}`}</dd>
+            <dt>Gauge rotation</dt>
+            <dd className={ui.text}>{formatNum(live.gaugeRotation, 1)}°</dd>
+            <dt>Gauge confidence</dt>
+            <dd className={ui.text}>{formatNum(live.gaugeConfidence, 2)}</dd>
+            <dt>Orientation score</dt>
+            <dd className={ui.text}>{formatNum(live.orientationConfidence, 2)}</dd>
             <dt>Jitter</dt>
             <dd className={ui.text}>{formatNum(live.jitter, 1)}°</dd>
             <dt>Preview mirrored</dt>
@@ -516,10 +593,12 @@ export function FlairPressureLab() {
             <dt>Rising edge</dt>
             <dd className={ui.text}>{formatClock(live.signal.crossedAt)} ({live.signal.crossCount})</dd>
           </dl>
+          <DiagnosticTrace samples={trace} />
           <p className={`text-[10px] ${ui.muted} leading-relaxed`}>
             Edge quality is an internal score, not a confidence percentage.
-            Pressure uses the needle angle around the ring you placed, minus the rest angle, both in the camera image.
-            The ring does not follow the gauge. If the lever moves the dial, that movement is not removed from the pressure.
+            Pressure uses the needle angle relative to the gauge that is being followed, minus the rest angle.
+            Moving the whole gauge should not change the pressure. A weak rim score holds the last pressure instead of inventing one.
+            The trace is the last 30 seconds in memory only. It is not written to shot history.
             The rising-edge line does not start a timer and is not saved.
           </p>
           <label className={`block text-sm ${ui.sub}`}>

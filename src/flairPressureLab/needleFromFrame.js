@@ -1,106 +1,52 @@
 import { OUTER_RADIUS_RATIO, TIP_INNER_RATIO } from './gaugeConfig.js';
+import { prepareEdges } from './framePrep.js';
 
 /**
- * Flair needle estimate when the dial center is already known from the alignment ring.
- * A full Hough line search is unnecessary: the needle is a ray from that hub.
- * This scores those rays on a blurred grayscale edge image.
- * No OpenCV objects are allocated.
+ * Needle angle around a known hub.
+ * Scores rays on a local-contrast image, so a darker needle is "darker than
+ * its sides" rather than "below an absolute gray level". Global exposure can
+ * change without moving the winning angle. A full Hough search is unnecessary.
  */
 
-function grayscale(data, width, height) {
-  const gray = new Float32Array(width * height);
-  for (let i = 0; i < gray.length; i += 1) {
-    const offset = i * 4;
-    gray[i] = data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114;
-  }
-  return gray;
-}
-
-function boxBlur(src, width, height) {
-  const tmp = new Float32Array(src.length);
-  const out = new Float32Array(src.length);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      let sum = 0;
-      let count = 0;
-      for (let k = -1; k <= 1; k += 1) {
-        const xx = x + k;
-        if (xx < 0 || xx >= width) continue;
-        sum += src[y * width + xx];
-        count += 1;
-      }
-      tmp[y * width + x] = sum / count;
-    }
-  }
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      let sum = 0;
-      let count = 0;
-      for (let k = -1; k <= 1; k += 1) {
-        const yy = y + k;
-        if (yy < 0 || yy >= height) continue;
-        sum += tmp[yy * width + x];
-        count += 1;
-      }
-      out[y * width + x] = sum / count;
-    }
-  }
-  return out;
-}
-
-function sobel(gray, width, height) {
-  const mag = new Float32Array(gray.length);
-  const gx = new Float32Array(gray.length);
-  const gy = new Float32Array(gray.length);
-  for (let y = 1; y < height - 1; y += 1) {
-    for (let x = 1; x < width - 1; x += 1) {
-      const i = y * width + x;
-      const tl = gray[i - width - 1];
-      const tc = gray[i - width];
-      const tr = gray[i - width + 1];
-      const ml = gray[i - 1];
-      const mr = gray[i + 1];
-      const bl = gray[i + width - 1];
-      const bc = gray[i + width];
-      const br = gray[i + width + 1];
-      const gxValue = -tl + tr - 2 * ml + 2 * mr - bl + br;
-      const gyValue = -tl - 2 * tc - tr + bl + 2 * bc + br;
-      gx[i] = gxValue;
-      gy[i] = gyValue;
-      mag[i] = Math.hypot(gxValue, gyValue);
-    }
-  }
-  return { mag, gx, gy };
+function sample(gray, width, height, x, y) {
+  const xi = Math.round(x);
+  const yi = Math.round(y);
+  if (xi < 0 || yi < 0 || xi >= width || yi >= height) return null;
+  return gray[yi * width + xi];
 }
 
 function scoreRay(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR) {
   const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  let edge = 0;
-  let dark = 0;
+  const offset = Math.max(2, Math.round((outerR - innerR) / 18));
+  let score = 0;
   let count = 0;
-  const step = Math.max(1, Math.round((outerR - innerR) / 80));
+  const step = Math.max(1, Math.round((outerR - innerR) / 48));
   for (let r = innerR; r <= outerR; r += step) {
-    const x = Math.round(cx + r * cos);
-    const y = Math.round(cy + r * sin);
-    if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
-    const index = y * width + x;
-    const magnitude = edges.mag[index];
-    const glen = Math.hypot(edges.gx[index], edges.gy[index]) || 1;
-    const perpendicular = Math.abs(edges.gx[index] * sin - edges.gy[index] * cos) / glen;
-    edge += magnitude * perpendicular;
-    dark += 255 - gray[index];
+    const x = cx + r * cos;
+    const y = cy + r * sin;
+    const xi = Math.round(x);
+    const yi = Math.round(y);
+    if (xi < 1 || yi < 1 || xi >= width - 1 || yi >= height - 1) continue;
+    const index = yi * width + xi;
+    const center = gray[index];
+    const left = sample(gray, width, height, x - sin * offset, y + cos * offset);
+    const right = sample(gray, width, height, x + sin * offset, y - cos * offset);
+    if (left == null || right == null) continue;
+    const darkerThanSides = (left + right) * 0.5 - center;
+    const across = Math.abs(edges.gx[index] * sin - edges.gy[index] * cos);
+    const weight = darkerThanSides > 0 ? 1 : 0.2;
+    score += across * weight;
     count += 1;
   }
   if (!count) return 0;
-  return (edge / count) * 0.75 + (dark / count) * 0.25;
+  return score / count;
 }
 
 export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
-  const { data, width, height } = image;
-  const gray = boxBlur(grayscale(data, width, height), width, height);
-  const edges = sobel(gray, width, height);
+  const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
+  const { gray, edges, width, height } = prepareEdges(image, { contrastRadius });
   const scores = new Float32Array(360);
   let best = 0;
   let bestScore = 0;
@@ -116,7 +62,6 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
 
   for (let deg = best - 2; deg <= best + 2; deg += 1) {
     const wrapped = (deg + 360) % 360;
-    if (deg !== best && scores[wrapped]) continue;
     if (wrapped === best) continue;
     const score = scoreRay(gray, edges, width, height, cx, cy, wrapped, innerR, outerR);
     scores[wrapped] = score;
@@ -138,11 +83,11 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
     if (scores[deg] > second) second = scores[deg];
   }
 
-  const quality = bestScore <= 1 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
+  const quality = bestScore <= 1e-4 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
   return { angleDeg: best, quality, peak: bestScore, second, oppositeScore };
 }
 
-/** Crop the unmirrored video around the manual gauge circle and estimate the needle. */
+/** Crop the unmirrored video around a fixed circle and estimate the needle. */
 export function readNeedleFromVideo(video, canvas, region) {
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;

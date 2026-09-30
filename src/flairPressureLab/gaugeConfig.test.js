@@ -5,12 +5,20 @@ import {
   angleToBar,
   classifyTrackingStatus,
   selectForwardAngle,
+  wrap360,
   wrapDelta,
 } from './gaugeConfig.js';
 import { guideCircleStyle, previewAngleDeg, previewPointToVideo, videoRegionToPreview } from './geometry.js';
 import { cameraErrorMessage } from './cameraErrors.js';
 import { circularMedian, createAngleTracker, createRestCalibration, createRisingThreshold } from './smoothPressure.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
+import { createDiagnosticHistory } from './diagnosticHistory.js';
+import {
+  createGaugeTracker,
+  locateGauge,
+  matchGaugeRotation,
+  measureRimProfile,
+} from './gaugeTrack.js';
 
 function makeNeedleFrame(size, angleDeg) {
   const data = new Uint8ClampedArray(size * size * 4);
@@ -165,4 +173,179 @@ export function runFlairPressureLabTests() {
   const tipped = detectNeedleAngle(tailed, tailCx, tailCy, 30, 44);
   const tipError = Math.abs(wrapDelta(40, tipped.angleDeg));
   assert.ok(tipError <= 8, `tip angle ${tipped.angleDeg} error ${tipError}`);
+
+  assert.equal(
+    classifyTrackingStatus({ calibrated: true, quality: 0.6, jitterDeg: 1, accepted: true, gaugeHeld: true }),
+    'UNCERTAIN',
+  );
+
+  for (const lighting of [
+    { gain: 1, bias: 0 },
+    { gain: 0.42, bias: 8 },
+    { gain: 1.35, bias: 0 },
+  ]) {
+    const lit = makeNeedleFrame(96, 40);
+    for (let i = 0; i < lit.data.length; i += 4) {
+      for (let c = 0; c < 3; c += 1) {
+        lit.data[i + c] = Math.max(0, Math.min(255, Math.round(lit.data[i + c] * lighting.gain + lighting.bias)));
+      }
+    }
+    const litFound = detectNeedleAngle(lit, 47.5, 47.5, 96 * 0.2, 96 * 0.45);
+    const litError = Math.abs(wrapDelta(40, litFound.angleDeg));
+    assert.ok(litError <= 8, `lighting ${lighting.gain} angle ${litFound.angleDeg} q ${litFound.quality}`);
+  }
+
+  const gauge = makeGaugeImage(150, { cx: 86, cy: 64, radius: 38, needleDeg: 35, rotationDeg: 0 });
+  const located = locateGauge(gauge, { cx: 74, cy: 72, radius: 38 });
+  const centerError = Math.hypot(located.cx - 86, located.cy - 64);
+  assert.ok(located.ok, `gauge confidence ${located.confidence} score ${located.score}`);
+  assert.ok(centerError <= 4, `center error ${centerError.toFixed(1)} at ${located.cx.toFixed(1)},${located.cy.toFixed(1)}`);
+
+  const shaded = makeGaugeImage(150, {
+    cx: 86, cy: 64, radius: 38, needleDeg: 35, gain: 0.45, bias: 6, shade: 1,
+  });
+  const shadedLoc = locateGauge(shaded, { cx: 76, cy: 70, radius: 37 });
+  const shadedError = Math.hypot(shadedLoc.cx - 86, shadedLoc.cy - 64);
+  assert.ok(shadedLoc.ok, `shaded confidence ${shadedLoc.confidence}`);
+  assert.ok(shadedError <= 5, `shaded center error ${shadedError.toFixed(1)}`);
+
+  const empty = { data: new Uint8ClampedArray(110 * 110 * 4), width: 110, height: 110 };
+  empty.data.fill(160);
+  const missed = locateGauge(empty, { cx: 55, cy: 55, radius: 30 });
+  assert.equal(missed.ok, false);
+
+  const still = makeGaugeImage(150, { cx: 75, cy: 75, radius: 36, needleDeg: 40, rotationDeg: 0 });
+  const turned = makeGaugeImage(150, { cx: 75, cy: 75, radius: 36, needleDeg: 52, rotationDeg: 12 });
+  const needleOnly = makeGaugeImage(150, { cx: 75, cy: 75, radius: 36, needleDeg: 68, rotationDeg: 0 });
+  const stillLoc = locateGauge(still, { cx: 75, cy: 75, radius: 36 });
+  const turnedLoc = locateGauge(turned, { cx: 75, cy: 75, radius: 36 });
+  const needleLoc = locateGauge(needleOnly, { cx: 75, cy: 75, radius: 36 });
+  const stillProfile = measureRimProfile(stillLoc.edges, 150, 150, stillLoc.cx, stillLoc.cy, stillLoc.radius);
+  const turnedProfile = measureRimProfile(turnedLoc.edges, 150, 150, turnedLoc.cx, turnedLoc.cy, turnedLoc.radius);
+  const needleProfile = measureRimProfile(needleLoc.edges, 150, 150, needleLoc.cx, needleLoc.cy, needleLoc.radius);
+  const rotated = matchGaugeRotation(stillProfile, turnedProfile, {
+    previousDeg: 0,
+    needleDeg: 52,
+    referenceNeedleDeg: 40,
+    maxShiftDeg: 20,
+  });
+  assert.ok(rotated.ok, `rotation corr ${rotated.confidence} margin ${rotated.margin} est ${rotated.estimateDeg}`);
+  assert.ok(Math.abs(wrapDelta(12, rotated.rotationDeg)) <= 6, `rotation ${rotated.rotationDeg}`);
+  const pointer = matchGaugeRotation(stillProfile, needleProfile, {
+    previousDeg: 0,
+    needleDeg: 68,
+    referenceNeedleDeg: 40,
+    maxShiftDeg: 20,
+  });
+  assert.ok(pointer.ok, `needle-only corr ${pointer.confidence} margin ${pointer.margin}`);
+  assert.ok(Math.abs(wrapDelta(0, pointer.rotationDeg)) <= 6, `needle leaked into rotation ${pointer.rotationDeg}`);
+
+  const translated = makeGaugeImage(150, { cx: 90, cy: 68, radius: 36, needleDeg: 40, rotationDeg: 0 });
+  const atNewHub = detectNeedleAngle(translated, 90, 68, 36 * 0.46, 36 * 0.9);
+  const atOldHub = detectNeedleAngle(translated, 75, 75, 36 * 0.46, 36 * 0.9);
+  assert.ok(Math.abs(wrapDelta(40, atNewHub.angleDeg)) <= 8, `needle on moved gauge ${atNewHub.angleDeg}`);
+  assert.ok(Math.abs(wrapDelta(40, atOldHub.angleDeg)) > 8, `stale hub should miss, got ${atOldHub.angleDeg}`);
+
+  const gaugeTracker = createGaugeTracker();
+  const identity = { originX: 0, originY: 0, scale: 1 };
+  gaugeTracker.seed({ cx: 75, cy: 75, radius: 36 });
+  const first = makeGaugeImage(150, { cx: 75, cy: 75, radius: 36, needleDeg: 30, rotationDeg: 0 });
+  const moved = makeGaugeImage(150, { cx: 88, cy: 67, radius: 36, needleDeg: 30, rotationDeg: 0 });
+  const swung = makeGaugeImage(150, { cx: 88, cy: 67, radius: 36, needleDeg: 58, rotationDeg: 0 });
+  const readPose = (image) => {
+    let position = null;
+    for (let i = 0; i < 3; i += 1) position = gaugeTracker.trackPosition(image, identity);
+    const pose = position.pose;
+    const needle = detectNeedleAngle(image, pose.cx, pose.cy, pose.radius * 0.46, pose.radius * 0.9);
+    const orientation = gaugeTracker.trackOrientation(position.profile, needle.angleDeg, { positionHeld: position.held });
+    return {
+      pose,
+      held: position.held,
+      relative: wrap360(needle.angleDeg - orientation.rotationDeg),
+      screen: needle.angleDeg,
+    };
+  };
+  const restPose = readPose(first);
+  const shifted = readPose(moved);
+  const followError = Math.hypot(shifted.pose.cx - 88, shifted.pose.cy - 67);
+  assert.equal(shifted.held, false);
+  assert.ok(followError <= 5, `follow error ${followError.toFixed(1)}`);
+  assert.ok(Math.abs(wrapDelta(restPose.relative, shifted.relative)) <= 8, `shift changed pressure angle ${restPose.relative} -> ${shifted.relative}`);
+  const pressed = readPose(swung);
+  assert.ok(Math.abs(wrapDelta(shifted.relative + 28, pressed.relative)) <= 10, `needle move ${shifted.relative} -> ${pressed.relative}`);
+
+  const lostFrame = { data: new Uint8ClampedArray(150 * 150 * 4), width: 150, height: 150 };
+  lostFrame.data.fill(140);
+  const heldPose = gaugeTracker.getPose();
+  const heldTrack = gaugeTracker.trackPosition(lostFrame, identity);
+  assert.equal(heldTrack.held, true);
+  assert.ok(Math.hypot(heldTrack.pose.cx - heldPose.cx, heldTrack.pose.cy - heldPose.cy) < 0.1);
+
+  const history = createDiagnosticHistory({ durationMs: 30000 });
+  history.push({ t: 1000, rawAngle: 10, pressure: 1, tracking: 'TRACKING', gaugeX: 1, gaugeY: 2, quality: 0.4 });
+  history.push({ t: 12000, rawAngle: 12, pressure: 1.2, tracking: 'UNCERTAIN', gaugeX: 4, gaugeY: 2, quality: 0.1 });
+  history.push({ t: 31000, rawAngle: 14, pressure: 1.2, tracking: 'TRACKING', gaugeX: 4, gaugeY: 3, quality: 0.5 });
+  assert.equal(history.length, 3);
+  history.push({ t: 42000, rawAngle: 16, pressure: 2, tracking: 'TRACKING', gaugeX: 5, gaugeY: 3, quality: 0.5 });
+  const trace = history.snapshot();
+  assert.equal(trace.length, 3);
+  assert.equal(trace[0].t, 12000);
+  assert.equal(trace[2].pressure, 2);
+  assert.equal(trace[2].tracking, 'TRACKING');
+  history.reset();
+  assert.equal(history.length, 0);
+}
+
+function angDist(a, b) {
+  let distance = Math.abs(a - b) % 360;
+  if (distance > 180) distance = 360 - distance;
+  return distance;
+}
+
+function makeGaugeImage(size, {
+  cx,
+  cy,
+  radius,
+  rotationDeg = 0,
+  needleDeg = 40,
+  gain = 1,
+  bias = 0,
+  shade = 0,
+} = {}) {
+  const data = new Uint8ClampedArray(size * size * 4);
+  const needleRad = (needleDeg * Math.PI) / 180;
+  const needleCos = Math.cos(needleRad);
+  const needleSin = Math.sin(needleRad);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.hypot(dx, dy);
+      let value = 190;
+      if (dist < radius - 2.4) value = 226;
+      if (Math.abs(dist - radius) <= 2.2) value = 22;
+      if (dist > radius * 0.73 && dist < radius * 0.92 && dist < radius - 3.2) {
+        let ang = (Math.atan2(dy, dx) * 180) / Math.PI - rotationDeg;
+        ang = ((ang % 360) + 360) % 360;
+        const minor = ang % 30;
+        const minorDist = Math.min(minor, 30 - minor);
+        const major = ang % 90;
+        const majorDist = Math.min(major, 90 - major);
+        if (majorDist < 6) value = 16;
+        else if (minorDist < 3.2) value = 32;
+        if (angDist(ang, 200) < 16 && dist > radius * 0.76) value = 12;
+      }
+      const along = dx * needleCos + dy * needleSin;
+      const across = Math.abs(-dx * needleSin + dy * needleCos);
+      if (along > radius * 0.16 && along < radius * 0.84 && across <= 1.6) value = 6;
+      value = value * gain + bias + shade * (x / size) * 80;
+      const index = (y * size + x) * 4;
+      const channel = Math.max(0, Math.min(255, Math.round(value)));
+      data[index] = channel;
+      data[index + 1] = channel;
+      data[index + 2] = channel;
+      data[index + 3] = 255;
+    }
+  }
+  return { data, width: size, height: size };
 }

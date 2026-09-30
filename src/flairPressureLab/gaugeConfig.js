@@ -51,9 +51,9 @@ export function angleToBar(angleDeg, session) {
   return session.minBar + (delta / session.sweepDeg) * span;
 }
 
-export function classifyTrackingStatus({ calibrated, quality, jitterDeg, accepted, heldFlip = false }) {
+export function classifyTrackingStatus({ calibrated, quality, jitterDeg, accepted, heldFlip = false, gaugeHeld = false }) {
   if (!calibrated) return 'CALIBRATING';
-  if (heldFlip) return 'UNCERTAIN';
+  if (gaugeHeld || heldFlip) return 'UNCERTAIN';
   if (quality == null || quality < 0.08) return 'LOST';
   if (!accepted || quality < 0.18 || jitterDeg > 12) return 'UNCERTAIN';
   return 'TRACKING';
