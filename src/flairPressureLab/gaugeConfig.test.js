@@ -1,7 +1,9 @@
 import assert from 'assert';
 import {
   FLAIR_58_SCALE,
+  OUTER_RADIUS_RATIO,
   PROCESS_INTERVAL_MS,
+  TIP_INNER_RATIO,
   angleToBar,
   classifyTrackingStatus,
   selectForwardAngle,
@@ -134,6 +136,44 @@ export function runFlairPressureLabTests() {
   assert.equal(flipped.rejectedFlip, true);
   assert.equal(tracker.push(82 + 180).angle, 82);
 
+  const cautious = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  cautious.push(10);
+  assert.equal(cautious.push(60, { quality: 0.1 }).accepted, false);
+  assert.equal(cautious.push(60, { quality: 0.1 }).accepted, false);
+  assert.equal(cautious.push(60, { quality: 0.1 }).accepted, false);
+  const stillHeld = cautious.push(61, { quality: 0.1 });
+  assert.equal(stillHeld.accepted, false);
+  assert.equal(stillHeld.angle, 10);
+  const weakLocked = cautious.push(60, { quality: 0.1 });
+  assert.equal(weakLocked.accepted, true);
+  assert.equal(weakLocked.angle, 60);
+
+  const clearJump = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  clearJump.push(10);
+  assert.equal(clearJump.push(60, { quality: 0.6 }).accepted, false);
+  assert.equal(clearJump.push(60, { quality: 0.6 }).accepted, false);
+  const confirmed = clearJump.push(62, { quality: 0.6 });
+  assert.equal(confirmed.accepted, true);
+  assert.equal(confirmed.angle, 62);
+
+  const sweep = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  sweep.push(0);
+  assert.equal(sweep.push(30, { quality: 0.6 }).accepted, false);
+  assert.equal(sweep.push(60, { quality: 0.6 }).angle, 0);
+  const swept = sweep.push(90, { quality: 0.6 });
+  assert.equal(swept.accepted, true);
+  assert.equal(swept.angle, 90);
+
+  const alternating = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  alternating.push(20);
+  for (let i = 0; i < 6; i += 1) {
+    const next = i % 2 === 0 ? 63 : 20;
+    const step = alternating.push(next, { quality: 0.5 });
+    assert.equal(step.angle, 20, `alternating frame ${i} moved to ${step.angle}`);
+  }
+  alternating.push(null);
+  assert.equal(alternating.push(70, { quality: 0.6 }).accepted, false);
+
   const edge = createRisingThreshold(2);
   assert.equal(edge.push(1.2, 500).above, false);
   const crossed = edge.push(2.4, 1000);
@@ -175,6 +215,29 @@ export function runFlairPressureLabTests() {
   const tipped = detectNeedleAngle(tailed, tailCx, tailCy, 30, 44);
   const tipError = Math.abs(wrapDelta(40, tipped.angleDeg));
   assert.ok(tipError <= 8, `tip angle ${tipped.angleDeg} error ${tipError}`);
+
+  const rival = blankFrame(140, 228);
+  paintRadial(rival, 70, 70, 15, 16, 52, 1.5, 36);
+  paintRadial(rival, 70, 70, 58, 46, 58, 2.4, 0);
+  const rivalFound = detectNeedleAngle(rival, 70, 70, 140 * 0.18, 140 * 0.44);
+  const rivalError = Math.abs(wrapDelta(15, rivalFound.angleDeg));
+  assert.ok(rivalError <= 8, `dark outer tick won at ${rivalFound.angleDeg} q ${rivalFound.quality.toFixed(3)} likeness ${rivalFound.likeness.toFixed(3)}`);
+  assert.ok(rivalFound.quality > 0.15, `rival quality ${rivalFound.quality}`);
+  assert.ok(rivalFound.likeness > 0.4, `needle likeness ${rivalFound.likeness}`);
+  assert.equal(typeof rivalFound.secondAngleDeg, 'number');
+  assert.ok(rivalFound.margin > 0.15, `margin ${rivalFound.margin}`);
+
+  const tickOnly = blankFrame(140, 228);
+  paintRadial(tickOnly, 70, 70, 58, 46, 58, 2.4, 0);
+  const tickFound = detectNeedleAngle(tickOnly, 70, 70, 140 * 0.18, 140 * 0.44);
+  assert.ok(tickFound.quality < 0.08, `outer tick looked like a needle q ${tickFound.quality.toFixed(3)} likeness ${tickFound.likeness.toFixed(3)} angle ${tickFound.angleDeg}`);
+
+  const dotted = blankFrame(140, 228);
+  paintRadial(dotted, 70, 70, 200, 18, 54, 1.4, 42);
+  for (let r = 18; r <= 54; r += 5) paintRadial(dotted, 70, 70, 100, r, r + 1.2, 2.2, 0);
+  const dottedFound = detectNeedleAngle(dotted, 70, 70, 140 * 0.16, 140 * 0.42);
+  const dottedError = Math.abs(wrapDelta(200, dottedFound.angleDeg));
+  assert.ok(dottedError <= 8, `fragmented radial won at ${dottedFound.angleDeg} q ${dottedFound.quality.toFixed(3)}`);
 
   assert.equal(
     classifyTrackingStatus({ calibrated: true, quality: 0.6, jitterDeg: 1, accepted: true, gaugeHeld: true }),
@@ -243,8 +306,8 @@ export function runFlairPressureLabTests() {
   assert.ok(Math.abs(wrapDelta(0, pointer.rotationDeg)) <= 6, `needle leaked into rotation ${pointer.rotationDeg}`);
 
   const translated = makeGaugeImage(150, { cx: 90, cy: 68, radius: 36, needleDeg: 40, rotationDeg: 0 });
-  const atNewHub = detectNeedleAngle(translated, 90, 68, 36 * 0.46, 36 * 0.9);
-  const atOldHub = detectNeedleAngle(translated, 75, 75, 36 * 0.46, 36 * 0.9);
+  const atNewHub = detectNeedleAngle(translated, 90, 68, 36 * TIP_INNER_RATIO, 36 * OUTER_RADIUS_RATIO);
+  const atOldHub = detectNeedleAngle(translated, 75, 75, 36 * TIP_INNER_RATIO, 36 * OUTER_RADIUS_RATIO);
   assert.ok(Math.abs(wrapDelta(40, atNewHub.angleDeg)) <= 8, `needle on moved gauge ${atNewHub.angleDeg}`);
   assert.ok(Math.abs(wrapDelta(40, atOldHub.angleDeg)) > 8, `stale hub should miss, got ${atOldHub.angleDeg}`);
 
@@ -258,7 +321,7 @@ export function runFlairPressureLabTests() {
     let position = null;
     for (let i = 0; i < 3; i += 1) position = gaugeTracker.trackPosition(image, identity);
     const pose = position.pose;
-    const needle = detectNeedleAngle(image, pose.cx, pose.cy, pose.radius * 0.46, pose.radius * 0.9);
+    const needle = detectNeedleAngle(image, pose.cx, pose.cy, pose.radius * TIP_INNER_RATIO, pose.radius * OUTER_RADIUS_RATIO);
     const orientation = gaugeTracker.trackOrientation(position.profile, needle.angleDeg, { positionHeld: position.held });
     return {
       pose,
@@ -413,6 +476,18 @@ export function runFlairPressureLabTests() {
   assert.ok(report.includes('TRACKING %: 50.0%'));
   assert.ok(report.includes('LOST %: 25.0%'));
   assert.ok(report.includes('Needle valid→invalid transitions: 1'));
+  assert.ok(report.includes('N/A (candidate fields were not recorded)'));
+  const candidateReport = buildDiagnosticReport([
+    { t: 1000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, candidateAngle: 10, candidateScore: 4, secondCandidateAngle: 53, secondCandidateScore: 1, candidateDelta: 0, candidateMargin: 0.75, candidateLikeness: 0.8, quality: 0.75 },
+    { t: 1125, tracking: 'TRACKING', rawAngle: 12, relativeAngle: 12, smoothedAngle: 11, pressure: 1, candidateAngle: 55, candidateScore: 3, secondCandidateAngle: 12, secondCandidateScore: 2.5, candidateDelta: 44, candidateMargin: 0.16, candidateLikeness: 0.7, quality: 0.16 },
+  ], { timestamp: when, calibrationStatus: 'calibrated' });
+  assert.ok(candidateReport.includes('Best candidate angle:'));
+  assert.ok(candidateReport.includes('Second-best candidate score:'));
+  assert.ok(candidateReport.includes('Candidate-to-accepted |delta|:'));
+  assert.ok(candidateReport.includes('Candidate margin:'));
+  assert.ok(candidateReport.includes('Candidate likeness:'));
+  assert.ok(candidateReport.includes('Best-to-second separation mode: 45° on 2 of 2 frames (100.0%), binned to 5°.'));
+  assert.ok(candidateReport.includes('Candidate-to-accepted delta mean: 22.00'));
   const bare = buildDiagnosticReport([{ t: 5, tracking: 'TRACKING', rawAngle: 1, relativeAngle: 1, smoothedAngle: 1, pressure: 1 }], {
     timestamp: when,
     calibrationStatus: 'not calibrated',
@@ -422,6 +497,35 @@ export function runFlairPressureLabTests() {
   assert.ok(bare.includes('Camera resolution: N/A'));
   const blankReport = buildDiagnosticReport([], { timestamp: when, calibrationStatus: 'not calibrated' });
   assert.ok(blankReport.includes('No diagnostic samples in memory.'));
+}
+
+function blankFrame(size, value = 226) {
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let i = 0; i < size * size; i += 1) {
+    data[i * 4] = value;
+    data[i * 4 + 1] = value;
+    data[i * 4 + 2] = value;
+    data[i * 4 + 3] = 255;
+  }
+  return { data, width: size, height: size };
+}
+
+function paintRadial(image, cx, cy, angleDeg, r0, r1, halfWidth, value) {
+  const { data, width, height } = image;
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  for (let r = r0; r <= r1; r += 0.45) {
+    for (let t = -halfWidth; t <= halfWidth; t += 0.45) {
+      const x = Math.round(cx + r * cos - t * sin);
+      const y = Math.round(cy + r * sin + t * cos);
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      const index = (y * width + x) * 4;
+      data[index] = value;
+      data[index + 1] = value;
+      data[index + 2] = value;
+    }
+  }
 }
 
 function angDist(a, b) {

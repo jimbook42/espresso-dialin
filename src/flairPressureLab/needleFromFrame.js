@@ -3,10 +3,15 @@ import { prepareEdges } from './framePrep.js';
 
 /**
  * Needle angle around a known hub.
- * Scores rays on a local-contrast image, so a darker needle is "darker than
- * its sides" rather than "below an absolute gray level". Global exposure can
- * change without moving the winning angle. A full Hough search is unnecessary.
+ * Each angle is a radial segment, not a single strong edge. A tick, numeral,
+ * or bezel arc can be darker than the needle at one radius and still lose,
+ * because it does not run continuously from near the pivot toward the rim.
+ * Angles are still scanned every 2°, then refined to 1°. Nothing here maps
+ * angle to pressure.
  */
+
+const SAMPLE_COUNT = 32;
+const ANGLE_STEP = 2;
 
 function sample(gray, width, height, x, y) {
   const xi = Math.round(x);
@@ -15,15 +20,23 @@ function sample(gray, width, height, x, y) {
   return gray[yi * width + xi];
 }
 
-function scoreRay(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR) {
+function median(values) {
+  const copy = Array.from(values);
+  copy.sort((a, b) => a - b);
+  return copy[Math.floor(copy.length / 2)];
+}
+
+/** Dark ridge along one ray. Bright edges and circumferential gradients contribute nothing. */
+function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR) {
+  const out = new Float32Array(SAMPLE_COUNT);
+  const span = outerR - innerR;
+  if (span < 1) return out;
   const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const offset = Math.max(2, Math.round((outerR - innerR) / 18));
-  let score = 0;
-  let count = 0;
-  const step = Math.max(1, Math.round((outerR - innerR) / 48));
-  for (let r = innerR; r <= outerR; r += step) {
+  const offset = Math.min(4, Math.max(2, Math.round(span / 18)));
+  for (let i = 0; i < SAMPLE_COUNT; i += 1) {
+    const r = innerR + span * ((i + 0.5) / SAMPLE_COUNT);
     const x = cx + r * cos;
     const y = cy + r * sin;
     const xi = Math.round(x);
@@ -34,57 +47,168 @@ function scoreRay(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR) 
     const left = sample(gray, width, height, x - sin * offset, y + cos * offset);
     const right = sample(gray, width, height, x + sin * offset, y - cos * offset);
     if (left == null || right == null) continue;
-    const darkerThanSides = (left + right) * 0.5 - center;
-    const across = Math.abs(edges.gx[index] * sin - edges.gy[index] * cos);
-    const weight = darkerThanSides > 0 ? 1 : 0.2;
-    score += across * weight;
-    count += 1;
+    const contrast = (left + right) * 0.5 - center;
+    if (contrast <= 0) continue;
+    const gx = edges.gx[index];
+    const gy = edges.gy[index];
+    const across = Math.abs(gx * sin - gy * cos);
+    const grad = Math.hypot(gx, gy);
+    const alignment = grad > 1 ? across / grad : 0;
+    out[i] = contrast * (0.35 + 0.65 * alignment);
   }
-  if (!count) return 0;
-  return score / count;
+  return out;
+}
+
+/**
+ * Reward a continuous dark segment that reaches the inner part of the window.
+ * A mark that exists only near the rim, or as scattered dots, collapses.
+ */
+function scoreProfile(samples) {
+  const n = samples.length;
+  if (!n) return { score: 0, likeness: 0 };
+  let total = 0;
+  for (let i = 0; i < n; i += 1) total += samples[i];
+  const mean = total / n;
+  if (mean <= 1e-4) return { score: 0, likeness: 0 };
+
+  const hitLevel = mean * 0.5;
+  const bodyCount = Math.max(1, Math.round(n * 0.68));
+  let hits = 0;
+  let run = 0;
+  let gap = 0;
+  let longest = 0;
+  let bodySum = 0;
+  let outerSum = 0;
+  for (let i = 0; i < n; i += 1) {
+    const value = samples[i];
+    if (i < bodyCount) bodySum += value;
+    else outerSum += value;
+    if (value >= hitLevel) {
+      hits += 1;
+      run += 1 + gap;
+      gap = 0;
+      if (run > longest) longest = run;
+    } else if (run > 0 && gap < 1) {
+      gap += 1;
+    } else {
+      run = 0;
+      gap = 0;
+    }
+  }
+
+  const coverage = hits / n;
+  const continuity = longest / n;
+  const bodyMean = bodySum / bodyCount;
+  const outerMean = outerSum / Math.max(1, n - bodyCount);
+  const bodyShare = bodyMean / (bodyMean + outerMean + 1e-3);
+  // A uniform needle has bodyShare near 0.5. Squaring drops a rim-only mark faster than a soft pointer.
+  const reach = Math.min(1, (bodyShare * 2) ** 2);
+  const likeness = Math.min(1, coverage * (0.3 + 0.7 * continuity) * reach);
+  return { score: mean * likeness, likeness };
+}
+
+function emptyDetection(angleDeg = 0) {
+  return {
+    angleDeg,
+    quality: 0,
+    peak: 0,
+    second: 0,
+    oppositeScore: 0,
+    secondAngleDeg: null,
+    margin: 0,
+    likeness: 0,
+  };
 }
 
 export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
+  if (!(outerR > innerR + 1)) return emptyDetection();
   const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
   const { gray, edges, width, height } = prepareEdges(image, { contrastRadius });
-  const scores = new Float32Array(360);
-  let best = 0;
-  let bestScore = 0;
+  const rayCount = 360 / ANGLE_STEP;
+  const evidence = new Array(rayCount);
+  for (let i = 0; i < rayCount; i += 1) {
+    evidence[i] = rayEvidence(gray, edges, width, height, cx, cy, i * ANGLE_STEP, innerR, outerR);
+  }
 
-  for (let deg = 0; deg < 360; deg += 2) {
-    const score = scoreRay(gray, edges, width, height, cx, cy, deg, innerR, outerR);
-    scores[deg] = score;
-    if (score > bestScore) {
-      bestScore = score;
+  const medianProfile = new Float32Array(SAMPLE_COUNT);
+  const column = new Float32Array(rayCount);
+  for (let s = 0; s < SAMPLE_COUNT; s += 1) {
+    for (let i = 0; i < rayCount; i += 1) column[i] = evidence[i][s];
+    medianProfile[s] = median(column);
+  }
+
+  const scratch = new Float32Array(SAMPLE_COUNT);
+  const scoreAngle = (angleDeg, stored) => {
+    const source = stored || rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR);
+    for (let s = 0; s < SAMPLE_COUNT; s += 1) scratch[s] = Math.max(0, source[s] - medianProfile[s]);
+    return scoreProfile(scratch);
+  };
+
+  const raw = new Float32Array(360);
+  const likenessAt = new Float32Array(360);
+  for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
+    const scored = scoreAngle(deg, evidence[deg / ANGLE_STEP]);
+    raw[deg] = scored.score;
+    likenessAt[deg] = scored.likeness;
+  }
+
+  const adjusted = new Float32Array(360);
+  for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
+    const self = raw[deg];
+    const left = raw[(deg + 360 - ANGLE_STEP) % 360];
+    const right = raw[(deg + ANGLE_STEP) % 360];
+    const support = self > 1e-6 ? Math.min(1, Math.min(left, right) / self) : 0;
+    adjusted[deg] = self * (0.2 + 0.8 * support);
+  }
+
+  let best = 0;
+  let bestAdjusted = -1;
+  for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
+    if (adjusted[deg] > bestAdjusted) {
+      bestAdjusted = adjusted[deg];
       best = deg;
     }
   }
 
-  for (let deg = best - 2; deg <= best + 2; deg += 1) {
+  let bestScore = raw[best];
+  let bestLikeness = likenessAt[best];
+  for (let deg = best - ANGLE_STEP; deg <= best + ANGLE_STEP; deg += 1) {
     const wrapped = (deg + 360) % 360;
-    if (wrapped === best) continue;
-    const score = scoreRay(gray, edges, width, height, cx, cy, wrapped, innerR, outerR);
-    scores[wrapped] = score;
-    if (score > bestScore) {
-      bestScore = score;
+    if (wrapped % ANGLE_STEP === 0) continue;
+    const scored = scoreAngle(wrapped, null);
+    if (scored.score > bestScore) {
+      bestScore = scored.score;
+      bestLikeness = scored.likeness;
       best = wrapped;
     }
   }
 
-  const opposite = (best + 180) % 360;
-  const oppositeScore = scores[opposite]
-    || scoreRay(gray, edges, width, height, cx, cy, opposite, innerR, outerR);
-
   let second = 0;
-  for (let deg = 0; deg < 360; deg += 2) {
+  let secondAngle = null;
+  for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
     let distance = Math.abs(deg - best);
     if (distance > 180) distance = 360 - distance;
     if (distance <= 12) continue;
-    if (scores[deg] > second) second = scores[deg];
+    if (raw[deg] > second) {
+      second = raw[deg];
+      secondAngle = deg;
+    }
   }
 
-  const quality = bestScore <= 1e-4 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
-  return { angleDeg: best, quality, peak: bestScore, second, oppositeScore };
+  const opposite = (best + 180) % 360;
+  const oppositeScore = scoreAngle(opposite, opposite % ANGLE_STEP === 0 ? evidence[opposite / ANGLE_STEP] : null).score;
+  const margin = bestScore <= 1e-4 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
+  const quality = margin * Math.min(1, bestLikeness / 0.4);
+  return {
+    angleDeg: best,
+    quality,
+    peak: bestScore,
+    second,
+    oppositeScore,
+    secondAngleDeg: secondAngle,
+    margin,
+    likeness: bestLikeness,
+  };
 }
 
 /** Crop the unmirrored video around a fixed circle and estimate the needle. */

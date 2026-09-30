@@ -12,6 +12,7 @@ import {
   clockwiseDelta,
   selectForwardAngle,
   wrap360,
+  wrapDelta,
 } from './gaugeConfig';
 import { DiagnosticTrace } from './DiagnosticTrace';
 import { createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
@@ -319,7 +320,12 @@ export function FlairPressureLab() {
         }
       }
 
+      const candidateAngle = reading.relativeAngleDeg ?? null;
+      const secondCandidateAngle = reading.secondAngleDeg == null
+        ? null
+        : wrap360(reading.secondAngleDeg - gauge.rotationDeg);
       const record = (partial) => {
+        const acceptedAngle = partial.acceptedAngle ?? null;
         historyRef.current.push({
           t: Date.now(),
           rawAngle: reading.angleDeg,
@@ -345,6 +351,15 @@ export function FlairPressureLab() {
           quality: reading.quality,
           gaugeConfidence: gauge.confidence,
           orientationConfidence: gauge.orientationConfidence,
+          candidateAngle,
+          candidateScore: reading.peak ?? null,
+          secondCandidateAngle,
+          secondCandidateScore: reading.second ?? null,
+          candidateDelta: acceptedAngle == null || candidateAngle == null
+            ? null
+            : Math.abs(wrapDelta(acceptedAngle, candidateAngle)),
+          candidateMargin: reading.margin ?? null,
+          candidateLikeness: reading.likeness ?? null,
         });
         setTrace(historyRef.current.snapshot());
       };
@@ -381,6 +396,7 @@ export function FlairPressureLab() {
             flipHeld: false,
             weakNeedle: reading.quality == null || reading.quality < 0.08,
             angleAccepted: false,
+            acceptedAngle: null,
           });
           setLive({
             ...EMPTY_LIVE,
@@ -419,7 +435,7 @@ export function FlairPressureLab() {
       let signal = thresholdRef.current.get();
       let tracked = { angle: lastAngleRef.current, accepted: false };
       if (!blockSample && choice.angleDeg != null) {
-        tracked = angleTrackerRef.current.push(choice.angleDeg);
+        tracked = angleTrackerRef.current.push(choice.angleDeg, { quality: reading.quality });
         if (tracked.accepted && tracked.angle != null) {
           lastAngleRef.current = tracked.angle;
           rawBar = angleToBar(tracked.angle, sessionRef.current);
@@ -427,6 +443,8 @@ export function FlairPressureLab() {
           signal = thresholdRef.current.push(smoothed, Date.now());
           signalPaused = false;
         }
+      } else {
+        angleTrackerRef.current.push(null);
       }
       const jitter = jitterRef.current.push(tracked.accepted ? tracked.angle : lastAngleRef.current);
       const pressureBar = pressureRef.current.get();
@@ -450,6 +468,7 @@ export function FlairPressureLab() {
         flipHeld: Boolean(choice.held || tracked.rejectedFlip),
         weakNeedle: weak,
         angleAccepted: Boolean(tracked.accepted) && !blockSample,
+        acceptedAngle: tracked.angle,
       });
       setLive({
         tracking,

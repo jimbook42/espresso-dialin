@@ -159,6 +159,29 @@ function countFlag(samples, key) {
   return samples.filter((sample) => sample[key] === true).length;
 }
 
+function separationMode(rows) {
+  if (!hasKey(rows, 'candidateAngle') || !hasKey(rows, 'secondCandidateAngle')) return null;
+  const bins = new Map();
+  let total = 0;
+  rows.forEach((sample) => {
+    if (!finite(sample.candidateAngle) || !finite(sample.secondCandidateAngle)) return;
+    const separation = Math.abs(wrapDelta(sample.candidateAngle, sample.secondCandidateAngle));
+    const bin = Math.round(separation / 5) * 5;
+    bins.set(bin, (bins.get(bin) || 0) + 1);
+    total += 1;
+  });
+  if (!total) return null;
+  let mode = null;
+  let count = 0;
+  bins.forEach((hits, bin) => {
+    if (hits > count) {
+      count = hits;
+      mode = bin;
+    }
+  });
+  return { mode, count, total };
+}
+
 function centreSpread(samples, pickX, pickY) {
   const xs = [];
   const ys = [];
@@ -348,6 +371,32 @@ export function buildDiagnosticReport(samples, context = {}) {
   push(statBlock(linearStats(rows.map((sample) => sample.orientationConfidence)), 3));
   push('');
 
+  push('CANDIDATES');
+  push('Best candidate is the detector angle before temporal acceptance, in the gauge frame. Scores are the radial-segment score. Margin is (best - second) / best. Likeness is 1 for a long continuous segment and near 0 for a short outer mark. Needle score is that margin, reduced when likeness is low. The 0.08 lost threshold is unchanged.');
+  if (!hasKey(rows, 'candidateAngle')) {
+    push('N/A (candidate fields were not recorded)');
+  } else {
+    push('Best candidate angle:');
+    push(statBlock(circularStats(rows.map((sample) => sample.candidateAngle)), 2, '°'));
+    push('Best candidate score:');
+    push(statBlock(linearStats(rows.map((sample) => sample.candidateScore)), 3));
+    push('Second-best candidate angle:');
+    push(statBlock(circularStats(rows.map((sample) => sample.secondCandidateAngle)), 2, '°'));
+    push('Second-best candidate score:');
+    push(statBlock(linearStats(rows.map((sample) => sample.secondCandidateScore)), 3));
+    push('Candidate-to-accepted |delta|:');
+    push(statBlock(linearStats(rows.map((sample) => sample.candidateDelta)), 2, '°'));
+    push('Candidate margin:');
+    push(statBlock(linearStats(rows.map((sample) => sample.candidateMargin)), 3));
+    push('Candidate likeness:');
+    push(statBlock(linearStats(rows.map((sample) => sample.candidateLikeness)), 3));
+    const mode = separationMode(rows);
+    push(mode
+      ? `Best-to-second separation mode: ${mode.mode}° on ${mode.count} of ${mode.total} frames (${((mode.count / mode.total) * 100).toFixed(1)}%), binned to 5°.`
+      : 'Best-to-second separation mode: N/A');
+  }
+  push('');
+
   const states = ['TRACKING', 'UNCERTAIN', 'LOST', 'CALIBRATING'];
   push('STATE');
   push('Duration is the sum of gaps from a sample in that state to the next sample. The last sample is counted but adds no duration.');
@@ -466,6 +515,11 @@ export function buildDiagnosticReport(samples, context = {}) {
   push(`LOST %: ${fmtPct(lostCount, rows.length)}`);
   push(`Needle valid→invalid transitions: ${countTransition(rows, true, false, overlayVisible)}`);
   push(`Needle invalid→valid transitions: ${countTransition(rows, false, true, overlayVisible)}`);
+  if (hasKey(rows, 'candidateDelta')) {
+    push(`Candidate-to-accepted delta mean: ${fmt(linearStats(rows.map((sample) => sample.candidateDelta)).mean, 2)}`);
+  }
+  const mode = separationMode(rows);
+  if (mode) push(`Best-to-second separation mode: ${mode.mode}° (${((mode.count / mode.total) * 100).toFixed(1)}%)`);
 
   return lines.join('\n');
 }

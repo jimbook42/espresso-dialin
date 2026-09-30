@@ -16,9 +16,10 @@ export const PROCESS_INTERVAL_MS = 125;
 export const EXTRACTION_START_BAR = 2;
 
 export const DEFAULT_RADIUS_FRACTION = 0.28;
-/** Score the pointer tip, not the short tail behind the hub. */
-export const TIP_INNER_RATIO = 0.46;
-export const OUTER_RADIUS_RATIO = 0.9;
+/** Needle segment starts outside the hub so the pointer body is in the window and the short tail is mostly out. */
+export const TIP_INNER_RATIO = 0.24;
+/** Needle segment stops inside the bezel. Tick tips and the rim sit further out. */
+export const OUTER_RADIUS_RATIO = 0.86;
 export const REST_STABLE_SAMPLES = 6;
 export const REST_MAX_SPREAD_DEG = 8;
 export const REST_MIN_QUALITY = 0.1;

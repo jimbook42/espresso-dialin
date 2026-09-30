@@ -8,8 +8,14 @@ export function circularMedian(angles) {
   return wrap360(base + mid);
 }
 
-/** Holds the last stable angle and ignores single-frame jumps. */
-export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 2, alpha = 0.45 } = {}) {
+/**
+ * Holds the last accepted angle.
+ * A modest step is smoothed immediately. A large step is held until several
+ * consecutive frames support the same new angle, or keep moving the same way.
+ * There is no maximum travel: a real pull that stays on the new angle is accepted.
+ * A weak margin needs two extra frames. A gap clears the pending candidate.
+ */
+export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 0.45 } = {}) {
   let angle = null;
   let pending = null;
   let pendingHits = 0;
@@ -20,8 +26,13 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 2, alpha = 
       pending = null;
       pendingHits = 0;
     },
-    push(raw) {
-      if (raw == null || Number.isNaN(raw)) return { angle, accepted: false };
+    push(raw, meta) {
+      if (raw == null || Number.isNaN(raw)) {
+        pending = null;
+        pendingHits = 0;
+        return { angle, accepted: false };
+      }
+      const quality = meta && typeof meta === 'object' ? meta.quality : null;
       if (angle == null) {
         angle = raw;
         return { angle, accepted: true };
@@ -32,12 +43,20 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 2, alpha = 
         return { angle, accepted: false, rejectedFlip: true };
       }
       if (Math.abs(wrapDelta(angle, raw)) > maxJumpDeg) {
-        if (pending != null && Math.abs(wrapDelta(pending, raw)) <= 10) pendingHits += 1;
-        else {
-          pending = raw;
-          pendingHits = 1;
+        const needed = quality != null && quality < 0.18 ? confirmCount + 2 : confirmCount;
+        let agree = false;
+        if (pending != null && Math.abs(wrapDelta(pending, raw)) <= 12) agree = true;
+        else if (pending != null) {
+          const step = wrapDelta(pending, raw);
+          const pendingStep = wrapDelta(angle, pending);
+          const nextStep = wrapDelta(angle, raw);
+          const sameWay = pendingStep * step > 0 && pendingStep * nextStep > 0;
+          if (sameWay && Math.abs(step) <= 70) agree = true;
         }
-        if (pendingHits >= confirmCount) {
+        if (agree) pendingHits += 1;
+        else pendingHits = 1;
+        pending = raw;
+        if (pendingHits >= needed) {
           angle = raw;
           pending = null;
           pendingHits = 0;
