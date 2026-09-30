@@ -44,11 +44,23 @@ export function shouldShowGraduationPrompt(settings, shotCount) {
   return total >= BREW_GUIDANCE_GRADUATION_SHOT_COUNT;
 }
 
+/** After the first bean profile is saved with Brew Guide on, send the user to Brew Guide once. */
+export function shouldNavigateToBrewAfterFirstBean(settings, isFirstBeanAdd, brewGuideEnabled) {
+  if (!isFirstBeanAdd || !brewGuideEnabled) return false;
+  if (settings?.brewGuideFirstBeanNavDone === true) return false;
+  return true;
+}
+
 function firstSentence(text) {
   if (!text) return '';
   const trimmed = String(text).trim();
   const match = trimmed.match(/^[^.!?]+[.!?]?/);
   return match ? match[0].trim() : trimmed;
+}
+
+function pushChecklistItem(items, id, text) {
+  if (!text) return;
+  items.push({ id: `${id}-${items.length}`, text });
 }
 
 /**
@@ -60,55 +72,43 @@ export function buildQuickChecklist(rawAccessories, dial = {}) {
   const steps = buildBrewSteps(accessories, dial);
   const items = [];
 
-  items.push({
-    id: 'prep-machine',
-    text: 'Heat machine, preheat group, warm cup.',
-  });
+  pushChecklistItem(items, 'prep-machine', 'Heat machine, preheat group, warm cup.');
 
   const grindSetting = steps.find((step) => step.id === 'grindSetting');
   if (grindSetting?.highlight) {
     let text = `Set ${grindSetting.highlightLabel || 'grind'} to ${grindSetting.highlight}.`;
+    pushChecklistItem(items, 'grind-setting', text);
     if (grindSettingChanged(dial)) {
-      text += ' Purge fresh beans before dosing.';
+      pushChecklistItem(items, 'purge', 'Purge fresh beans before dosing.');
     }
-    items.push({ id: 'grind-setting', text });
   }
 
   const dose = steps.find((step) => step.id === 'dose');
   if (dose) {
     const doseG = dose.highlight || '—';
-    const doseBits = [`Weigh ${doseG} dose; do not fill the hopper.`];
+    pushChecklistItem(items, 'dose', `Weigh ${doseG} dose; do not fill the hopper.`);
     for (const action of dose.actions || []) {
-      doseBits.push(firstSentence(action.text) || action.title);
+      pushChecklistItem(items, 'dose-tool', firstSentence(action.text) || action.title);
     }
-    items.push({ id: 'dose', text: doseBits.join(' ') });
   }
 
   const grind = steps.find((step) => step.id === 'grind');
   if (grind) {
-    const grindBits = [];
     for (const action of grind.actions || []) {
-      grindBits.push(firstSentence(action.text) || action.title);
+      pushChecklistItem(items, 'grind-tool', firstSentence(action.text) || action.title);
     }
-    if (!grindBits.length && grind.lines?.[0]) {
-      grindBits.push(firstSentence(grind.lines[0]));
-    }
-    if (grindBits.length) {
-      items.push({ id: 'grind', text: grindBits.join(' ') });
+    if (!(grind.actions || []).length && grind.lines?.[0]) {
+      pushChecklistItem(items, 'grind', firstSentence(grind.lines[0]));
     }
   }
 
   const puck = steps.find((step) => step.id === 'puck');
   if (puck) {
-    const puckBits = [];
     for (const action of puck.actions || []) {
-      puckBits.push(`${action.title}: ${firstSentence(action.text)}`);
+      pushChecklistItem(items, 'puck-tool', firstSentence(action.text) || action.title);
     }
     for (const line of puck.lines || []) {
-      puckBits.push(firstSentence(line));
-    }
-    if (puckBits.length) {
-      items.push({ id: 'puck', text: puckBits.join(' ') });
+      pushChecklistItem(items, 'puck', firstSentence(line));
     }
   }
 
@@ -116,19 +116,17 @@ export function buildQuickChecklist(rawAccessories, dial = {}) {
   if (extract) {
     const stopAt = brewStopYield(dial.yieldG) || extract.stopAt;
     const yieldG = extract.highlight;
-    let text = stopAt
-      ? `Pull shot — stop around ${stopAt}g (target ${yieldG}).`
-      : `Pull shot toward ${yieldG}.`;
-    if (extract.timeLabel) {
-      text += ` Aim ${extract.timeLabel}.`;
+    if (stopAt) {
+      pushChecklistItem(items, 'extract', `Pull shot — stop around ${stopAt}g (target ${yieldG}).`);
+    } else {
+      pushChecklistItem(items, 'extract', `Pull shot toward ${yieldG}.`);
     }
-    items.push({ id: 'extract', text });
+    if (extract.timeLabel) {
+      pushChecklistItem(items, 'extract-time', `Aim ${extract.timeLabel}.`);
+    }
   }
 
-  items.push({
-    id: 'log',
-    text: 'Enter time and yield on Dial-In, pick taste, log shot.',
-  });
+  pushChecklistItem(items, 'log', 'Enter time and yield on Dial-In, pick taste, log shot.');
 
   return items;
 }

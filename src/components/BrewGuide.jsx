@@ -260,13 +260,13 @@ export function BrewGuide({
   guidanceMode = BREW_GUIDANCE_MODES.full,
   onUseQuickChecklist = () => {},
   onNoChecklist = () => {},
+  accessoriesOpenRequest = 0,
 }) {
   const [screen, setScreen] = useState(setupComplete ? 'menu' : 'setup');
   const [guideId, setGuideId] = useState('temperature');
   const [guideBack, setGuideBack] = useState('menu');
   const [draft, setDraft] = useState(() => normalizeBrewAccessories(accessories));
-  const [sessionAccessories, setSessionAccessories] = useState(null);
-  const workflowAccessories = sessionAccessories ?? normalizeBrewAccessories(accessories);
+  const workflowAccessories = normalizeBrewAccessories(accessories);
   const stepHeaderRef = useRef(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -290,6 +290,12 @@ export function BrewGuide({
     return () => onTimerHost(false);
   }, [screen, step?.kind, onTimerHost]);
 
+  useEffect(() => {
+    if (!accessoriesOpenRequest) return;
+    setDraft(normalizeBrewAccessories(accessories));
+    setScreen('setup');
+  }, [accessoriesOpenRequest, accessories]);
+
   const openSetup = () => {
     setDraft(normalizeBrewAccessories(accessories));
     setScreen('setup');
@@ -299,10 +305,7 @@ export function BrewGuide({
     setSaving(true);
     try {
       const normalized = normalizeBrewAccessories(draft);
-      if (!setupComplete) {
-        await onSaveAccessories(normalized);
-      }
-      setSessionAccessories(normalized);
+      await onSaveAccessories(normalized);
       setScreen('menu');
     } finally {
       setSaving(false);
@@ -389,7 +392,7 @@ export function BrewGuide({
             disabled={saving}
             className={`w-full min-h-[64px] rounded-xl text-base ${ui.primary} disabled:opacity-60`}
           >
-            {setupComplete ? 'Use for this brew' : 'Continue'}
+            {setupComplete ? 'Save' : 'Continue'}
           </button>
           {setupComplete && (
             <button

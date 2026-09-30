@@ -34,6 +34,7 @@ import {
   normalizeBrewGuidanceMode,
   shouldShowBrewGuideIntro,
   shouldShowGraduationPrompt,
+  shouldNavigateToBrewAfterFirstBean,
 } from './brewGuide/guidance';
 import { normalizeBrewAccessories } from './brewGuide/steps';
 import { getAppTheme } from './theme';
@@ -191,6 +192,7 @@ export default function App() {
   const [highlightGrind, setHighlightGrind] = useState(false);
   const [shotFieldHighlights, setShotFieldHighlights] = useState(EMPTY_SHOT_FIELD_HIGHLIGHTS);
   const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
+  const [brewAccessoriesOpenRequest, setBrewAccessoriesOpenRequest] = useState(0);
 
   useEffect(() => {
     if (settingsSetting) {
@@ -447,6 +449,15 @@ export default function App() {
     });
   };
 
+  const handleRevertToFullBrewGuide = () => {
+    patchBrewGuidanceSettings({ brewGuideGuidanceMode: BREW_GUIDANCE_MODES.full });
+  };
+
+  const handleOpenBrewAccessories = () => {
+    setActiveTab('brew');
+    setBrewAccessoriesOpenRequest((count) => count + 1);
+  };
+
   const handleLogoClick = () => {
     const nextCount = logoClickCount + 1;
     setLogoClickCount(nextCount);
@@ -503,10 +514,20 @@ export default function App() {
           await db.recipes.update(existingRecipe.id, { ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36 });
         }
       } else {
+        const isFirstBeanAdd = beans.length === 0;
         const beanId = generateId();
         await db.beans.add({ ...beanToSave, id: beanId, isFinished: false, thawHistory: [], createdAt: new Date().toISOString() });
         await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: generateId(), beanId });
         setSelectedBeanId(beanId);
+
+        const currentSettings = await db.settings.get('global') || { id: 'global' };
+        if (shouldNavigateToBrewAfterFirstBean(currentSettings, isFirstBeanAdd, Boolean(currentSettings.brewGuideEnabled))) {
+          await patchBrewGuidanceSettings({ brewGuideFirstBeanNavDone: true });
+          setIsEditingBean(false);
+          setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
+          setActiveTab('brew');
+          return;
+        }
       }
 
       setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
@@ -1241,8 +1262,16 @@ export default function App() {
                           <RotateCcw className="w-3 h-3" /> Undo thaw
                         </button>
                       )}
-                      <button type="button" onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)} className={`text-[10px] ${ui.muted}`}>
-                        Mark finished
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
+                        className={`text-[11px] font-bold px-3 py-2 rounded-lg border min-h-[40px] shrink-0 ${
+                          activeBean.isFinished
+                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                            : `${ui.secondaryBtn}`
+                        }`}
+                      >
+                        {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
                       </button>
                     </div>
                   </div>
@@ -1403,6 +1432,9 @@ export default function App() {
                       previousGrindLabel,
                     }}
                     onOpenFullGuide={() => setActiveTab('brew')}
+                    onRevertToFullGuide={handleRevertToFullBrewGuide}
+                    onNoChecklist={handleNoBrewChecklist}
+                    onEditAccessories={handleOpenBrewAccessories}
                   />
                 )}
 
@@ -1643,6 +1675,7 @@ export default function App() {
             guidanceMode={brewGuidanceMode}
             onUseQuickChecklist={handleUseQuickChecklist}
             onNoChecklist={handleNoBrewChecklist}
+            accessoriesOpenRequest={brewAccessoriesOpenRequest}
             timer={{
               running: timerRunning,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
@@ -2258,9 +2291,9 @@ export default function App() {
         />
 
         {isSettingsOpen && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className={`${ui.card} p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl max-h-[92vh] overflow-y-auto`}>
-              <div className={`flex items-center justify-between border-b pb-3 ${ui.modalDivider}`}>
+          <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center p-4 pb-24 sm:pb-4 z-50">
+            <div className={`${ui.card} rounded-2xl max-w-sm w-full shadow-xl max-h-[min(85dvh,calc(100dvh-7rem))] flex flex-col overflow-hidden`}>
+              <div className={`flex items-center justify-between border-b p-6 pb-3 shrink-0 ${ui.modalDivider}`}>
                 <div className="flex items-center gap-2">
                   <Sliders className={`w-5 h-5 ${ui.accentText}`} />
                   <h3 className={`text-base font-bold ${ui.text}`}>Preferences & Settings</h3>
@@ -2268,7 +2301,7 @@ export default function App() {
                 <button type="button" onClick={() => setIsSettingsOpen(false)} className={`${ui.ghostBtn} text-sm font-bold`}>✕</button>
               </div>
 
-              <div className="space-y-4 text-xs">
+              <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <label className={`block ${ui.fieldLabel}`}>Primary grinder setup</label>
                   <select
@@ -2378,12 +2411,15 @@ export default function App() {
                 </div>
               </div>
 
-              <button
-                onClick={() => setIsSettingsOpen(false)}
-                className={`w-full ${currentTheme.primary} font-bold py-2.5 rounded-xl text-sm shadow mt-2`}
-              >
-                Save & Close
-              </button>
+              <div className={`shrink-0 p-6 pt-3 border-t ${ui.modalDivider} ${ui.card}`}>
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(false)}
+                  className={`w-full ${currentTheme.primary} font-bold py-3 rounded-xl text-sm shadow`}
+                >
+                  Save & Close
+                </button>
+              </div>
             </div>
           </div>
         )}

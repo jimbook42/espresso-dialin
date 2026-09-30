@@ -10,6 +10,7 @@ import {
   normalizeBrewGuidanceMode,
   shouldShowBrewGuideIntro,
   shouldShowGraduationPrompt,
+  shouldNavigateToBrewAfterFirstBean,
 } from './guidance.js';
 
 const DIAL = {
@@ -53,13 +54,19 @@ export function runBrewGuidanceTests() {
   assert.equal(shouldShowGraduationPrompt({ brewGuideGuidanceMode: 'none' }, 10), false);
   assert.equal(shouldShowBrewGuideIntro({ brewGuideIntroSeen: true }, 0), false);
 
+  assert.equal(shouldNavigateToBrewAfterFirstBean({ brewGuideEnabled: true }, true, true), true);
+  assert.equal(shouldNavigateToBrewAfterFirstBean({ brewGuideFirstBeanNavDone: true }, true, true), false);
+  assert.equal(shouldNavigateToBrewAfterFirstBean({}, true, false), false);
+
   const withRdtWdtPuck = normalizeBrewAccessories({
     rdt: true,
     wdt: true,
     puckScreen: true,
     distributor: false,
   });
-  const checklistText = buildQuickChecklist(withRdtWdtPuck, DIAL).map((item) => item.text).join('\n');
+  const checklistItems = buildQuickChecklist(withRdtWdtPuck, DIAL);
+  const checklistText = checklistItems.map((item) => item.text).join('\n');
+  assert.ok(checklistItems.length >= 8, `expected split checklist items, got ${checklistItems.length}`);
   assert.match(checklistText, /rdt/i);
   assert.match(checklistText, /wdt/i);
   assert.match(checklistText, /puck screen/i);

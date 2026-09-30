@@ -7,6 +7,9 @@ export function QuickChecklistCard({
   accessories,
   dial,
   onOpenFullGuide,
+  onRevertToFullGuide,
+  onNoChecklist,
+  onEditAccessories,
 }) {
   const [expanded, setExpanded] = useState(true);
   const items = buildQuickChecklist(accessories, dial);
@@ -31,8 +34,8 @@ export function QuickChecklistCard({
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-2 border-t border-[rgba(255,255,255,0.06)]">
-          <ul className={`space-y-1.5 text-xs leading-relaxed ${ui.sub} pt-3`}>
+        <div className="px-4 pb-4 space-y-3 border-t border-[rgba(255,255,255,0.06)]">
+          <ul className={`space-y-2 text-xs leading-relaxed ${ui.sub} pt-3`}>
             {items.map((item) => (
               <li key={item.id} className="flex gap-2">
                 <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${ui.accentText} bg-current`} aria-hidden />
@@ -40,13 +43,36 @@ export function QuickChecklistCard({
               </li>
             ))}
           </ul>
-          <button
-            type="button"
-            onClick={onOpenFullGuide}
-            className={`text-xs font-bold ${ui.accentText} pt-1`}
-          >
-            Need the full guide? Open Full Guide
-          </button>
+          <div className={`flex flex-col gap-2 pt-2 border-t ${ui.modalDivider}`}>
+            <button
+              type="button"
+              onClick={onRevertToFullGuide}
+              className={`text-xs font-bold text-left ${ui.accentText}`}
+            >
+              Switch back to full Brew Guide
+            </button>
+            <button
+              type="button"
+              onClick={onOpenFullGuide}
+              className={`text-xs font-bold text-left ${ui.sub}`}
+            >
+              Open full guide (step-by-step)
+            </button>
+            <button
+              type="button"
+              onClick={onEditAccessories}
+              className={`text-xs font-bold text-left ${ui.sub}`}
+            >
+              Update accessories
+            </button>
+            <button
+              type="button"
+              onClick={onNoChecklist}
+              className={`text-xs font-bold text-left ${ui.muted}`}
+            >
+              I don&apos;t need a checklist
+            </button>
+          </div>
         </div>
       )}
     </div>
