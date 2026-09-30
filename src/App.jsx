@@ -2498,7 +2498,7 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v4.2
+            Espresso Dial-In • v4.3
           </span>
         </footer>
 
