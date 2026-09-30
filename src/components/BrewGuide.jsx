@@ -22,7 +22,9 @@ import {
   Timer,
 } from 'lucide-react';
 import { SettingsToggle } from './SettingsToggle';
+import { BrewGuidanceSwitch } from './BrewGuidanceSwitch';
 import { buildSunbeamGuides } from '../brewGuide/sunbeam';
+import { BREW_GUIDANCE_MODES } from '../brewGuide/guidance';
 import {
   BREW_ACCESSORIES,
   brewDialIsReady,
@@ -255,6 +257,9 @@ export function BrewGuide({
   onEndPreInfusion = () => {},
   onHandoff = () => {},
   onTimerHost = () => {},
+  guidanceMode = BREW_GUIDANCE_MODES.full,
+  onUseQuickChecklist = () => {},
+  onNoChecklist = () => {},
 }) {
   const [screen, setScreen] = useState(setupComplete ? 'menu' : 'setup');
   const [guideId, setGuideId] = useState('temperature');
@@ -551,6 +556,10 @@ export function BrewGuide({
           />
           </div>
         </div>
+
+        {guidanceMode === BREW_GUIDANCE_MODES.full && (
+          <BrewGuidanceSwitch ui={ui} onUseQuickChecklist={onUseQuickChecklist} />
+        )}
       </div>
     );
   }
@@ -733,6 +742,19 @@ export function BrewGuide({
           </>
         )}
       </div>
+
+      {step.kind === 'handoff' && guidanceMode === BREW_GUIDANCE_MODES.full && (
+        <div className="space-y-2 px-1">
+          <BrewGuidanceSwitch ui={ui} onUseQuickChecklist={onUseQuickChecklist} compact />
+          <button
+            type="button"
+            onClick={onNoChecklist}
+            className={`w-full text-xs font-bold ${ui.ghostBtn} py-2`}
+          >
+            I don&apos;t need a checklist
+          </button>
+        </div>
+      )}
 
       <div className={`fixed bottom-[4.25rem] left-0 right-0 p-3 z-40 ${ui.dock} backdrop-blur`} data-timer-dismiss>
         <div className="max-w-xl mx-auto space-y-2">

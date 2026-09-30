@@ -19,6 +19,7 @@ import {
   shotResultImproved,
 } from './src/utils/grinderLogic.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
+import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import assert from 'assert';
 
 async function runTests() {
@@ -132,6 +133,7 @@ async function runTests() {
   );
 
   runBrewGuideTests();
+  runBrewGuidanceTests();
   runDecafRegressionTests();
   runKnownIssueLearningTests();
   runSevereDeviationTests();

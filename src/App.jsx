@@ -25,6 +25,16 @@ import { PressureProfileChart } from './components/PressureProfileChart';
 import { SetteGrindControls, SunbeamGrindControl } from './components/GrindControls';
 import { SettingsToggle } from './components/SettingsToggle';
 import { BrewGuide } from './components/BrewGuide';
+import { BrewGuideIntroModal } from './components/BrewGuideIntroModal';
+import { BrewGraduationPrompt } from './components/BrewGraduationPrompt';
+import { QuickChecklistCard } from './components/QuickChecklistCard';
+import {
+  BREW_GUIDANCE_MODES,
+  countLoggedShots,
+  normalizeBrewGuidanceMode,
+  shouldShowBrewGuideIntro,
+  shouldShowGraduationPrompt,
+} from './brewGuide/guidance';
 import { normalizeBrewAccessories } from './brewGuide/steps';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
@@ -102,6 +112,11 @@ export default function App() {
   const brewGuideEnabled = Boolean(settingsSetting?.brewGuideEnabled);
   const brewGuideSetupComplete = Boolean(settingsSetting?.brewGuideSetupComplete);
   const brewGuideAccessories = normalizeBrewAccessories(settingsSetting?.brewGuideAccessories);
+  const brewGuidanceMode = normalizeBrewGuidanceMode(settingsSetting?.brewGuideGuidanceMode);
+  const loggedShotCount = countLoggedShots(shots);
+  const showBrewGuideIntro = brewGuideEnabled && shouldShowBrewGuideIntro(settingsSetting, loggedShotCount);
+  const showBrewGraduationPrompt = brewGuideEnabled
+    && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
@@ -394,6 +409,41 @@ export default function App() {
       ...currentSettings,
       brewGuideAccessories: normalizeBrewAccessories(accessories),
       brewGuideSetupComplete: true,
+    });
+  };
+
+  const patchBrewGuidanceSettings = async (patch) => {
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({ ...currentSettings, ...patch });
+  };
+
+  const handleDismissBrewGuideIntro = () => {
+    patchBrewGuidanceSettings({ brewGuideIntroSeen: true });
+  };
+
+  const handleUseQuickChecklist = () => {
+    patchBrewGuidanceSettings({
+      brewGuideGuidanceMode: BREW_GUIDANCE_MODES.quick,
+      brewGuideGraduationDismissed: true,
+    });
+  };
+
+  const handleNoBrewChecklist = () => {
+    patchBrewGuidanceSettings({
+      brewGuideGuidanceMode: BREW_GUIDANCE_MODES.none,
+      brewGuideGraduationDismissed: true,
+    });
+  };
+
+  const handleKeepFullBrewGuide = () => {
+    patchBrewGuidanceSettings({ brewGuideGraduationDismissed: true });
+  };
+
+  const handleBrewGuidanceModeChange = async (mode) => {
+    const next = normalizeBrewGuidanceMode(mode);
+    await patchBrewGuidanceSettings({
+      brewGuideGuidanceMode: next,
+      ...(next !== BREW_GUIDANCE_MODES.full ? { brewGuideGraduationDismissed: true } : {}),
     });
   };
 
@@ -1327,6 +1377,35 @@ export default function App() {
                   </div>
                 </div>
 
+                {showBrewGraduationPrompt && (
+                  <BrewGraduationPrompt
+                    ui={ui}
+                    onUseQuickChecklist={handleUseQuickChecklist}
+                    onKeepFullGuide={handleKeepFullBrewGuide}
+                    onNoChecklist={handleNoBrewChecklist}
+                    onDismiss={handleKeepFullBrewGuide}
+                  />
+                )}
+
+                {brewGuideEnabled && brewGuidanceMode === BREW_GUIDANCE_MODES.quick && activeBean && activeRecipe && (
+                  <QuickChecklistCard
+                    ui={ui}
+                    accessories={brewGuideAccessories}
+                    dial={{
+                      beanName: activeBean?.name || '',
+                      doseG: activeRecipe?.targetDoseG,
+                      yieldG: activeRecipe?.targetYieldG,
+                      timeMinS: activeRecipe?.targetTimeMinS,
+                      timeMaxS: activeRecipe?.targetTimeMaxS,
+                      brewTemperatureC: activeRecipe?.brewTemperatureC,
+                      grinderModel,
+                      grindLabel: recommendedGrindDisplay,
+                      previousGrindLabel,
+                    }}
+                    onOpenFullGuide={() => setActiveTab('brew')}
+                  />
+                )}
+
                 {/* ── SHOT LOG FORM ─────────────────────────────────────── */}
                 <form onSubmit={handleLogShot} className="space-y-4">
 
@@ -1561,6 +1640,9 @@ export default function App() {
             onEndPreInfusion={handleEndPreInfusion}
             onHandoff={handleBrewHandoff}
             onTimerHost={setBrewTimerHost}
+            guidanceMode={brewGuidanceMode}
+            onUseQuickChecklist={handleUseQuickChecklist}
+            onNoChecklist={handleNoBrewChecklist}
             timer={{
               running: timerRunning,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
@@ -2169,6 +2251,11 @@ export default function App() {
         )}
 
         <HowItWorksModal open={isHowItWorksOpen} onClose={() => setIsHowItWorksOpen(false)} ui={ui} />
+        <BrewGuideIntroModal
+          open={activeTab === 'brew' && showBrewGuideIntro}
+          onContinue={handleDismissBrewGuideIntro}
+          ui={ui}
+        />
 
         {isSettingsOpen && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -2216,6 +2303,23 @@ export default function App() {
                     </div>
                     <SettingsToggle checked={brewGuideEnabled} onChange={handleToggleBrewGuide} label="Brew Guide" />
                   </div>
+                  {brewGuideEnabled && (
+                    <div className={`border-t ${ui.modalDivider} pt-3 space-y-2`}>
+                      <label className={`block ${ui.fieldLabel}`}>Brew guidance on Dial-In</label>
+                      <select
+                        value={brewGuidanceMode}
+                        onChange={(e) => handleBrewGuidanceModeChange(e.target.value)}
+                        className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold text-xs`}
+                      >
+                        <option value={BREW_GUIDANCE_MODES.full}>Full guide (Brew Guide tab)</option>
+                        <option value={BREW_GUIDANCE_MODES.quick}>Quick checklist on Dial-In</option>
+                        <option value={BREW_GUIDANCE_MODES.none}>No checklist</option>
+                      </select>
+                      <p className={`text-[10px] ${ui.muted}`}>
+                        Quick checklist is a short reminder only. Detailed steps stay in Brew Guide.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className={`flex items-center justify-between pt-2 border-t ${ui.modalDivider}`}>
