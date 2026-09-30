@@ -531,6 +531,7 @@ function completeReading({
       rotationDeg: orientation.rotationDeg,
       rawCx: position.rawCx ?? null,
       rawCy: position.rawCy ?? null,
+      rawRadius: position.rawRadius ?? null,
       rawRotationDeg: orientation.rawRotationDeg ?? orientation.rotationDeg,
       confidence: position.confidence,
       orientationConfidence: orientation.confidence,

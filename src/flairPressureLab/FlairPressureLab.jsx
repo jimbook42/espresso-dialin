@@ -15,6 +15,7 @@ import {
 } from './gaugeConfig';
 import { DiagnosticTrace } from './DiagnosticTrace';
 import { createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
+import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, previewPointToVideo, videoRegionToPreview } from './geometry';
 import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
 import {
@@ -74,6 +75,34 @@ function formatNum(value, digits = 1) {
   return value == null || Number.isNaN(value) ? '—' : Number(value).toFixed(digits);
 }
 
+async function copyPlainText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // The clipboard API can reject without a focused document. The fallback below still tries.
+  }
+  try {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.top = '0';
+    area.style.left = '0';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.focus();
+    area.select();
+    const copied = document.execCommand('copy');
+    area.remove();
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -106,7 +135,10 @@ export function FlairPressureLab() {
   const trackerRef = useRef(createGaugeTracker());
   const historyRef = useRef(createDiagnosticHistory());
   const resizeObserverRef = useRef(null);
+  const copyTimerRef = useRef(null);
   const [trace, setTrace] = useState([]);
+  const [copyNote, setCopyNote] = useState('');
+  const [reportFallback, setReportFallback] = useState('');
 
   const frameRef = useCallback((node) => {
     resizeObserverRef.current?.disconnect();
@@ -122,7 +154,10 @@ export function FlairPressureLab() {
     resizeObserverRef.current = observer;
   }, []);
 
-  useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
+  useEffect(() => () => {
+    resizeObserverRef.current?.disconnect();
+    clearTimeout(copyTimerRef.current);
+  }, []);
 
   const resetReading = useCallback(({ clearHistory = false, clearTracker = true } = {}) => {
     sessionRef.current = null;
@@ -156,6 +191,28 @@ export function FlairPressureLab() {
   const handleRecalibrate = () => {
     if (status !== 'live') return;
     resetReading({ clearHistory: false, clearTracker: false });
+  };
+
+  const handleCopyReport = async () => {
+    const size = videoSizeRef.current;
+    const text = buildDiagnosticReport(historyRef.current.snapshot(), {
+      timestamp: new Date(),
+      cameraWidth: size?.w ?? null,
+      cameraHeight: size?.h ?? null,
+      calibrationStatus: sessionRef.current ? 'calibrated' : 'not calibrated',
+    });
+    const copied = await copyPlainText(text);
+    setReportFallback(copied ? '' : text);
+    setCopyNote(copied ? 'Copied' : 'Copy failed');
+    clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopyNote(''), 2000);
+  };
+
+  const handleClearTrace = () => {
+    historyRef.current.reset();
+    setTrace([]);
+    setCopyNote('');
+    setReportFallback('');
   };
 
   const handleSweep = (value) => {
@@ -269,13 +326,22 @@ export function FlairPressureLab() {
           relativeAngle: reading.relativeAngleDeg,
           smoothedAngle: partial.smoothedAngle ?? null,
           pressure: partial.pressure ?? null,
+          rawPressure: partial.rawPressure ?? null,
+          pressureMeasured: partial.pressureMeasured === true,
           tracking: partial.tracking,
+          needleVisible: partial.needleVisible === true,
+          gaugeHeld: gauge.held === true,
+          flipHeld: partial.flipHeld === true,
+          weakNeedle: partial.weakNeedle === true,
+          angleAccepted: partial.angleAccepted === true,
           gaugeX: gauge.cx,
           gaugeY: gauge.cy,
           rawGaugeX: gauge.rawCx,
           rawGaugeY: gauge.rawCy,
           gaugeRotation: gauge.rotationDeg,
           rawRotation: gauge.rawRotationDeg,
+          gaugeRadius: gauge.radius,
+          rawGaugeRadius: gauge.rawRadius ?? null,
           quality: reading.quality,
           gaugeConfidence: gauge.confidence,
           orientationConfidence: gauge.orientationConfidence,
@@ -305,7 +371,17 @@ export function FlairPressureLab() {
             quality: reading.quality,
           });
         if (!result.ready) {
-          record({ tracking: 'CALIBRATING', smoothedAngle: null, pressure: null });
+          record({
+            tracking: 'CALIBRATING',
+            smoothedAngle: null,
+            pressure: null,
+            rawPressure: null,
+            pressureMeasured: false,
+            needleVisible: false,
+            flipHeld: false,
+            weakNeedle: reading.quality == null || reading.quality < 0.08,
+            angleAccepted: false,
+          });
           setLive({
             ...EMPTY_LIVE,
             ...gaugeFields,
@@ -363,7 +439,18 @@ export function FlairPressureLab() {
         gaugeHeld: gauge.held,
       });
       const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
-      record({ tracking, smoothedAngle: tracked.angle, pressure: pressureBar });
+      const pressureMeasured = Boolean(tracked.accepted) && !blockSample && rawBar != null;
+      record({
+        tracking,
+        smoothedAngle: tracked.angle,
+        pressure: pressureBar,
+        rawPressure: pressureMeasured ? rawBar : null,
+        pressureMeasured,
+        needleVisible: tracked.angle != null && (tracking === 'TRACKING' || tracking === 'UNCERTAIN'),
+        flipHeld: Boolean(choice.held || tracked.rejectedFlip),
+        weakNeedle: weak,
+        angleAccepted: Boolean(tracked.accepted) && !blockSample,
+      });
       setLive({
         tracking,
         displayBar: tracking === 'TRACKING' || tracking === 'UNCERTAIN' ? pressureBar : null,
@@ -629,6 +716,36 @@ export function FlairPressureLab() {
             <dd className={ui.text}>{formatClock(live.signal.crossedAt)} ({live.signal.crossCount})</dd>
           </dl>
           <DiagnosticTrace samples={trace} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopyReport}
+              className={`px-3 py-2 rounded-xl text-xs ${ui.secondaryBtn}`}
+            >
+              Copy diagnostic report
+            </button>
+            <button
+              type="button"
+              onClick={handleClearTrace}
+              className={`px-3 py-2 rounded-xl text-xs ${ui.secondaryBtn}`}
+            >
+              Clear diagnostic history
+            </button>
+            {copyNote && <span className={`text-xs ${ui.text}`}>{copyNote}</span>}
+          </div>
+          {reportFallback && (
+            <textarea
+              readOnly
+              value={reportFallback}
+              onFocus={(event) => event.target.select()}
+              className={`w-full h-48 p-2 rounded-xl font-mono text-[10px] ${ui.input}`}
+              aria-label="Diagnostic report"
+            />
+          )}
+          <p className={`text-[10px] ${ui.muted}`}>
+            Development only. The report is the last 30 seconds held in memory. Copying does not upload or save it.
+            {reportFallback ? ' Clipboard was blocked, so the report is in the box above.' : ''}
+          </p>
           <p className={`text-[10px] ${ui.muted} leading-relaxed`}>
             Edge quality is an internal score, not a confidence percentage.
             Pressure uses the needle angle relative to the gauge that is being followed, minus the rest angle once.

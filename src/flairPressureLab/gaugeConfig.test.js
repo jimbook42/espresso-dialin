@@ -13,6 +13,7 @@ import { cameraErrorMessage } from './cameraErrors.js';
 import { circularMedian, createAngleTracker, createRestCalibration, createRisingThreshold } from './smoothPressure.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
 import { createDiagnosticHistory, stabilityStats } from './diagnosticHistory.js';
+import { buildDiagnosticReport, formatLocalTimestamp } from './diagnosticReport.js';
 import {
   analyzeGaugeImage,
   createGaugeTracker,
@@ -364,6 +365,63 @@ export function runFlairPressureLabTests() {
   assert.equal(stats.relativeDelta, 0);
   assert.equal(stats.smoothedDelta, 0);
   assert.ok(stats.pressureStd > 0.1);
+  assert.equal(typeof stillReads[0].gauge.rawRadius, 'number');
+
+  const when = new Date(2026, 5, 15, 14, 30, 5);
+  const reportSamples = [
+    { t: 1000, tracking: 'CALIBRATING', rawAngle: 10, relativeAngle: 10, smoothedAngle: null, pressure: null, rawPressure: null, pressureMeasured: false, needleVisible: false, gaugeHeld: false, flipHeld: false, weakNeedle: false, angleAccepted: false, gaugeX: 100, gaugeY: 200, rawGaugeX: 101, rawGaugeY: 202, gaugeRotation: 0, rawRotation: 1, gaugeRadius: 40, rawGaugeRadius: 41, quality: 0.2, gaugeConfidence: 0.5, orientationConfidence: 0.4 },
+    { t: 1200, tracking: 'TRACKING', rawAngle: 350, relativeAngle: 350, smoothedAngle: 350, pressure: 0, rawPressure: 0, pressureMeasured: true, needleVisible: true, gaugeHeld: false, flipHeld: false, weakNeedle: false, angleAccepted: true, gaugeX: 100, gaugeY: 200, rawGaugeX: 103, rawGaugeY: 200, gaugeRotation: 0, rawRotation: 1, gaugeRadius: 40, rawGaugeRadius: 41, quality: 0.5, gaugeConfidence: 0.6, orientationConfidence: 0.7 },
+    { t: 1500, tracking: 'LOST', rawAngle: 10, relativeAngle: 10, smoothedAngle: 350, pressure: 0, rawPressure: null, pressureMeasured: false, needleVisible: false, gaugeHeld: false, flipHeld: false, weakNeedle: true, angleAccepted: false, gaugeX: 100, gaugeY: 200, rawGaugeX: 103, rawGaugeY: 206, gaugeRotation: 0, rawRotation: 1, gaugeRadius: 40, rawGaugeRadius: 41, quality: 0.05, gaugeConfidence: 0.4, orientationConfidence: 0.3 },
+    { t: 1800, tracking: 'TRACKING', rawAngle: 12, relativeAngle: 20, smoothedAngle: 12, pressure: 0.4, rawPressure: 2.4, pressureMeasured: true, needleVisible: true, gaugeHeld: false, flipHeld: false, weakNeedle: false, angleAccepted: true, gaugeX: 108, gaugeY: 200, rawGaugeX: 103, rawGaugeY: 206, gaugeRotation: 9, rawRotation: 1, gaugeRadius: 40, rawGaugeRadius: 41, quality: 0.55, gaugeConfidence: 0.7, orientationConfidence: 0.8 },
+  ];
+  const report = buildDiagnosticReport(reportSamples, {
+    timestamp: when,
+    cameraWidth: 1280,
+    cameraHeight: 720,
+    calibrationStatus: 'calibrated',
+  });
+  assert.ok(report.startsWith('FLAIR PRESSURE LAB — DIAGNOSTIC REPORT'));
+  assert.ok(report.includes(`Timestamp: ${formatLocalTimestamp(when)}`));
+  assert.ok(report.includes('Camera resolution: 1280×720'));
+  assert.ok(report.includes('Calibration status: calibrated'));
+  assert.ok(report.includes('Physical movement is user-confirmed externally.'));
+  assert.ok(report.includes('Valid pressure samples: 2'));
+  assert.ok(report.includes('Held-pressure samples: 1'));
+  assert.ok(report.includes('First: 0.000 bar'));
+  assert.ok(report.includes('Last: 2.400 bar'));
+  assert.ok(report.includes('Standard deviation: 1.697 bar'));
+  const screenPart = report.split('Accepted/raw relative angle:')[0];
+  assert.ok(screenPart.includes('Mean: 5.50°'), screenPart);
+  assert.ok(report.includes('Samples with valid needle: 2'));
+  assert.ok(report.includes('Detection rate: 50.0%'));
+  assert.ok(report.includes('Valid → invalid transitions: 1'));
+  assert.ok(report.includes('Invalid → valid transitions: 2'));
+  assert.ok(report.includes('Hidden samples while LOST: 1'));
+  assert.ok(report.includes('Needle score below 0.08: 1'));
+  assert.ok(report.includes('TRACKING → LOST: 1'));
+  assert.ok(report.includes('LOST → TRACKING: 1'));
+  assert.ok(report.includes('CALIBRATING → TRACKING: 1'));
+  assert.ok(report.includes('00.20  Calibration complete'));
+  assert.ok(report.includes('00.50  Needle became invalid'));
+  assert.ok(report.includes('00.80  Needle valid again'));
+  assert.ok(report.includes('Accepted relative angle changed 30.0°'));
+  assert.ok(report.includes('Applied centre moved 8.0 px'));
+  assert.ok(report.includes('Applied rotation changed 9.0°'));
+  assert.ok(report.includes('Measured pressure entered the 2 bar range (2.40 bar)'));
+  assert.ok(report.includes('Needle raw angle SD: 10.38'));
+  assert.ok(report.includes('Gauge applied centre SD: 4.00'));
+  assert.ok(report.includes('TRACKING %: 50.0%'));
+  assert.ok(report.includes('LOST %: 25.0%'));
+  assert.ok(report.includes('Needle valid→invalid transitions: 1'));
+  const bare = buildDiagnosticReport([{ t: 5, tracking: 'TRACKING', rawAngle: 1, relativeAngle: 1, smoothedAngle: 1, pressure: 1 }], {
+    timestamp: when,
+    calibrationStatus: 'not calibrated',
+  });
+  assert.ok(bare.includes('Valid pressure samples: N/A'));
+  assert.ok(bare.includes('Raw:\n  N/A (raw radius was not recorded)'));
+  assert.ok(bare.includes('Camera resolution: N/A'));
+  const blankReport = buildDiagnosticReport([], { timestamp: when, calibrationStatus: 'not calibrated' });
+  assert.ok(blankReport.includes('No diagnostic samples in memory.'));
 }
 
 function angDist(a, b) {

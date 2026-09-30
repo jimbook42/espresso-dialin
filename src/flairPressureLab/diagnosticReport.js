@@ -1,0 +1,471 @@
+/**
+ * Plain-text snapshot of the in-memory lab trace.
+ * Reads recorded samples only. Does not change detection, tracking, or pressure.
+ */
+import { DIAGNOSTIC_HISTORY_MS } from './diagnosticHistory.js';
+import { EXTRACTION_START_BAR, REST_MAX_SPREAD_DEG, wrap360, wrapDelta } from './gaugeConfig.js';
+
+const LOST_SCORE = 0.08;
+const UNCERTAIN_SCORE = 0.18;
+const JITTER_UNCERTAIN_DEG = 12;
+const CENTRE_EVENT_FRACTION = 0.1;
+const ROTATION_EVENT_DEG = 8;
+const PRESSURE_NEAR_ZERO_BAR = 0.5;
+
+function finite(value) {
+  return value != null && !Number.isNaN(value);
+}
+
+function nums(values) {
+  return values.filter(finite);
+}
+
+function sampleSd(values) {
+  if (values.length < 2) return null;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
+function linearStats(values) {
+  const data = nums(values);
+  if (!data.length) return { n: 0, min: null, max: null, mean: null, sd: null };
+  const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
+  return {
+    n: data.length,
+    min: Math.min(...data),
+    max: Math.max(...data),
+    mean,
+    sd: sampleSd(data),
+  };
+}
+
+function circularStats(values) {
+  const data = nums(values);
+  if (!data.length) return { n: 0, min: null, max: null, mean: null, sd: null };
+  const base = data[0];
+  const deltas = data.map((value) => wrapDelta(base, value));
+  const meanDelta = deltas.reduce((sum, value) => sum + value, 0) / deltas.length;
+  return {
+    n: data.length,
+    min: Math.min(...data),
+    max: Math.max(...data),
+    mean: wrap360(base + meanDelta),
+    sd: sampleSd(deltas),
+  };
+}
+
+function fmt(value, digits) {
+  if (!finite(value)) return 'N/A';
+  return Number(value).toFixed(digits);
+}
+
+function fmtPct(count, total) {
+  if (!total) return 'N/A';
+  return `${((count / total) * 100).toFixed(1)}%`;
+}
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+export function formatLocalTimestamp(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+function clockOffset(start, time) {
+  const seconds = Math.max(0, (time - start) / 1000);
+  const whole = Math.floor(seconds);
+  const frac = Math.round((seconds - whole) * 100);
+  const adjusted = frac === 100 ? whole + 1 : whole;
+  const fraction = frac === 100 ? 0 : frac;
+  return `${pad2(adjusted)}.${pad2(fraction)}`;
+}
+
+function hasKey(samples, key) {
+  return samples.some((sample) => Object.prototype.hasOwnProperty.call(sample, key));
+}
+
+function overlayVisible(sample) {
+  if (Object.prototype.hasOwnProperty.call(sample, 'needleVisible')) return sample.needleVisible === true;
+  if (sample.smoothedAngle == null) return false;
+  return sample.tracking === 'TRACKING' || sample.tracking === 'UNCERTAIN';
+}
+
+function statBlock(stats, digits, suffix = '') {
+  return [
+    `  Samples: ${stats.n}`,
+    `  Min: ${fmt(stats.min, digits)}${suffix}`,
+    `  Max: ${fmt(stats.max, digits)}${suffix}`,
+    `  Mean: ${fmt(stats.mean, digits)}${suffix}`,
+    `  Standard deviation: ${fmt(stats.sd, digits)}${suffix}`,
+  ].join('\n');
+}
+
+function deltaLine(values, digits, unit) {
+  const stats = linearStats(values);
+  if (!stats.n) return `N/A (${unit}, no consecutive pairs)`;
+  return `${fmt(stats.min, digits)} / ${fmt(stats.max, digits)} / ${fmt(stats.mean, digits)} / ${fmt(stats.sd, digits)} ${unit} (${stats.n} steps)`;
+}
+
+function frameDeltas(samples, pick, circular = false) {
+  const deltas = [];
+  for (let i = 1; i < samples.length; i += 1) {
+    const previous = pick(samples[i - 1]);
+    const current = pick(samples[i]);
+    if (!finite(previous) || !finite(current)) continue;
+    deltas.push(circular ? wrapDelta(previous, current) : current - previous);
+  }
+  return deltas;
+}
+
+function gapMs(samples, predicate) {
+  let ms = 0;
+  for (let i = 0; i < samples.length - 1; i += 1) {
+    if (!predicate(samples[i])) continue;
+    const gap = samples[i + 1].t - samples[i].t;
+    if (gap > 0) ms += gap;
+  }
+  return ms;
+}
+
+function longestRunMs(samples, predicate) {
+  let best = 0;
+  let index = 0;
+  while (index < samples.length) {
+    if (!predicate(samples[index])) {
+      index += 1;
+      continue;
+    }
+    let end = index;
+    while (end + 1 < samples.length && predicate(samples[end + 1])) end += 1;
+    const stop = end + 1 < samples.length ? samples[end + 1].t : samples[end].t;
+    best = Math.max(best, stop - samples[index].t);
+    index = end + 1;
+  }
+  return best;
+}
+
+function countTransition(samples, from, to, pick) {
+  let count = 0;
+  for (let i = 1; i < samples.length; i += 1) {
+    if (pick(samples[i - 1]) === from && pick(samples[i]) === to) count += 1;
+  }
+  return count;
+}
+
+function countFlag(samples, key) {
+  if (!hasKey(samples, key)) return null;
+  return samples.filter((sample) => sample[key] === true).length;
+}
+
+function centreSpread(samples, pickX, pickY) {
+  const xs = [];
+  const ys = [];
+  samples.forEach((sample) => {
+    const x = pickX(sample);
+    const y = pickY(sample);
+    if (!finite(x) || !finite(y)) return;
+    xs.push(x);
+    ys.push(y);
+  });
+  const xSd = sampleSd(xs);
+  const ySd = sampleSd(ys);
+  if (xSd == null || ySd == null) return null;
+  return Math.hypot(xSd, ySd);
+}
+
+/** @param {object[]} samples @param {{ timestamp?: Date, cameraWidth?: number, cameraHeight?: number, calibrationStatus?: string }} context */
+export function buildDiagnosticReport(samples, context = {}) {
+  const rows = Array.isArray(samples) ? samples : [];
+  const timestamp = context.timestamp instanceof Date ? context.timestamp : new Date();
+  const width = context.cameraWidth;
+  const height = context.cameraHeight;
+  const resolution = finite(width) && finite(height) ? `${width}×${height}` : 'N/A';
+  const calibration = context.calibrationStatus || 'N/A';
+  const lines = [];
+  const push = (line = '') => lines.push(line);
+
+  push('FLAIR PRESSURE LAB — DIAGNOSTIC REPORT');
+  push(`Timestamp: ${formatLocalTimestamp(timestamp)}`);
+  if (!rows.length) {
+    push('Window: N/A (no samples)');
+  } else {
+    const span = rows[rows.length - 1].t - rows[0].t;
+    push(`Window: ${formatLocalTimestamp(new Date(rows[0].t))} → ${formatLocalTimestamp(new Date(rows[rows.length - 1].t))} (${(span / 1000).toFixed(2)}s between first and last sample, ${rows.length} samples, buffer ${DIAGNOSTIC_HISTORY_MS / 1000}s)`);
+  }
+  push(`Camera resolution: ${resolution}`);
+  push(`Calibration status: ${calibration}`);
+  push('');
+  push('PHYSICAL TEST CONTEXT');
+  push('Physical movement is user-confirmed externally.');
+  push('');
+
+  if (!rows.length) {
+    push('No diagnostic samples in memory.');
+    return lines.join('\n');
+  }
+
+  const start = rows[0].t;
+  const measured = hasKey(rows, 'pressureMeasured')
+    ? rows.filter((sample) => sample.pressureMeasured === true && finite(sample.rawPressure))
+    : null;
+  const pressureStats = measured ? linearStats(measured.map((sample) => sample.rawPressure)) : null;
+  const heldPressure = hasKey(rows, 'pressureMeasured')
+    ? rows.filter((sample) => sample.pressureMeasured === false && finite(sample.pressure) && sample.tracking !== 'CALIBRATING').length
+    : null;
+
+  push('PRESSURE');
+  push('Values are the raw calculated bar on frames that accepted a new needle sample.');
+  push('Held pressure is the last smoothed value kept on the screen and is excluded from min, max, mean, and standard deviation.');
+  if (!pressureStats) {
+    push('Min: N/A');
+    push('Max: N/A');
+    push('Mean: N/A');
+    push('Standard deviation: N/A');
+    push('First: N/A');
+    push('Last: N/A');
+    push('Valid pressure samples: N/A (pressureMeasured was not recorded)');
+    push('Held-pressure samples: N/A (pressureMeasured was not recorded)');
+  } else {
+    push(`Min: ${fmt(pressureStats.min, 3)} bar`);
+    push(`Max: ${fmt(pressureStats.max, 3)} bar`);
+    push(`Mean: ${fmt(pressureStats.mean, 3)} bar`);
+    push(`Standard deviation: ${fmt(pressureStats.sd, 3)} bar`);
+    push(`First: ${fmt(measured[0]?.rawPressure, 3)} bar`);
+    push(`Last: ${fmt(measured[measured.length - 1]?.rawPressure, 3)} bar`);
+    push(`Valid pressure samples: ${measured.length}`);
+    push(`Held-pressure samples: ${heldPressure}`);
+  }
+  push('');
+
+  const screen = circularStats(rows.map((sample) => sample.rawAngle));
+  const relative = circularStats(rows.map((sample) => sample.relativeAngle));
+  const smoothed = circularStats(rows.map((sample) => sample.smoothedAngle));
+  const acceptedRelative = hasKey(rows, 'angleAccepted')
+    ? circularStats(rows.filter((sample) => sample.angleAccepted === true).map((sample) => sample.relativeAngle))
+    : null;
+  const visibleCount = rows.filter(overlayVisible).length;
+  const visibilityRecorded = hasKey(rows, 'needleVisible');
+
+  push('NEEDLE');
+  push('Raw screen angle:');
+  push('Degrees in the unmirrored frame. 0 is right, clockwise is positive. Mean and standard deviation are circular. Min and max are the stored degree values.');
+  push(statBlock(screen, 2, '°'));
+  push('Accepted/raw relative angle:');
+  push('Detector relative angle on every frame (screen angle minus applied gauge rotation). Not filtered to accepted frames.');
+  push(statBlock(relative, 2, '°'));
+  if (!acceptedRelative) {
+    push('Relative angle on accepted frames: N/A (angleAccepted was not recorded)');
+  } else {
+    push('Relative angle on accepted frames:');
+    push(statBlock(acceptedRelative, 2, '°'));
+  }
+  push('Smoothed relative angle:');
+  push('The angle tracker output, including the held value on frames that did not accept a new sample.');
+  push(statBlock(smoothed, 2, '°'));
+  push('Needle detection:');
+  push(`  Samples: ${rows.length}`);
+  push(`  Samples with valid needle: ${visibleCount}`);
+  push(`  Detection rate: ${fmtPct(visibleCount, rows.length)}`);
+  push(visibilityRecorded
+    ? '  Valid needle means the green overlay was shown. That flag is recorded with each sample.'
+    : '  Valid needle is derived: tracking is TRACKING or UNCERTAIN and a smoothed angle is stored. That is the green overlay rule. needleVisible was not recorded.');
+  push(`  The green line is hidden when the state is LOST or CALIBRATING. LOST is the needle score below ${LOST_SCORE} when the frame is not gauge-held and not flip-held. UNCERTAIN still shows the line. UNCERTAIN is gauge held, flip held, an unaccepted sample, needle score below ${UNCERTAIN_SCORE}, or jitter above ${JITTER_UNCERTAIN_DEG}°.`);
+  push('');
+
+  const visible = (sample) => overlayVisible(sample);
+  const hidden = (sample) => !overlayVisible(sample);
+  const lostHidden = rows.filter((sample) => sample.tracking === 'LOST' && !overlayVisible(sample)).length;
+  const calibratingHidden = rows.filter((sample) => sample.tracking === 'CALIBRATING' && !overlayVisible(sample)).length;
+  const otherHidden = rows.filter((sample) => !overlayVisible(sample) && sample.tracking !== 'LOST' && sample.tracking !== 'CALIBRATING').length;
+
+  push('NEEDLE CONTINUITY');
+  push('Valid means the green needle line. Durations use the gap from each sample to the next. The last sample adds no further time. A run that reaches the last sample ends at that sample.');
+  push(`Valid → invalid transitions: ${countTransition(rows, true, false, overlayVisible)}`);
+  push(`Invalid → valid transitions: ${countTransition(rows, false, true, overlayVisible)}`);
+  push(`Longest continuous valid period: ${fmt(longestRunMs(rows, visible) / 1000, 2)} s`);
+  push(`Longest continuous invalid period: ${fmt(longestRunMs(rows, hidden) / 1000, 2)} s`);
+  push(`Total invalid duration: ${fmt(gapMs(rows, hidden) / 1000, 2)} s`);
+  push(`Total uncertain duration: ${fmt(gapMs(rows, (sample) => sample.tracking === 'UNCERTAIN') / 1000, 2)} s (state UNCERTAIN; the green line stays visible in this state)`);
+  push(`Total lost duration: ${fmt(gapMs(rows, (sample) => sample.tracking === 'LOST') / 1000, 2)} s (state LOST; this hides the green line)`);
+  push(`Hidden samples while LOST: ${lostHidden}`);
+  push(`Hidden samples while CALIBRATING: ${calibratingHidden}`);
+  push(`Hidden samples for another reason: ${otherHidden}`);
+  const gaugeHeldCount = countFlag(rows, 'gaugeHeld');
+  const flipHeldCount = countFlag(rows, 'flipHeld');
+  const weakCount = countFlag(rows, 'weakNeedle');
+  const acceptedCount = countFlag(rows, 'angleAccepted');
+  push('Recorded causes, counted per sample. These do not all hide the green line.');
+  push(`  Gauge pose held: ${gaugeHeldCount == null ? 'N/A' : gaugeHeldCount} (state becomes UNCERTAIN; line stays up when the needle score is otherwise ok)`);
+  push(`  Flip held: ${flipHeldCount == null ? 'N/A' : flipHeldCount} (tail or about-180° reject; state becomes UNCERTAIN)`);
+  push(`  Needle score below ${LOST_SCORE}: ${weakCount == null ? 'N/A' : weakCount} (this is what makes state LOST and hides the line, unless gauge-held or flip-held already forced UNCERTAIN)`);
+  push(`  Angle sample accepted: ${acceptedCount == null ? 'N/A' : acceptedCount}`);
+  push('');
+
+  push('GAUGE CENTRE');
+  push('ΔX and ΔY are frame-to-frame changes in video pixels. They are not offsets from the first sample. Order is min / max / mean / standard deviation.');
+  push('Raw detector:');
+  push(`  ΔX min/max/mean/SD: ${deltaLine(frameDeltas(rows, (sample) => sample.rawGaugeX), 2, 'px')}`);
+  push(`  ΔY min/max/mean/SD: ${deltaLine(frameDeltas(rows, (sample) => sample.rawGaugeY), 2, 'px')}`);
+  push('Applied pose:');
+  push(`  ΔX min/max/mean/SD: ${deltaLine(frameDeltas(rows, (sample) => sample.gaugeX), 2, 'px')}`);
+  push(`  ΔY min/max/mean/SD: ${deltaLine(frameDeltas(rows, (sample) => sample.gaugeY), 2, 'px')}`);
+  push('');
+
+  push('GAUGE ROTATION');
+  push('Stored degrees. Mean and standard deviation are circular. Min and max are the stored values in [0, 360) and are not circular.');
+  push('Raw detector:');
+  push(statBlock(circularStats(rows.map((sample) => sample.rawRotation)), 2, '°'));
+  push('Applied:');
+  push(statBlock(circularStats(rows.map((sample) => sample.gaugeRotation)), 2, '°'));
+  push('');
+
+  push('GAUGE RADIUS');
+  push('Absolute radius in video pixels. Not a delta.');
+  if (!hasKey(rows, 'rawGaugeRadius')) {
+    push('Raw:');
+    push('  N/A (raw radius was not recorded)');
+  } else {
+    push('Raw:');
+    push(statBlock(linearStats(rows.map((sample) => sample.rawGaugeRadius)), 2, ' px'));
+  }
+  if (!hasKey(rows, 'gaugeRadius')) {
+    push('Applied:');
+    push('  N/A (applied radius was not recorded)');
+  } else {
+    push('Applied:');
+    push(statBlock(linearStats(rows.map((sample) => sample.gaugeRadius)), 2, ' px'));
+  }
+  push('');
+
+  push('QUALITY');
+  push('Needle score:');
+  push(statBlock(linearStats(rows.map((sample) => sample.quality)), 3));
+  push('Gauge confidence:');
+  push(statBlock(linearStats(rows.map((sample) => sample.gaugeConfidence)), 3));
+  push('Orientation score:');
+  push(statBlock(linearStats(rows.map((sample) => sample.orientationConfidence)), 3));
+  push('');
+
+  const states = ['TRACKING', 'UNCERTAIN', 'LOST', 'CALIBRATING'];
+  push('STATE');
+  push('Duration is the sum of gaps from a sample in that state to the next sample. The last sample is counted but adds no duration.');
+  states.forEach((state) => {
+    const count = rows.filter((sample) => sample.tracking === state).length;
+    push(`${state}:`);
+    push(`  Samples: ${count}`);
+    push(`  Approx duration: ${fmt(gapMs(rows, (sample) => sample.tracking === state) / 1000, 2)} s`);
+  });
+  push('');
+
+  const pairs = [
+    ['TRACKING', 'UNCERTAIN'],
+    ['UNCERTAIN', 'TRACKING'],
+    ['TRACKING', 'LOST'],
+    ['LOST', 'TRACKING'],
+    ['UNCERTAIN', 'LOST'],
+    ['LOST', 'UNCERTAIN'],
+  ];
+  push('STATE TRANSITIONS');
+  pairs.forEach(([from, to]) => {
+    push(`${from} → ${to}: ${countTransition(rows, from, to, (sample) => sample.tracking)}`);
+  });
+  const listed = new Set(pairs.map(([from, to]) => `${from}→${to}`));
+  const extras = new Map();
+  for (let i = 1; i < rows.length; i += 1) {
+    const from = rows[i - 1].tracking;
+    const to = rows[i].tracking;
+    if (!from || !to || from === to) continue;
+    const key = `${from}→${to}`;
+    if (listed.has(key)) continue;
+    extras.set(key, (extras.get(key) || 0) + 1);
+  }
+  extras.forEach((count, key) => {
+    const [from, to] = key.split('→');
+    push(`${from} → ${to}: ${count}`);
+  });
+  push('');
+
+  const events = [];
+  let sawCalibrating = false;
+  let announcedCalibration = false;
+  let previousAcceptedAngle = null;
+  let previousMeasuredPressure = null;
+  rows.forEach((sample, index) => {
+    if (sample.tracking === 'CALIBRATING') sawCalibrating = true;
+    if (!announcedCalibration && sawCalibrating && sample.tracking && sample.tracking !== 'CALIBRATING') {
+      announcedCalibration = true;
+      events.push({ t: sample.t, text: 'Calibration complete' });
+    }
+    if (index > 0) {
+      const previous = rows[index - 1];
+      if (overlayVisible(previous) !== overlayVisible(sample)) {
+        events.push({
+          t: sample.t,
+          text: overlayVisible(sample) ? 'Needle valid again' : 'Needle became invalid',
+        });
+      }
+      if (previous.tracking && sample.tracking && previous.tracking !== sample.tracking) {
+        events.push({ t: sample.t, text: `State ${previous.tracking} → ${sample.tracking}` });
+      }
+      if (sample.angleAccepted === true && finite(sample.relativeAngle) && finite(previousAcceptedAngle)) {
+        const step = Math.abs(wrapDelta(previousAcceptedAngle, sample.relativeAngle));
+        if (step > REST_MAX_SPREAD_DEG) {
+          events.push({ t: sample.t, text: `Accepted relative angle changed ${step.toFixed(1)}°` });
+        }
+      }
+      if (finite(previous.gaugeX) && finite(previous.gaugeY) && finite(sample.gaugeX) && finite(sample.gaugeY) && finite(sample.gaugeRadius)) {
+        const step = Math.hypot(sample.gaugeX - previous.gaugeX, sample.gaugeY - previous.gaugeY);
+        if (step > sample.gaugeRadius * CENTRE_EVENT_FRACTION) {
+          events.push({ t: sample.t, text: `Applied centre moved ${step.toFixed(1)} px` });
+        }
+      }
+      if (finite(previous.gaugeRotation) && finite(sample.gaugeRotation)) {
+        const step = Math.abs(wrapDelta(previous.gaugeRotation, sample.gaugeRotation));
+        if (step >= ROTATION_EVENT_DEG) {
+          events.push({ t: sample.t, text: `Applied rotation changed ${step.toFixed(1)}°` });
+        }
+      }
+    }
+    if (sample.angleAccepted === true && finite(sample.relativeAngle)) previousAcceptedAngle = sample.relativeAngle;
+    if (sample.pressureMeasured === true && finite(sample.rawPressure)) {
+      if (previousMeasuredPressure != null && previousMeasuredPressure < PRESSURE_NEAR_ZERO_BAR && sample.rawPressure >= EXTRACTION_START_BAR) {
+        events.push({ t: sample.t, text: `Measured pressure entered the ${EXTRACTION_START_BAR} bar range (${sample.rawPressure.toFixed(2)} bar)` });
+      }
+      previousMeasuredPressure = sample.rawPressure;
+    }
+  });
+
+  push('EVENTS');
+  push(`Thresholds: accepted relative-angle step above ${REST_MAX_SPREAD_DEG}°; applied centre step above ${CENTRE_EVENT_FRACTION * 100}% of applied radius; applied rotation step at least ${ROTATION_EVENT_DEG}°; measured pressure from below ${PRESSURE_NEAR_ZERO_BAR} bar to at least ${EXTRACTION_START_BAR} bar.`);
+  if (!events.length) push('None.');
+  events.forEach((event) => {
+    push(`${clockOffset(start, event.t)}  ${event.text}`);
+  });
+  push('');
+
+  const trackingCount = rows.filter((sample) => sample.tracking === 'TRACKING').length;
+  const uncertainCount = rows.filter((sample) => sample.tracking === 'UNCERTAIN').length;
+  const lostCount = rows.filter((sample) => sample.tracking === 'LOST').length;
+  const needleMean = linearStats(rows.map((sample) => sample.quality)).mean;
+  const confidenceMean = linearStats(rows.map((sample) => sample.gaugeConfidence)).mean;
+
+  push('SUMMARY');
+  push(`Pressure SD: ${pressureStats ? fmt(pressureStats.sd, 3) : 'N/A'}`);
+  push(`Needle raw angle SD: ${fmt(screen.sd, 2)}`);
+  push(`Needle relative angle SD: ${fmt(relative.sd, 2)}`);
+  push(`Needle smoothed angle SD: ${fmt(smoothed.sd, 2)}`);
+  push(`Needle detection rate: ${fmtPct(visibleCount, rows.length)}`);
+  push(`Gauge applied centre SD: ${fmt(centreSpread(rows, (sample) => sample.gaugeX, (sample) => sample.gaugeY), 2)}`);
+  push(`Gauge applied rotation SD: ${fmt(circularStats(rows.map((sample) => sample.gaugeRotation)).sd, 2)}`);
+  push(`Needle score mean: ${fmt(needleMean, 3)}`);
+  push(`Gauge confidence mean: ${fmt(confidenceMean, 3)}`);
+  push(`TRACKING %: ${fmtPct(trackingCount, rows.length)}`);
+  push(`UNCERTAIN %: ${fmtPct(uncertainCount, rows.length)}`);
+  push(`LOST %: ${fmtPct(lostCount, rows.length)}`);
+  push(`Needle valid→invalid transitions: ${countTransition(rows, true, false, overlayVisible)}`);
+  push(`Needle invalid→valid transitions: ${countTransition(rows, false, true, overlayVisible)}`);
+
+  return lines.join('\n');
+}
