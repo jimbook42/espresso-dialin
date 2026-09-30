@@ -263,6 +263,7 @@ export function BrewGuide({
   accessoriesOpenRequest = 0,
   accessoriesReturnTo = 'brew',
   onAccessoriesExit = () => {},
+  onAccessoriesOpenHandled = () => {},
 }) {
   const [screen, setScreen] = useState(setupComplete ? 'menu' : 'setup');
   const [setupReturnTo, setSetupReturnTo] = useState('brew');
@@ -298,10 +299,13 @@ export function BrewGuide({
     setSetupReturnTo(accessoriesReturnTo);
     setDraft(normalizeBrewAccessories(accessories));
     setScreen('setup');
-  }, [accessoriesOpenRequest, accessoriesReturnTo, accessories]);
+    onAccessoriesOpenHandled();
+  }, [accessoriesOpenRequest, accessoriesReturnTo, onAccessoriesOpenHandled]);
 
   const exitAccessorySetup = () => {
     if (setupReturnTo === 'dial') {
+      setSetupReturnTo('brew');
+      setScreen('menu');
       onAccessoriesExit('dial');
       return;
     }

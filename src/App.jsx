@@ -460,7 +460,13 @@ export default function App() {
     setBrewAccessoriesOpenRequest((count) => count + 1);
   };
 
+  const handleAccessoriesOpenHandled = () => {
+    setBrewAccessoriesOpenRequest(0);
+  };
+
   const handleExitBrewAccessories = (target) => {
+    setBrewAccessoriesReturnTo('brew');
+    setBrewAccessoriesOpenRequest(0);
     if (target === 'dial') setActiveTab('dial');
   };
 
@@ -1684,6 +1690,7 @@ export default function App() {
             accessoriesOpenRequest={brewAccessoriesOpenRequest}
             accessoriesReturnTo={brewAccessoriesReturnTo}
             onAccessoriesExit={handleExitBrewAccessories}
+            onAccessoriesOpenHandled={handleAccessoriesOpenHandled}
             timer={{
               running: timerRunning,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
