@@ -508,6 +508,45 @@ export function runFlairPressureLabTests() {
   assert.ok(Math.abs(wrapDelta(18, rigidRead.gauge.rotationDeg)) <= 8, `reacquire rotation ${rigidRead.gauge.rotationDeg}`);
   assert.ok(Math.abs(wrapDelta(47, rigidRead.relativeAngleDeg)) <= 10, `rigid reacquire relative ${rigidRead.relativeAngleDeg}`);
 
+  const midTracker = createGaugeTracker();
+  midTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  for (let i = 0; i < 6; i += 1) analyzeGaugeImage(farHome, midTracker);
+  const midAway = makeGaugeImage(280, {
+    cx: 90 + farJump, cy: 140, radius: 32, needleDeg: 87, rotationDeg: 40,
+  });
+  let midRead = null;
+  const midReads = [];
+  for (let i = 0; i < 16; i += 1) {
+    midRead = analyzeGaugeImage(midAway, midTracker);
+    midReads.push(midRead);
+  }
+  const midError = Math.hypot(midRead.gauge.cx - (90 + farJump), midRead.gauge.cy - 140);
+  assert.ok(midError <= 8, `in-range rotation was not reacquired (${midRead.gauge.cx.toFixed(1)}, ${midRead.gauge.cy.toFixed(1)})`);
+  assert.ok(Math.abs(wrapDelta(40, midRead.gauge.rotationDeg)) <= 8, `in-range reacquire rotation ${midRead.gauge.rotationDeg}`);
+  assert.ok(midReads.some((reading) => reading.gauge.reacquireAccepted), 'in-range rotation was not confirmed');
+
+  const quarterTracker = createGaugeTracker();
+  quarterTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  for (let i = 0; i < 6; i += 1) analyzeGaugeImage(farHome, quarterTracker);
+  const quarterAway = makeGaugeImage(280, {
+    cx: 90 + farJump, cy: 140, radius: 32, needleDeg: 137, rotationDeg: 90,
+  });
+  const quarterReads = [];
+  for (let i = 0; i < 16; i += 1) quarterReads.push(analyzeGaugeImage(quarterAway, quarterTracker));
+  const quarterLast = quarterReads[quarterReads.length - 1];
+  assert.ok(
+    quarterReads.every((reading) => Math.abs(wrapDelta(0, reading.gauge.rotationDeg)) < 60),
+    `quarter-turn reacquire rotated to ${quarterLast.gauge.rotationDeg}`,
+  );
+  assert.ok(
+    quarterReads.every((reading) => reading.gauge.reacquireAccepted === false),
+    'quarter-turn past the rotation window was accepted',
+  );
+  assert.ok(
+    Math.hypot(quarterLast.gauge.cx - 90, quarterLast.gauge.cy - 140) <= 8,
+    `quarter-turn moved the centre to ${quarterLast.gauge.cx.toFixed(1)}, ${quarterLast.gauge.cy.toFixed(1)}`,
+  );
+
   const decoyTracker = createGaugeTracker();
   decoyTracker.seed({ cx: 90, cy: 140, radius: 32 });
   for (let i = 0; i < 6; i += 1) analyzeGaugeImage(farHome, decoyTracker);

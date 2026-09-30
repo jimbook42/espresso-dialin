@@ -261,6 +261,7 @@ const ROTATION_BIN_DEG = 5.5;
 const ROTATION_AGREE_DEG = 4;
 const ROTATION_RIGID_DEG = 6;
 const SEARCH_FRACTIONS = [0.9, 1.25, 1.6, 2];
+/** Agreeing observations of one candidate, including the first. The third accepts. */
 const SEARCH_CONFIRM_FRAMES = 3;
 const SEARCH_LOSS_FRAMES = 3;
 const SEARCH_MISS_LIMIT = 2;
@@ -374,7 +375,9 @@ export function createGaugeTracker() {
     return {
       profile,
       ...matchGaugeRotation(reference, profile, {
-        previousDeg: searchCandidate?.rotationDeg ?? pose.rotationDeg,
+        // Last accepted rotation, not the uncommitted candidate. A candidate
+        // at the edge of this window must not become the next centre.
+        previousDeg: pose.rotationDeg,
         needleDeg: maskNeedleDeg,
         referenceNeedleDeg,
         maxShiftDeg: SEARCH_MAX_SHIFT_DEG,
@@ -390,7 +393,13 @@ export function createGaugeTracker() {
       rotationDeg: wide?.estimateDeg ?? pose.rotationDeg,
       quality: wide?.confidence ?? 0,
     };
-    if (!wide?.ok) {
+    const rotationFromPose = wide
+      ? Math.abs(wrapDelta(pose.rotationDeg, wide.estimateDeg))
+      : SEARCH_MAX_SHIFT_DEG;
+    // The ±60° bin is the search clamp. A peak sitting on it is not a
+    // confirmed rotation; it is the nearest legal shift to something further.
+    const rotationInRange = wide?.ok && rotationFromPose < SEARCH_MAX_SHIFT_DEG;
+    if (!rotationInRange) {
       reacquireReason = reference ? 'reacquire-dial' : 'reacquire-weak';
       searchMisses += 1;
       if (searchMisses >= SEARCH_MISS_LIMIT) {

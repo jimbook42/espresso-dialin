@@ -403,6 +403,7 @@ export function buildDiagnosticReport(samples, context = {}) {
 
   push('REACQUISITION');
   push('Searching is a separate gauge hunt. It does not write a new pose until the same dial is confirmed. Pending is a candidate waiting on more frames. none means that frame had no rejection.');
+  push('Confirming frames count agreeing observations of the current candidate, including the first. Acceptance is the third observation. One non-matching frame can sit between them without clearing that count.');
   if (!hasKey(rows, 'trackMode')) {
     push('N/A (reacquisition was not recorded)');
   } else {
@@ -575,7 +576,7 @@ export function buildDiagnosticReport(samples, context = {}) {
         const gap = finite(sample.reacquireCx) && finite(sample.reacquireCy) && finite(sample.gaugeX) && finite(sample.gaugeY)
           ? Math.hypot(sample.reacquireCx - sample.gaugeX, sample.reacquireCy - sample.gaugeY)
           : null;
-        const parts = [`Reacquisition candidate pending confirmation (${sample.reacquireHits || 1} frames)`];
+        const parts = [`Reacquisition candidate pending confirmation (${sample.reacquireHits || 1} of 3 agreeing observations)`];
         if (gap != null) parts.push(`${gap.toFixed(1)} px from applied`);
         if (finite(sample.reacquireQuality)) parts.push(`quality ${sample.reacquireQuality.toFixed(3)}`);
         events.push({ t: sample.t, text: parts.join('; ') });
