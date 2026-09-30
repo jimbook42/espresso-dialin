@@ -44,7 +44,7 @@ const FORBIDDEN = {
   blindShaker: /shaker/i,
   wdt: /clump|\bwdt\b/i,
   distributor: /distributor/i,
-  selfLevellingTamper: /tamper|\btamp\b/i,
+  selfLevellingTamper: /self-levelling tamper/i,
   puckScreen: /puck screen/i,
 };
 
@@ -157,11 +157,19 @@ function assertWorkflow(accessories, dial) {
     }
     if (accessories.distributor) assert.match(puck.instruction, /use the distributor/i);
     if (accessories.dosingFunnel && (accessories.wdt || accessories.distributor || accessories.selfLevellingTamper || accessories.puckScreen || accessories.dosingCup || accessories.blindShaker)) {
-      assert.match(puck.instruction, /lift the dosing funnel/i);
+      assert.match(puck.instruction, /lift the dosing funnel off before tamping/i);
+      const funnelIdx = puck.instruction.toLowerCase().indexOf('lift the dosing funnel');
+      const tampIdx = puck.instruction.toLowerCase().indexOf('tamp the coffee bed');
+      if (!accessories.selfLevellingTamper && tampIdx !== -1) {
+        assert.ok(funnelIdx < tampIdx, 'funnel must be removed before tamping');
+      }
+    }
+    if (!accessories.selfLevellingTamper && needsPuck(accessories)) {
+      assert.match(puck.instruction, /tamp the coffee bed evenly with your tamper/i);
     }
   } else {
     assert.equal(puck, undefined);
-    if (accessories.dosingFunnel) assert.match(grind.instruction, /lift the dosing funnel/i);
+    if (accessories.dosingFunnel) assert.match(grind.instruction, /lift the dosing funnel off before tamping/i);
   }
 
   const extract = steps.find((item) => item.id === 'extract');

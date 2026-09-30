@@ -214,7 +214,12 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
       'Use the dosing funnel',
       `Place the dosing funnel on the portafilter, grind all ${dose}g into the basket, and check the portafilter is ${dose}g.`,
     ));
-    if (!needsPuck(accessories, false)) grindDoseLines.push('Lift the dosing funnel off.');
+    if (!needsPuck(accessories, false)) {
+      grindDoseLines.push('Lift the dosing funnel off before tamping.');
+      if (!accessories.selfLevellingTamper) {
+        grindDoseLines.push('Tamp the coffee bed evenly with your tamper.');
+      }
+    }
   } else {
     grindDoseLines.push(`Grind all ${dose}g into the basket and check the portafilter is ${dose}g.`);
   }
@@ -244,9 +249,15 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
         'Place the dosing funnel on the portafilter and tip the grounds in from the dosing cup.',
       ));
     } else if (usesShaker) {
-      puckLines.push('Tip the grounds from the blind shaker into the basket.');
+      puckActions.push(accessoryAction(
+        'Transfer grounds',
+        'Tip the grounds from the blind shaker into the basket.',
+      ));
     } else {
-      puckLines.push('Tip the grounds from the dosing cup into the basket.');
+      puckActions.push(accessoryAction(
+        'Transfer grounds',
+        'Tip the grounds from the dosing cup into the basket.',
+      ));
     }
   }
   if (accessories.wdt) {
@@ -256,7 +267,10 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     ));
   }
   if (usesFunnel && needsPuck(accessories, groundsLeaveTheBasket)) {
-    puckLines.push('Lift the dosing funnel off.');
+    puckActions.push(accessoryAction(
+      'Remove the dosing funnel',
+      'Lift the dosing funnel off before tamping.',
+    ));
   }
   if (accessories.distributor) {
     puckActions.push(accessoryAction(
@@ -269,6 +283,17 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
       'Use the self-levelling tamper',
       'Place the self-levelling tamper squarely and press once consistently.',
     ));
+  } else {
+    const preparingPuck = puckActions.length > 0
+      || puckLines.length > 0
+      || accessories.puckScreen
+      || needsPuck(accessories, groundsLeaveTheBasket);
+    if (preparingPuck) {
+      puckActions.push(accessoryAction(
+        'Tamp',
+        'Tamp the coffee bed evenly with your tamper.',
+      ));
+    }
   }
   if (accessories.puckScreen) {
     puckActions.push(accessoryAction(
@@ -323,7 +348,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
 
   steps.push(step({
     id: 'grindSetting',
-    icon: 'grind',
+    icon: 'coffeeBean',
     title: 'Set the grind',
     highlightLabel: grindSettingLabel,
     highlight: grindLabel,
@@ -356,7 +381,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
 
   steps.push(step({
     id: 'grind',
-    icon: 'grind',
+    icon: 'coffeeBean',
     title: 'Grind',
     lines: grindDoseLines,
     actions: grindActions,

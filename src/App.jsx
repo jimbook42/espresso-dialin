@@ -193,6 +193,7 @@ export default function App() {
   const [shotFieldHighlights, setShotFieldHighlights] = useState(EMPTY_SHOT_FIELD_HIGHLIGHTS);
   const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
   const [brewAccessoriesOpenRequest, setBrewAccessoriesOpenRequest] = useState(0);
+  const [brewAccessoriesReturnTo, setBrewAccessoriesReturnTo] = useState('brew');
 
   useEffect(() => {
     if (settingsSetting) {
@@ -454,8 +455,13 @@ export default function App() {
   };
 
   const handleOpenBrewAccessories = () => {
+    setBrewAccessoriesReturnTo('dial');
     setActiveTab('brew');
     setBrewAccessoriesOpenRequest((count) => count + 1);
+  };
+
+  const handleExitBrewAccessories = (target) => {
+    if (target === 'dial') setActiveTab('dial');
   };
 
   const handleLogoClick = () => {
@@ -1676,6 +1682,8 @@ export default function App() {
             onUseQuickChecklist={handleUseQuickChecklist}
             onNoChecklist={handleNoBrewChecklist}
             accessoriesOpenRequest={brewAccessoriesOpenRequest}
+            accessoriesReturnTo={brewAccessoriesReturnTo}
+            onAccessoriesExit={handleExitBrewAccessories}
             timer={{
               running: timerRunning,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
-  Bean,
   Brush,
   ChevronLeft,
   CircleDot,
@@ -23,6 +22,7 @@ import {
 } from 'lucide-react';
 import { SettingsToggle } from './SettingsToggle';
 import { BrewGuidanceSwitch } from './BrewGuidanceSwitch';
+import { CoffeeBeanIcon } from './CoffeeBeanIcon';
 import { buildSunbeamGuides } from '../brewGuide/sunbeam';
 import { BREW_GUIDANCE_MODES } from '../brewGuide/guidance';
 import {
@@ -50,7 +50,7 @@ const STEP_ICONS = {
   recipe: Scale,
   power: Power,
   cup: Coffee,
-  grind: Bean,
+  coffeeBean: CoffeeBeanIcon,
   weigh: Scale,
   portafilter: Disc,
   timer: Timer,
@@ -261,8 +261,11 @@ export function BrewGuide({
   onUseQuickChecklist = () => {},
   onNoChecklist = () => {},
   accessoriesOpenRequest = 0,
+  accessoriesReturnTo = 'brew',
+  onAccessoriesExit = () => {},
 }) {
   const [screen, setScreen] = useState(setupComplete ? 'menu' : 'setup');
+  const [setupReturnTo, setSetupReturnTo] = useState('brew');
   const [guideId, setGuideId] = useState('temperature');
   const [guideBack, setGuideBack] = useState('menu');
   const [draft, setDraft] = useState(() => normalizeBrewAccessories(accessories));
@@ -292,11 +295,21 @@ export function BrewGuide({
 
   useEffect(() => {
     if (!accessoriesOpenRequest) return;
+    setSetupReturnTo(accessoriesReturnTo);
     setDraft(normalizeBrewAccessories(accessories));
     setScreen('setup');
-  }, [accessoriesOpenRequest, accessories]);
+  }, [accessoriesOpenRequest, accessoriesReturnTo, accessories]);
+
+  const exitAccessorySetup = () => {
+    if (setupReturnTo === 'dial') {
+      onAccessoriesExit('dial');
+      return;
+    }
+    setScreen('menu');
+  };
 
   const openSetup = () => {
+    setSetupReturnTo('brew');
     setDraft(normalizeBrewAccessories(accessories));
     setScreen('setup');
   };
@@ -306,7 +319,7 @@ export function BrewGuide({
     try {
       const normalized = normalizeBrewAccessories(draft);
       await onSaveAccessories(normalized);
-      setScreen('menu');
+      exitAccessorySetup();
     } finally {
       setSaving(false);
     }
@@ -397,7 +410,7 @@ export function BrewGuide({
           {setupComplete && (
             <button
               type="button"
-              onClick={() => setScreen('menu')}
+              onClick={exitAccessorySetup}
               className={`w-full min-h-[48px] rounded-xl text-sm font-bold ${ui.secondaryBtn}`}
             >
               Back
