@@ -413,6 +413,51 @@ export function runFlairPressureLabTests() {
   assert.ok(noisyCentre <= 2.5, `noisy centre walk ${noisyCentre.toFixed(2)}`);
   assert.ok(noisyAngle <= 3, `noisy relative walk ${noisyAngle.toFixed(2)}`);
 
+  const motionTracker = createGaugeTracker();
+  const motionStill = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0 });
+  motionTracker.seed({ cx: 90, cy: 88, radius: 42 });
+  let settledMotion = null;
+  for (let i = 0; i < 6; i += 1) settledMotion = analyzeGaugeImage(motionStill, motionTracker);
+  const falseSpin = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 15 });
+  const falseRead = analyzeGaugeImage(falseSpin, motionTracker);
+  assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, falseRead.gauge.rotationDeg)) < 1.5, `false spin applied ${falseRead.gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(settledMotion.relativeAngleDeg, falseRead.relativeAngleDeg)) < 4, `false spin moved relative ${settledMotion.relativeAngleDeg} -> ${falseRead.relativeAngleDeg}`);
+  assert.equal(falseRead.gauge.posePending, true);
+  assert.ok(falseRead.gauge.poseRejectReason === 'rotation-unconfirmed' || falseRead.gauge.poseRejectReason === 'pose-inconsistent', falseRead.gauge.poseRejectReason);
+  assert.equal(falseRead.gauge.held, true);
+  const falseAgain = analyzeGaugeImage(falseSpin, motionTracker);
+  assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, falseAgain.gauge.rotationDeg)) < 1.5, `repeated false spin applied ${falseAgain.gauge.rotationDeg}`);
+  const yanked = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 97, rotationDeg: 0 });
+  const yankRead = analyzeGaugeImage(yanked, motionTracker);
+  assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, yankRead.gauge.rotationDeg)) < 2, `needle moved the gauge to ${yankRead.gauge.rotationDeg}`);
+  assert.ok(Math.hypot(yankRead.gauge.cx - settledMotion.gauge.cx, yankRead.gauge.cy - settledMotion.gauge.cy) < 2, 'needle moved the gauge centre');
+  const realSpin = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 59, rotationDeg: 12 });
+  let realRead = null;
+  for (let i = 0; i < 3; i += 1) realRead = analyzeGaugeImage(realSpin, motionTracker);
+  assert.ok(Math.abs(wrapDelta(12, realRead.gauge.rotationDeg)) <= 6, `real spin stayed at ${realRead.gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(47, realRead.relativeAngleDeg)) <= 8, `real spin relative ${realRead.relativeAngleDeg}`);
+  for (let i = 0; i < 3; i += 1) settledMotion = analyzeGaugeImage(motionStill, motionTracker);
+  const incoherent = makeGaugeImage(200, { cx: 108, cy: 76, radius: 42, needleDeg: 47, rotationDeg: 15 });
+  const incoherentRead = analyzeGaugeImage(incoherent, motionTracker);
+  const incoherentShift = Math.hypot(incoherentRead.gauge.cx - settledMotion.gauge.cx, incoherentRead.gauge.cy - settledMotion.gauge.cy);
+  assert.ok(incoherentShift < 2, `incoherent pose moved the centre ${incoherentShift.toFixed(1)} px`);
+  assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, incoherentRead.gauge.rotationDeg)) < 1.5, `incoherent pose rotated to ${incoherentRead.gauge.rotationDeg}`);
+  assert.ok(incoherentRead.gauge.poseRejectReason === 'pose-inconsistent' || incoherentRead.gauge.poseRejectReason === 'dial-unrecognized' || incoherentRead.gauge.poseRejectReason === 'rotation-unconfirmed', incoherentRead.gauge.poseRejectReason);
+  let followed = null;
+  const movedGauge = makeGaugeImage(200, { cx: 108, cy: 76, radius: 42, needleDeg: 47, rotationDeg: 0 });
+  for (let i = 0; i < 4; i += 1) followed = analyzeGaugeImage(movedGauge, motionTracker);
+  const motionFollow = Math.hypot(followed.gauge.cx - 108, followed.gauge.cy - 76);
+  assert.ok(motionFollow <= 6, `coherent move was not followed ${motionFollow.toFixed(1)}`);
+  assert.ok(Math.abs(wrapDelta(47, followed.relativeAngleDeg)) <= 8, `coherent move relative ${followed.relativeAngleDeg}`);
+  let stepped = followed;
+  for (let step = 1; step <= 6; step += 1) {
+    const frame = makeGaugeImage(200, { cx: 108 + step * 5, cy: 76 - step * 2, radius: 42, needleDeg: 47, rotationDeg: 0 });
+    stepped = analyzeGaugeImage(frame, motionTracker);
+    assert.ok(Math.abs(wrapDelta(47, stepped.relativeAngleDeg)) <= 10, `step ${step} relative ${stepped.relativeAngleDeg}`);
+  }
+  const stepFollow = Math.hypot(stepped.gauge.cx - (108 + 30), stepped.gauge.cy - (76 - 12));
+  assert.ok(stepFollow <= 8, `continuous move stopped at ${stepped.gauge.cx.toFixed(1)},${stepped.gauge.cy.toFixed(1)}`);
+
   const stats = stabilityStats([
     { gaugeX: 10, gaugeY: 10, rawGaugeX: 10, rawGaugeY: 12, gaugeRotation: 0, rawRotation: 0, rawAngle: 40, relativeAngle: 40, smoothedAngle: 40, pressure: 1 },
     { gaugeX: 10, gaugeY: 10, rawGaugeX: 14, rawGaugeY: 12, gaugeRotation: 0, rawRotation: 5, rawAngle: 40, relativeAngle: 40, smoothedAngle: 40, pressure: 1 },
@@ -488,11 +533,24 @@ export function runFlairPressureLabTests() {
   assert.ok(candidateReport.includes('Candidate likeness:'));
   assert.ok(candidateReport.includes('Best-to-second separation mode: 45° on 2 of 2 frames (100.0%), binned to 5°.'));
   assert.ok(candidateReport.includes('Candidate-to-accepted delta mean: 22.00'));
+  const poseReport = buildDiagnosticReport([
+    { t: 1000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 100, gaugeY: 100, rawGaugeX: 100, rawGaugeY: 100, gaugeRotation: 0, rawRotation: 0, gaugeRadius: 40, poseQuality: 0.9, poseRejectReason: null, posePending: false, poseDeltaPx: 0, poseDeltaRot: 0 },
+    { t: 1125, tracking: 'UNCERTAIN', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 100, gaugeY: 100, rawGaugeX: 112, rawGaugeY: 100, gaugeRotation: 0, rawRotation: 16, gaugeRadius: 40, poseQuality: 0.4, poseRejectReason: 'rotation-unconfirmed', posePending: true, poseDeltaPx: 0, poseDeltaRot: 0 },
+  ], { timestamp: when, calibrationStatus: 'calibrated' });
+  assert.ok(poseReport.includes('POSE DECISIONS'));
+  assert.ok(poseReport.includes('rotation-unconfirmed: 1'));
+  assert.ok(poseReport.includes('Pending confirmation: 1 of 2 samples (50.0%)'));
+  assert.ok(poseReport.includes('Pose rejected (rotation-unconfirmed)'));
+  assert.ok(poseReport.includes('raw rotation 16.0° from applied'));
+  assert.ok(poseReport.includes('Pose rejections: 1 (50.0%)'));
+  assert.ok(poseReport.includes('Pose pending: 1 (50.0%)'));
   const bare = buildDiagnosticReport([{ t: 5, tracking: 'TRACKING', rawAngle: 1, relativeAngle: 1, smoothedAngle: 1, pressure: 1 }], {
     timestamp: when,
     calibrationStatus: 'not calibrated',
   });
   assert.ok(bare.includes('Valid pressure samples: N/A'));
+  assert.ok(bare.includes('Pose quality: N/A (pose quality was not recorded)'));
+  assert.ok(bare.includes('Pending confirmation: N/A (pose pending was not recorded)'));
   assert.ok(bare.includes('Raw:\n  N/A (raw radius was not recorded)'));
   assert.ok(bare.includes('Camera resolution: N/A'));
   const blankReport = buildDiagnosticReport([], { timestamp: when, calibrationStatus: 'not calibrated' });

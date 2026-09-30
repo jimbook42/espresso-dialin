@@ -362,6 +362,45 @@ export function buildDiagnosticReport(samples, context = {}) {
   }
   push('');
 
+  push('POSE DECISIONS');
+  push('Pose quality is the dial-profile correlation for the proposed pose. A rejection is a proposed centre, radius, or rotation that was not applied. Pending means that proposal is waiting for another frame to agree. Applied steps are the pose change actually written on that frame.');
+  if (!hasKey(rows, 'poseQuality')) {
+    push('Pose quality: N/A (pose quality was not recorded)');
+  } else {
+    push('Pose quality:');
+    push(statBlock(linearStats(rows.map((sample) => sample.poseQuality)), 3));
+  }
+  if (!hasKey(rows, 'poseRejectReason')) {
+    push('Rejection reasons: N/A (pose rejection was not recorded)');
+  } else {
+    const reasons = new Map();
+    rows.forEach((sample) => {
+      const reason = sample.poseRejectReason || 'none';
+      reasons.set(reason, (reasons.get(reason) || 0) + 1);
+    });
+    push('Rejection reasons:');
+    reasons.forEach((count, reason) => {
+      push(`  ${reason}: ${count}`);
+    });
+  }
+  if (!hasKey(rows, 'posePending')) {
+    push('Pending confirmation: N/A (pose pending was not recorded)');
+  } else {
+    const pending = rows.filter((sample) => sample.posePending === true).length;
+    push(`Pending confirmation: ${pending} of ${rows.length} samples (${fmtPct(pending, rows.length)})`);
+  }
+  if (!hasKey(rows, 'poseDeltaPx')) {
+    push('Applied centre step: N/A (pose delta was not recorded)');
+  } else {
+    push(`Applied centre step min/max/mean/SD: ${deltaLine(rows.map((sample) => sample.poseDeltaPx), 2, 'px')}`);
+  }
+  if (!hasKey(rows, 'poseDeltaRot')) {
+    push('Applied rotation step: N/A (pose delta was not recorded)');
+  } else {
+    push(`Applied rotation step min/max/mean/SD: ${deltaLine(rows.map((sample) => Math.abs(sample.poseDeltaRot)), 2, '°')}`);
+  }
+  push('');
+
   push('QUALITY');
   push('Needle score:');
   push(statBlock(linearStats(rows.map((sample) => sample.quality)), 3));
@@ -476,6 +515,22 @@ export function buildDiagnosticReport(samples, context = {}) {
           events.push({ t: sample.t, text: `Applied rotation changed ${step.toFixed(1)}°` });
         }
       }
+      if (sample.poseRejectReason) {
+        const rotationGap = finite(sample.gaugeRotation) && finite(sample.rawRotation)
+          ? Math.abs(wrapDelta(sample.gaugeRotation, sample.rawRotation))
+          : 0;
+        const centreGap = finite(sample.gaugeX) && finite(sample.gaugeY) && finite(sample.rawGaugeX) && finite(sample.rawGaugeY)
+          ? Math.hypot(sample.rawGaugeX - sample.gaugeX, sample.rawGaugeY - sample.gaugeY)
+          : 0;
+        const centreLimit = finite(sample.gaugeRadius) ? sample.gaugeRadius * CENTRE_EVENT_FRACTION : Infinity;
+        if (rotationGap >= ROTATION_EVENT_DEG || centreGap > centreLimit) {
+          const parts = [`Pose rejected (${sample.poseRejectReason})`];
+          if (rotationGap >= ROTATION_EVENT_DEG) parts.push(`raw rotation ${rotationGap.toFixed(1)}° from applied`);
+          if (centreGap > centreLimit) parts.push(`raw centre ${centreGap.toFixed(1)} px from applied`);
+          if (sample.posePending === true) parts.push('pending confirmation');
+          events.push({ t: sample.t, text: parts.join('; ') });
+        }
+      }
     }
     if (sample.angleAccepted === true && finite(sample.relativeAngle)) previousAcceptedAngle = sample.relativeAngle;
     if (sample.pressureMeasured === true && finite(sample.rawPressure)) {
@@ -487,7 +542,7 @@ export function buildDiagnosticReport(samples, context = {}) {
   });
 
   push('EVENTS');
-  push(`Thresholds: accepted relative-angle step above ${REST_MAX_SPREAD_DEG}°; applied centre step above ${CENTRE_EVENT_FRACTION * 100}% of applied radius; applied rotation step at least ${ROTATION_EVENT_DEG}°; measured pressure from below ${PRESSURE_NEAR_ZERO_BAR} bar to at least ${EXTRACTION_START_BAR} bar.`);
+  push(`Thresholds: accepted relative-angle step above ${REST_MAX_SPREAD_DEG}°; applied centre step above ${CENTRE_EVENT_FRACTION * 100}% of applied radius; applied rotation step at least ${ROTATION_EVENT_DEG}°; measured pressure from below ${PRESSURE_NEAR_ZERO_BAR} bar to at least ${EXTRACTION_START_BAR} bar. A pose rejection is listed when the raw rotation is at least ${ROTATION_EVENT_DEG}° from the applied rotation, or the raw centre is more than ${CENTRE_EVENT_FRACTION * 100}% of the radius from the applied centre.`);
   if (!events.length) push('None.');
   events.forEach((event) => {
     push(`${clockOffset(start, event.t)}  ${event.text}`);
@@ -520,6 +575,14 @@ export function buildDiagnosticReport(samples, context = {}) {
   }
   const mode = separationMode(rows);
   if (mode) push(`Best-to-second separation mode: ${mode.mode}° (${((mode.count / mode.total) * 100).toFixed(1)}%)`);
+  if (hasKey(rows, 'poseRejectReason')) {
+    const rejected = rows.filter((sample) => sample.poseRejectReason).length;
+    push(`Pose rejections: ${rejected} (${fmtPct(rejected, rows.length)})`);
+  }
+  if (hasKey(rows, 'posePending')) {
+    const pending = rows.filter((sample) => sample.posePending === true).length;
+    push(`Pose pending: ${pending} (${fmtPct(pending, rows.length)})`);
+  }
 
   return lines.join('\n');
 }

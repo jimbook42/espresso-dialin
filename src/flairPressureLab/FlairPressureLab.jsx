@@ -60,6 +60,9 @@ const EMPTY_LIVE = {
   gaugeHeld: false,
   gaugeX: null,
   gaugeY: null,
+  poseQuality: null,
+  poseRejectReason: null,
+  posePending: false,
 };
 
 function exitLab() {
@@ -360,6 +363,11 @@ export function FlairPressureLab() {
             : Math.abs(wrapDelta(acceptedAngle, candidateAngle)),
           candidateMargin: reading.margin ?? null,
           candidateLikeness: reading.likeness ?? null,
+          poseQuality: gauge.poseQuality ?? null,
+          poseRejectReason: gauge.poseRejectReason ?? null,
+          posePending: gauge.posePending === true,
+          poseDeltaPx: gauge.poseDeltaPx ?? null,
+          poseDeltaRot: gauge.poseDeltaRot ?? null,
         });
         setTrace(historyRef.current.snapshot());
       };
@@ -376,6 +384,9 @@ export function FlairPressureLab() {
         gaugeHeld: gauge.held,
         gaugeX: gauge.cx,
         gaugeY: gauge.cy,
+        poseQuality: gauge.poseQuality ?? null,
+        poseRejectReason: gauge.poseRejectReason ?? null,
+        posePending: gauge.posePending === true,
       };
 
       if (!sessionRef.current) {
@@ -703,6 +714,12 @@ export function FlairPressureLab() {
             <dd className={ui.text}>{live.gaugeX == null ? '—' : `${Math.round(live.gaugeX)}, ${Math.round(live.gaugeY)}`}</dd>
             <dt>Gauge rotation</dt>
             <dd className={ui.text}>{formatNum(live.gaugeRotation, 1)}°</dd>
+            <dt>Pose quality</dt>
+            <dd className={ui.text}>{formatNum(live.poseQuality, 2)}</dd>
+            <dt>Pose decision</dt>
+            <dd className={ui.text}>{live.poseRejectReason || (live.poseQuality == null && !live.gaugeHeld ? '—' : (live.gaugeHeld ? 'held' : 'accepted'))}</dd>
+            <dt>Pose pending</dt>
+            <dd className={ui.text}>{live.posePending ? 'yes' : 'no'}</dd>
             <dt>Gauge confidence</dt>
             <dd className={ui.text}>{formatNum(live.gaugeConfidence, 2)}</dd>
             <dt>Orientation score</dt>
