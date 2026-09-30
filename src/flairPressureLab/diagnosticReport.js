@@ -401,6 +401,51 @@ export function buildDiagnosticReport(samples, context = {}) {
   }
   push('');
 
+  push('REACQUISITION');
+  push('Searching is a separate gauge hunt. It does not write a new pose until the same dial is confirmed. Pending is a candidate waiting on more frames. none means that frame had no rejection.');
+  if (!hasKey(rows, 'trackMode')) {
+    push('N/A (reacquisition was not recorded)');
+  } else {
+    const searching = rows.filter((sample) => sample.trackMode === 'searching').length;
+    const locked = rows.filter((sample) => sample.trackMode === 'locked').length;
+    push(`Locked samples: ${locked}`);
+    push(`Searching samples: ${searching}`);
+    const searchingWindow = rows
+      .filter((sample) => sample.trackMode === 'searching')
+      .map((sample) => sample.searchFraction);
+    const windowStats = linearStats(searchingWindow);
+    push(windowStats.n
+      ? `Search window while searching: min ${fmt(windowStats.min, 2)}× / max ${fmt(windowStats.max, 2)}× radius`
+      : 'Search window while searching: N/A');
+    const accepted = rows.filter((sample) => sample.reacquireAccepted === true).length;
+    push(`Reacquisition accepted: ${accepted}`);
+    const reasons = new Map();
+    rows.forEach((sample) => {
+      const reason = sample.reacquireRejectReason || 'none';
+      reasons.set(reason, (reasons.get(reason) || 0) + 1);
+    });
+    push('Reacquisition results:');
+    reasons.forEach((count, reason) => {
+      push(`  ${reason}: ${count}`);
+    });
+    const hits = nums(rows.map((sample) => sample.reacquireHits));
+    push(`Confirming frames max: ${hits.length ? Math.max(...hits) : 0}`);
+    const candidateDistance = [];
+    rows.forEach((sample) => {
+      if (!finite(sample.reacquireCx) || !finite(sample.reacquireCy) || !finite(sample.gaugeX) || !finite(sample.gaugeY)) return;
+      candidateDistance.push(Math.hypot(sample.reacquireCx - sample.gaugeX, sample.reacquireCy - sample.gaugeY));
+    });
+    const distance = linearStats(candidateDistance);
+    push(distance.n
+      ? `Candidate distance from applied centre min/max/mean: ${fmt(distance.min, 1)} / ${fmt(distance.max, 1)} / ${fmt(distance.mean, 1)} px`
+      : 'Candidate distance from applied centre: N/A');
+    const quality = linearStats(rows.map((sample) => sample.reacquireQuality));
+    push(quality.n
+      ? `Candidate quality min/max/mean: ${fmt(quality.min, 3)} / ${fmt(quality.max, 3)} / ${fmt(quality.mean, 3)}`
+      : 'Candidate quality: N/A');
+  }
+  push('');
+
   push('QUALITY');
   push('Needle score:');
   push(statBlock(linearStats(rows.map((sample) => sample.quality)), 3));
@@ -515,6 +560,32 @@ export function buildDiagnosticReport(samples, context = {}) {
           events.push({ t: sample.t, text: `Applied rotation changed ${step.toFixed(1)}°` });
         }
       }
+      if (previous.trackMode !== 'searching' && sample.trackMode === 'searching') {
+        events.push({ t: sample.t, text: 'Reacquisition started' });
+      }
+      if (sample.reacquireAccepted === true) {
+        const moved = finite(previous.gaugeX) && finite(previous.gaugeY) && finite(sample.gaugeX) && finite(sample.gaugeY)
+          ? Math.hypot(sample.gaugeX - previous.gaugeX, sample.gaugeY - previous.gaugeY)
+          : null;
+        const parts = ['Reacquisition accepted'];
+        if (moved != null) parts.push(`centre moved ${moved.toFixed(1)} px`);
+        if (finite(sample.reacquireQuality)) parts.push(`quality ${sample.reacquireQuality.toFixed(3)}`);
+        events.push({ t: sample.t, text: parts.join('; ') });
+      } else if (sample.reacquireRejectReason === 'reacquire-pending' && previous.reacquireRejectReason !== 'reacquire-pending') {
+        const gap = finite(sample.reacquireCx) && finite(sample.reacquireCy) && finite(sample.gaugeX) && finite(sample.gaugeY)
+          ? Math.hypot(sample.reacquireCx - sample.gaugeX, sample.reacquireCy - sample.gaugeY)
+          : null;
+        const parts = [`Reacquisition candidate pending confirmation (${sample.reacquireHits || 1} frames)`];
+        if (gap != null) parts.push(`${gap.toFixed(1)} px from applied`);
+        if (finite(sample.reacquireQuality)) parts.push(`quality ${sample.reacquireQuality.toFixed(3)}`);
+        events.push({ t: sample.t, text: parts.join('; ') });
+      } else if (
+        sample.reacquireRejectReason
+        && sample.reacquireRejectReason !== 'reacquire-pending'
+        && sample.reacquireRejectReason !== previous.reacquireRejectReason
+      ) {
+        events.push({ t: sample.t, text: `Reacquisition candidate rejected (${sample.reacquireRejectReason})` });
+      }
       if (sample.poseRejectReason) {
         const rotationGap = finite(sample.gaugeRotation) && finite(sample.rawRotation)
           ? Math.abs(wrapDelta(sample.gaugeRotation, sample.rawRotation))
@@ -582,6 +653,12 @@ export function buildDiagnosticReport(samples, context = {}) {
   if (hasKey(rows, 'posePending')) {
     const pending = rows.filter((sample) => sample.posePending === true).length;
     push(`Pose pending: ${pending} (${fmtPct(pending, rows.length)})`);
+  }
+  if (hasKey(rows, 'trackMode')) {
+    const searching = rows.filter((sample) => sample.trackMode === 'searching').length;
+    const accepted = rows.filter((sample) => sample.reacquireAccepted === true).length;
+    push(`Searching: ${fmtPct(searching, rows.length)}`);
+    push(`Reacquisition accepted: ${accepted}`);
   }
 
   return lines.join('\n');

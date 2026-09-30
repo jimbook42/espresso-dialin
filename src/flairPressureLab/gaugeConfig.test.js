@@ -384,6 +384,9 @@ export function runFlairPressureLabTests() {
     assert.ok(Math.abs(wrapDelta(anchor.relativeAngleDeg, reading.relativeAngleDeg)) < 0.05);
     assert.ok(Math.abs(wrapDelta(anchor.gauge.rotationDeg, reading.gauge.rotationDeg)) < 0.05);
     assert.equal(reading.gauge.held, false);
+    assert.equal(reading.gauge.trackMode, 'locked');
+    assert.equal(reading.gauge.reacquireHits, 0);
+    assert.equal(reading.gauge.reacquireAccepted, false);
   }
 
   const shiftedImage = makeGaugeImage(180, { cx: 106, cy: 78, radius: 40, needleDeg: 47, rotationDeg: 0 });
@@ -431,6 +434,8 @@ export function runFlairPressureLabTests() {
   const yankRead = analyzeGaugeImage(yanked, motionTracker);
   assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, yankRead.gauge.rotationDeg)) < 2, `needle moved the gauge to ${yankRead.gauge.rotationDeg}`);
   assert.ok(Math.hypot(yankRead.gauge.cx - settledMotion.gauge.cx, yankRead.gauge.cy - settledMotion.gauge.cy) < 2, 'needle moved the gauge centre');
+  assert.equal(yankRead.gauge.trackMode, 'locked');
+  assert.equal(yankRead.gauge.reacquireAccepted, false);
   const realSpin = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 59, rotationDeg: 12 });
   let realRead = null;
   for (let i = 0; i < 3; i += 1) realRead = analyzeGaugeImage(realSpin, motionTracker);
@@ -457,6 +462,71 @@ export function runFlairPressureLabTests() {
   }
   const stepFollow = Math.hypot(stepped.gauge.cx - (108 + 30), stepped.gauge.cy - (76 - 12));
   assert.ok(stepFollow <= 8, `continuous move stopped at ${stepped.gauge.cx.toFixed(1)},${stepped.gauge.cy.toFixed(1)}`);
+
+  const farTracker = createGaugeTracker();
+  const farHome = makeGaugeImage(280, { cx: 90, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0 });
+  farTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  let farSettled = null;
+  for (let i = 0; i < 6; i += 1) farSettled = analyzeGaugeImage(farHome, farTracker);
+  const farJump = 32 * 1.6;
+  const farAway = makeGaugeImage(280, { cx: 90 + farJump, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0 });
+  const farFirst = analyzeGaugeImage(farAway, farTracker);
+  const farFirstShift = Math.hypot(farFirst.gauge.cx - farSettled.gauge.cx, farFirst.gauge.cy - farSettled.gauge.cy);
+  assert.ok(farFirstShift < 4, `a distant gauge was accepted on one frame (${farFirstShift.toFixed(1)} px)`);
+  assert.equal(farFirst.gauge.reacquireAccepted, false);
+  const farReads = [farFirst];
+  let farRecovered = farFirst;
+  for (let i = 0; i < 14; i += 1) {
+    farRecovered = analyzeGaugeImage(farAway, farTracker);
+    farReads.push(farRecovered);
+  }
+  const farError = Math.hypot(farRecovered.gauge.cx - (90 + farJump), farRecovered.gauge.cy - 140);
+  assert.ok(farError <= 8, `large translation was not reacquired (${farRecovered.gauge.cx.toFixed(1)}, ${farRecovered.gauge.cy.toFixed(1)})`);
+  assert.ok(Math.abs(wrapDelta(47, farRecovered.relativeAngleDeg)) <= 8, `reacquire changed relative ${farRecovered.relativeAngleDeg}`);
+  assert.ok(farReads.some((reading) => reading.gauge.trackMode === 'searching'), 'large translation never entered search');
+  assert.ok(farReads.some((reading) => reading.gauge.reacquireAccepted), 'large translation was not confirmed');
+  assert.ok(farReads.some((reading) => reading.gauge.held), 'pressure pose was not held while the gauge was lost');
+
+  const blipTracker = createGaugeTracker();
+  blipTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  for (let i = 0; i < 4; i += 1) analyzeGaugeImage(farHome, blipTracker);
+  analyzeGaugeImage(farAway, blipTracker);
+  let blipBack = null;
+  for (let i = 0; i < 3; i += 1) blipBack = analyzeGaugeImage(farHome, blipTracker);
+  const blipShift = Math.hypot(blipBack.gauge.cx - 90, blipBack.gauge.cy - 140);
+  assert.ok(blipShift <= 8, `one distant frame moved the pose to ${blipBack.gauge.cx.toFixed(1)}, ${blipBack.gauge.cy.toFixed(1)}`);
+  assert.equal(blipBack.gauge.reacquireAccepted, false);
+
+  const rigidTracker = createGaugeTracker();
+  rigidTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  for (let i = 0; i < 6; i += 1) analyzeGaugeImage(farHome, rigidTracker);
+  const rigidAway = makeGaugeImage(280, { cx: 90 + farJump, cy: 140, radius: 32, needleDeg: 65, rotationDeg: 18 });
+  let rigidRead = null;
+  for (let i = 0; i < 16; i += 1) rigidRead = analyzeGaugeImage(rigidAway, rigidTracker);
+  const rigidError = Math.hypot(rigidRead.gauge.cx - (90 + farJump), rigidRead.gauge.cy - 140);
+  assert.ok(rigidError <= 8, `rotated gauge was not reacquired (${rigidRead.gauge.cx.toFixed(1)}, ${rigidRead.gauge.cy.toFixed(1)})`);
+  assert.ok(Math.abs(wrapDelta(18, rigidRead.gauge.rotationDeg)) <= 8, `reacquire rotation ${rigidRead.gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(47, rigidRead.relativeAngleDeg)) <= 10, `rigid reacquire relative ${rigidRead.relativeAngleDeg}`);
+
+  const decoyTracker = createGaugeTracker();
+  decoyTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  for (let i = 0; i < 6; i += 1) analyzeGaugeImage(farHome, decoyTracker);
+  const decoy = makeGaugeImage(280, {
+    cx: 90 + farJump, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0, markings: false,
+  });
+  const decoyReads = [];
+  let decoyRead = null;
+  for (let i = 0; i < 12; i += 1) {
+    decoyRead = analyzeGaugeImage(decoy, decoyTracker);
+    decoyReads.push(decoyRead);
+  }
+  const decoyShift = Math.hypot(decoyRead.gauge.cx - 90, decoyRead.gauge.cy - 140);
+  assert.ok(decoyShift <= 8, `a distant unmarked circle moved the pose by ${decoyShift.toFixed(1)} px`);
+  assert.ok(decoyReads.every((reading) => reading.gauge.reacquireAccepted === false), 'false candidate was accepted');
+  assert.ok(
+    decoyReads.some((reading) => reading.gauge.reacquireRejectReason === 'reacquire-dial' || reading.gauge.reacquireRejectReason === 'reacquire-none' || reading.gauge.reacquireRejectReason === 'reacquire-weak'),
+    `false candidate reason ${decoyRead.gauge.reacquireRejectReason}`,
+  );
 
   const stats = stabilityStats([
     { gaugeX: 10, gaugeY: 10, rawGaugeX: 10, rawGaugeY: 12, gaugeRotation: 0, rawRotation: 0, rawAngle: 40, relativeAngle: 40, smoothedAngle: 40, pressure: 1 },
@@ -544,6 +614,24 @@ export function runFlairPressureLabTests() {
   assert.ok(poseReport.includes('raw rotation 16.0° from applied'));
   assert.ok(poseReport.includes('Pose rejections: 1 (50.0%)'));
   assert.ok(poseReport.includes('Pose pending: 1 (50.0%)'));
+  assert.ok(poseReport.includes('N/A (reacquisition was not recorded)'));
+  const reacquireReport = buildDiagnosticReport([
+    { t: 1000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 90, gaugeY: 140, gaugeRadius: 32, trackMode: 'locked', searchFraction: 0.46, reacquireHits: 0, reacquireRejectReason: null, reacquireAccepted: false },
+    { t: 1125, tracking: 'UNCERTAIN', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 90, gaugeY: 140, gaugeRadius: 32, trackMode: 'searching', searchFraction: 0.9, reacquireCx: 140, reacquireCy: 140, reacquireRadius: 32, reacquireRotation: 0, reacquireQuality: 0.2, reacquireHits: 0, reacquireRejectReason: 'reacquire-dial', reacquireAccepted: false },
+    { t: 1250, tracking: 'UNCERTAIN', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 90, gaugeY: 140, gaugeRadius: 32, trackMode: 'searching', searchFraction: 1.25, reacquireCx: 141, reacquireCy: 140, reacquireRadius: 32, reacquireRotation: 2, reacquireQuality: 0.72, reacquireHits: 1, reacquireRejectReason: 'reacquire-pending', reacquireAccepted: false },
+    { t: 1500, tracking: 'TRACKING', rawAngle: 12, relativeAngle: 12, smoothedAngle: 12, pressure: 1, gaugeX: 142, gaugeY: 140, gaugeRadius: 32, trackMode: 'locked', searchFraction: 1.6, reacquireCx: 142, reacquireCy: 140, reacquireRadius: 32, reacquireRotation: 2, reacquireQuality: 0.8, reacquireHits: 3, reacquireRejectReason: null, reacquireAccepted: true },
+  ], { timestamp: when, calibrationStatus: 'calibrated' });
+  assert.ok(reacquireReport.includes('REACQUISITION'));
+  assert.ok(reacquireReport.includes('Searching samples: 2'));
+  assert.ok(reacquireReport.includes('Search window while searching: min 0.90× / max 1.25× radius'));
+  assert.ok(reacquireReport.includes('reacquire-dial: 1'));
+  assert.ok(reacquireReport.includes('reacquire-pending: 1'));
+  assert.ok(reacquireReport.includes('Reacquisition accepted: 1'));
+  assert.ok(reacquireReport.includes('Confirming frames max: 3'));
+  assert.ok(reacquireReport.includes('Reacquisition started'));
+  assert.ok(reacquireReport.includes('Reacquisition candidate rejected (reacquire-dial)'));
+  assert.ok(reacquireReport.includes('Reacquisition candidate pending confirmation'));
+  assert.ok(reacquireReport.includes('Reacquisition accepted; centre moved 52.0 px'));
   const bare = buildDiagnosticReport([{ t: 5, tracking: 'TRACKING', rawAngle: 1, relativeAngle: 1, smoothedAngle: 1, pressure: 1 }], {
     timestamp: when,
     calibrationStatus: 'not calibrated',
@@ -598,6 +686,7 @@ function makeGaugeImage(size, {
   radius,
   rotationDeg = 0,
   needleDeg = 40,
+  markings = true,
   gain = 1,
   bias = 0,
   shade = 0,
@@ -621,7 +710,7 @@ function makeGaugeImage(size, {
       let value = 190;
       if (dist < radius - 2.4) value = 226;
       if (Math.abs(dist - radius) <= 2.2) value = 22;
-      if (dist > radius * 0.73 && dist < radius * 0.92 && dist < radius - 3.2) {
+      if (markings && dist > radius * 0.73 && dist < radius * 0.92 && dist < radius - 3.2) {
         let ang = (Math.atan2(dy, dx) * 180) / Math.PI - rotationDeg;
         ang = ((ang % 360) + 360) % 360;
         const minor = ang % 30;

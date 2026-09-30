@@ -11,11 +11,15 @@ import { detectNeedleAngle } from './needleFromFrame.js';
  * pattern, with the needle sector ignored, so a lever twist is not read as
  * pressure. Pressure uses needle angle minus that gauge rotation.
  *
- * Modest motion only. The search stays near the last pose. A weak rim score
- * holds the last pose instead of inventing a new one.
+ * Locked tracking is modest motion only. The search stays near the last pose.
+ * A weak rim score holds the last pose instead of inventing a new one.
  * Centre, radius, and rotation are one pose. A large change has to be the same
  * pose again on the next frame. The needle is masked out of the dial match, so
  * it cannot turn or translate the gauge.
+ *
+ * A lever move can carry the gauge outside that window. Locked acceptance is
+ * unchanged. After the pose is no longer supported, a separate search confirms
+ * the same dial over several frames and only then moves the locked pose.
  */
 
 const RIM_BINS = 48;
@@ -121,7 +125,7 @@ export function locateGauge(image, prior, { searchFraction = 0.46 } = {}) {
     cy: ok ? best.cy : prior.cy,
     radius: ok ? best.radius : prior.radius,
     score: best.score,
-    edges: ok ? edges : null,
+    edges,
     width,
     height,
   };
@@ -256,6 +260,15 @@ const ROTATION_QUIET_DEG = 1;
 const ROTATION_BIN_DEG = 5.5;
 const ROTATION_AGREE_DEG = 4;
 const ROTATION_RIGID_DEG = 6;
+const SEARCH_FRACTIONS = [0.9, 1.25, 1.6, 2];
+const SEARCH_CONFIRM_FRAMES = 3;
+const SEARCH_LOSS_FRAMES = 3;
+const SEARCH_MISS_LIMIT = 2;
+const SEARCH_STEP_FRACTION = 0.4;
+const SEARCH_RADIUS_FRACTION = 0.08;
+const SEARCH_ROTATION_AGREE_DEG = 8;
+const SEARCH_MAX_SHIFT_DEG = 60;
+const SEARCH_ENTER_FRACTION = 0.35;
 
 export function createGaugeTracker() {
   let pose = null;
@@ -270,6 +283,14 @@ export function createGaugeTracker() {
   let trustedRotationDeg = null;
   let poseCandidate = null;
   let maskNeedleDeg = null;
+  let mode = 'locked';
+  let lossStreak = 0;
+  let searchStep = 0;
+  let searchFraction = SEARCH_FRACTIONS[0];
+  let searchCandidate = null;
+  let searchMisses = 0;
+  let reacquireReason = null;
+  let observed = null;
 
   const clearPoseMemory = () => {
     centreCandidate = null;
@@ -281,6 +302,216 @@ export function createGaugeTracker() {
     maskNeedleDeg = null;
   };
 
+  const clearSearch = () => {
+    mode = 'locked';
+    lossStreak = 0;
+    searchStep = 0;
+    searchFraction = SEARCH_FRACTIONS[0];
+    searchCandidate = null;
+    searchMisses = 0;
+    reacquireReason = null;
+    observed = null;
+  };
+
+  const beginSearch = () => {
+    if (mode === 'searching') return;
+    mode = 'searching';
+    searchStep = 0;
+    searchFraction = SEARCH_FRACTIONS[0];
+  };
+
+  const growSearch = () => {
+    if (mode !== 'searching' || searchCandidate) return;
+    searchStep = Math.min(searchStep + 1, SEARCH_FRACTIONS.length - 1);
+    searchFraction = SEARCH_FRACTIONS[searchStep];
+  };
+
+  const finish = (windowFraction, fields) => {
+    const shown = observed || (reacquireReason ? searchCandidate : null);
+    return {
+      held: false,
+      confidence: 0,
+      pose: pose ? { ...pose } : null,
+      profile: null,
+      reacquired: false,
+      rawCx: null,
+      rawCy: null,
+      rawRadius: null,
+      poseQuality: null,
+      poseRejectReason: null,
+      posePending: false,
+      poseDeltaPx: 0,
+      trackMode: mode,
+      searchFraction: windowFraction,
+      reacquireCx: shown?.cx ?? null,
+      reacquireCy: shown?.cy ?? null,
+      reacquireRadius: shown?.radius ?? null,
+      reacquireRotation: shown?.rotationDeg ?? null,
+      reacquireQuality: shown?.quality ?? null,
+      reacquireHits: searchCandidate?.hits ?? 0,
+      reacquireRejectReason: reacquireReason,
+      reacquireAccepted: false,
+      ...fields,
+    };
+  };
+
+  const toVideo = (found, mapping) => ({
+    cx: mapping.originX + found.cx / mapping.scale,
+    cy: mapping.originY + found.cy / mapping.scale,
+    radius: found.radius / mapping.scale,
+  });
+
+  const wideMatch = (found) => {
+    if (!reference || !found.edges) return null;
+    const profile = measureRimProfile(
+      found.edges,
+      found.width,
+      found.height,
+      found.cx,
+      found.cy,
+      found.radius,
+    );
+    return {
+      profile,
+      ...matchGaugeRotation(reference, profile, {
+        previousDeg: searchCandidate?.rotationDeg ?? pose.rotationDeg,
+        needleDeg: maskNeedleDeg,
+        referenceNeedleDeg,
+        maxShiftDeg: SEARCH_MAX_SHIFT_DEG,
+      }),
+    };
+  };
+
+  const considerCandidate = (video, wide) => {
+    observed = {
+      cx: video.cx,
+      cy: video.cy,
+      radius: video.radius,
+      rotationDeg: wide?.estimateDeg ?? pose.rotationDeg,
+      quality: wide?.confidence ?? 0,
+    };
+    if (!wide?.ok) {
+      reacquireReason = reference ? 'reacquire-dial' : 'reacquire-weak';
+      searchMisses += 1;
+      if (searchMisses >= SEARCH_MISS_LIMIT) {
+        searchCandidate = null;
+        searchMisses = 0;
+      }
+      return false;
+    }
+    searchMisses = 0;
+    const proposal = {
+      cx: video.cx,
+      cy: video.cy,
+      radius: video.radius,
+      rotationDeg: wide.estimateDeg,
+      quality: wide.confidence,
+    };
+    if (searchCandidate) {
+      const step = Math.hypot(proposal.cx - searchCandidate.cx, proposal.cy - searchCandidate.cy);
+      const radiusStep = Math.abs(proposal.radius - searchCandidate.radius);
+      const rotStep = Math.abs(wrapDelta(searchCandidate.rotationDeg, proposal.rotationDeg));
+      if (
+        step > pose.radius * SEARCH_STEP_FRACTION
+        || radiusStep > pose.radius * SEARCH_RADIUS_FRACTION
+        || rotStep > SEARCH_ROTATION_AGREE_DEG
+      ) {
+        searchCandidate = { ...proposal, hits: 1 };
+        reacquireReason = 'reacquire-unstable';
+        return false;
+      }
+      searchCandidate = { ...proposal, hits: searchCandidate.hits + 1 };
+    } else {
+      searchCandidate = { ...proposal, hits: 1 };
+    }
+    if (searchCandidate.hits >= SEARCH_CONFIRM_FRAMES) {
+      reacquireReason = null;
+      return true;
+    }
+    reacquireReason = 'reacquire-pending';
+    return false;
+  };
+
+  const acceptCandidate = (found, video, wide, mapping, windowFraction) => {
+    const beforeCx = pose.cx;
+    const beforeCy = pose.cy;
+    const hits = searchCandidate?.hits ?? SEARCH_CONFIRM_FRAMES;
+    pose = {
+      cx: video.cx,
+      cy: video.cy,
+      radius: clamp(video.radius, baseRadius * 0.82, baseRadius * 1.2),
+      rotationDeg: wide.estimateDeg,
+    };
+    trustedRotationDeg = wide.estimateDeg;
+    const profile = wide.profile || measureRimProfile(
+      found.edges,
+      found.width,
+      found.height,
+      (pose.cx - mapping.originX) * mapping.scale,
+      (pose.cy - mapping.originY) * mapping.scale,
+      pose.radius * mapping.scale,
+    );
+    clearSearch();
+    recovering = false;
+    observed = {
+      cx: video.cx,
+      cy: video.cy,
+      radius: video.radius,
+      rotationDeg: wide.estimateDeg,
+      quality: wide.confidence,
+    };
+    return finish(windowFraction, {
+      held: false,
+      confidence: found.confidence,
+      profile,
+      reacquired: true,
+      reacquireAccepted: true,
+      reacquireHits: hits,
+      rawCx: video.cx,
+      rawCy: video.cy,
+      rawRadius: video.radius,
+      poseQuality: wide.confidence,
+      poseDeltaPx: Math.hypot(pose.cx - beforeCx, pose.cy - beforeCy),
+    });
+  };
+
+  const priorStillThere = (found, localPrior) => {
+    if (!found.edges) return false;
+    const score = scoreRim(
+      found.edges,
+      found.width,
+      found.height,
+      localPrior.cx,
+      localPrior.cy,
+      localPrior.radius,
+    );
+    if (score <= 1e-3) return false;
+    if (!(found.score > 1e-3)) return true;
+    const far = Math.hypot(found.cx - localPrior.cx, found.cy - localPrior.cy);
+    if (far <= localPrior.radius * CENTRE_IMMEDIATE_FRACTION) return score >= found.score * 0.85;
+    return score >= found.score;
+  };
+
+  const noteLockedMiss = () => {
+    observed = null;
+    lossStreak += 1;
+    if (lossStreak >= SEARCH_LOSS_FRAMES) {
+      beginSearch();
+      reacquireReason = 'reacquire-none';
+    }
+  };
+
+  const noteSearchMiss = () => {
+    observed = null;
+    reacquireReason = 'reacquire-none';
+    searchMisses += 1;
+    if (searchMisses >= SEARCH_MISS_LIMIT) {
+      searchCandidate = null;
+      searchMisses = 0;
+    }
+    growSearch();
+  };
+
   return {
     reset() {
       pose = null;
@@ -289,6 +520,7 @@ export function createGaugeTracker() {
       referenceNeedleDeg = null;
       recovering = false;
       clearPoseMemory();
+      clearSearch();
     },
     seed({ cx, cy, radius }) {
       pose = { cx, cy, radius, rotationDeg: 0 };
@@ -297,42 +529,73 @@ export function createGaugeTracker() {
       referenceNeedleDeg = null;
       recovering = false;
       clearPoseMemory();
+      clearSearch();
     },
     getPose() {
       return pose ? { ...pose } : null;
+    },
+    captureSpec() {
+      if (mode !== 'searching') return { pad: 1.9, maxOutput: 188 };
+      return { pad: 1 + searchFraction + 0.45, maxOutput: 320 };
     },
     /**
      * @param mapping image pixel = (video pixel - origin) * scale
      */
     trackPosition(image, mapping) {
       if (!pose) return null;
+      reacquireReason = null;
+      observed = null;
       const localPrior = {
         cx: (pose.cx - mapping.originX) * mapping.scale,
         cy: (pose.cy - mapping.originY) * mapping.scale,
         radius: pose.radius * mapping.scale,
       };
-      const found = locateGauge(image, localPrior, {
-        searchFraction: recovering ? 0.62 : 0.46,
-      });
+      let windowFraction = mode === 'searching' ? searchFraction : (recovering ? 0.62 : 0.46);
+      let found = locateGauge(image, localPrior, { searchFraction: windowFraction });
+      if (mode === 'searching' && priorStillThere(found, localPrior)) {
+        mode = 'locked';
+        recovering = false;
+        lossStreak = 0;
+        searchMisses = 0;
+        searchCandidate = null;
+        windowFraction = 0.46;
+        found = locateGauge(image, localPrior, { searchFraction: windowFraction });
+      } else if (mode === 'searching') {
+        if (!found.ok) {
+          noteSearchMiss();
+          return finish(windowFraction, {
+            held: true,
+            confidence: found.confidence,
+            rawCx: mapping.originX + found.cx / mapping.scale,
+            rawCy: mapping.originY + found.cy / mapping.scale,
+            rawRadius: found.radius / mapping.scale,
+          });
+        }
+        const video = toVideo(found, mapping);
+        const wide = wideMatch(found);
+        if (considerCandidate(video, wide)) {
+          return acceptCandidate(found, video, wide, mapping, windowFraction);
+        }
+        if (!searchCandidate) growSearch();
+        return finish(windowFraction, {
+          held: true,
+          confidence: found.confidence,
+          rawCx: video.cx,
+          rawCy: video.cy,
+          rawRadius: video.radius,
+        });
+      }
       if (!found.ok) {
         recovering = true;
         poseCandidate = null;
-        return {
+        noteLockedMiss();
+        return finish(windowFraction, {
           held: true,
           confidence: found.confidence,
-          pose: { ...pose },
-          profile: null,
-          poseQuality: null,
           poseRejectReason: 'rim-weak',
-          posePending: false,
-          poseDeltaPx: 0,
-        };
+        });
       }
-      const video = {
-        cx: mapping.originX + found.cx / mapping.scale,
-        cy: mapping.originY + found.cy / mapping.scale,
-        radius: found.radius / mapping.scale,
-      };
+      const video = toVideo(found, mapping);
       const dx = video.cx - pose.cx;
       const dy = video.cy - pose.cy;
       const shift = Math.hypot(dx, dy);
@@ -341,20 +604,19 @@ export function createGaugeTracker() {
         centreCandidate = null;
         radiusCandidate = null;
         poseCandidate = null;
-        return {
+        const wide = wideMatch(found);
+        if (considerCandidate(video, wide)) {
+          return acceptCandidate(found, video, wide, mapping, windowFraction);
+        }
+        beginSearch();
+        return finish(windowFraction, {
           held: true,
           confidence: found.confidence,
-          pose: { ...pose },
-          profile: null,
-          reacquired: false,
           rawCx: video.cx,
           rawCy: video.cy,
           rawRadius: video.radius,
-          poseQuality: null,
           poseRejectReason: 'centre-rejected',
-          posePending: false,
-          poseDeltaPx: 0,
-        };
+        });
       }
 
       let dial = null;
@@ -435,6 +697,16 @@ export function createGaugeTracker() {
           geometryHeld = shift >= immediate;
           centreCandidate = null;
           radiusCandidate = null;
+          if (geometryHeld) {
+            const wide = wideMatch(found);
+            if (considerCandidate(video, wide)) {
+              return acceptCandidate(found, video, wide, mapping, windowFraction);
+            }
+            lossStreak += 1;
+            if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
+              beginSearch();
+            }
+          }
         }
         skipNormal = true;
       }
@@ -490,6 +762,14 @@ export function createGaugeTracker() {
 
       const reacquired = recovering;
       recovering = false;
+      if (!geometryHeld) {
+        lossStreak = 0;
+        searchMisses = 0;
+        searchCandidate = null;
+        reacquireReason = null;
+        observed = null;
+        mode = 'locked';
+      }
       const profile = measureRimProfile(
         found.edges,
         found.width,
@@ -498,10 +778,9 @@ export function createGaugeTracker() {
         (pose.cy - mapping.originY) * mapping.scale,
         pose.radius * mapping.scale,
       );
-      return {
+      return finish(windowFraction, {
         held: geometryHeld,
         confidence: found.confidence,
-        pose: { ...pose },
         profile,
         reacquired,
         rawCx: video.cx,
@@ -511,7 +790,7 @@ export function createGaugeTracker() {
         poseRejectReason,
         posePending,
         poseDeltaPx: Math.hypot(pose.cx - beforeCx, pose.cy - beforeCy),
-      };
+      });
     },
     trackOrientation(profile, needleDeg, { positionHeld = false, reacquired = false } = {}) {
       const trusted = trustedRotationDeg;
@@ -715,6 +994,16 @@ function completeReading({
       posePending: Boolean(position.posePending || orientation.posePending),
       poseDeltaPx: position.poseDeltaPx ?? 0,
       poseDeltaRot: orientation.poseDeltaRot ?? 0,
+      trackMode: position.trackMode || 'locked',
+      searchFraction: position.searchFraction ?? null,
+      reacquireCx: position.reacquireCx ?? null,
+      reacquireCy: position.reacquireCy ?? null,
+      reacquireRadius: position.reacquireRadius ?? null,
+      reacquireRotation: position.reacquireRotation ?? null,
+      reacquireQuality: position.reacquireQuality ?? null,
+      reacquireHits: position.reacquireHits ?? 0,
+      reacquireRejectReason: position.reacquireRejectReason ?? null,
+      reacquireAccepted: position.reacquireAccepted === true,
     },
   };
 }
@@ -725,9 +1014,10 @@ export function analyzeGaugeImage(image, tracker) {
   const videoHeight = image.height;
   if (!videoWidth || !videoHeight || !tracker.getPose()) return null;
   const pose = tracker.getPose();
-  const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * 1.9);
+  const capture = tracker.captureSpec();
+  const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * capture.pad);
   if (!trackCrop) return null;
-  const tracked = resampleCrop(image, trackCrop, 188);
+  const tracked = resampleCrop(image, trackCrop, capture.maxOutput);
   const position = tracker.trackPosition(tracked.image, {
     originX: trackCrop.originX,
     originY: trackCrop.originY,
@@ -763,9 +1053,10 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   }
 
   const pose = tracker.getPose();
-  const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * 1.9);
+  const capture = tracker.captureSpec();
+  const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * capture.pad);
   if (!trackCrop) return null;
-  const tracked = drawCrop(video, canvas, trackCrop, 188);
+  const tracked = drawCrop(video, canvas, trackCrop, capture.maxOutput);
   const position = tracker.trackPosition(tracked.image, {
     originX: trackCrop.originX,
     originY: trackCrop.originY,

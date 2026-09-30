@@ -63,6 +63,11 @@ const EMPTY_LIVE = {
   poseQuality: null,
   poseRejectReason: null,
   posePending: false,
+  trackMode: 'locked',
+  searchFraction: null,
+  reacquireHits: 0,
+  reacquireRejectReason: null,
+  reacquireAccepted: false,
 };
 
 function exitLab() {
@@ -368,6 +373,16 @@ export function FlairPressureLab() {
           posePending: gauge.posePending === true,
           poseDeltaPx: gauge.poseDeltaPx ?? null,
           poseDeltaRot: gauge.poseDeltaRot ?? null,
+          trackMode: gauge.trackMode || 'locked',
+          searchFraction: gauge.searchFraction ?? null,
+          reacquireCx: gauge.reacquireCx ?? null,
+          reacquireCy: gauge.reacquireCy ?? null,
+          reacquireRadius: gauge.reacquireRadius ?? null,
+          reacquireRotation: gauge.reacquireRotation ?? null,
+          reacquireQuality: gauge.reacquireQuality ?? null,
+          reacquireHits: gauge.reacquireHits ?? 0,
+          reacquireRejectReason: gauge.reacquireRejectReason ?? null,
+          reacquireAccepted: gauge.reacquireAccepted === true,
         });
         setTrace(historyRef.current.snapshot());
       };
@@ -387,6 +402,11 @@ export function FlairPressureLab() {
         poseQuality: gauge.poseQuality ?? null,
         poseRejectReason: gauge.poseRejectReason ?? null,
         posePending: gauge.posePending === true,
+        trackMode: gauge.trackMode || 'locked',
+        searchFraction: gauge.searchFraction ?? null,
+        reacquireHits: gauge.reacquireHits ?? 0,
+        reacquireRejectReason: gauge.reacquireRejectReason ?? null,
+        reacquireAccepted: gauge.reacquireAccepted === true,
       };
 
       if (!sessionRef.current) {
@@ -720,6 +740,14 @@ export function FlairPressureLab() {
             <dd className={ui.text}>{live.poseRejectReason || (live.poseQuality == null && !live.gaugeHeld ? '—' : (live.gaugeHeld ? 'held' : 'accepted'))}</dd>
             <dt>Pose pending</dt>
             <dd className={ui.text}>{live.posePending ? 'yes' : 'no'}</dd>
+            <dt>Track mode</dt>
+            <dd className={ui.text}>{live.trackMode || '—'}</dd>
+            <dt>Search window</dt>
+            <dd className={ui.text}>{live.searchFraction == null ? '—' : `${Number(live.searchFraction).toFixed(2)}×`}</dd>
+            <dt>Reacquire hits</dt>
+            <dd className={ui.text}>{live.reacquireHits ?? '—'}</dd>
+            <dt>Reacquire</dt>
+            <dd className={ui.text}>{live.reacquireAccepted ? 'accepted' : (live.reacquireRejectReason || '—')}</dd>
             <dt>Gauge confidence</dt>
             <dd className={ui.text}>{formatNum(live.gaugeConfidence, 2)}</dd>
             <dt>Orientation score</dt>
