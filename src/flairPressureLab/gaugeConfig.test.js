@@ -580,6 +580,159 @@ export function runFlairPressureLabTests() {
     `false candidate reason ${decoyRead.gauge.reacquireRejectReason}`,
   );
 
+  const aliasTracker = createGaugeTracker();
+  const aliasHome = makeGaugeImage(280, { cx: 90, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0 });
+  aliasTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  let aliasSettled = null;
+  for (let i = 0; i < 6; i += 1) aliasSettled = analyzeGaugeImage(aliasHome, aliasTracker);
+  const aliasJump = makeGaugeImage(280, {
+    cx: 90 + farJump,
+    cy: 140,
+    radius: 32,
+    needleDeg: 47,
+    rotationDeg: 0,
+    occlude: { start: 180, span: 100, value: 40 },
+  });
+  const aliasReads = [];
+  for (let i = 0; i < 16; i += 1) aliasReads.push(analyzeGaugeImage(aliasJump, aliasTracker));
+  const aliasLast = aliasReads[aliasReads.length - 1];
+  assert.ok(
+    aliasReads.every((reading) => reading.gauge.reacquireAccepted === false),
+    'an occluded tick alias was accepted',
+  );
+  assert.ok(
+    aliasReads.every((reading) => reading.gauge.reacquireHits < 3),
+    'three agreeing ambiguous observations confirmed a pose',
+  );
+  assert.ok(
+    aliasReads.some((reading) => reading.gauge.reacquireRejectReason === 'reacquire-ambiguous'),
+    `occluded dial was not marked ambiguous (${aliasLast.gauge.reacquireRejectReason})`,
+  );
+  const aliasProposal = aliasReads.find((reading) => reading.gauge.reacquireRejectReason === 'reacquire-ambiguous');
+  assert.ok(
+    Math.abs(wrapDelta(0, aliasProposal.gauge.reacquireRotation)) > 25,
+    `expected a large false proposal, got ${aliasProposal.gauge.reacquireRotation}`,
+  );
+  assert.ok(
+    Math.abs(wrapDelta(0, aliasLast.gauge.rotationDeg)) < 8,
+    `occluded dial walked the rotation to ${aliasLast.gauge.rotationDeg}`,
+  );
+  assert.equal(aliasLast.gauge.held, true, 'occluded dial stopped holding the last pose');
+  assert.equal(aliasLast.gauge.reacquireAccepted, false);
+  assert.ok(
+    Math.hypot(aliasLast.gauge.cx - aliasSettled.gauge.cx, aliasLast.gauge.cy - aliasSettled.gauge.cy) <= 8,
+    `occluded dial moved the centre to ${aliasLast.gauge.cx.toFixed(1)}, ${aliasLast.gauge.cy.toFixed(1)}`,
+  );
+
+  const partialTracker = createGaugeTracker();
+  const partialHome = makeGaugeImage(280, { cx: 90, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0 });
+  partialTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  for (let i = 0; i < 6; i += 1) analyzeGaugeImage(partialHome, partialTracker);
+  const partial = makeGaugeImage(280, {
+    cx: 90 + farJump,
+    cy: 140,
+    radius: 32,
+    needleDeg: 47,
+    rotationDeg: 0,
+    occlude: { start: 180, span: 60, value: 40 },
+  });
+  const partialReads = [];
+  for (let i = 0; i < 12; i += 1) partialReads.push(analyzeGaugeImage(partial, partialTracker));
+  const partialLast = partialReads[partialReads.length - 1];
+  assert.ok(
+    partialReads.every((reading) => reading.gauge.reacquireAccepted === false),
+    'a sharp but non-unique tick alias was accepted',
+  );
+  assert.ok(
+    partialReads.every((reading) => reading.gauge.reacquireHits < 3),
+    'three repeats of a non-unique alias confirmed it',
+  );
+  assert.ok(
+    partialReads.some((reading) => reading.gauge.reacquireRejectReason === 'reacquire-ambiguous'),
+    `partial occlusion was not marked ambiguous (${partialLast.gauge.reacquireRejectReason})`,
+  );
+  const partialProposal = partialReads.find((reading) => (
+    reading.gauge.reacquireRejectReason === 'reacquire-ambiguous'
+    && Math.abs(wrapDelta(0, reading.gauge.reacquireRotation)) > 25
+  ));
+  assert.ok(partialProposal, 'partial occlusion did not propose a large alias');
+  assert.ok(
+    Math.abs(wrapDelta(0, partialLast.gauge.rotationDeg)) < 8,
+    `partial occlusion walked the rotation to ${partialLast.gauge.rotationDeg}`,
+  );
+
+  const splitTracker = createGaugeTracker();
+  const markedHome = makeGaugeImage(280, {
+    cx: 90, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0, faceMark: true,
+  });
+  splitTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  let markedSettled = null;
+  for (let i = 0; i < 6; i += 1) markedSettled = analyzeGaugeImage(markedHome, splitTracker);
+  const split = makeGaugeImage(280, {
+    cx: 90 + farJump,
+    cy: 140,
+    radius: 32,
+    needleDeg: 47,
+    rotationDeg: 0,
+    faceMark: true,
+    tickRotationDeg: 35,
+    faceRotationDeg: 0,
+  });
+  const splitReads = [];
+  for (let i = 0; i < 8; i += 1) splitReads.push(analyzeGaugeImage(split, splitTracker));
+  const splitLast = splitReads[splitReads.length - 1];
+  assert.ok(
+    splitReads.every((reading) => reading.gauge.reacquireAccepted === false),
+    'a large rim rotation was accepted while the white face disagreed',
+  );
+  assert.ok(
+    splitReads.every((reading) => reading.gauge.reacquireHits < 3),
+    'three agreeing rim observations overrode the white face',
+  );
+  assert.ok(
+    splitReads.some((reading) => reading.gauge.reacquireRejectReason === 'reacquire-ambiguous'),
+    `face disagreement reason ${splitLast.gauge.reacquireRejectReason}`,
+  );
+  assert.ok(
+    Math.abs(wrapDelta(markedSettled.gauge.rotationDeg, splitLast.gauge.rotationDeg)) < 8,
+    `face disagreement rotated to ${splitLast.gauge.rotationDeg}`,
+  );
+  assert.equal(splitLast.gauge.held, true, 'face disagreement stopped holding the last pose');
+  assert.ok(
+    Math.hypot(splitLast.gauge.cx - markedSettled.gauge.cx, splitLast.gauge.cy - markedSettled.gauge.cy) <= 8,
+    `face disagreement moved the centre to ${splitLast.gauge.cx.toFixed(1)}, ${splitLast.gauge.cy.toFixed(1)}`,
+  );
+
+  const agreeTracker = createGaugeTracker();
+  agreeTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  for (let i = 0; i < 6; i += 1) analyzeGaugeImage(markedHome, agreeTracker);
+  const agreed = makeGaugeImage(280, {
+    cx: 90 + farJump,
+    cy: 140,
+    radius: 32,
+    needleDeg: 82,
+    rotationDeg: 35,
+    faceMark: true,
+  });
+  let agreedRead = null;
+  const agreedReads = [];
+  for (let i = 0; i < 16; i += 1) {
+    agreedRead = analyzeGaugeImage(agreed, agreeTracker);
+    agreedReads.push(agreedRead);
+  }
+  assert.ok(
+    agreedReads.some((reading) => reading.gauge.reacquireAccepted),
+    'a large rotation agreed by the rim and the white face was not reacquired',
+  );
+  assert.ok(
+    Math.abs(wrapDelta(35, agreedRead.gauge.rotationDeg)) <= 8,
+    `agreed rotation stayed at ${agreedRead.gauge.rotationDeg}`,
+  );
+  assert.ok(
+    Math.abs(wrapDelta(47, agreedRead.relativeAngleDeg)) <= 10,
+    `agreed rotation relative ${agreedRead.relativeAngleDeg}`,
+  );
+
   const stats = stabilityStats([
     { gaugeX: 10, gaugeY: 10, rawGaugeX: 10, rawGaugeY: 12, gaugeRotation: 0, rawRotation: 0, rawAngle: 40, relativeAngle: 40, smoothedAngle: 40, pressure: 1 },
     { gaugeX: 10, gaugeY: 10, rawGaugeX: 14, rawGaugeY: 12, gaugeRotation: 0, rawRotation: 5, rawAngle: 40, relativeAngle: 40, smoothedAngle: 40, pressure: 1 },
@@ -771,6 +924,10 @@ function makeGaugeImage(size, {
   shade = 0,
   noise = 0,
   seed = 1,
+  occlude = null,
+  faceMark = false,
+  tickRotationDeg = null,
+  faceRotationDeg = null,
 } = {}) {
   let state = seed >>> 0;
   const rand = () => {
@@ -786,11 +943,13 @@ function makeGaugeImage(size, {
       const dx = x - cx;
       const dy = y - cy;
       const dist = Math.hypot(dx, dy);
+      const tickRotation = tickRotationDeg ?? rotationDeg;
+      const faceRotation = faceRotationDeg ?? rotationDeg;
       let value = 190;
       if (dist < radius - 2.4) value = 226;
       if (Math.abs(dist - radius) <= 2.2) value = 22;
       if (markings && dist > radius * 0.73 && dist < radius * 0.92 && dist < radius - 3.2) {
-        let ang = (Math.atan2(dy, dx) * 180) / Math.PI - rotationDeg;
+        let ang = (Math.atan2(dy, dx) * 180) / Math.PI - tickRotation;
         ang = ((ang % 360) + 360) % 360;
         const minor = ang % 30;
         const minorDist = Math.min(minor, 30 - minor);
@@ -800,9 +959,25 @@ function makeGaugeImage(size, {
         else if (minorDist < 3.2) value = 32;
         if (angDist(ang, 200) < 16 && dist > radius * 0.76) value = 12;
       }
+      if (faceMark && dist > radius * 0.42 && dist < radius * 0.58) {
+        let faceAng = (Math.atan2(dy, dx) * 180) / Math.PI - faceRotation;
+        faceAng = ((faceAng % 360) + 360) % 360;
+        if (angDist(faceAng, 130) < 12) value = 14;
+      }
       const along = dx * needleCos + dy * needleSin;
       const across = Math.abs(-dx * needleSin + dy * needleCos);
       if (along > radius * 0.16 && along < radius * 0.84 && across <= 1.6) value = 6;
+      if (occlude) {
+        let screen = (Math.atan2(dy, dx) * 180) / Math.PI;
+        screen = ((screen % 360) + 360) % 360;
+        const start = ((occlude.start % 360) + 360) % 360;
+        let rel = screen - start;
+        if (rel < 0) rel += 360;
+        const covered = rel <= occlude.span
+          && dist < (occlude.radius ?? radius * 1.15)
+          && dist > (occlude.inner ?? 0);
+        if (covered) value = occlude.value ?? 40;
+      }
       value = value * gain + bias + shade * (x / size) * 80;
       if (noise) value += (rand() - 0.5) * noise;
       const index = (y * size + x) * 4;

@@ -20,12 +20,20 @@ import { detectNeedleAngle } from './needleFromFrame.js';
  * A lever move can carry the gauge outside that window. Locked acceptance is
  * unchanged. After the pose is no longer supported, a separate search confirms
  * the same dial over several frames and only then moves the locked pose.
+ * Repeating an orientation is not enough when the step is large. The outer
+ * tick ring repeats about every 30°, and covering its one unique sector leaves
+ * an alias that still clears the ordinary correlation gate. A large search
+ * rotation has to beat that alias outright. When the white face has its own
+ * fixed structure, that inner profile has to agree as well. Otherwise the
+ * search keeps holding the last pose.
  */
 
 const RIM_BINS = 48;
 const PROFILE_BINS = 72;
 const CONFIDENCE_MIN = 0.3;
 const ORIENT_MIN = 0.34;
+/** Nearest shift treated as a different tick period, not a shoulder of the best peak. */
+const PERIOD_RIVAL_DEG = 24;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -137,12 +145,15 @@ function nearNeedle(deg, needleDeg, halfWidth) {
     || Math.abs(wrapDelta(wrap360(needleDeg + 180), deg)) <= halfWidth;
 }
 
-/** Fixed dial markings around the rim. The needle is masked later. */
-export function measureRimProfile(edges, width, height, cx, cy, radius) {
+/**
+ * Fixed dial markings in one annulus. The default band is the outer tick ring.
+ * An inner band sits on the white face, away from the black rim. The needle is masked later.
+ */
+export function measureRimProfile(edges, width, height, cx, cy, radius, band) {
   const profile = new Float32Array(PROFILE_BINS);
   const counts = new Float32Array(PROFILE_BINS);
-  const inner = radius * 0.72;
-  const outer = radius * 0.94;
+  const inner = radius * (band?.innerRatio ?? 0.72);
+  const outer = radius * (band?.outerRatio ?? 0.94);
   for (let r = inner; r <= outer; r += 1.5) {
     for (let i = 0; i < PROFILE_BINS; i += 1) {
       const angle = (i / PROFILE_BINS) * Math.PI * 2;
@@ -194,7 +205,7 @@ export function matchGaugeRotation(reference, current, {
   maxShiftDeg = 18,
 } = {}) {
   if (!reference || !current || reference.length !== current.length) {
-    return { ok: false, rotationDeg: previousDeg, confidence: 0 };
+    return { ok: false, rotationDeg: previousDeg, confidence: 0, margin: 0, periodMargin: 0 };
   }
   const bins = reference.length;
   const step = 360 / bins;
@@ -218,12 +229,15 @@ export function matchGaugeRotation(reference, current, {
     ranked.push({ shift, corr: cosineCentered(refVals, curVals) });
   }
 
-  if (!ranked.length) return { ok: false, rotationDeg: previousDeg, confidence: 0, margin: 0 };
+  if (!ranked.length) return { ok: false, rotationDeg: previousDeg, confidence: 0, margin: 0, periodMargin: 0 };
   ranked.sort((a, b) => b.corr - a.corr);
   const best = ranked[0];
-  const second = ranked.find((item) => Math.abs(wrapDelta(best.shift * step, item.shift * step)) >= 12);
+  const separated = (minDeg) => ranked.find((item) => Math.abs(wrapDelta(best.shift * step, item.shift * step)) >= minDeg);
+  const second = separated(12);
+  const periodRival = separated(PERIOD_RIVAL_DEG);
   const rotationDeg = wrap360(best.shift * step);
   const margin = second ? best.corr - second.corr : best.corr;
+  const periodMargin = periodRival ? best.corr - periodRival.corr : best.corr;
   const median = ranked[Math.floor(ranked.length / 2)].corr;
   const peaked = best.corr - median >= 0.05;
   const ok = best.corr >= ORIENT_MIN && margin >= 0.02 && peaked;
@@ -232,6 +246,7 @@ export function matchGaugeRotation(reference, current, {
     rotationDeg: ok ? rotationDeg : previousDeg,
     confidence: clamp(best.corr, 0, 1),
     margin,
+    periodMargin,
     estimateDeg: rotationDeg,
   };
 }
@@ -270,11 +285,31 @@ const SEARCH_RADIUS_FRACTION = 0.08;
 const SEARCH_ROTATION_AGREE_DEG = 8;
 const SEARCH_MAX_SHIFT_DEG = 60;
 const SEARCH_ENTER_FRACTION = 0.35;
+/**
+ * One minor-tick period. A smaller search step can be a coarse but real
+ * orientation. A step this large can also be the same ticks shifted by one period.
+ */
+const LARGE_ROTATION_DEG = 24;
+/**
+ * A centred, unobstructed dial correlates near 0.85. A one-period alias can
+ * still reach the mid-0.6s when only part of the unique sector is hidden, but
+ * the previous orientation then remains close, so the period gap stays small.
+ */
+const LARGE_ROTATION_CONFIDENCE = 0.62;
+/** Gap from the best shift to the nearest shift one tick-period away. */
+const LARGE_ROTATION_PERIOD_MARGIN = 0.12;
+/** White-face annulus, inside the outer tick ring and clear of the black rim. */
+const FACE_INNER_RATIO = 0.4;
+const FACE_OUTER_RATIO = 0.6;
+const FACE_AGREE_DEG = 8;
+const FACE_SIGNAL_CONFIDENCE = 0.45;
 
 export function createGaugeTracker() {
   let pose = null;
   let baseRadius = 0;
   let reference = null;
+  let referenceFace = null;
+  let observedFace = null;
   let referenceNeedleDeg = null;
   let recovering = false;
   let centreCandidate = null;
@@ -372,17 +407,49 @@ export function createGaugeTracker() {
       found.cy,
       found.radius,
     );
+    const orientation = {
+      previousDeg: pose.rotationDeg,
+      needleDeg: maskNeedleDeg,
+      referenceNeedleDeg,
+      maxShiftDeg: SEARCH_MAX_SHIFT_DEG,
+    };
+    let face = null;
+    if (referenceFace) {
+      const faceProfile = measureRimProfile(
+        found.edges,
+        found.width,
+        found.height,
+        found.cx,
+        found.cy,
+        found.radius,
+        { innerRatio: FACE_INNER_RATIO, outerRatio: FACE_OUTER_RATIO },
+      );
+      face = matchGaugeRotation(referenceFace, faceProfile, orientation);
+    }
     return {
       profile,
-      ...matchGaugeRotation(reference, profile, {
-        // Last accepted rotation, not the uncommitted candidate. A candidate
-        // at the edge of this window must not become the next centre.
-        previousDeg: pose.rotationDeg,
-        needleDeg: maskNeedleDeg,
-        referenceNeedleDeg,
-        maxShiftDeg: SEARCH_MAX_SHIFT_DEG,
-      }),
+      face,
+      // Last accepted rotation, not the uncommitted candidate. A candidate
+      // at the edge of this window must not become the next centre.
+      ...matchGaugeRotation(reference, profile, orientation),
     };
+  };
+
+  /**
+   * Three repeats of a tick-period alias are still the same ambiguity.
+   * A large step is accepted only when the outer ring is uniquely this dial,
+   * and the white-face profile agrees when that face actually has structure.
+   */
+  const largeRotationSupported = (wide) => {
+    const step = Math.abs(wrapDelta(pose.rotationDeg, wide.estimateDeg));
+    if (step <= LARGE_ROTATION_DEG) return true;
+    if (wide.confidence < LARGE_ROTATION_CONFIDENCE) return false;
+    if ((wide.periodMargin ?? 0) < LARGE_ROTATION_PERIOD_MARGIN) return false;
+    const face = wide.face;
+    if (face && face.ok && face.confidence >= FACE_SIGNAL_CONFIDENCE) {
+      if (Math.abs(wrapDelta(wide.estimateDeg, face.estimateDeg)) > FACE_AGREE_DEG) return false;
+    }
+    return true;
   };
 
   const considerCandidate = (video, wide) => {
@@ -406,6 +473,12 @@ export function createGaugeTracker() {
         searchCandidate = null;
         searchMisses = 0;
       }
+      return false;
+    }
+    if (!largeRotationSupported(wide)) {
+      reacquireReason = 'reacquire-ambiguous';
+      searchCandidate = null;
+      searchMisses = 0;
       return false;
     }
     searchMisses = 0;
@@ -526,6 +599,8 @@ export function createGaugeTracker() {
       pose = null;
       baseRadius = 0;
       reference = null;
+      referenceFace = null;
+      observedFace = null;
       referenceNeedleDeg = null;
       recovering = false;
       clearPoseMemory();
@@ -535,6 +610,8 @@ export function createGaugeTracker() {
       pose = { cx, cy, radius, rotationDeg: 0 };
       baseRadius = radius;
       reference = null;
+      referenceFace = null;
+      observedFace = null;
       referenceNeedleDeg = null;
       recovering = false;
       clearPoseMemory();
@@ -554,6 +631,7 @@ export function createGaugeTracker() {
       if (!pose) return null;
       reacquireReason = null;
       observed = null;
+      observedFace = null;
       const localPrior = {
         cx: (pose.cx - mapping.originX) * mapping.scale,
         cy: (pose.cy - mapping.originY) * mapping.scale,
@@ -787,6 +865,15 @@ export function createGaugeTracker() {
         (pose.cy - mapping.originY) * mapping.scale,
         pose.radius * mapping.scale,
       );
+      observedFace = measureRimProfile(
+        found.edges,
+        found.width,
+        found.height,
+        (pose.cx - mapping.originX) * mapping.scale,
+        (pose.cy - mapping.originY) * mapping.scale,
+        pose.radius * mapping.scale,
+        { innerRatio: FACE_INNER_RATIO, outerRatio: FACE_OUTER_RATIO },
+      );
       return finish(windowFraction, {
         held: geometryHeld,
         confidence: found.confidence,
@@ -826,6 +913,7 @@ export function createGaugeTracker() {
       }
       if (!reference) {
         reference = profile.slice();
+        referenceFace = observedFace ? observedFace.slice() : null;
         referenceNeedleDeg = needleDeg;
         rememberNeedle();
         rotationCandidate = null;
