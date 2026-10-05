@@ -3,11 +3,19 @@
  * Reads recorded samples only. Does not change detection, tracking, or pressure.
  */
 import { DIAGNOSTIC_WINDOW_MS } from './diagnosticHistory.js';
-import { EXTRACTION_START_BAR, REST_MAX_SPREAD_DEG, wrap360, wrapDelta } from './gaugeConfig.js';
+import {
+  EXTRACTION_START_BAR,
+  NEEDLE_AGREE_DEG,
+  NEEDLE_LOST_QUALITY,
+  NEEDLE_TRACK_QUALITY,
+  REST_MAX_SPREAD_DEG,
+  wrap360,
+  wrapDelta,
+} from './gaugeConfig.js';
 
-const LOST_SCORE = 0.08;
-const UNCERTAIN_SCORE = 0.18;
-const JITTER_UNCERTAIN_DEG = 12;
+const LOST_SCORE = NEEDLE_LOST_QUALITY;
+const UNCERTAIN_SCORE = NEEDLE_TRACK_QUALITY;
+const JITTER_UNCERTAIN_DEG = NEEDLE_AGREE_DEG;
 const CENTRE_EVENT_FRACTION = 0.1;
 const ROTATION_EVENT_DEG = 8;
 const PRESSURE_NEAR_ZERO_BAR = 0.5;
@@ -573,6 +581,7 @@ export function buildDiagnosticReport(samples, context = {}) {
 
   push('CANDIDATES');
   push('Best candidate is the detector angle before temporal acceptance, in the gauge frame. Scores are the radial-segment score. Margin is (best - second) / best. Likeness is 1 for a long continuous segment and near 0 for a short outer mark. Needle score is that margin, reduced when likeness is low. The 0.08 lost threshold is unchanged.');
+  push('A sleeve or bezel boundary is a one-sided step and is not scored as a needle. A step inside 12° is smoothed. A larger step is accepted only when the score reaches the tracking threshold and likeness reaches the ridge gate. Above the smooth band that evidence has to repeat. jump-ambiguous means the ray was not strong enough. jump-unconfirmed means it was strong but had not repeated yet. pose-snap means the gauge pose was reacquired on that frame, so the needle candidate was not allowed to move pressure.');
   if (!hasKey(rows, 'candidateAngle')) {
     push('N/A (candidate fields were not recorded)');
   } else {
@@ -594,6 +603,26 @@ export function buildDiagnosticReport(samples, context = {}) {
     push(mode
       ? `Best-to-second separation mode: ${mode.mode}° on ${mode.count} of ${mode.total} frames (${((mode.count / mode.total) * 100).toFixed(1)}%), binned to 5°.`
       : 'Best-to-second separation mode: N/A');
+  }
+  if (!hasKey(rows, 'needleDecision')) {
+    push('Needle decisions: N/A (needle decision was not recorded)');
+  } else {
+    const decisions = new Map();
+    rows.forEach((sample) => {
+      const decision = sample.needleDecision || 'none';
+      decisions.set(decision, (decisions.get(decision) || 0) + 1);
+    });
+    push('Needle decisions:');
+    decisions.forEach((count, decision) => {
+      push(`  ${decision}: ${count}`);
+    });
+  }
+  if (!hasKey(rows, 'candidateJump')) {
+    push('Candidate jump: N/A (candidate jump was not recorded)');
+  } else {
+    push('Candidate jump from the last accepted angle:');
+    push('Signed degrees. Positive is clockwise in the gauge frame. This is the step the acceptance gate saw, before smoothing.');
+    push(statBlock(linearStats(rows.map((sample) => sample.candidateJump)), 2, '°'));
   }
   push('');
 
@@ -671,8 +700,31 @@ export function buildDiagnosticReport(samples, context = {}) {
       if (sample.angleAccepted === true && finite(sample.relativeAngle) && finite(previousAcceptedAngle)) {
         const step = Math.abs(wrapDelta(previousAcceptedAngle, sample.relativeAngle));
         if (step > REST_MAX_SPREAD_DEG) {
-          events.push({ t: sample.t, text: `Accepted relative angle changed ${step.toFixed(1)}°` });
+          const detail = [];
+          if (finite(sample.candidateLikeness)) detail.push(`likeness ${sample.candidateLikeness.toFixed(2)}`);
+          if (finite(sample.candidateMargin)) detail.push(`margin ${sample.candidateMargin.toFixed(2)}`);
+          if (finite(sample.confirmationHits) && sample.confirmationHits > 0) detail.push(`${sample.confirmationHits} confirming frames`);
+          if (finite(sample.poseAge)) detail.push(`pose age ${sample.poseAge}`);
+          const suffix = detail.length ? ` (${detail.join(', ')})` : '';
+          events.push({ t: sample.t, text: `Accepted relative angle changed ${step.toFixed(1)}°${suffix}` });
         }
+      }
+      if (
+        sample.angleAccepted !== true
+        && finite(sample.candidateJump)
+        && Math.abs(sample.candidateJump) > REST_MAX_SPREAD_DEG
+        && sample.needleDecision
+        && sample.needleDecision !== 'held-gauge'
+        && sample.needleDecision !== 'held-weak'
+        && sample.needleDecision !== 'calibrating'
+        && sample.needleDecision !== previous.needleDecision
+      ) {
+        const parts = [`Held needle candidate ${sample.candidateJump >= 0 ? '+' : ''}${sample.candidateJump.toFixed(1)}° (${sample.needleDecision})`];
+        if (finite(sample.candidateLikeness)) parts.push(`likeness ${sample.candidateLikeness.toFixed(2)}`);
+        if (finite(sample.candidateMargin)) parts.push(`margin ${sample.candidateMargin.toFixed(2)}`);
+        if (finite(sample.quality)) parts.push(`score ${sample.quality.toFixed(2)}`);
+        if (finite(sample.poseAge)) parts.push(`pose age ${sample.poseAge}`);
+        events.push({ t: sample.t, text: parts.join(', ') });
       }
       if (finite(previous.gaugeX) && finite(previous.gaugeY) && finite(sample.gaugeX) && finite(sample.gaugeY) && finite(sample.gaugeRadius)) {
         const step = Math.hypot(sample.gaugeX - previous.gaugeX, sample.gaugeY - previous.gaugeY);

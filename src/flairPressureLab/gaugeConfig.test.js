@@ -123,46 +123,107 @@ export function runFlairPressureLabTests() {
   const median = circularMedian([358, 0, 2]);
   assert.ok(median < 3 || median > 357, `median ${median}`);
 
+  const strongRay = { quality: 0.6, likeness: 0.8 };
   const tracker = createAngleTracker({ maxJumpDeg: 20, confirmCount: 2, alpha: 1 });
   tracker.push(10);
   const rejected = tracker.push(80);
   assert.equal(rejected.accepted, false);
+  assert.equal(rejected.heldReason, 'jump-ambiguous');
   assert.equal(rejected.angle, 10);
-  const accepted = tracker.push(82);
+  const stillAmbiguous = tracker.push(82);
+  assert.equal(stillAmbiguous.accepted, false);
+  assert.equal(stillAmbiguous.angle, 10);
+  const evidenced = createAngleTracker({ maxJumpDeg: 20, confirmCount: 2, alpha: 1 });
+  evidenced.push(10);
+  assert.equal(evidenced.push(80, strongRay).accepted, false);
+  const accepted = evidenced.push(82, strongRay);
   assert.equal(accepted.accepted, true);
   assert.equal(accepted.angle, 82);
-  const flipped = tracker.push(82 + 180);
+  const flipped = evidenced.push(82 + 180, strongRay);
   assert.equal(flipped.accepted, false);
   assert.equal(flipped.rejectedFlip, true);
-  assert.equal(tracker.push(82 + 180).angle, 82);
+  assert.equal(evidenced.push(82 + 180, strongRay).angle, 82);
 
   const cautious = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
   cautious.push(10);
-  assert.equal(cautious.push(60, { quality: 0.1 }).accepted, false);
-  assert.equal(cautious.push(60, { quality: 0.1 }).accepted, false);
-  assert.equal(cautious.push(60, { quality: 0.1 }).accepted, false);
-  const stillHeld = cautious.push(61, { quality: 0.1 });
+  assert.equal(cautious.push(60, { quality: 0.1, likeness: 0.2 }).accepted, false);
+  assert.equal(cautious.push(60, { quality: 0.1, likeness: 0.2 }).accepted, false);
+  assert.equal(cautious.push(60, { quality: 0.1, likeness: 0.2 }).accepted, false);
+  const stillHeld = cautious.push(61, { quality: 0.1, likeness: 0.2 });
   assert.equal(stillHeld.accepted, false);
+  assert.equal(stillHeld.heldReason, 'jump-ambiguous');
   assert.equal(stillHeld.angle, 10);
-  const weakLocked = cautious.push(60, { quality: 0.1 });
-  assert.equal(weakLocked.accepted, true);
-  assert.equal(weakLocked.angle, 60);
+  const weakLocked = cautious.push(60, { quality: 0.22, likeness: 0.3 });
+  assert.equal(weakLocked.accepted, false);
+  assert.equal(weakLocked.angle, 10);
 
   const clearJump = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
   clearJump.push(10);
-  assert.equal(clearJump.push(60, { quality: 0.6 }).accepted, false);
-  assert.equal(clearJump.push(60, { quality: 0.6 }).accepted, false);
-  const confirmed = clearJump.push(62, { quality: 0.6 });
+  assert.equal(clearJump.push(60, strongRay).accepted, false);
+  const pendingJump = clearJump.push(60, strongRay);
+  assert.equal(pendingJump.accepted, false);
+  assert.equal(pendingJump.heldReason, 'jump-unconfirmed');
+  const confirmed = clearJump.push(62, strongRay);
   assert.equal(confirmed.accepted, true);
   assert.equal(confirmed.angle, 62);
 
   const sweep = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
   sweep.push(0);
-  assert.equal(sweep.push(30, { quality: 0.6 }).accepted, false);
-  assert.equal(sweep.push(60, { quality: 0.6 }).angle, 0);
-  const swept = sweep.push(90, { quality: 0.6 });
+  assert.equal(sweep.push(30, strongRay).accepted, false);
+  assert.equal(sweep.push(60, strongRay).angle, 0);
+  const swept = sweep.push(90, strongRay);
   assert.equal(swept.accepted, true);
   assert.equal(swept.angle, 90);
+
+  const falseWalk = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  falseWalk.push(0);
+  for (const raw of [30, 60, 90, 120]) {
+    const step = falseWalk.push(raw, { quality: 0.55, likeness: 0.25 });
+    assert.equal(step.accepted, false, `a weak ray walked to ${step.angle}`);
+    assert.equal(step.angle, 0);
+  }
+
+  const modest = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  modest.push(10);
+  const modestWeak = modest.push(28, { quality: 0.12, likeness: 0.2 });
+  assert.equal(modestWeak.accepted, false);
+  assert.equal(modestWeak.angle, 10);
+  const modestReal = modest.push(28, strongRay);
+  assert.equal(modestReal.accepted, true);
+  assert.equal(modestReal.angle, 28);
+  const smallWeak = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  smallWeak.push(10);
+  const smallStep = smallWeak.push(16, { quality: 0.12, likeness: 0.2 });
+  assert.equal(smallStep.accepted, true);
+  assert.ok(Math.abs(wrapDelta(16, smallStep.angle)) < 1);
+
+  const around = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  around.push(350);
+  const wrappedSmall = around.push(356, { quality: 0.1, likeness: 0.2 });
+  assert.equal(wrappedSmall.accepted, true);
+  assert.ok(Math.abs(wrapDelta(356, wrappedSmall.angle)) < 1, `wrap small ${wrappedSmall.angle}`);
+  const wrappedModerate = around.push(14, strongRay);
+  assert.equal(wrappedModerate.accepted, true);
+  assert.ok(Math.abs(wrapDelta(14, wrappedModerate.angle)) < 1, `wrap moderate ${wrappedModerate.angle}`);
+  const wrongWay = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  wrongWay.push(10);
+  for (let i = 0; i < 4; i += 1) {
+    const heldWrap = wrongWay.push(350, { quality: 0.5, likeness: 0.2 });
+    assert.equal(heldWrap.accepted, false);
+    assert.equal(heldWrap.angle, 10);
+  }
+
+  const poseSnap = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
+  poseSnap.push(47);
+  const snapped = poseSnap.push(106, { ...strongRay, poseSnap: true });
+  assert.equal(snapped.accepted, false);
+  assert.equal(snapped.heldReason, 'pose-snap');
+  assert.equal(snapped.angle, 47);
+  assert.equal(poseSnap.push(106, strongRay).accepted, false);
+  assert.equal(poseSnap.push(106, strongRay).accepted, false);
+  const afterSnap = poseSnap.push(107, strongRay);
+  assert.equal(afterSnap.accepted, true);
+  assert.ok(Math.abs(wrapDelta(106, afterSnap.angle)) <= 2);
 
   const alternating = createAngleTracker({ maxJumpDeg: 24, confirmCount: 3, alpha: 1 });
   alternating.push(20);
@@ -239,6 +300,14 @@ export function runFlairPressureLabTests() {
   const dottedError = Math.abs(wrapDelta(200, dottedFound.angleDeg));
   assert.ok(dottedError <= 8, `fragmented radial won at ${dottedFound.angleDeg} q ${dottedFound.quality.toFixed(3)}`);
 
+  const broader = blankFrame(140, 228);
+  paintRadial(broader, 70, 70, 40, 18, 58, 1.5, 18);
+  paintRadial(broader, 70, 70, 110, 16, 60, 3.2, 36);
+  const broaderFound = detectNeedleAngle(broader, 70, 70, 140 * 0.18, 140 * 0.44);
+  const broaderError = Math.abs(wrapDelta(40, broaderFound.angleDeg));
+  assert.ok(broaderError <= 8, `wider mark outranked the needle at ${broaderFound.angleDeg} q ${broaderFound.quality.toFixed(3)}`);
+  assert.ok(broaderFound.quality > 0.15, `broader quality ${broaderFound.quality}`);
+
   assert.equal(
     classifyTrackingStatus({ calibrated: true, quality: 0.6, jitterDeg: 1, accepted: true, gaugeHeld: true }),
     'UNCERTAIN',
@@ -310,6 +379,92 @@ export function runFlairPressureLabTests() {
   const atOldHub = detectNeedleAngle(translated, 75, 75, 36 * TIP_INNER_RATIO, 36 * OUTER_RADIUS_RATIO);
   assert.ok(Math.abs(wrapDelta(40, atNewHub.angleDeg)) <= 8, `needle on moved gauge ${atNewHub.angleDeg}`);
   assert.ok(Math.abs(wrapDelta(40, atOldHub.angleDeg)) > 8, `stale hub should miss, got ${atOldHub.angleDeg}`);
+
+  const sleeveGauge = makeGaugeImage(180, {
+    cx: 90, cy: 90, radius: 60, needleDeg: 47, sleeveEdge: { angleDeg: 125, value: 40 },
+  });
+  const sleeveNeedle = detectNeedleAngle(sleeveGauge, 90, 90, 60 * TIP_INNER_RATIO, 60 * OUTER_RADIUS_RATIO);
+  assert.ok(Math.abs(wrapDelta(47, sleeveNeedle.angleDeg)) <= 8, `sleeve step stole the needle at ${sleeveNeedle.angleDeg} q ${sleeveNeedle.quality.toFixed(3)}`);
+  assert.ok(sleeveNeedle.quality >= 0.18, `sleeve needle quality ${sleeveNeedle.quality}`);
+  assert.ok(sleeveNeedle.likeness >= 0.4, `sleeve needle likeness ${sleeveNeedle.likeness}`);
+
+  const stepOnlyGauge = makeGaugeImage(180, {
+    cx: 90, cy: 90, radius: 60, needleDeg: 47, drawNeedle: false, sleeveEdge: { angleDeg: 125, value: 40 },
+  });
+  const stepOnlyNeedle = detectNeedleAngle(stepOnlyGauge, 90, 90, 60 * TIP_INNER_RATIO, 60 * OUTER_RADIUS_RATIO);
+  assert.ok(
+    stepOnlyNeedle.quality < 0.18 || stepOnlyNeedle.likeness < 0.4,
+    `radial sleeve step looked like a needle q ${stepOnlyNeedle.quality.toFixed(3)} like ${stepOnlyNeedle.likeness.toFixed(3)} at ${stepOnlyNeedle.angleDeg}`,
+  );
+  const stepTracker = createAngleTracker();
+  stepTracker.push(47);
+  for (let i = 0; i < 6; i += 1) {
+    const step = stepTracker.push(stepOnlyNeedle.angleDeg, {
+      quality: stepOnlyNeedle.quality,
+      likeness: stepOnlyNeedle.likeness,
+    });
+    assert.equal(step.accepted, false, `sleeve step accepted on frame ${i} as ${step.angle}`);
+    assert.ok(Math.abs(wrapDelta(47, step.angle)) < 1);
+  }
+
+  const chordGauge = makeGaugeImage(180, {
+    cx: 90, cy: 90, radius: 60, needleDeg: 47, sleeveChord: { angleDeg: 90, offset: 28, value: 38 },
+  });
+  const chordNeedle = detectNeedleAngle(chordGauge, 90, 90, 60 * TIP_INNER_RATIO, 60 * OUTER_RADIUS_RATIO);
+  assert.ok(Math.abs(wrapDelta(47, chordNeedle.angleDeg)) <= 8, `chord sleeve stole the needle at ${chordNeedle.angleDeg} q ${chordNeedle.quality.toFixed(3)}`);
+
+  const coveredGauge = makeGaugeImage(180, {
+    cx: 90, cy: 90, radius: 60, needleDeg: 47, drawNeedle: false, sleeveChord: { angleDeg: 15, offset: 8, value: 36 },
+  });
+  const coveredNeedle = detectNeedleAngle(coveredGauge, 90, 90, 60 * TIP_INNER_RATIO, 60 * OUTER_RADIUS_RATIO);
+  const coveredTracker = createAngleTracker();
+  coveredTracker.push(47);
+  for (let i = 0; i < 5; i += 1) {
+    const step = coveredTracker.push(coveredNeedle.angleDeg, {
+      quality: coveredNeedle.quality,
+      likeness: coveredNeedle.likeness,
+    });
+    if (Math.abs(wrapDelta(47, coveredNeedle.angleDeg)) > 12) {
+      assert.equal(step.accepted, false, `occluding chord accepted ${coveredNeedle.angleDeg}`);
+    }
+    assert.ok(Math.abs(wrapDelta(47, step.angle)) <= 12, `occluding chord moved pressure to ${step.angle}`);
+  }
+
+  const restingNeedle = detectNeedleAngle(
+    makeGaugeImage(180, { cx: 90, cy: 90, radius: 60, needleDeg: 47 }),
+    90, 90, 60 * TIP_INNER_RATIO, 60 * OUTER_RADIUS_RATIO,
+  );
+  const fastNeedle = detectNeedleAngle(
+    makeGaugeImage(180, { cx: 90, cy: 90, radius: 60, needleDeg: 110 }),
+    90, 90, 60 * TIP_INNER_RATIO, 60 * OUTER_RADIUS_RATIO,
+  );
+  assert.ok(Math.abs(wrapDelta(47, restingNeedle.angleDeg)) <= 8, `rest needle ${restingNeedle.angleDeg}`);
+  assert.ok(Math.abs(wrapDelta(110, fastNeedle.angleDeg)) <= 8, `fast needle ${fastNeedle.angleDeg}`);
+  assert.ok(fastNeedle.quality >= 0.18 && fastNeedle.likeness >= 0.4, `fast evidence q ${fastNeedle.quality} like ${fastNeedle.likeness}`);
+  const fastTracker = createAngleTracker();
+  fastTracker.push(restingNeedle.angleDeg);
+  const fastMeta = { quality: fastNeedle.quality, likeness: fastNeedle.likeness };
+  assert.equal(fastTracker.push(fastNeedle.angleDeg, fastMeta).accepted, false);
+  assert.equal(fastTracker.push(fastNeedle.angleDeg, fastMeta).accepted, false);
+  const fastLocked = fastTracker.push(fastNeedle.angleDeg, fastMeta);
+  assert.equal(fastLocked.accepted, true);
+  assert.ok(Math.abs(wrapDelta(fastNeedle.angleDeg, fastLocked.angle)) <= 2, `fast lock ${fastLocked.angle}`);
+
+  const translatedNeedle = detectNeedleAngle(
+    makeGaugeImage(180, { cx: 112, cy: 74, radius: 60, needleDeg: 120 }),
+    112, 74, 60 * TIP_INNER_RATIO, 60 * OUTER_RADIUS_RATIO,
+  );
+  assert.ok(Math.abs(wrapDelta(120, translatedNeedle.angleDeg)) <= 8, `translated needle ${translatedNeedle.angleDeg}`);
+  const bothTracker = createAngleTracker();
+  bothTracker.push(restingNeedle.angleDeg);
+  const bothMeta = { quality: translatedNeedle.quality, likeness: translatedNeedle.likeness };
+  assert.ok(bothMeta.quality >= 0.18 && bothMeta.likeness >= 0.4, `translated evidence q ${bothMeta.quality} like ${bothMeta.likeness}`);
+  assert.equal(bothTracker.push(translatedNeedle.angleDeg, { ...bothMeta, poseSnap: true }).accepted, false);
+  assert.equal(bothTracker.push(translatedNeedle.angleDeg, bothMeta).accepted, false);
+  assert.equal(bothTracker.push(translatedNeedle.angleDeg, bothMeta).accepted, false);
+  const bothLocked = bothTracker.push(translatedNeedle.angleDeg, bothMeta);
+  assert.equal(bothLocked.accepted, true);
+  assert.ok(Math.abs(wrapDelta(translatedNeedle.angleDeg, bothLocked.angle)) <= 2, `move plus needle ${bothLocked.angle}`);
 
   const gaugeTracker = createGaugeTracker();
   const identity = { originX: 0, originY: 0, scale: 1 };
@@ -817,6 +972,16 @@ export function runFlairPressureLabTests() {
   assert.ok(candidateReport.includes('Candidate likeness:'));
   assert.ok(candidateReport.includes('Best-to-second separation mode: 45° on 2 of 2 frames (100.0%), binned to 5°.'));
   assert.ok(candidateReport.includes('Candidate-to-accepted delta mean: 22.00'));
+  assert.ok(candidateReport.includes('Needle decisions: N/A (needle decision was not recorded)'));
+  const heldReport = buildDiagnosticReport([
+    { t: 1000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 0.2, rawPressure: 0.2, pressureMeasured: true, angleAccepted: true, quality: 0.8, candidateLikeness: 0.8, candidateMargin: 0.7, candidateJump: 0, needleDecision: 'accepted', confirmationHits: 0, poseAge: 12 },
+    { t: 1125, tracking: 'UNCERTAIN', rawAngle: 70, relativeAngle: 70, smoothedAngle: 10, pressure: 0.2, rawPressure: null, pressureMeasured: false, angleAccepted: false, quality: 0.5, candidateLikeness: 0.22, candidateMargin: 0.1, candidateJump: 60, needleDecision: 'jump-ambiguous', confirmationHits: 0, poseAge: 13 },
+  ], { timestamp: when, calibrationStatus: 'calibrated' });
+  assert.ok(heldReport.includes('Needle decisions:'));
+  assert.ok(heldReport.includes('jump-ambiguous: 1'));
+  assert.ok(heldReport.includes('Held needle candidate +60.0° (jump-ambiguous)'));
+  assert.ok(heldReport.includes('likeness 0.22'));
+  assert.ok(heldReport.includes('Candidate jump from the last accepted angle:'));
   const poseReport = buildDiagnosticReport([
     { t: 1000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 100, gaugeY: 100, rawGaugeX: 100, rawGaugeY: 100, gaugeRotation: 0, rawRotation: 0, gaugeRadius: 40, poseQuality: 0.9, poseRejectReason: null, posePending: false, poseDeltaPx: 0, poseDeltaRot: 0 },
     { t: 1125, tracking: 'UNCERTAIN', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 100, gaugeY: 100, rawGaugeX: 112, rawGaugeY: 100, gaugeRotation: 0, rawRotation: 16, gaugeRadius: 40, poseQuality: 0.4, poseRejectReason: 'rotation-unconfirmed', posePending: true, poseDeltaPx: 0, poseDeltaRot: 0 },
@@ -928,6 +1093,9 @@ function makeGaugeImage(size, {
   faceMark = false,
   tickRotationDeg = null,
   faceRotationDeg = null,
+  drawNeedle = true,
+  sleeveEdge = null,
+  sleeveChord = null,
 } = {}) {
   let state = seed >>> 0;
   const rand = () => {
@@ -966,7 +1134,18 @@ function makeGaugeImage(size, {
       }
       const along = dx * needleCos + dy * needleSin;
       const across = Math.abs(-dx * needleSin + dy * needleCos);
-      if (along > radius * 0.16 && along < radius * 0.84 && across <= 1.6) value = 6;
+      if (drawNeedle !== false && along > radius * 0.16 && along < radius * 0.84 && across <= 1.6) value = 6;
+      if (sleeveEdge && dist < radius - 2.4) {
+        const edge = (sleeveEdge.angleDeg * Math.PI) / 180;
+        const alongEdge = dx * Math.cos(edge) + dy * Math.sin(edge);
+        const acrossEdge = -dx * Math.sin(edge) + dy * Math.cos(edge);
+        if (alongEdge > radius * 0.1 && acrossEdge > 1) value = Math.min(value, sleeveEdge.value ?? 42);
+      }
+      if (sleeveChord && dist < radius - 2.4) {
+        const edge = (sleeveChord.angleDeg * Math.PI) / 180;
+        const signed = -dx * Math.sin(edge) + dy * Math.cos(edge);
+        if (signed > (sleeveChord.offset ?? radius * 0.45)) value = Math.min(value, sleeveChord.value ?? 42);
+      }
       if (occlude) {
         let screen = (Math.atan2(dy, dx) * 180) / Math.PI;
         screen = ((screen % 360) + 360) % 360;

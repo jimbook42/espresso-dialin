@@ -24,6 +24,17 @@ export const REST_STABLE_SAMPLES = 6;
 export const REST_MAX_SPREAD_DEG = 8;
 export const REST_MIN_QUALITY = 0.1;
 export const FLIP_REJECT_DEG = 140;
+/** Below this the sample is LOST and is not a pressure update. */
+export const NEEDLE_LOST_QUALITY = 0.08;
+/** At or above this a reading may be TRACKING. A large step needs this score too. */
+export const NEEDLE_TRACK_QUALITY = 0.18;
+/**
+ * Detector likeness divisor. A short outer mark falls below this.
+ * A step that clears the tracking score still has to clear this gate.
+ */
+export const NEEDLE_LIKENESS_GATE = 0.4;
+/** Agreement band for a repeated candidate, and the jitter limit for TRACKING. */
+export const NEEDLE_AGREE_DEG = 12;
 
 export function wrap360(deg) {
   return ((deg % 360) + 360) % 360;
@@ -55,8 +66,8 @@ export function angleToBar(angleDeg, session) {
 export function classifyTrackingStatus({ calibrated, quality, jitterDeg, accepted, heldFlip = false, gaugeHeld = false }) {
   if (!calibrated) return 'CALIBRATING';
   if (gaugeHeld || heldFlip) return 'UNCERTAIN';
-  if (quality == null || quality < 0.08) return 'LOST';
-  if (!accepted || quality < 0.18 || jitterDeg > 12) return 'UNCERTAIN';
+  if (quality == null || quality < NEEDLE_LOST_QUALITY) return 'LOST';
+  if (!accepted || quality < NEEDLE_TRACK_QUALITY || jitterDeg > NEEDLE_AGREE_DEG) return 'UNCERTAIN';
   return 'TRACKING';
 }
 

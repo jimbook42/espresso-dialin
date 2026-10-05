@@ -1,4 +1,14 @@
-import { FLIP_REJECT_DEG, REST_MAX_SPREAD_DEG, REST_MIN_QUALITY, REST_STABLE_SAMPLES, wrap360, wrapDelta } from './gaugeConfig.js';
+import {
+  FLIP_REJECT_DEG,
+  NEEDLE_AGREE_DEG,
+  NEEDLE_LIKENESS_GATE,
+  NEEDLE_TRACK_QUALITY,
+  REST_MAX_SPREAD_DEG,
+  REST_MIN_QUALITY,
+  REST_STABLE_SAMPLES,
+  wrap360,
+  wrapDelta,
+} from './gaugeConfig.js';
 
 export function circularMedian(angles) {
   if (!angles?.length) return null;
@@ -8,17 +18,42 @@ export function circularMedian(angles) {
   return wrap360(base + mid);
 }
 
+function needleEvidence(meta) {
+  const quality = meta && typeof meta === 'object' ? meta.quality : null;
+  const likeness = meta && typeof meta === 'object' ? meta.likeness : null;
+  const poseSnap = Boolean(meta && typeof meta === 'object' && meta.poseSnap);
+  const strong = quality != null
+    && quality >= NEEDLE_TRACK_QUALITY
+    && likeness != null
+    && likeness >= NEEDLE_LIKENESS_GATE;
+  return { strong, poseSnap };
+}
+
 /**
  * Holds the last accepted angle.
- * A modest step is smoothed immediately. A large step is held until several
- * consecutive frames support the same new angle, or keep moving the same way.
- * There is no maximum travel: a real pull that stays on the new angle is accepted.
- * A weak margin needs two extra frames. A gap clears the pending candidate.
+ *
+ * A false radial step used to become pressure because confirmation only asked
+ * the new angle to agree with itself. Three frames, or a same-direction drift
+ * of up to 70° per frame, snapped the tracker onto that angle. The snap is
+ * what wrote a +59° relative jump with no matching gauge rotation.
+ *
+ * A step inside the agreement band is still smoothed immediately.
+ * A moderate step, up to maxJumpDeg, is smoothed only when the ray is a
+ * needle: tracking score and ridge likeness. A larger step needs that same
+ * evidence on confirmCount agreeing frames. A strong ray may keep moving in
+ * one direction; a weak or one-sided ray is held and cannot walk.
+ * There is no hard travel limit. A gap, or a pose snap, clears the candidate.
  */
 export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 0.45 } = {}) {
   let angle = null;
   let pending = null;
   let pendingHits = 0;
+
+  const hold = (heldReason, extra) => {
+    pending = null;
+    pendingHits = 0;
+    return { angle, accepted: false, pendingHits: 0, heldReason, ...extra };
+  };
 
   return {
     reset() {
@@ -27,47 +62,45 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 
       pendingHits = 0;
     },
     push(raw, meta) {
-      if (raw == null || Number.isNaN(raw)) {
-        pending = null;
-        pendingHits = 0;
-        return { angle, accepted: false };
-      }
-      const quality = meta && typeof meta === 'object' ? meta.quality : null;
+      if (raw == null || Number.isNaN(raw)) return hold('gap');
+      const evidence = needleEvidence(meta);
       if (angle == null) {
         angle = raw;
-        return { angle, accepted: true };
+        return { angle, accepted: true, pendingHits: 0, heldReason: null };
       }
-      if (Math.abs(wrapDelta(angle, raw)) >= FLIP_REJECT_DEG) {
+      const jump = Math.abs(wrapDelta(angle, raw));
+      if (jump >= FLIP_REJECT_DEG) return hold('flip', { rejectedFlip: true });
+      // The reacquisition frame is a new gauge pose. Do not seed a needle
+      // confirmation from it. A real relative change shows up on the next frames.
+      if (evidence.poseSnap && jump > NEEDLE_AGREE_DEG) return hold('pose-snap');
+      const normalLimit = Math.min(NEEDLE_AGREE_DEG, maxJumpDeg);
+      if (jump <= normalLimit || (jump <= maxJumpDeg && evidence.strong)) {
         pending = null;
         pendingHits = 0;
-        return { angle, accepted: false, rejectedFlip: true };
+        angle = wrap360(angle + alpha * wrapDelta(angle, raw));
+        return { angle, accepted: true, pendingHits: 0, heldReason: null };
       }
-      if (Math.abs(wrapDelta(angle, raw)) > maxJumpDeg) {
-        const needed = quality != null && quality < 0.18 ? confirmCount + 2 : confirmCount;
-        let agree = false;
-        if (pending != null && Math.abs(wrapDelta(pending, raw)) <= 12) agree = true;
-        else if (pending != null) {
-          const step = wrapDelta(pending, raw);
-          const pendingStep = wrapDelta(angle, pending);
-          const nextStep = wrapDelta(angle, raw);
-          const sameWay = pendingStep * step > 0 && pendingStep * nextStep > 0;
-          if (sameWay && Math.abs(step) <= 70) agree = true;
-        }
-        if (agree) pendingHits += 1;
-        else pendingHits = 1;
-        pending = raw;
-        if (pendingHits >= needed) {
-          angle = raw;
-          pending = null;
-          pendingHits = 0;
-          return { angle, accepted: true };
-        }
-        return { angle, accepted: false };
+      if (!evidence.strong) return hold('jump-ambiguous');
+      let agree = false;
+      if (pending != null && Math.abs(wrapDelta(pending, raw)) <= NEEDLE_AGREE_DEG) agree = true;
+      else if (pending != null) {
+        const step = wrapDelta(pending, raw);
+        const pendingStep = wrapDelta(angle, pending);
+        const nextStep = wrapDelta(angle, raw);
+        const sameWay = pendingStep * step > 0 && pendingStep * nextStep > 0;
+        if (sameWay && Math.abs(step) <= 70) agree = true;
       }
-      pending = null;
-      pendingHits = 0;
-      angle = wrap360(angle + alpha * wrapDelta(angle, raw));
-      return { angle, accepted: true };
+      if (agree) pendingHits += 1;
+      else pendingHits = 1;
+      pending = raw;
+      if (pendingHits >= confirmCount) {
+        const hits = pendingHits;
+        angle = raw;
+        pending = null;
+        pendingHits = 0;
+        return { angle, accepted: true, pendingHits: hits, heldReason: null };
+      }
+      return { angle, accepted: false, pendingHits, heldReason: 'jump-unconfirmed' };
     },
   };
 }

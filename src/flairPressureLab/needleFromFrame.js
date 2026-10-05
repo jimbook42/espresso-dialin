@@ -1,4 +1,4 @@
-import { OUTER_RADIUS_RATIO, TIP_INNER_RATIO } from './gaugeConfig.js';
+import { NEEDLE_LIKENESS_GATE, OUTER_RADIUS_RATIO, TIP_INNER_RATIO } from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
 
 /**
@@ -26,7 +26,17 @@ function median(values) {
   return copy[Math.floor(copy.length / 2)];
 }
 
-/** Dark ridge along one ray. Bright edges and circumferential gradients contribute nothing. */
+/**
+ * Dark ridge along one ray.
+ * The pointer sits on a white face, so both sides of the ray are brighter than
+ * the centre. A sleeve edge or bezel boundary is a step: one side is darker.
+ * Scoring `(left + right) / 2 - centre` counted that step as a needle. The
+ * step is stable under occlusion, and three agreeing frames then snapped it
+ * in as a pressure change. Both sides have to be brighter, and the darker
+ * side has to carry at least half the contrast of the brighter side, so a
+ * one-sided step contributes nothing.
+ * Circumferential gradients contribute nothing either.
+ */
 function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR) {
   const out = new Float32Array(SAMPLE_COUNT);
   const span = outerR - innerR;
@@ -47,8 +57,16 @@ function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outer
     const left = sample(gray, width, height, x - sin * offset, y + cos * offset);
     const right = sample(gray, width, height, x + sin * offset, y - cos * offset);
     if (left == null || right == null) continue;
-    const contrast = (left + right) * 0.5 - center;
-    if (contrast <= 0) continue;
+    const leftContrast = left - center;
+    const rightContrast = right - center;
+    if (leftContrast <= 0 || rightContrast <= 0) continue;
+    const weaker = Math.min(leftContrast, rightContrast);
+    const stronger = Math.max(leftContrast, rightContrast);
+    // Both faces of a needle match. A sleeve step is bright on one side only;
+    // high-pass ringing can make the dark side barely positive and still
+    // produce a high margin once the real needle is hidden.
+    if (weaker * 2 < stronger) continue;
+    const contrast = weaker;
     const gx = edges.gx[index];
     const gy = edges.gy[index];
     const across = Math.abs(gx * sin - gy * cos);
@@ -152,20 +170,14 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
     likenessAt[deg] = scored.likeness;
   }
 
-  const adjusted = new Float32Array(360);
-  for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
-    const self = raw[deg];
-    const left = raw[(deg + 360 - ANGLE_STEP) % 360];
-    const right = raw[(deg + ANGLE_STEP) % 360];
-    const support = self > 1e-6 ? Math.min(1, Math.min(left, right) / self) : 0;
-    adjusted[deg] = self * (0.2 + 0.8 * support);
-  }
-
+  // Rank the raw ridge. Neighbour support used to multiply the score before
+  // the argmax, so a broader but weaker mark (a sleeve boundary, a wide tick)
+  // could outrank the darker needle and then report a near-zero margin.
   let best = 0;
-  let bestAdjusted = -1;
+  let bestRaw = -1;
   for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
-    if (adjusted[deg] > bestAdjusted) {
-      bestAdjusted = adjusted[deg];
+    if (raw[deg] > bestRaw) {
+      bestRaw = raw[deg];
       best = deg;
     }
   }
@@ -198,7 +210,7 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
   const opposite = (best + 180) % 360;
   const oppositeScore = scoreAngle(opposite, opposite % ANGLE_STEP === 0 ? evidence[opposite / ANGLE_STEP] : null).score;
   const margin = bestScore <= 1e-4 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
-  const quality = margin * Math.min(1, bestLikeness / 0.4);
+  const quality = margin * Math.min(1, bestLikeness / NEEDLE_LIKENESS_GATE);
   return {
     angleDeg: best,
     quality,

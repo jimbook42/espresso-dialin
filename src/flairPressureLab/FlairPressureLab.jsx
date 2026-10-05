@@ -5,6 +5,7 @@ import { useFrontCameraStream } from './hooks/useFrontCameraStream';
 import {
   EXTRACTION_START_BAR,
   FLAIR_58_SCALE,
+  NEEDLE_LOST_QUALITY,
   PROCESS_INTERVAL_MS,
   REST_STABLE_SAMPLES,
   angleToBar,
@@ -143,6 +144,7 @@ export function FlairPressureLab() {
   const calibRef = useRef(createRestCalibration());
   const trackerRef = useRef(createGaugeTracker());
   const historyRef = useRef(createDiagnosticHistory());
+  const poseAgeRef = useRef(0);
   const resizeObserverRef = useRef(null);
   const copyTimerRef = useRef(null);
   const [trace, setTrace] = useState([]);
@@ -176,6 +178,7 @@ export function FlairPressureLab() {
     pressureRef.current.reset();
     jitterRef.current.reset();
     thresholdRef.current.reset();
+    poseAgeRef.current = 0;
     if (clearTracker) trackerRef.current.reset();
     if (clearHistory) {
       historyRef.current.reset();
@@ -309,6 +312,10 @@ export function FlairPressureLab() {
 
       const gauge = reading.gauge;
       const frame = { w: reading.videoWidth, h: reading.videoHeight };
+      const poseMoved = gauge.reacquireAccepted === true
+        || (gauge.poseDeltaPx ?? 0) >= 1
+        || Math.abs(gauge.poseDeltaRot ?? 0) >= 1;
+      poseAgeRef.current = poseMoved ? 0 : poseAgeRef.current + 1;
       if (!gauge.held) {
         const nextRegion = {
           nx: clamp(gauge.nx, 0.05, 0.95),
@@ -383,6 +390,10 @@ export function FlairPressureLab() {
           reacquireHits: gauge.reacquireHits ?? 0,
           reacquireRejectReason: gauge.reacquireRejectReason ?? null,
           reacquireAccepted: gauge.reacquireAccepted === true,
+          needleDecision: partial.needleDecision ?? null,
+          confirmationHits: partial.confirmationHits ?? 0,
+          candidateJump: partial.candidateJump ?? null,
+          poseAge: partial.poseAge ?? null,
         });
         setTrace(historyRef.current.snapshot());
       };
@@ -425,9 +436,13 @@ export function FlairPressureLab() {
             pressureMeasured: false,
             needleVisible: false,
             flipHeld: false,
-            weakNeedle: reading.quality == null || reading.quality < 0.08,
+            weakNeedle: reading.quality == null || reading.quality < NEEDLE_LOST_QUALITY,
             angleAccepted: false,
             acceptedAngle: null,
+            needleDecision: 'calibrating',
+            confirmationHits: 0,
+            candidateJump: null,
+            poseAge: poseAgeRef.current,
           });
           setLive({
             ...EMPTY_LIVE,
@@ -459,14 +474,23 @@ export function FlairPressureLab() {
         oppositeScore: reading.oppositeScore,
         previousAngle: lastAngleRef.current,
       });
-      const weak = reading.quality == null || reading.quality < 0.08;
+      const weak = reading.quality == null || reading.quality < NEEDLE_LOST_QUALITY;
       const blockSample = gauge.held || choice.held || weak;
+      const candidateJump = lastAngleRef.current == null || choice.angleDeg == null
+        ? null
+        : wrapDelta(lastAngleRef.current, choice.angleDeg);
       let rawBar = null;
       let signalPaused = true;
       let signal = thresholdRef.current.get();
-      let tracked = { angle: lastAngleRef.current, accepted: false };
+      let tracked = { angle: lastAngleRef.current, accepted: false, pendingHits: 0, heldReason: null };
+      let needleDecision;
       if (!blockSample && choice.angleDeg != null) {
-        tracked = angleTrackerRef.current.push(choice.angleDeg, { quality: reading.quality });
+        tracked = angleTrackerRef.current.push(choice.angleDeg, {
+          quality: reading.quality,
+          likeness: reading.likeness,
+          poseSnap: gauge.reacquireAccepted === true,
+        });
+        needleDecision = tracked.accepted ? 'accepted' : (tracked.heldReason || 'held');
         if (tracked.accepted && tracked.angle != null) {
           lastAngleRef.current = tracked.angle;
           rawBar = angleToBar(tracked.angle, sessionRef.current);
@@ -476,6 +500,9 @@ export function FlairPressureLab() {
         }
       } else {
         angleTrackerRef.current.push(null);
+        if (gauge.held) needleDecision = 'held-gauge';
+        else if (choice.held) needleDecision = 'held-flip';
+        else needleDecision = 'held-weak';
       }
       const jitter = jitterRef.current.push(tracked.accepted ? tracked.angle : lastAngleRef.current);
       const pressureBar = pressureRef.current.get();
@@ -500,6 +527,10 @@ export function FlairPressureLab() {
         weakNeedle: weak,
         angleAccepted: Boolean(tracked.accepted) && !blockSample,
         acceptedAngle: tracked.angle,
+        needleDecision,
+        confirmationHits: tracked.pendingHits ?? 0,
+        candidateJump,
+        poseAge: poseAgeRef.current,
       });
       setLive({
         tracking,
