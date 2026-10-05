@@ -580,7 +580,7 @@ export function buildDiagnosticReport(samples, context = {}) {
   push('');
 
   push('CANDIDATES');
-  push('Best candidate is the detector angle before temporal acceptance, in the gauge frame. Scores are the radial-segment score. Margin is (best - second) / best. Likeness is 1 for a long continuous segment and near 0 for a short outer mark. Needle score is that margin, reduced when likeness is low. The 0.08 lost threshold is unchanged.');
+  push('Best candidate is the detector angle before temporal acceptance, in the gauge frame. Scores are the radial-segment score. Margin is (best - second) / best. Likeness is 1 for a long continuous segment that begins in the inner part of the needle window, and near 0 for a short outer mark or a face stroke that starts further out. Inner reach is 1 when that inner part of the window has needle evidence. Start radius is where the strong evidence begins, as a fraction of the gauge radius. Probe distance is the lateral offset, in pixels, where the winning ray looked like a narrow two-sided ridge. Coverage and continuity are the fraction of the window that responded and the longest unbroken run. Needle score is the margin, reduced when likeness is low. The 0.08 lost threshold is unchanged.');
   push('A sleeve or bezel boundary is a one-sided step and is not scored as a needle. A step inside 12° is smoothed. A larger step is accepted only when the score reaches the tracking threshold and likeness reaches the ridge gate. Above the smooth band that evidence has to repeat. jump-ambiguous means the ray was not strong enough. jump-unconfirmed means it was strong but had not repeated yet. pose-snap means the gauge pose was reacquired on that frame, so the needle candidate was not allowed to move pressure.');
   if (!hasKey(rows, 'candidateAngle')) {
     push('N/A (candidate fields were not recorded)');
@@ -599,6 +599,26 @@ export function buildDiagnosticReport(samples, context = {}) {
     push(statBlock(linearStats(rows.map((sample) => sample.candidateMargin)), 3));
     push('Candidate likeness:');
     push(statBlock(linearStats(rows.map((sample) => sample.candidateLikeness)), 3));
+    push(hasKey(rows, 'candidateInnerReach') ? 'Candidate inner reach:' : 'Candidate inner reach: N/A');
+    if (hasKey(rows, 'candidateInnerReach')) {
+      push(statBlock(linearStats(rows.map((sample) => sample.candidateInnerReach)), 3));
+    }
+    push(hasKey(rows, 'candidateCoverage') ? 'Candidate coverage:' : 'Candidate coverage: N/A');
+    if (hasKey(rows, 'candidateCoverage')) {
+      push(statBlock(linearStats(rows.map((sample) => sample.candidateCoverage)), 3));
+    }
+    push(hasKey(rows, 'candidateContinuity') ? 'Candidate continuity:' : 'Candidate continuity: N/A');
+    if (hasKey(rows, 'candidateContinuity')) {
+      push(statBlock(linearStats(rows.map((sample) => sample.candidateContinuity)), 3));
+    }
+    push(hasKey(rows, 'candidateStartRadius') ? 'Candidate start radius:' : 'Candidate start radius: N/A');
+    if (hasKey(rows, 'candidateStartRadius')) {
+      push(statBlock(linearStats(rows.map((sample) => sample.candidateStartRadius)), 3));
+    }
+    push(hasKey(rows, 'candidateProbePx') ? 'Candidate probe distance:' : 'Candidate probe distance: N/A');
+    if (hasKey(rows, 'candidateProbePx')) {
+      push(statBlock(linearStats(rows.map((sample) => sample.candidateProbePx)), 2, ' px'));
+    }
     const mode = separationMode(rows);
     push(mode
       ? `Best-to-second separation mode: ${mode.mode}° on ${mode.count} of ${mode.total} frames (${((mode.count / mode.total) * 100).toFixed(1)}%), binned to 5°.`
@@ -702,6 +722,8 @@ export function buildDiagnosticReport(samples, context = {}) {
         if (step > REST_MAX_SPREAD_DEG) {
           const detail = [];
           if (finite(sample.candidateLikeness)) detail.push(`likeness ${sample.candidateLikeness.toFixed(2)}`);
+          if (finite(sample.candidateInnerReach)) detail.push(`inner reach ${sample.candidateInnerReach.toFixed(2)}`);
+          if (finite(sample.candidateStartRadius)) detail.push(`start ${sample.candidateStartRadius.toFixed(2)}R`);
           if (finite(sample.candidateMargin)) detail.push(`margin ${sample.candidateMargin.toFixed(2)}`);
           if (finite(sample.confirmationHits) && sample.confirmationHits > 0) detail.push(`${sample.confirmationHits} confirming frames`);
           if (finite(sample.poseAge)) detail.push(`pose age ${sample.poseAge}`);
@@ -721,6 +743,8 @@ export function buildDiagnosticReport(samples, context = {}) {
       ) {
         const parts = [`Held needle candidate ${sample.candidateJump >= 0 ? '+' : ''}${sample.candidateJump.toFixed(1)}° (${sample.needleDecision})`];
         if (finite(sample.candidateLikeness)) parts.push(`likeness ${sample.candidateLikeness.toFixed(2)}`);
+        if (finite(sample.candidateInnerReach)) parts.push(`inner reach ${sample.candidateInnerReach.toFixed(2)}`);
+        if (finite(sample.candidateStartRadius)) parts.push(`start ${sample.candidateStartRadius.toFixed(2)}R`);
         if (finite(sample.candidateMargin)) parts.push(`margin ${sample.candidateMargin.toFixed(2)}`);
         if (finite(sample.quality)) parts.push(`score ${sample.quality.toFixed(2)}`);
         if (finite(sample.poseAge)) parts.push(`pose age ${sample.poseAge}`);

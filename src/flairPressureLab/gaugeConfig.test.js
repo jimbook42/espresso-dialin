@@ -1,8 +1,12 @@
 import assert from 'assert';
 import {
   FLAIR_58_SCALE,
+  NEEDLE_LIKENESS_GATE,
+  NEEDLE_TRACK_QUALITY,
   OUTER_RADIUS_RATIO,
   PROCESS_INTERVAL_MS,
+  REST_MIN_QUALITY,
+  REST_STABLE_SAMPLES,
   TIP_INNER_RATIO,
   angleToBar,
   classifyTrackingStatus,
@@ -285,7 +289,7 @@ export function runFlairPressureLabTests() {
   assert.ok(rivalError <= 8, `dark outer tick won at ${rivalFound.angleDeg} q ${rivalFound.quality.toFixed(3)} likeness ${rivalFound.likeness.toFixed(3)}`);
   assert.ok(rivalFound.quality > 0.15, `rival quality ${rivalFound.quality}`);
   assert.ok(rivalFound.likeness > 0.4, `needle likeness ${rivalFound.likeness}`);
-  assert.equal(typeof rivalFound.secondAngleDeg, 'number');
+  assert.ok(rivalFound.second === 0 || typeof rivalFound.secondAngleDeg === 'number');
   assert.ok(rivalFound.margin > 0.15, `margin ${rivalFound.margin}`);
 
   const tickOnly = blankFrame(140, 228);
@@ -465,6 +469,119 @@ export function runFlairPressureLabTests() {
   const bothLocked = bothTracker.push(translatedNeedle.angleDeg, bothMeta);
   assert.equal(bothLocked.accepted, true);
   assert.ok(Math.abs(wrapDelta(translatedNeedle.angleDeg, bothLocked.angle)) <= 2, `move plus needle ${bothLocked.angle}`);
+
+  for (const angle of [46, 47, 83]) {
+    const plain = readLabNeedle(labGauge(angle), 90, 90, 60);
+    assertStrongNeedle(plain, angle, `stationary ${angle}`);
+    assertLocks(plain, angle, `stationary ${angle}`);
+    const besideMark = readLabNeedle(paintFaceStroke(labGauge(angle)), 90, 90, 60);
+    assertStrongNeedle(besideMark, angle, `stationary ${angle} beside face stroke`);
+    assertLocks(besideMark, angle, `stationary ${angle} beside face stroke`);
+  }
+
+  const wider = labGauge(46, { drawNeedle: false });
+  paintRadial(wider, 90, 90, 46, 60 * 0.16, 60 * 0.84, 2.8, 10);
+  const widerFound = readLabNeedle(wider, 90, 90, 60);
+  assertStrongNeedle(widerFound, 46, 'wider needle');
+  assertLocks(widerFound, 46, 'wider needle');
+
+  const blurred = labGauge(47, { drawNeedle: false });
+  paintRadial(blurred, 90, 90, 47, 60 * 0.16, 60 * 0.84, 3.4, 78);
+  paintRadial(blurred, 90, 90, 47, 60 * 0.16, 60 * 0.84, 1.5, 12);
+  const blurredFound = readLabNeedle(blurred, 90, 90, 60);
+  assertStrongNeedle(blurredFound, 47, 'blurred needle');
+  assertLocks(blurredFound, 47, 'blurred needle');
+
+  const redAlone = paintFaceStroke(labGauge(47, { drawNeedle: false }), { rgb: [186, 18, 28] });
+  assertRejectsFace(readLabNeedle(redAlone, 90, 90, 60), 'red face stroke');
+  const darkAlone = paintFaceStroke(labGauge(47, { drawNeedle: false }), { value: 12 });
+  assertRejectsFace(readLabNeedle(darkAlone, 90, 90, 60), 'dark face stroke');
+  const besideRed = paintFaceStroke(labGauge(47), { rgb: [186, 18, 28] });
+  const besideRedFound = readLabNeedle(besideRed, 90, 90, 60);
+  assertStrongNeedle(besideRedFound, 47, 'needle beside red stroke');
+  assert.ok(Math.abs(wrapDelta(132, besideRedFound.angleDeg)) > 20, `red stroke won at ${besideRedFound.angleDeg}`);
+
+  const shortMark = paintFaceStroke(labGauge(47, { drawNeedle: false }), {
+    inner: 0.48, outer: 0.57, halfWidth: 2.2, value: 8,
+  });
+  assertRejectsFace(readLabNeedle(shortMark, 90, 90, 60), 'short face stroke');
+
+  const longMark = paintFaceStroke(labGauge(47, { drawNeedle: false }), {
+    inner: 0.42, outer: 0.84, halfWidth: 1.8, value: 4,
+  });
+  const longFound = readLabNeedle(longMark, 90, 90, 60);
+  assertRejectsFace(longFound, 'long face stroke');
+  assert.ok(longFound.likeness < NEEDLE_LIKENESS_GATE, `long stroke likeness ${longFound.likeness.toFixed(3)}`);
+
+  for (const edge of [90, 120, 150, 180, 210, 240]) {
+    const withNeedle = readLabNeedle(labGauge(47, { sleeveEdge: { angleDeg: edge, value: 40 } }), 90, 90, 60);
+    assertStrongNeedle(withNeedle, 47, `sleeve edge ${edge}`);
+    const sleeveOnly = readLabNeedle(labGauge(47, {
+      drawNeedle: false,
+      sleeveEdge: { angleDeg: edge, value: 40 },
+    }), 90, 90, 60);
+    assert.ok(
+      sleeveOnly.quality < NEEDLE_TRACK_QUALITY || sleeveOnly.likeness < NEEDLE_LIKENESS_GATE,
+      `sleeve edge ${edge} looked like a needle q ${sleeveOnly.quality.toFixed(3)} like ${sleeveOnly.likeness.toFixed(3)} at ${sleeveOnly.angleDeg}`,
+    );
+  }
+
+  const moderateBefore = readLabNeedle(paintFaceStroke(labGauge(40)), 90, 90, 60);
+  const moderateAfter = readLabNeedle(paintFaceStroke(labGauge(58)), 90, 90, 60);
+  assertStrongNeedle(moderateBefore, 40, 'before moderate move');
+  assertStrongNeedle(moderateAfter, 58, 'after moderate move');
+  const moderateTracker = createAngleTracker();
+  moderateTracker.push(moderateBefore.angleDeg);
+  const moderateStep = moderateTracker.push(moderateAfter.angleDeg, {
+    quality: moderateAfter.quality,
+    likeness: moderateAfter.likeness,
+  });
+  assert.equal(moderateStep.accepted, true, `moderate move held ${moderateStep.heldReason}`);
+  assert.ok(Math.abs(wrapDelta(58, moderateStep.angle)) <= 12, `moderate smoothed ${moderateStep.angle}`);
+  assert.ok(Math.abs(wrapDelta(132, moderateStep.angle)) > 30, `face stroke took the moderate move ${moderateStep.angle}`);
+
+  const fastBefore = readLabNeedle(paintFaceStroke(labGauge(40)), 90, 90, 60);
+  const fastAfter = readLabNeedle(paintFaceStroke(labGauge(96)), 90, 90, 60);
+  assertStrongNeedle(fastBefore, 40, 'before fast move');
+  assertStrongNeedle(fastAfter, 96, 'after fast move');
+  const fastMove = createAngleTracker();
+  fastMove.push(fastBefore.angleDeg);
+  const fastMoveMeta = { quality: fastAfter.quality, likeness: fastAfter.likeness };
+  assert.equal(fastMove.push(fastAfter.angleDeg, fastMoveMeta).accepted, false);
+  assert.equal(fastMove.push(fastAfter.angleDeg, fastMoveMeta).accepted, false);
+  const fastMoveLocked = fastMove.push(fastAfter.angleDeg, fastMoveMeta);
+  assert.equal(fastMoveLocked.accepted, true, `fast move held ${fastMoveLocked.heldReason}`);
+  assert.ok(Math.abs(wrapDelta(96, fastMoveLocked.angle)) <= 3, `fast move locked ${fastMoveLocked.angle}`);
+  assert.ok(Math.abs(wrapDelta(132, fastMoveLocked.angle)) > 20, `face stroke took the fast move ${fastMoveLocked.angle}`);
+
+  const shiftedMark = makeGaugeImage(180, { cx: 112, cy: 74, radius: 60, needleDeg: 120 });
+  paintFaceStroke(shiftedMark, { cx: 112, cy: 74 });
+  const shiftedFound = readLabNeedle(shiftedMark, 112, 74, 60);
+  assertStrongNeedle(shiftedFound, 120, 'translated needle beside face stroke');
+  const shiftTracker = createAngleTracker();
+  shiftTracker.push(47);
+  const shiftMeta = { quality: shiftedFound.quality, likeness: shiftedFound.likeness };
+  assert.equal(shiftTracker.push(shiftedFound.angleDeg, { ...shiftMeta, poseSnap: true }).accepted, false);
+  assert.equal(shiftTracker.push(shiftedFound.angleDeg, shiftMeta).accepted, false);
+  assert.equal(shiftTracker.push(shiftedFound.angleDeg, shiftMeta).accepted, false);
+  const shiftLocked = shiftTracker.push(shiftedFound.angleDeg, shiftMeta);
+  assert.equal(shiftLocked.accepted, true, `translated needle held ${shiftLocked.heldReason}`);
+  assert.ok(Math.abs(wrapDelta(120, shiftLocked.angle)) <= 3, `translated lock ${shiftLocked.angle}`);
+
+  const wrapTracker = createAngleTracker();
+  let wrapPrevious = null;
+  for (const angle of [359, 0, 10]) {
+    const found = readLabNeedle(paintFaceStroke(labGauge(angle)), 90, 90, 60);
+    assertStrongNeedle(found, angle, `wrap ${angle}`);
+    const step = wrapTracker.push(found.angleDeg, { quality: found.quality, likeness: found.likeness });
+    assert.equal(step.accepted, true, `wrap ${angle} held ${step.heldReason}`);
+    if (wrapPrevious != null) {
+      assert.ok(Math.abs(wrapDelta(wrapPrevious, found.angleDeg)) <= 12, `wrap raw ${wrapPrevious} -> ${found.angleDeg}`);
+      assert.ok(Math.abs(wrapDelta(found.angleDeg, step.angle)) <= 12, `wrap smoothed ${step.angle}`);
+    }
+    assert.ok(Math.abs(wrapDelta(132, step.angle)) > 30, `face stroke took the wrap ${step.angle}`);
+    wrapPrevious = found.angleDeg;
+  }
 
   const gaugeTracker = createGaugeTracker();
   const identity = { originX: 0, originY: 0, scale: 1 };
@@ -970,6 +1087,40 @@ export function runFlairPressureLabTests() {
   assert.ok(candidateReport.includes('Candidate-to-accepted |delta|:'));
   assert.ok(candidateReport.includes('Candidate margin:'));
   assert.ok(candidateReport.includes('Candidate likeness:'));
+  assert.ok(candidateReport.includes('Candidate inner reach: N/A'));
+  assert.ok(candidateReport.includes('Candidate start radius: N/A'));
+  assert.ok(candidateReport.includes('Candidate probe distance: N/A'));
+  const geometryReport = buildDiagnosticReport([
+    {
+      t: 1000,
+      tracking: 'TRACKING',
+      rawAngle: 47,
+      relativeAngle: 47,
+      smoothedAngle: 47,
+      pressure: 1,
+      candidateAngle: 47,
+      candidateScore: 6,
+      secondCandidateAngle: 132,
+      secondCandidateScore: 0.2,
+      candidateDelta: 0,
+      candidateMargin: 0.8,
+      candidateLikeness: 0.86,
+      candidateInnerReach: 1,
+      candidateCoverage: 0.84,
+      candidateContinuity: 0.8,
+      candidateStartRadius: 0.26,
+      candidateProbePx: 3,
+      quality: 0.8,
+      angleAccepted: true,
+    },
+  ], { timestamp: when, calibrationStatus: 'calibrated' });
+  assert.ok(geometryReport.includes('Candidate inner reach:'));
+  assert.ok(geometryReport.includes('Candidate coverage:'));
+  assert.ok(geometryReport.includes('Candidate continuity:'));
+  assert.ok(geometryReport.includes('Candidate start radius:'));
+  assert.ok(geometryReport.includes('Candidate probe distance:'));
+  assert.ok(geometryReport.includes('Mean: 0.260'));
+  assert.ok(geometryReport.includes('Mean: 3.00 px'));
   assert.ok(candidateReport.includes('Best-to-second separation mode: 45° on 2 of 2 frames (100.0%), binned to 5°.'));
   assert.ok(candidateReport.includes('Candidate-to-accepted delta mean: 22.00'));
   assert.ok(candidateReport.includes('Needle decisions: N/A (needle decision was not recorded)'));
@@ -1053,22 +1204,88 @@ function blankFrame(size, value = 226) {
   return { data, width: size, height: size };
 }
 
-function paintRadial(image, cx, cy, angleDeg, r0, r1, halfWidth, value) {
+function paintRadial(image, cx, cy, angleDeg, r0, r1, halfWidth, value, rgb = null) {
   const { data, width, height } = image;
   const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
+  const red = rgb ? rgb[0] : value;
+  const green = rgb ? rgb[1] : value;
+  const blue = rgb ? rgb[2] : value;
   for (let r = r0; r <= r1; r += 0.45) {
     for (let t = -halfWidth; t <= halfWidth; t += 0.45) {
       const x = Math.round(cx + r * cos - t * sin);
       const y = Math.round(cy + r * sin + t * cos);
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
       const index = (y * width + x) * 4;
-      data[index] = value;
-      data[index + 1] = value;
-      data[index + 2] = value;
+      data[index] = red;
+      data[index + 1] = green;
+      data[index + 2] = blue;
     }
   }
+}
+
+function labGauge(needleDeg, extra = {}) {
+  return makeGaugeImage(180, { cx: 90, cy: 90, radius: 60, needleDeg, ...extra });
+}
+
+function readLabNeedle(image, cx, cy, radius) {
+  return detectNeedleAngle(image, cx, cy, radius * TIP_INNER_RATIO, radius * OUTER_RADIUS_RATIO);
+}
+
+function paintFaceStroke(image, {
+  cx = 90,
+  cy = 90,
+  radius = 60,
+  angleDeg = 132,
+  inner = 0.4,
+  outer = 0.6,
+  halfWidth = 1.6,
+  value = 14,
+  rgb = null,
+} = {}) {
+  paintRadial(image, cx, cy, angleDeg, radius * inner, radius * outer, halfWidth, value, rgb);
+  return image;
+}
+
+function assertStrongNeedle(found, angleDeg, label) {
+  const error = Math.abs(wrapDelta(angleDeg, found.angleDeg));
+  assert.ok(
+    error <= 3,
+    `${label} at ${found.angleDeg} error ${error} q ${found.quality.toFixed(3)} like ${found.likeness.toFixed(3)} reach ${found.innerReach} start ${found.startRadius}`,
+  );
+  assert.ok(found.quality >= NEEDLE_TRACK_QUALITY, `${label} quality ${found.quality.toFixed(3)}`);
+  assert.ok(found.likeness >= NEEDLE_LIKENESS_GATE, `${label} likeness ${found.likeness.toFixed(3)}`);
+  assert.equal(found.innerReach, 1, `${label} inner reach ${found.innerReach}`);
+  assert.ok(found.coverage >= 0.45, `${label} coverage ${found.coverage.toFixed(3)}`);
+  assert.ok(found.continuity >= 0.45, `${label} continuity ${found.continuity.toFixed(3)}`);
+  assert.ok(found.probePx >= 2, `${label} probe ${found.probePx}`);
+  assert.ok(found.startRadius != null && found.startRadius < 0.36, `${label} start radius ${found.startRadius}`);
+}
+
+function assertLocks(found, angleDeg, label) {
+  const rest = createRestCalibration();
+  let locked = null;
+  for (let i = 0; i < REST_STABLE_SAMPLES; i += 1) {
+    const step = rest.push({ angleDeg: found.angleDeg, quality: found.quality });
+    if (step.ready) locked = step;
+  }
+  assert.ok(locked && locked.ready, `${label} did not lock`);
+  assert.ok(Math.abs(wrapDelta(angleDeg, locked.zeroAngleDeg)) <= 3, `${label} locked at ${locked && locked.zeroAngleDeg}`);
+}
+
+function assertRejectsFace(found, label) {
+  assert.ok(
+    found.quality < REST_MIN_QUALITY,
+    `${label} quality ${found.quality.toFixed(3)} like ${found.likeness.toFixed(3)} at ${found.angleDeg}`,
+  );
+  assert.ok(found.likeness < NEEDLE_LIKENESS_GATE, `${label} likeness ${found.likeness.toFixed(3)}`);
+  const rest = createRestCalibration();
+  let ready = false;
+  for (let i = 0; i < REST_STABLE_SAMPLES + 2; i += 1) {
+    if (rest.push({ angleDeg: found.angleDeg, quality: found.quality }).ready) ready = true;
+  }
+  assert.equal(ready, false, `${label} seeded calibration`);
 }
 
 function angDist(a, b) {
