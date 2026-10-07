@@ -293,6 +293,27 @@ export function matchGaugeRotation(reference, current, {
  */
 const CENTRE_QUIET_FRACTION = 0.03;
 const CENTRE_IMMEDIATE_FRACTION = 0.1;
+
+/**
+ * The guided centre is still this dial. Used only before a template exists,
+ * when search cannot yet match a rotation.
+ */
+export function priorStillThere(found, localPrior) {
+  if (!found.edges) return false;
+  const score = scoreRim(
+    found.edges,
+    found.width,
+    found.height,
+    localPrior.cx,
+    localPrior.cy,
+    localPrior.radius,
+  );
+  if (score <= 1e-3) return false;
+  if (!(found.score > 1e-3)) return true;
+  const far = Math.hypot(found.cx - localPrior.cx, found.cy - localPrior.cy);
+  if (far <= localPrior.radius * CENTRE_IMMEDIATE_FRACTION) return score >= found.score * 0.85;
+  return score >= found.score;
+}
 const CENTRE_AGREE_FRACTION = 0.035;
 const RADIUS_QUIET_FRACTION = 0.05;
 const RADIUS_IMMEDIATE_FRACTION = 0.12;
@@ -661,6 +682,13 @@ export function createGaugeTracker() {
             searchFraction: windowFraction,
             edges: scout.edges,
           });
+          // No dial template yet. A competitive guided rim leaves search so
+          // the locked updater can capture one. Later reacquisition still
+          // has to match the dial.
+          if (!reference && found.ok && priorStillThere(found, localPrior)) {
+            clearSearch();
+            recovering = false;
+          }
         }
       } else {
         windowFraction = recovering ? 0.62 : 0.46;

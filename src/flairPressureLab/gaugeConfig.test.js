@@ -27,6 +27,7 @@ import {
   locateGauge,
   matchGaugeRotation,
   measureRimProfile,
+  priorStillThere,
 } from './gaugeTrack.js';
 
 function makeNeedleFrame(size, angleDeg) {
@@ -1245,6 +1246,63 @@ export function runFlairPressureLabTests() {
   for (let i = 0; i < 3; i += 1) capturedRead = analyzeGaugeImage(withNeedle, bareTracker);
   assert.equal(capturedRead.gauge.referenceCaptured, true, 'a normal dial did not capture a rotation template');
 
+  const bootstrapTracker = createGaugeTracker();
+  bootstrapTracker.seed({ cx: 90, cy: 90, radius: 40 });
+  const bootstrapMisses = [];
+  for (let i = 0; i < 3; i += 1) {
+    bootstrapMisses.push(analyzeGaugeImage(blankFrame(180), bootstrapTracker).gauge.trackMode);
+  }
+  assert.deepEqual(bootstrapMisses, ['locked', 'locked', 'searching'], `search did not follow two rim misses (${bootstrapMisses})`);
+  const bootstrapPrior = { cx: 90, cy: 90, radius: 40 };
+  const bootstrapGauge = paintCircle(
+    makeGaugeImage(180, { cx: 90, cy: 90, radius: 40, needleDeg: 47 }),
+    98,
+    90,
+    40,
+    40,
+    1.2,
+  );
+  const bootstrapScout = locateGauge(bootstrapGauge, bootstrapPrior, { priorOnly: true });
+  const bootstrapWide = locateGauge(bootstrapGauge, bootstrapPrior, {
+    searchFraction: 0.9,
+    edges: bootstrapScout.edges,
+  });
+  assert.equal(bootstrapScout.ok, false, `exact prior confidence ${bootstrapScout.confidence.toFixed(3)} took the scout shortcut`);
+  assert.equal(bootstrapWide.ok, true, `wide candidate confidence ${bootstrapWide.confidence.toFixed(3)}`);
+  assert.ok(
+    Math.hypot(bootstrapWide.cx - 90, bootstrapWide.cy - 90) <= 20,
+    `wide candidate left the guided ring (${bootstrapWide.cx.toFixed(1)}, ${bootstrapWide.cy.toFixed(1)})`,
+  );
+  assert.equal(priorStillThere(bootstrapWide, bootstrapPrior), true, 'guided rim was no longer competitive');
+  let bootstrapRead = null;
+  for (let i = 0; i < 8; i += 1) bootstrapRead = analyzeGaugeImage(bootstrapGauge, bootstrapTracker);
+  assert.equal(bootstrapRead.gauge.referenceCaptured, true, 'guided ring did not capture a dial template');
+  assert.ok(bootstrapRead.gauge.orientationConfidence > 0, `orientation ${bootstrapRead.gauge.orientationConfidence}`);
+  assert.ok(bootstrapRead.gauge.poseQuality != null, 'pose quality stayed empty');
+  assert.equal(bootstrapRead.gauge.trackMode, 'locked', `track mode ${bootstrapRead.gauge.trackMode}`);
+  assert.notEqual(bootstrapRead.gauge.reacquireRejectReason, 'reacquire-weak', 'bootstrap stayed reacquire-weak');
+  assert.ok(
+    Math.hypot(bootstrapRead.gauge.cx - 90, bootstrapRead.gauge.cy - 90) <= 8,
+    `bootstrap centre moved to (${bootstrapRead.gauge.cx.toFixed(1)}, ${bootstrapRead.gauge.cy.toFixed(1)})`,
+  );
+  const bootstrapRest = createRestCalibration();
+  let bootstrapLocked = null;
+  for (let i = 0; i < REST_STABLE_SAMPLES + 4; i += 1) {
+    const step = analyzeGaugeImage(bootstrapGauge, bootstrapTracker);
+    if (step.gauge.held || !step.gauge.referenceCaptured) continue;
+    const pushed = bootstrapRest.push({
+      angleDeg: step.relativeAngleDeg,
+      quality: step.quality,
+      likeness: step.likeness,
+    });
+    if (pushed.ready) bootstrapLocked = pushed;
+  }
+  assert.ok(bootstrapLocked && bootstrapLocked.ready, 'guided ring did not calibrate');
+  assert.ok(
+    Math.abs(wrapDelta(47, bootstrapLocked.zeroAngleDeg)) <= 3,
+    `calibrated at ${bootstrapLocked && bootstrapLocked.zeroAngleDeg}`,
+  );
+
   const twistTracker = createGaugeTracker();
   const twistHome = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0, faceMark: true });
   twistTracker.seed({ cx: 90, cy: 88, radius: 42 });
@@ -1342,6 +1400,20 @@ function blankFrame(size, value = 226) {
     data[i * 4 + 3] = 255;
   }
   return { data, width: size, height: size };
+}
+
+function paintCircle(image, cx, cy, radius, value, thickness) {
+  const { data, width, height } = image;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (Math.abs(Math.hypot(x - cx, y - cy) - radius) > thickness) continue;
+      const index = (y * width + x) * 4;
+      data[index] = value;
+      data[index + 1] = value;
+      data[index + 2] = value;
+    }
+  }
+  return image;
 }
 
 function paintRadial(image, cx, cy, angleDeg, r0, r1, halfWidth, value, rgb = null) {
