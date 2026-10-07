@@ -5,6 +5,7 @@
 import { DIAGNOSTIC_WINDOW_MS } from './diagnosticHistory.js';
 import {
   EXTRACTION_START_BAR,
+  FLAIR_58_SCALE,
   NEEDLE_AGREE_DEG,
   NEEDLE_LOST_QUALITY,
   NEEDLE_TRACK_QUALITY,
@@ -265,10 +266,24 @@ export function buildDiagnosticReport(samples, context = {}) {
   }
   push(`Camera resolution: ${resolution}`);
   push(`Calibration status: ${calibration}`);
+  push(`Build: ${context.buildId || 'N/A'}`);
+  const scaleMin = finite(context.minBar) ? context.minBar : FLAIR_58_SCALE.minBar;
+  const scaleMax = finite(context.maxBar) ? context.maxBar : FLAIR_58_SCALE.maxBar;
+  const scaleSweep = finite(context.sweepDeg) ? context.sweepDeg : FLAIR_58_SCALE.sweepDeg;
+  push(`Pressure scale: ${scaleMin}-${scaleMax} bar over ${scaleSweep}° (provisional, not physically validated)`);
   push('');
   push('PHYSICAL TEST CONTEXT');
   push('Physical movement is user-confirmed externally.');
   push('');
+
+  if (hasKey(rows, 'uncertaintyReason')) {
+    const lastReason = [...rows].reverse().find((sample) => sample.uncertaintyReason)?.uncertaintyReason;
+    push('UNCERTAINTY');
+    push(`Last uncertainty reason: ${lastReason || 'N/A'}`);
+    push(`Off-scale samples: ${rows.filter((sample) => sample.uncertaintyReason === 'off-scale').length}`);
+    push(`Gauge-held samples: ${rows.filter((sample) => sample.uncertaintyReason === 'gauge-held').length}`);
+    push('');
+  }
 
   if (!rows.length) {
     push('No diagnostic samples in memory.');

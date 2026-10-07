@@ -12,6 +12,7 @@ import {
   classifyTrackingStatus,
   clockwiseDelta,
   selectForwardAngle,
+  uncertaintyReason,
   wrap360,
   wrapDelta,
 } from './gaugeConfig';
@@ -36,6 +37,8 @@ const STATUS_STYLES = {
 };
 
 const INITIAL_REGION = { nx: 0.5, ny: 0.5, nr: 0.28 };
+const PRESSURE_LAB_BUILD = import.meta.env.VITE_PRESSURE_LAB_BUILD || 'dev';
+const TRACE_PUBLISH_MS = 500;
 
 const EMPTY_LIVE = {
   tracking: 'CALIBRATING',
@@ -69,6 +72,12 @@ const EMPTY_LIVE = {
   reacquireHits: 0,
   reacquireRejectReason: null,
   reacquireAccepted: false,
+  needleDecision: null,
+  poseAge: null,
+  uncertainty: 'calibrating',
+  likeness: null,
+  referenceCaptured: false,
+  offScale: false,
 };
 
 function exitLab() {
@@ -145,6 +154,7 @@ export function FlairPressureLab() {
   const trackerRef = useRef(createGaugeTracker());
   const historyRef = useRef(createDiagnosticHistory());
   const poseAgeRef = useRef(0);
+  const tracePublishRef = useRef(0);
   const resizeObserverRef = useRef(null);
   const copyTimerRef = useRef(null);
   const [trace, setTrace] = useState([]);
@@ -212,6 +222,10 @@ export function FlairPressureLab() {
       cameraWidth: size?.w ?? null,
       cameraHeight: size?.h ?? null,
       calibrationStatus: sessionRef.current ? 'calibrated' : 'not calibrated',
+      buildId: PRESSURE_LAB_BUILD,
+      sweepDeg: sweepRef.current,
+      minBar: FLAIR_58_SCALE.minBar,
+      maxBar: FLAIR_58_SCALE.maxBar,
     });
     const copied = await copyPlainText(text);
     setReportFallback(copied ? '' : text);
@@ -341,6 +355,16 @@ export function FlairPressureLab() {
         : wrap360(reading.secondAngleDeg - gauge.rotationDeg);
       const record = (partial) => {
         const acceptedAngle = partial.acceptedAngle ?? null;
+        const uncertainty = uncertaintyReason({
+          calibrated: Boolean(sessionRef.current),
+          tracking: partial.tracking,
+          gaugeHeld: gauge.held === true,
+          flipHeld: partial.flipHeld === true,
+          weak: partial.weakNeedle === true,
+          offScale: partial.offScale === true,
+          needleDecision: partial.needleDecision ?? null,
+          jitterDeg: partial.jitterDeg ?? 0,
+        });
         historyRef.current.push({
           t: Date.now(),
           rawAngle: reading.angleDeg,
@@ -399,8 +423,13 @@ export function FlairPressureLab() {
           confirmationHits: partial.confirmationHits ?? 0,
           candidateJump: partial.candidateJump ?? null,
           poseAge: partial.poseAge ?? null,
+          uncertaintyReason: uncertainty,
         });
-        setTrace(historyRef.current.snapshot());
+        if (tracePublishRef.current === 0 || now - tracePublishRef.current >= TRACE_PUBLISH_MS) {
+          tracePublishRef.current = now;
+          setTrace(historyRef.current.snapshot());
+        }
+        return uncertainty;
       };
 
       const gaugeFields = {
@@ -423,17 +452,21 @@ export function FlairPressureLab() {
         reacquireHits: gauge.reacquireHits ?? 0,
         reacquireRejectReason: gauge.reacquireRejectReason ?? null,
         reacquireAccepted: gauge.reacquireAccepted === true,
+        likeness: reading.likeness ?? null,
+        referenceCaptured: gauge.referenceCaptured === true,
+        poseAge: poseAgeRef.current,
       };
 
       if (!sessionRef.current) {
-        const result = gauge.held
+        const result = gauge.held || !gauge.referenceCaptured
           ? { ready: false, count: calibRef.current.count() }
           : calibRef.current.push({
             angleDeg: reading.relativeAngleDeg,
             quality: reading.quality,
+            likeness: reading.likeness,
           });
         if (!result.ready) {
-          record({
+          const uncertainty = record({
             tracking: 'CALIBRATING',
             smoothedAngle: null,
             pressure: null,
@@ -454,6 +487,9 @@ export function FlairPressureLab() {
             ...gaugeFields,
             tracking: 'CALIBRATING',
             calibCount: result.count,
+            needleDecision: 'calibrating',
+            uncertainty,
+            offScale: false,
           });
           return;
         }
@@ -485,6 +521,7 @@ export function FlairPressureLab() {
         ? null
         : wrapDelta(lastAngleRef.current, choice.angleDeg);
       let rawBar = null;
+      let offScale = false;
       let signalPaused = true;
       let signal = thresholdRef.current.get();
       let tracked = { angle: lastAngleRef.current, accepted: false, pendingHits: 0, heldReason: null };
@@ -499,9 +536,13 @@ export function FlairPressureLab() {
         if (tracked.accepted && tracked.angle != null) {
           lastAngleRef.current = tracked.angle;
           rawBar = angleToBar(tracked.angle, sessionRef.current);
-          const smoothed = pressureRef.current.push(rawBar);
-          signal = thresholdRef.current.push(smoothed, Date.now());
-          signalPaused = false;
+          if (rawBar == null) {
+            offScale = true;
+          } else {
+            const smoothed = pressureRef.current.push(rawBar);
+            signal = thresholdRef.current.push(smoothed, Date.now());
+            signalPaused = false;
+          }
         }
       } else {
         angleTrackerRef.current.push(null);
@@ -518,10 +559,11 @@ export function FlairPressureLab() {
         accepted: Boolean(tracked.accepted) && !blockSample,
         heldFlip: choice.held || tracked.rejectedFlip,
         gaugeHeld: gauge.held,
+        offScale,
       });
       const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
       const pressureMeasured = Boolean(tracked.accepted) && !blockSample && rawBar != null;
-      record({
+      const uncertainty = record({
         tracking,
         smoothedAngle: tracked.angle,
         pressure: pressureBar,
@@ -530,12 +572,14 @@ export function FlairPressureLab() {
         needleVisible: tracked.angle != null && (tracking === 'TRACKING' || tracking === 'UNCERTAIN'),
         flipHeld: Boolean(choice.held || tracked.rejectedFlip),
         weakNeedle: weak,
+        offScale,
         angleAccepted: Boolean(tracked.accepted) && !blockSample,
         acceptedAngle: tracked.angle,
         needleDecision,
         confirmationHits: tracked.pendingHits ?? 0,
         candidateJump,
         poseAge: poseAgeRef.current,
+        jitterDeg: jitter,
       });
       setLive({
         tracking,
@@ -547,12 +591,15 @@ export function FlairPressureLab() {
         displayAngle: screenSmoothed,
         fps,
         frame,
-        accepted: tracked.accepted && !blockSample,
+        accepted: tracked.accepted && !blockSample && !offScale,
         signal,
         signalPaused,
         jitter,
         calibCount: REST_STABLE_SAMPLES,
         flipHeld: Boolean(choice.held || tracked.rejectedFlip),
+        needleDecision,
+        uncertainty,
+        offScale,
         corrected: choice.corrected,
       });
     };
@@ -585,9 +632,11 @@ export function FlairPressureLab() {
         ? 'Ready'
         : live.gaugeHeld
           ? 'Gauge lost. Holding the last pressure.'
-          : live.flipHeld
-            ? 'Rejected a needle flip. Holding the last pressure.'
-            : live.tracking === 'LOST'
+      : live.flipHeld
+        ? 'Rejected a needle flip. Holding the last pressure.'
+        : live.offScale
+          ? 'Needle is off the printed scale. Holding the last pressure.'
+          : live.tracking === 'LOST'
               ? 'Needle lost.'
               : 'Reading is unsteady. Holding the last pressure.';
 
@@ -758,6 +807,22 @@ export function FlairPressureLab() {
             <dd className={ui.text}>{formatNum(live.pressureBar, 2)} bar</dd>
             <dt>Tracking state</dt>
             <dd className={ui.text}>{badge}</dd>
+            <dt>Build</dt>
+            <dd className={ui.text}>{PRESSURE_LAB_BUILD}</dd>
+            <dt>Scale</dt>
+            <dd className={ui.text}>{FLAIR_58_SCALE.minBar}-{FLAIR_58_SCALE.maxBar} bar / {sweepDeg}° provisional</dd>
+            <dt>Uncertainty</dt>
+            <dd className={ui.text}>{live.uncertainty || '—'}</dd>
+            <dt>Pose age</dt>
+            <dd className={ui.text}>{live.poseAge == null ? '—' : live.poseAge}</dd>
+            <dt>Needle decision</dt>
+            <dd className={ui.text}>{live.needleDecision || '—'}</dd>
+            <dt>Calibration</dt>
+            <dd className={ui.text}>{live.calibCount}/{REST_STABLE_SAMPLES}</dd>
+            <dt>Needle likeness</dt>
+            <dd className={ui.text}>{formatNum(live.likeness, 2)}</dd>
+            <dt>Dial reference</dt>
+            <dd className={ui.text}>{live.referenceCaptured ? 'yes' : 'no'}</dd>
             <dt>Edge quality</dt>
             <dd className={ui.text}>{formatNum(live.quality, 3)}</dd>
             <dt>Tail corrected</dt>

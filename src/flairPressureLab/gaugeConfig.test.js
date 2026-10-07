@@ -11,6 +11,7 @@ import {
   angleToBar,
   classifyTrackingStatus,
   selectForwardAngle,
+  uncertaintyReason,
   wrap360,
   wrapDelta,
 } from './gaugeConfig.js';
@@ -61,6 +62,12 @@ export function runFlairPressureLabTests() {
   const mid = angleToBar(20 + 135, session);
   assert.ok(Math.abs(mid - 6) < 0.02, `expected 6 bar, got ${mid}`);
   assert.equal(angleToBar(15, session), 0);
+  assert.equal(angleToBar(8, session), 0);
+  assert.equal(angleToBar(7, session), null);
+  assert.equal(angleToBar(wrap360(20 - 40), session), null);
+  assert.ok(Math.abs(angleToBar(20 + 270, session) - 12) < 0.02);
+  assert.ok(Math.abs(angleToBar(20 + 278, session) - 12) < 0.02);
+  assert.equal(angleToBar(20 + 300, session), null);
 
   assert.equal(
     classifyTrackingStatus({ calibrated: false, quality: 0.9, jitterDeg: 0, accepted: true }),
@@ -78,6 +85,16 @@ export function runFlairPressureLabTests() {
     classifyTrackingStatus({ calibrated: true, quality: 0.02, jitterDeg: 2, accepted: true }),
     'LOST',
   );
+  assert.equal(
+    classifyTrackingStatus({ calibrated: true, quality: 0.8, jitterDeg: 1, accepted: true, offScale: true }),
+    'UNCERTAIN',
+  );
+  assert.equal(uncertaintyReason({ tracking: 'CALIBRATING' }), 'calibrating');
+  assert.equal(uncertaintyReason({ tracking: 'TRACKING', offScale: true, needleDecision: 'accepted' }), 'off-scale');
+  assert.equal(uncertaintyReason({ tracking: 'UNCERTAIN', gaugeHeld: true }), 'gauge-held');
+  assert.equal(uncertaintyReason({ tracking: 'UNCERTAIN', needleDecision: 'jump-unconfirmed' }), 'jump-unconfirmed');
+  assert.equal(uncertaintyReason({ tracking: 'UNCERTAIN', jitterDeg: 20 }), 'jitter');
+  assert.equal(uncertaintyReason({ tracking: 'TRACKING', jitterDeg: 1, needleDecision: 'accepted' }), 'tracking');
 
   assert.ok(PROCESS_INTERVAL_MS >= 100 && PROCESS_INTERVAL_MS <= 200);
   assert.equal(1000 / PROCESS_INTERVAL_MS, 8);
@@ -107,16 +124,24 @@ export function runFlairPressureLabTests() {
   assert.equal(held.held, true);
   assert.equal(held.angleDeg, 32);
 
-  const rest = createRestCalibration({ minSamples: 4, maxSpreadDeg: 8, minQuality: 0.1 });
+  const rest = createRestCalibration({ minSamples: 4, maxSpreadDeg: 8 });
   for (let i = 0; i < 3; i += 1) {
-    assert.equal(rest.push({ angleDeg: 15 + i, quality: 0.4 }).ready, false);
+    assert.equal(rest.push({ angleDeg: 15 + i, quality: 0.4, likeness: 0.8 }).ready, false);
   }
-  const locked = rest.push({ angleDeg: 16, quality: 0.4 });
+  const locked = rest.push({ angleDeg: 16, quality: 0.4, likeness: 0.8 });
   assert.equal(locked.ready, true);
   assert.ok(Math.abs(wrapDelta(16, locked.zeroAngleDeg)) < 3);
-  const reset = rest.push({ angleDeg: 80, quality: 0.4 });
+  const reset = rest.push({ angleDeg: 80, quality: 0.4, likeness: 0.8 });
   assert.equal(reset.ready, false);
-  assert.equal(rest.push({ angleDeg: 10, quality: 0.01 }).count, 0);
+  assert.equal(rest.push({ angleDeg: 10, quality: 0.01, likeness: 0.8 }).count, 0);
+  const unlike = createRestCalibration();
+  let unlikeReady = false;
+  for (let i = 0; i < REST_STABLE_SAMPLES + 2; i += 1) {
+    const step = unlike.push({ angleDeg: 20, quality: 0.5, likeness: NEEDLE_LIKENESS_GATE - 0.05 });
+    if (step.ready) unlikeReady = true;
+    assert.equal(step.count, 0);
+  }
+  assert.equal(unlikeReady, false, 'a stable ray below the likeness gate locked zero');
 
   assert.match(cameraErrorMessage({ name: 'NotAllowedError' }), /denied/i);
   assert.match(cameraErrorMessage({ name: 'NotReadableError' }), /already in use/i);
@@ -1191,6 +1216,121 @@ export function runFlairPressureLabTests() {
   assert.ok(bare.includes('Camera resolution: N/A'));
   const blankReport = buildDiagnosticReport([], { timestamp: when, calibrationStatus: 'not calibrated' });
   assert.ok(blankReport.includes('No diagnostic samples in memory.'));
+  assert.ok(blankReport.includes('Pressure scale: 0-12 bar over 270° (provisional, not physically validated)'));
+  const reasonReport = buildDiagnosticReport([
+    { t: 1000, tracking: 'UNCERTAIN', pressure: 0, uncertaintyReason: 'off-scale' },
+    { t: 1125, tracking: 'UNCERTAIN', pressure: 0, uncertaintyReason: 'gauge-held', gaugeHeld: true },
+  ], {
+    timestamp: when,
+    calibrationStatus: 'calibrated',
+    buildId: 'abc1234',
+    sweepDeg: 270,
+    minBar: 0,
+    maxBar: 12,
+  });
+  assert.ok(reasonReport.includes('Build: abc1234'));
+  assert.ok(reasonReport.includes('Pressure scale: 0-12 bar over 270° (provisional, not physically validated)'));
+  assert.ok(reasonReport.includes('Last uncertainty reason: gauge-held'));
+  assert.ok(reasonReport.includes('Off-scale samples: 1'));
+  assert.ok(reasonReport.includes('Gauge-held samples: 1'));
+
+  const bareTracker = createGaugeTracker();
+  bareTracker.seed({ cx: 90, cy: 90, radius: 40 });
+  const noNeedle = makeGaugeImage(180, { cx: 90, cy: 90, radius: 40, drawNeedle: false });
+  let bareRead = null;
+  for (let i = 0; i < 4; i += 1) bareRead = analyzeGaugeImage(noNeedle, bareTracker);
+  assert.equal(bareRead.gauge.referenceCaptured, false, 'a dial with no needle captured a rotation template');
+  const withNeedle = makeGaugeImage(180, { cx: 90, cy: 90, radius: 40, needleDeg: 47 });
+  let capturedRead = null;
+  for (let i = 0; i < 3; i += 1) capturedRead = analyzeGaugeImage(withNeedle, bareTracker);
+  assert.equal(capturedRead.gauge.referenceCaptured, true, 'a normal dial did not capture a rotation template');
+
+  const twistTracker = createGaugeTracker();
+  const twistHome = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0, faceMark: true });
+  twistTracker.seed({ cx: 90, cy: 88, radius: 42 });
+  let twistSettled = null;
+  for (let i = 0; i < 6; i += 1) twistSettled = analyzeGaugeImage(twistHome, twistTracker);
+  const twistFrame = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 87, rotationDeg: 40, faceMark: true });
+  const twistFirst = analyzeGaugeImage(twistFrame, twistTracker);
+  assert.ok(
+    Math.abs(wrapDelta(twistSettled.gauge.rotationDeg, twistFirst.gauge.rotationDeg)) < 8,
+    `wide match committed before it repeated (${twistFirst.gauge.rotationDeg})`,
+  );
+  assert.equal(twistFirst.gauge.held, true, 'an unconfirmed twist published a pressure pose');
+  assert.ok(
+    Math.abs(wrapDelta(twistSettled.relativeAngleDeg, twistFirst.relativeAngleDeg)) <= 8,
+    `unconfirmed twist moved relative ${twistFirst.relativeAngleDeg}`,
+  );
+  let twistRead = twistFirst;
+  for (let i = 0; i < 4; i += 1) twistRead = analyzeGaugeImage(twistFrame, twistTracker);
+  assert.ok(Math.abs(wrapDelta(40, twistRead.gauge.rotationDeg)) <= 8, `twist rotation ${twistRead.gauge.rotationDeg}`);
+  assert.ok(
+    Math.abs(wrapDelta(twistSettled.relativeAngleDeg, twistRead.relativeAngleDeg)) <= 8,
+    `twist relative ${twistSettled.relativeAngleDeg} -> ${twistRead.relativeAngleDeg}`,
+  );
+  assert.equal(twistRead.gauge.held, false, 'a confirmed rigid twist stayed held');
+
+  const aliasTwistTracker = createGaugeTracker();
+  const aliasTwistHome = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0 });
+  aliasTwistTracker.seed({ cx: 90, cy: 88, radius: 42 });
+  let aliasTwistSettled = null;
+  for (let i = 0; i < 6; i += 1) aliasTwistSettled = analyzeGaugeImage(aliasTwistHome, aliasTwistTracker);
+  const aliasTwistFrame = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 77, rotationDeg: 30 });
+  let aliasTwistRead = null;
+  for (let i = 0; i < 5; i += 1) aliasTwistRead = analyzeGaugeImage(aliasTwistFrame, aliasTwistTracker);
+  assert.equal(aliasTwistRead.gauge.held, true, 'a tick-period co-rotation was published');
+  assert.ok(
+    Math.abs(wrapDelta(aliasTwistSettled.gauge.rotationDeg, aliasTwistRead.gauge.rotationDeg)) < 8,
+    `tick-period co-rotation moved the pose to ${aliasTwistRead.gauge.rotationDeg}`,
+  );
+  assert.ok(
+    Math.abs(wrapDelta(aliasTwistSettled.relativeAngleDeg, aliasTwistRead.relativeAngleDeg)) <= 8,
+    `tick-period co-rotation moved relative ${aliasTwistRead.relativeAngleDeg}`,
+  );
+
+  const periodTracker = createGaugeTracker();
+  const periodHome = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0 });
+  periodTracker.seed({ cx: 90, cy: 88, radius: 42 });
+  let periodSettled = null;
+  for (let i = 0; i < 6; i += 1) periodSettled = analyzeGaugeImage(periodHome, periodTracker);
+  const periodShift = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 30 });
+  let periodRead = null;
+  for (let i = 0; i < 6; i += 1) periodRead = analyzeGaugeImage(periodShift, periodTracker);
+  assert.ok(
+    Math.abs(wrapDelta(periodSettled.gauge.rotationDeg, periodRead.gauge.rotationDeg)) < 8,
+    `tick-period shift rotated the pose to ${periodRead.gauge.rotationDeg}`,
+  );
+  assert.ok(
+    Math.abs(wrapDelta(periodSettled.relativeAngleDeg, periodRead.relativeAngleDeg)) <= 8,
+    `tick-period shift moved relative ${periodSettled.relativeAngleDeg} -> ${periodRead.relativeAngleDeg}`,
+  );
+
+  const dropTracker = createGaugeTracker();
+  const dropHome = makeGaugeImage(280, { cx: 90, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0 });
+  dropTracker.seed({ cx: 90, cy: 140, radius: 32 });
+  let dropSettled = null;
+  for (let i = 0; i < 6; i += 1) dropSettled = analyzeGaugeImage(dropHome, dropTracker);
+  const dropout = blankFrame(280);
+  analyzeGaugeImage(dropout, dropTracker);
+  let dropBack = null;
+  for (let i = 0; i < 3; i += 1) dropBack = analyzeGaugeImage(dropHome, dropTracker);
+  assert.notEqual(dropBack.gauge.trackMode, 'searching', 'one weak frame opened a wide search');
+  assert.ok(
+    Math.abs(wrapDelta(dropSettled.gauge.rotationDeg, dropBack.gauge.rotationDeg)) < 8,
+    `rim dropout rotated the pose to ${dropBack.gauge.rotationDeg}`,
+  );
+  assert.ok(
+    Math.abs(wrapDelta(dropSettled.relativeAngleDeg, dropBack.relativeAngleDeg)) <= 8,
+    `rim dropout moved relative ${dropBack.relativeAngleDeg}`,
+  );
+  for (let i = 0; i < 3; i += 1) analyzeGaugeImage(dropout, dropTracker);
+  const dropReturn = analyzeGaugeImage(dropHome, dropTracker);
+  assert.equal(dropReturn.gauge.trackMode, 'locked', 'the same circle did not end the search');
+  assert.ok((dropReturn.gauge.searchFraction ?? 1) <= 0.5, `return frame used a wide window ${dropReturn.gauge.searchFraction}`);
+  assert.ok(
+    Math.abs(wrapDelta(dropSettled.gauge.rotationDeg, dropReturn.gauge.rotationDeg)) < 8,
+    `search return rotated the pose to ${dropReturn.gauge.rotationDeg}`,
+  );
 }
 
 function blankFrame(size, value = 226) {
@@ -1267,7 +1407,7 @@ function assertLocks(found, angleDeg, label) {
   const rest = createRestCalibration();
   let locked = null;
   for (let i = 0; i < REST_STABLE_SAMPLES; i += 1) {
-    const step = rest.push({ angleDeg: found.angleDeg, quality: found.quality });
+    const step = rest.push({ angleDeg: found.angleDeg, quality: found.quality, likeness: found.likeness });
     if (step.ready) locked = step;
   }
   assert.ok(locked && locked.ready, `${label} did not lock`);
@@ -1283,7 +1423,7 @@ function assertRejectsFace(found, label) {
   const rest = createRestCalibration();
   let ready = false;
   for (let i = 0; i < REST_STABLE_SAMPLES + 2; i += 1) {
-    if (rest.push({ angleDeg: found.angleDeg, quality: found.quality }).ready) ready = true;
+    if (rest.push({ angleDeg: found.angleDeg, quality: found.quality, likeness: found.likeness }).ready) ready = true;
   }
   assert.equal(ready, false, `${label} seeded calibration`);
 }

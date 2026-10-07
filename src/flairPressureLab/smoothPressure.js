@@ -4,7 +4,6 @@ import {
   NEEDLE_LIKENESS_GATE,
   NEEDLE_TRACK_QUALITY,
   REST_MAX_SPREAD_DEG,
-  REST_MIN_QUALITY,
   REST_STABLE_SAMPLES,
   wrap360,
   wrapDelta,
@@ -142,11 +141,14 @@ export function createAngleJitterTracker(windowSize = 6) {
   };
 }
 
-/** Collect a steady rest angle. A jump or a weak frame clears the window. */
+/**
+ * Collect a steady rest angle.
+ * The sample has to be the same needle identity tracking already trusts.
+ * A jump or a weak frame clears the window.
+ */
 export function createRestCalibration({
   minSamples = REST_STABLE_SAMPLES,
   maxSpreadDeg = REST_MAX_SPREAD_DEG,
-  minQuality = REST_MIN_QUALITY,
 } = {}) {
   let samples = [];
   return {
@@ -156,8 +158,14 @@ export function createRestCalibration({
     count() {
       return samples.length;
     },
-    push({ angleDeg, quality }) {
-      if (quality == null || quality < minQuality || angleDeg == null || Number.isNaN(angleDeg)) {
+    push({ angleDeg, quality, likeness }) {
+      const identified = quality != null
+        && quality >= NEEDLE_TRACK_QUALITY
+        && likeness != null
+        && likeness >= NEEDLE_LIKENESS_GATE
+        && angleDeg != null
+        && !Number.isNaN(angleDeg);
+      if (!identified) {
         samples = [];
         return { ready: false, reset: true, count: 0 };
       }

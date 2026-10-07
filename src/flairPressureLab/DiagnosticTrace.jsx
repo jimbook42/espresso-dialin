@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { DIAGNOSTIC_WINDOW_MS } from './diagnosticHistory.js';
 import { wrapDelta } from './gaugeConfig.js';
 
@@ -73,8 +74,26 @@ function Lane({ title, samples, values, xOf, yOf, color, width, y, height }) {
 
 const diagnosticWindowSeconds = DIAGNOSTIC_WINDOW_MS / 1000;
 
+function stateColumns(samples, xOf, end) {
+  const byPixel = new Map();
+  samples.forEach((sample, index) => {
+    const nextT = samples[index + 1]?.t ?? end;
+    const x = xOf(sample.t);
+    const right = Math.max(x + 1.2, xOf(nextT));
+    const bucket = Math.max(0, Math.round(x));
+    const existing = byPixel.get(bucket);
+    if (!existing) {
+      byPixel.set(bucket, { x: bucket, right, tracking: sample.tracking });
+      return;
+    }
+    existing.right = Math.max(existing.right, right);
+    existing.tracking = sample.tracking;
+  });
+  return [...byPixel.values()];
+}
+
 /** Lab readings for the configured in-memory window. Render only — the buffer is not stored. */
-export function DiagnosticTrace({ samples }) {
+export const DiagnosticTrace = memo(function DiagnosticTrace({ samples }) {
   if (!samples?.length) {
     return (
       <p className="text-[11px] text-[#a8a29e]">
@@ -145,21 +164,16 @@ export function DiagnosticTrace({ samples }) {
           stroke="#67e8f9"
           strokeWidth="1.2"
         />
-        {samples.map((sample, index) => {
-          const next = samples[index + 1]?.t ?? end;
-          const x = xOf(sample.t);
-          const w = Math.max(1.2, xOf(next) - x);
-          return (
-            <rect
-              key={`${sample.t}-${index}`}
-              x={x}
-              y={142}
-              width={w}
-              height={8}
-              fill={STATE_COLOR[sample.tracking] || '#78716c'}
-            />
-          );
-        })}
+        {stateColumns(samples, xOf, end).map((column) => (
+          <rect
+            key={column.x}
+            x={column.x}
+            y={142}
+            width={Math.max(1.2, column.right - column.x)}
+            height={8}
+            fill={STATE_COLOR[column.tracking] || '#78716c'}
+          />
+        ))}
         <text x="0" y="150" fill="#a8a29e" fontSize="8">state</text>
       </svg>
       <p className="text-[10px] text-[#a8a29e] leading-relaxed mt-1">
@@ -169,4 +183,4 @@ export function DiagnosticTrace({ samples }) {
       </p>
     </div>
   );
-}
+});
