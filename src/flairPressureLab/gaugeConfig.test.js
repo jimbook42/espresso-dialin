@@ -738,7 +738,8 @@ export function runFlairPressureLabTests() {
   assert.ok(Math.abs(wrapDelta(settledMotion.relativeAngleDeg, falseRead.relativeAngleDeg)) < 4, `false spin moved relative ${settledMotion.relativeAngleDeg} -> ${falseRead.relativeAngleDeg}`);
   assert.equal(falseRead.gauge.posePending, true);
   assert.ok(falseRead.gauge.poseRejectReason === 'rotation-unconfirmed' || falseRead.gauge.poseRejectReason === 'pose-inconsistent', falseRead.gauge.poseRejectReason);
-  assert.equal(falseRead.gauge.held, true);
+  assert.equal(falseRead.gauge.pressureHold, true);
+  assert.equal(falseRead.gauge.held, false);
   const falseAgain = analyzeGaugeImage(falseSpin, motionTracker);
   assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, falseAgain.gauge.rotationDeg)) < 1.5, `repeated false spin applied ${falseAgain.gauge.rotationDeg}`);
   const yanked = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 97, rotationDeg: 0 });
@@ -755,9 +756,9 @@ export function runFlairPressureLabTests() {
   for (let i = 0; i < 3; i += 1) settledMotion = analyzeGaugeImage(motionStill, motionTracker);
   const incoherent = makeGaugeImage(200, { cx: 108, cy: 76, radius: 42, needleDeg: 47, rotationDeg: 15 });
   const incoherentRead = analyzeGaugeImage(incoherent, motionTracker);
-  const incoherentShift = Math.hypot(incoherentRead.gauge.cx - settledMotion.gauge.cx, incoherentRead.gauge.cy - settledMotion.gauge.cy);
-  assert.ok(incoherentShift < 2, `incoherent pose moved the centre ${incoherentShift.toFixed(1)} px`);
   assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, incoherentRead.gauge.rotationDeg)) < 1.5, `incoherent pose rotated to ${incoherentRead.gauge.rotationDeg}`);
+  assert.equal(incoherentRead.gauge.pressureHold, true);
+  assert.equal(incoherentRead.gauge.held, false, 'in-window veto froze the ring');
   assert.ok(incoherentRead.gauge.poseRejectReason === 'pose-inconsistent' || incoherentRead.gauge.poseRejectReason === 'dial-unrecognized' || incoherentRead.gauge.poseRejectReason === 'rotation-unconfirmed', incoherentRead.gauge.poseRejectReason);
   let followed = null;
   const movedGauge = makeGaugeImage(200, { cx: 108, cy: 76, radius: 42, needleDeg: 47, rotationDeg: 0 });
@@ -775,12 +776,12 @@ export function runFlairPressureLabTests() {
   assert.ok(stepFollow <= 8, `continuous move stopped at ${stepped.gauge.cx.toFixed(1)},${stepped.gauge.cy.toFixed(1)}`);
 
   const glideTracker = createGaugeTracker();
-  const glideHome = makeGaugeImage(220, { cx: 70, cy: 110, radius: 36, needleDeg: 47, rotationDeg: 0 });
+  const glideHome = makeGaugeImage(220, { cx: 70, cy: 110, radius: 36, needleDeg: 47, rotationDeg: 0, faceMark: true });
   glideTracker.seed({ cx: 70, cy: 110, radius: 36 });
   let glideSettled = null;
   for (let i = 0; i < 6; i += 1) glideSettled = analyzeGaugeImage(glideHome, glideTracker);
   const glideFirst = analyzeGaugeImage(
-    makeGaugeImage(220, { cx: 72, cy: 109, radius: 36, needleDeg: 57, rotationDeg: 10 }),
+    makeGaugeImage(220, { cx: 72, cy: 109, radius: 36, needleDeg: 57, rotationDeg: 10, faceMark: true }),
     glideTracker,
   );
   assert.ok(
@@ -797,30 +798,34 @@ export function runFlairPressureLabTests() {
         radius: 36,
         needleDeg: 47 + step * 10,
         rotationDeg: step * 10,
+        faceMark: true,
       }),
       glideTracker,
     );
   }
   const glideError = Math.hypot(glide.gauge.cx - 76, glide.gauge.cy - 107);
   assert.ok(glideError <= 6, `continuous rigid move stopped at ${glide.gauge.cx.toFixed(1)},${glide.gauge.cy.toFixed(1)}`);
-  assert.ok(Math.abs(wrapDelta(30, glide.gauge.rotationDeg)) <= 8, `continuous rotation ${glide.gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(20, glide.gauge.rotationDeg)) <= 8, `continuous rotation ${glide.gauge.rotationDeg}`);
+  assert.equal(glide.gauge.poseDecision, 're-anchor-fail', `30° step bypassed the anchor (${glide.gauge.poseDecision})`);
+  assert.equal(glide.gauge.pressureHold, true);
+  assert.equal(glide.gauge.held, false, 'anchor failure froze the ring');
   assert.ok(Math.abs(wrapDelta(47, glide.relativeAngleDeg)) <= 10, `continuous relative ${glide.relativeAngleDeg}`);
   assert.equal(glide.gauge.reacquireAccepted, false, 'continuous rigid motion used reacquisition');
 
   const glideSpinTracker = createGaugeTracker();
   glideSpinTracker.seed({ cx: 90, cy: 88, radius: 42 });
-  const glideSpinHome = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0 });
+  const glideSpinHome = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0, faceMark: true });
   for (let i = 0; i < 6; i += 1) analyzeGaugeImage(glideSpinHome, glideSpinTracker);
   let glideSpin = null;
   for (let step = 1; step <= 4; step += 1) {
     glideSpin = analyzeGaugeImage(
       makeGaugeImage(200, {
-        cx: 90, cy: 88, radius: 42, needleDeg: 47 + step * 10, rotationDeg: step * 10,
+        cx: 90, cy: 88, radius: 42, needleDeg: 47 + step * 10, rotationDeg: step * 10, faceMark: true,
       }),
       glideSpinTracker,
     );
   }
-  assert.ok(Math.abs(wrapDelta(40, glideSpin.gauge.rotationDeg)) <= 8, `continuous spin stayed at ${glideSpin.gauge.rotationDeg}`);
+  assert.ok(Math.abs(glideSpin.gauge.rotationDeg) <= 24, `continuous spin crossed the anchor at ${glideSpin.gauge.rotationDeg}`);
   assert.ok(Math.abs(wrapDelta(47, glideSpin.relativeAngleDeg)) <= 10, `continuous spin relative ${glideSpin.relativeAngleDeg}`);
   assert.ok(Math.hypot(glideSpin.gauge.cx - 90, glideSpin.gauge.cy - 88) <= 6, 'continuous spin moved the centre');
 
@@ -843,10 +848,86 @@ export function runFlairPressureLabTests() {
   }
   assert.ok(Math.abs(wrapDelta(0, glideVeto.gauge.rotationDeg)) < 2, `unmatched spin rotated to ${glideVeto.gauge.rotationDeg}`);
   assert.ok(
-    Math.hypot(glideVeto.gauge.cx - 70, glideVeto.gauge.cy - 110) < 4,
+    Math.hypot(glideVeto.gauge.cx - 70, glideVeto.gauge.cy - 110) < 8,
     `unmatched spin moved the centre to ${glideVeto.gauge.cx.toFixed(1)},${glideVeto.gauge.cy.toFixed(1)}`,
   );
+  assert.equal(glideVeto.gauge.pressureHold, true);
 
+  const readSpin = (stepDeg, frames, frameExtra = {}) => {
+    const tracker = createGaugeTracker();
+    tracker.seed({ cx: 90, cy: 88, radius: 42 });
+    const home = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0, faceMark: true });
+    for (let i = 0; i < 6; i += 1) analyzeGaugeImage(home, tracker);
+    const reads = [];
+    for (let step = 1; step <= frames; step += 1) {
+      const rotationDeg = step * stepDeg;
+      reads.push(analyzeGaugeImage(makeGaugeImage(200, {
+        cx: 90,
+        cy: 88,
+        radius: 42,
+        needleDeg: 47 + rotationDeg,
+        rotationDeg,
+        faceMark: true,
+        ...frameExtra,
+      }), tracker));
+    }
+    return reads;
+  };
+  const fiveDegree = readSpin(5, 4);
+  assert.equal(fiveDegree[0].gauge.poseDecision, 'store', `first 5° frame ${fiveDegree[0].gauge.poseDecision}`);
+  assert.ok(Math.abs(fiveDegree[0].gauge.rotationDeg) < 2, `first 5° frame committed ${fiveDegree[0].gauge.rotationDeg}`);
+  assert.equal(fiveDegree[0].gauge.pressureHold, true);
+  assert.equal(fiveDegree[0].gauge.held, false, '5° pressure hold froze the ring');
+  assert.ok(Math.abs(wrapDelta(20, fiveDegree[3].gauge.rotationDeg)) <= 8, `5°/frame stopped at ${fiveDegree[3].gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(47, fiveDegree[3].relativeAngleDeg)) <= 10, `5°/frame relative ${fiveDegree[3].relativeAngleDeg}`);
+  assert.equal(fiveDegree[3].gauge.reacquireAccepted, false);
+  assert.ok(fiveDegree.some((read) => read.gauge.poseDecision === 'commit'), '5°/frame never committed');
+  const tenDegree = readSpin(10, 2);
+  assert.equal(tenDegree[0].gauge.poseDecision, 'store');
+  assert.ok(Math.abs(tenDegree[0].gauge.rotationDeg) < 2, `first 10° frame committed ${tenDegree[0].gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(20, tenDegree[1].gauge.rotationDeg)) <= 8, `10°/frame stopped at ${tenDegree[1].gauge.rotationDeg}`);
+  assert.equal(tenDegree[1].gauge.held, false);
+  assert.equal(tenDegree[1].gauge.reacquireAccepted, false);
+  const anchorWalk = readSpin(5, 8);
+  assert.ok(Math.abs(wrapDelta(40, anchorWalk[anchorWalk.length - 1].gauge.rotationDeg)) <= 12, `faced walk past 24° stopped at ${anchorWalk[anchorWalk.length - 1].gauge.rotationDeg}`);
+  assert.ok(anchorWalk.some((read) => read.gauge.poseDecision === 're-anchor'), 'cumulative 24° did not re-anchor');
+  assert.ok(anchorWalk.every((read) => read.gauge.reacquireAccepted === false), 'in-window walk used search');
+  assert.ok(anchorWalk.every((read) => read.gauge.held === false), 're-anchor froze in-window tracking');
+  const occludedWalk = readSpin(5, 8, { occlude: { start: 180, span: 100, value: 40 }, faceMark: false });
+  assert.ok(
+    Math.abs(occludedWalk[occludedWalk.length - 1].gauge.rotationDeg) <= 24,
+    `occluded walk bypassed the anchor at ${occludedWalk[occludedWalk.length - 1].gauge.rotationDeg}`,
+  );
+  assert.ok(occludedWalk.every((read) => read.gauge.reacquireAccepted === false));
+  const holdAngle = (rotationDeg, frames) => {
+    const tracker = createGaugeTracker();
+    tracker.seed({ cx: 90, cy: 88, radius: 42 });
+    const home = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0, faceMark: true });
+    for (let i = 0; i < 6; i += 1) analyzeGaugeImage(home, tracker);
+    const frame = makeGaugeImage(200, {
+      cx: 90, cy: 88, radius: 42, needleDeg: 47 + rotationDeg, rotationDeg, faceMark: true,
+    });
+    const reads = [];
+    for (let i = 0; i < frames; i += 1) reads.push(analyzeGaugeImage(frame, tracker));
+    return reads;
+  };
+  const wideTwist = holdAngle(40, 1);
+  assert.ok(Math.abs(wideTwist[0].gauge.rotationDeg) < 8, `±20 crossing committed on frame 1 (${wideTwist[0].gauge.rotationDeg})`);
+  assert.equal(wideTwist[0].gauge.pressureHold, true);
+  assert.equal(wideTwist[0].gauge.held, false);
+  const wideSettled = holdAngle(40, 4);
+  assert.ok(Math.abs(wrapDelta(40, wideSettled[3].gauge.rotationDeg)) <= 8, `±20 crossing stayed at ${wideSettled[3].gauge.rotationDeg}`);
+  assert.equal(wideSettled[3].gauge.reacquireAccepted, false, '±20 crossing used the 3-hit search');
+  assert.equal(wideSettled[3].gauge.pressureHold, false);
+  for (const read of fiveDegree) {
+    assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'narrowOk'));
+    assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'needleAgrees'));
+    assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'estimateBin'));
+    assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'storedBin'));
+    assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'incrementBins'));
+    assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'poseDecision'));
+    assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'anchorAccumDeg'));
+  }
   const farTracker = createGaugeTracker();
   const farHome = makeGaugeImage(280, { cx: 90, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0 });
   farTracker.seed({ cx: 90, cy: 140, radius: 32 });
@@ -1243,7 +1324,55 @@ export function runFlairPressureLabTests() {
   assert.ok(poseReport.includes('raw rotation 16.0° from applied'));
   assert.ok(poseReport.includes('Pose rejections: 1 (50.0%)'));
   assert.ok(poseReport.includes('Pose pending: 1 (50.0%)'));
+  assert.ok(poseReport.includes('Pose bin decision: N/A (pose decision was not recorded)'));
   assert.ok(poseReport.includes('N/A (reacquisition was not recorded)'));
+  const binReport = buildDiagnosticReport([
+    {
+      t: 875,
+      tracking: 'TRACKING',
+      rawAngle: 10,
+      relativeAngle: 10,
+      smoothedAngle: 10,
+      pressure: 1,
+      gaugeX: 100,
+      gaugeY: 100,
+      gaugeRotation: 0,
+      rawRotation: 0,
+      gaugeRadius: 40,
+      poseDecision: 'quiet',
+    },
+    {
+      t: 1000,
+      tracking: 'UNCERTAIN',
+      rawAngle: 10,
+      relativeAngle: 10,
+      smoothedAngle: 10,
+      pressure: 1,
+      gaugeX: 100,
+      gaugeY: 100,
+      rawGaugeX: 100,
+      rawGaugeY: 100,
+      gaugeRotation: 0,
+      rawRotation: 10,
+      gaugeRadius: 40,
+      poseQuality: 0.8,
+      poseRejectReason: 'rotation-unconfirmed',
+      posePending: true,
+      poseDeltaPx: 0,
+      poseDeltaRot: 0,
+      poseDecision: 'store',
+      narrowOk: true,
+      needleAgrees: true,
+      estimateBin: 2,
+      storedBin: 2,
+      incrementBins: 1,
+      anchorAccumDeg: 10,
+    },
+  ], { timestamp: when, calibrationStatus: 'calibrated' });
+  assert.ok(binReport.includes('Pose bin decision:'));
+  assert.ok(binReport.includes('store: 1'));
+  assert.ok(binReport.includes('step 1 bins'));
+  assert.ok(binReport.includes('anchor 10.0°'));
   const reacquireReport = buildDiagnosticReport([
     { t: 1000, tracking: 'TRACKING', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 90, gaugeY: 140, gaugeRadius: 32, trackMode: 'locked', searchFraction: 0.46, reacquireHits: 0, reacquireRejectReason: null, reacquireAccepted: false },
     { t: 1125, tracking: 'UNCERTAIN', rawAngle: 10, relativeAngle: 10, smoothedAngle: 10, pressure: 1, gaugeX: 90, gaugeY: 140, gaugeRadius: 32, trackMode: 'searching', searchFraction: 0.9, reacquireCx: 140, reacquireCy: 140, reacquireRadius: 32, reacquireRotation: 0, reacquireQuality: 0.2, reacquireHits: 0, reacquireRejectReason: 'reacquire-dial', reacquireAccepted: false },
@@ -1387,7 +1516,8 @@ export function runFlairPressureLabTests() {
     Math.abs(wrapDelta(twistSettled.gauge.rotationDeg, twistFirst.gauge.rotationDeg)) < 8,
     `wide match committed before it repeated (${twistFirst.gauge.rotationDeg})`,
   );
-  assert.equal(twistFirst.gauge.held, true, 'an unconfirmed twist published a pressure pose');
+  assert.equal(twistFirst.gauge.pressureHold, true, 'an unconfirmed twist published a pressure pose');
+  assert.equal(twistFirst.gauge.held, false, 'an unconfirmed in-window twist froze the ring');
   assert.ok(
     Math.abs(wrapDelta(twistSettled.relativeAngleDeg, twistFirst.relativeAngleDeg)) <= 8,
     `unconfirmed twist moved relative ${twistFirst.relativeAngleDeg}`,
@@ -1409,7 +1539,8 @@ export function runFlairPressureLabTests() {
   const aliasTwistFrame = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 77, rotationDeg: 30 });
   let aliasTwistRead = null;
   for (let i = 0; i < 5; i += 1) aliasTwistRead = analyzeGaugeImage(aliasTwistFrame, aliasTwistTracker);
-  assert.equal(aliasTwistRead.gauge.held, true, 'a tick-period co-rotation was published');
+  assert.equal(aliasTwistRead.gauge.pressureHold, true, 'a tick-period co-rotation was published');
+  assert.equal(aliasTwistRead.gauge.reacquireAccepted, false);
   assert.ok(
     Math.abs(wrapDelta(aliasTwistSettled.gauge.rotationDeg, aliasTwistRead.gauge.rotationDeg)) < 8,
     `tick-period co-rotation moved the pose to ${aliasTwistRead.gauge.rotationDeg}`,

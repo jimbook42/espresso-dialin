@@ -502,6 +502,19 @@ export function buildDiagnosticReport(samples, context = {}) {
     const pending = rows.filter((sample) => sample.posePending === true).length;
     push(`Pending confirmation: ${pending} of ${rows.length} samples (${fmtPct(pending, rows.length)})`);
   }
+  if (!hasKey(rows, 'poseDecision')) {
+    push('Pose bin decision: N/A (pose decision was not recorded)');
+  } else {
+    const decisions = new Map();
+    rows.forEach((sample) => {
+      const decision = sample.poseDecision || 'none';
+      decisions.set(decision, (decisions.get(decision) || 0) + 1);
+    });
+    push('Pose bin decision:');
+    decisions.forEach((count, decision) => {
+      push(`  ${decision}: ${count}`);
+    });
+  }
   if (!hasKey(rows, 'poseDeltaPx')) {
     push('Applied centre step: N/A (pose delta was not recorded)');
   } else {
@@ -817,6 +830,9 @@ export function buildDiagnosticReport(samples, context = {}) {
           if (rotationGap >= ROTATION_EVENT_DEG) parts.push(`raw rotation ${rotationGap.toFixed(1)}° from applied`);
           if (centreGap > centreLimit) parts.push(`raw centre ${centreGap.toFixed(1)} px from applied`);
           if (sample.posePending === true) parts.push('pending confirmation');
+          if (sample.poseDecision) parts.push(sample.poseDecision);
+          if (finite(sample.incrementBins)) parts.push(`step ${sample.incrementBins} bins`);
+          if (finite(sample.anchorAccumDeg)) parts.push(`anchor ${fmt(sample.anchorAccumDeg, 1)}°`);
           events.push({ t: sample.t, text: parts.join('; ') });
         }
       }

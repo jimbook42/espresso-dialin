@@ -407,6 +407,14 @@ export function FlairPressureLab() {
           poseQuality: gauge.poseQuality ?? null,
           poseRejectReason: gauge.poseRejectReason ?? null,
           posePending: gauge.posePending === true,
+          pressureHold: gauge.pressureHold === true,
+          narrowOk: gauge.narrowOk ?? null,
+          needleAgrees: gauge.needleAgrees ?? null,
+          estimateBin: gauge.estimateBin ?? null,
+          storedBin: gauge.storedBin ?? null,
+          incrementBins: gauge.incrementBins ?? null,
+          poseDecision: gauge.poseDecision ?? null,
+          anchorAccumDeg: gauge.anchorAccumDeg ?? null,
           poseDeltaPx: gauge.poseDeltaPx ?? null,
           poseDeltaRot: gauge.poseDeltaRot ?? null,
           trackMode: gauge.trackMode || 'locked',
@@ -516,7 +524,7 @@ export function FlairPressureLab() {
         previousAngle: lastAngleRef.current,
       });
       const weak = reading.quality == null || reading.quality < NEEDLE_LOST_QUALITY;
-      const blockSample = gauge.held || choice.held || weak;
+      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak;
       const candidateJump = lastAngleRef.current == null || choice.angleDeg == null
         ? null
         : wrapDelta(lastAngleRef.current, choice.angleDeg);
@@ -547,6 +555,7 @@ export function FlairPressureLab() {
       } else {
         angleTrackerRef.current.push(null);
         if (gauge.held) needleDecision = 'held-gauge';
+        else if (gauge.pressureHold) needleDecision = 'held-pose';
         else if (choice.held) needleDecision = 'held-flip';
         else needleDecision = 'held-weak';
       }

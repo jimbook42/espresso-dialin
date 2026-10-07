@@ -1,4 +1,4 @@
-import { TIP_INNER_RATIO, OUTER_RADIUS_RATIO, NEEDLE_LIKENESS_GATE, wrap360, wrapDelta } from './gaugeConfig.js';
+import { TIP_INNER_RATIO, OUTER_RADIUS_RATIO, NEEDLE_LIKENESS_GATE, NEEDLE_TRACK_QUALITY, wrap360, wrapDelta } from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
 
@@ -11,29 +11,22 @@ import { detectNeedleAngle } from './needleFromFrame.js';
  * pattern, with the needle sector ignored, so a lever twist is not read as
  * pressure. Pressure uses needle angle minus that gauge rotation.
  *
- * Locked tracking follows modest motion, and a rigid gauge that keeps moving
- * inside that window. The search stays near the last pose. A weak rim score
- * holds the last pose instead of inventing a new one. Centre, radius, and
- * rotation are one pose. A step past one dial bin is applied when the next
- * frame continues that same step and the needle turns with the dial. One frame
- * is not enough, and the pose does not have to sit still. A step the needle
- * does not match is held. The needle is masked out of the dial match, so it
- * cannot turn or translate the gauge.
+ * Locked tracking follows the rim. Rotation is written in whole profile bins.
+ * The first sighting of a step is stored and not applied. The next frame
+ * commits when the needle agrees and the new step is the same bin or the same
+ * whole-bin increment. A needle disagreement does not write rotation and does
+ * not erase a stored bin. A weak dial match does not create a bin and does
+ * not erase one. Pressure can hold while the centre keeps following.
  *
- * A lever move can carry the gauge outside that window. A jump outside the
- * locked match is unchanged. After the pose is no longer supported, a separate search confirms
- * the same dial over several frames and only then moves the locked pose.
- * Repeating an orientation is not enough when the step is large. The outer
- * tick ring repeats about every 30°, and covering its one unique sector leaves
- * an alias that still clears the ordinary correlation gate. A large search
- * rotation has to beat that alias outright. When the white face has its own
- * fixed structure, that inner profile has to agree as well. Otherwise the
- * search keeps holding the last pose.
+ * Commits that would carry the pose more than one tick period from the last
+ * strong identity anchor have to pass that anchor's margin, confidence, and
+ * face checks. Failing that check does not move the anchor. A single step
+ * inside the locked window does not skip the sum.
  *
- * A brief rim miss is not a new pose. Locked matching stays inside one dial
- * bin of the last rotation. A twist that window cannot explain is matched
- * again out to the search limit, with the same alias test, and the last pose
- * is held until that wider match repeats.
+ * A jump outside the locked match still uses the wide search. The outer tick
+ * ring repeats about every 30°, and a large search rotation has to beat that
+ * alias. When the white face has structure, that inner profile has to agree.
+ * The search holds the last pose until the same dial is confirmed.
  */
 
 const RIM_BINS = 48;
@@ -287,13 +280,9 @@ export function matchGaugeRotation(reference, current, {
  * Fractions are of the gauge radius, which is how the error scales in the
  * 188px search image. Centre and rotation are gated separately.
  * A centre shift inside the quiet band is ignored. A larger shift under
- * one tenth of the radius has to agree for three frames, and only when the
- * dial at that circle still matches the current rotation. A bigger jump that
- * settles has to be the same pose twice. A spin that keeps going is applied
- * when the next step matches the last one and the needle agrees, still inside
- * the locked match. Rotation under one degree is ignored. One dial bin can
- * repeat and then keep turning. A larger step that does not continue, or that
- * the needle does not match, is held, so one bad frame cannot walk the reading.
+ * one tenth of the radius has to agree for three frames. A bigger centre
+ * step follows the rim on its own. Rotation under one degree is ignored.
+ * Rotation commits are whole profile bins, and the needle can veto them.
  */
 const CENTRE_QUIET_FRACTION = 0.03;
 const CENTRE_IMMEDIATE_FRACTION = 0.1;
@@ -322,9 +311,8 @@ const CENTRE_AGREE_FRACTION = 0.035;
 const RADIUS_QUIET_FRACTION = 0.05;
 const RADIUS_IMMEDIATE_FRACTION = 0.12;
 const ROTATION_QUIET_DEG = 1;
-const ROTATION_BIN_DEG = 5.5;
-const ROTATION_AGREE_DEG = 4;
 const ROTATION_RIGID_DEG = 6;
+const PROFILE_BIN_DEG = 360 / PROFILE_BINS;
 const LOCKED_MAX_SHIFT_DEG = 18;
 /** Narrow match reach after bin rounding. 18° lands on the 20° bin. */
 const LOCKED_MATCH_LIMIT_DEG = Math.round(LOCKED_MAX_SHIFT_DEG / (360 / PROFILE_BINS)) * (360 / PROFILE_BINS);
@@ -357,6 +345,15 @@ const FACE_OUTER_RATIO = 0.6;
 const FACE_AGREE_DEG = 8;
 const FACE_SIGNAL_CONFIDENCE = 0.45;
 
+function binIndex(deg) {
+  if (deg == null || Number.isNaN(deg)) return null;
+  return ((Math.round(wrap360(deg) / PROFILE_BIN_DEG) % PROFILE_BINS) + PROFILE_BINS) % PROFILE_BINS;
+}
+
+function wholeBins(deltaDeg) {
+  return Math.round(deltaDeg / PROFILE_BIN_DEG);
+}
+
 export function createGaugeTracker() {
   let pose = null;
   let baseRadius = 0;
@@ -368,11 +365,10 @@ export function createGaugeTracker() {
   let centreCandidate = null;
   let radiusCandidate = null;
   let rotationCandidate = null;
-  let rotationVelocity = 0;
+  let pendingStepBins = null;
+  let anchorRotationDeg = 0;
+  let anchorAccumDeg = 0;
   let trustedRotationDeg = null;
-  let trustedFrameStep = null;
-  let lastFrameStep = null;
-  let poseCandidate = null;
   let maskNeedleDeg = null;
   let mode = 'locked';
   let lossStreak = 0;
@@ -387,11 +383,10 @@ export function createGaugeTracker() {
     centreCandidate = null;
     radiusCandidate = null;
     rotationCandidate = null;
-    rotationVelocity = 0;
+    pendingStepBins = null;
+    anchorRotationDeg = 0;
+    anchorAccumDeg = 0;
     trustedRotationDeg = null;
-    trustedFrameStep = null;
-    lastFrameStep = null;
-    poseCandidate = null;
     maskNeedleDeg = null;
   };
 
@@ -404,8 +399,6 @@ export function createGaugeTracker() {
     searchMisses = 0;
     reacquireReason = null;
     observed = null;
-    lastFrameStep = null;
-    trustedFrameStep = null;
   };
 
   const beginSearch = () => {
@@ -584,6 +577,10 @@ export function createGaugeTracker() {
       rotationDeg: wide.estimateDeg,
     };
     trustedRotationDeg = wide.estimateDeg;
+    anchorRotationDeg = wide.estimateDeg;
+    anchorAccumDeg = 0;
+    rotationCandidate = null;
+    pendingStepBins = null;
     const profile = wide.profile || measureRimProfile(
       found.edges,
       found.width,
@@ -733,7 +730,6 @@ export function createGaugeTracker() {
       }
       if (!found.ok) {
         recovering = true;
-        poseCandidate = null;
         noteLockedMiss();
         return finish(windowFraction, {
           held: true,
@@ -749,7 +745,6 @@ export function createGaugeTracker() {
         recovering = true;
         centreCandidate = null;
         radiusCandidate = null;
-        poseCandidate = null;
         const wide = wideMatch(found);
         if (considerCandidate(video, wide)) {
           return acceptCandidate(found, video, wide, mapping, windowFraction);
@@ -782,10 +777,7 @@ export function createGaugeTracker() {
           maxShiftDeg: 18,
         });
       }
-      const proposedRotation = dial?.estimateDeg ?? pose.rotationDeg;
-      const rotDelta = Math.abs(wrapDelta(pose.rotationDeg, proposedRotation));
       const dialOk = Boolean(dial?.ok);
-      const surprisingSpin = Boolean(reference) && dialOk && rotDelta > ROTATION_BIN_DEG;
       const unrecognized = Boolean(reference) && !dialOk;
       const quiet = Math.max(1.25, pose.radius * CENTRE_QUIET_FRACTION);
       const immediate = pose.radius * CENTRE_IMMEDIATE_FRACTION;
@@ -793,131 +785,29 @@ export function createGaugeTracker() {
       const beforeCy = pose.cy;
       let poseRejectReason = null;
       let posePending = false;
-      let geometryHeld = false;
-      let skipNormal = false;
-      const needsJoint = Boolean(reference) && shift >= quiet && (surprisingSpin || (unrecognized && shift >= immediate));
-      if (needsJoint) {
-        const proposal = {
-          cx: video.cx,
-          cy: video.cy,
-          radius: video.radius,
-          rotationDeg: proposedRotation,
-        };
-        const agree = pose.radius * CENTRE_AGREE_FRACTION;
-        const radiusBand = pose.radius * RADIUS_QUIET_FRACTION;
-        const same = poseCandidate
-          && Math.hypot(video.cx - poseCandidate.cx, video.cy - poseCandidate.cy) <= agree
-          && Math.abs(video.radius - poseCandidate.radius) <= radiusBand
-          && Math.abs(wrapDelta(poseCandidate.rotationDeg, proposedRotation)) <= ROTATION_AGREE_DEG;
-        const fromPoseRot = wrapDelta(pose.rotationDeg, proposedRotation);
-        let continuedFromCandidate = false;
-        if (poseCandidate && surprisingSpin && rotDelta <= LOCKED_MATCH_LIMIT_DEG) {
-          const prevDx = poseCandidate.cx - pose.cx;
-          const prevDy = poseCandidate.cy - pose.cy;
-          const nextDx = video.cx - poseCandidate.cx;
-          const nextDy = video.cy - poseCandidate.cy;
-          const prevRot = wrapDelta(pose.rotationDeg, poseCandidate.rotationDeg);
-          const nextRot = wrapDelta(poseCandidate.rotationDeg, proposedRotation);
-          // The still-pose band is tighter than rim-finder noise on a moving step.
-          const centreBand = pose.radius * CENTRE_IMMEDIATE_FRACTION;
-          const centreFollows = Math.hypot(nextDx - prevDx, nextDy - prevDy) <= centreBand
-            || Math.hypot(nextDx, nextDy) <= agree;
-          const rotFollows = Math.abs(prevRot) > ROTATION_BIN_DEG
-            && Math.abs(wrapDelta(prevRot, nextRot)) <= ROTATION_AGREE_DEG;
-          const radiusOk = Math.abs(video.radius - poseCandidate.radius) <= radiusBand;
-          continuedFromCandidate = centreFollows && rotFollows && radiusOk;
+      if (unrecognized && shift >= immediate) {
+        const wide = wideMatch(found);
+        if (considerCandidate(video, wide)) {
+          return acceptCandidate(found, video, wide, mapping, windowFraction);
         }
-        const velocityContinue = Boolean(lastFrameStep)
-          && surprisingSpin
-          && rotDelta <= LOCKED_MATCH_LIMIT_DEG
-          && Math.hypot(dx - lastFrameStep.dx, dy - lastFrameStep.dy) <= pose.radius * CENTRE_IMMEDIATE_FRACTION
-          && Math.abs(wrapDelta(lastFrameStep.rot, fromPoseRot)) <= ROTATION_AGREE_DEG;
-        const remembered = poseCandidate;
-        const hits = same
-          ? poseCandidate.hits + 1
-          : continuedFromCandidate
-            ? Math.max(poseCandidate.hits + 1, 2)
-            : 1;
-        poseCandidate = { ...proposal, hits };
-        let spinOk = !surprisingSpin;
-        // The dial proposed a spin. The needle can veto it, not create it.
-        if (surprisingSpin && (hits >= 2 || velocityContinue)) {
-          const coarse = detectNeedleAngle(
-            image,
-            found.cx,
-            found.cy,
-            found.radius * TIP_INNER_RATIO,
-            found.radius * OUTER_RADIUS_RATIO,
-          );
-          const needleStep = wrapDelta(maskNeedleDeg ?? coarse.angleDeg, coarse.angleDeg);
-          const rotationStep = wrapDelta(pose.rotationDeg, proposedRotation);
-          spinOk = coarse.quality >= 0.18
-            && Math.abs(wrapDelta(needleStep, rotationStep)) <= ROTATION_RIGID_DEG;
+        lossStreak += 1;
+        if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
+          beginSearch();
         }
-        if ((hits >= 2 || velocityContinue) && spinOk) {
-          let frameDx = dx;
-          let frameDy = dy;
-          let frameRot = fromPoseRot;
-          if (continuedFromCandidate && remembered) {
-            frameDx = video.cx - remembered.cx;
-            frameDy = video.cy - remembered.cy;
-            frameRot = wrapDelta(remembered.rotationDeg, proposedRotation);
-          }
-          if (continuedFromCandidate || velocityContinue) {
-            lastFrameStep = { dx: frameDx, dy: frameDy, rot: frameRot };
-            trustedFrameStep = frameRot;
-          } else {
-            lastFrameStep = null;
-            trustedFrameStep = null;
-          }
-          pose = {
-            cx: video.cx,
-            cy: video.cy,
-            radius: clamp(video.radius, baseRadius * 0.82, baseRadius * 1.2),
-            rotationDeg: pose.rotationDeg,
-          };
-          if (dialOk) trustedRotationDeg = dial.estimateDeg;
-          poseCandidate = null;
-          centreCandidate = null;
-          radiusCandidate = null;
-        } else {
-          posePending = true;
-          poseRejectReason = surprisingSpin ? 'pose-inconsistent' : 'dial-unrecognized';
-          centreCandidate = null;
-          radiusCandidate = null;
-          const rigidityFailed = surprisingSpin && (hits >= 2 || velocityContinue) && !spinOk;
-          if ((!continuedFromCandidate && !velocityContinue) || rigidityFailed) lastFrameStep = null;
-          // A spin still inside the narrow match waits for the next step.
-          // Search stays for a lost dial, a failed needle veto, or a wider jump.
-          const inWindowSpin = surprisingSpin && rotDelta <= LOCKED_MATCH_LIMIT_DEG && !rigidityFailed;
-          // A small centre shift keeps the dial in view, so orientation can
-          // remember the step. A real jump holds until the next frame.
-          if (inWindowSpin && shift < immediate) {
-            geometryHeld = false;
-          } else if (inWindowSpin) {
-            geometryHeld = true;
-          } else {
-            geometryHeld = shift >= immediate;
-            if (geometryHeld) {
-              const wide = wideMatch(found);
-              if (considerCandidate(video, wide)) {
-                return acceptCandidate(found, video, wide, mapping, windowFraction);
-              }
-              lossStreak += 1;
-              if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
-                beginSearch();
-              }
-            }
-          }
-        }
-        skipNormal = true;
+        return finish(windowFraction, {
+          held: true,
+          confidence: found.confidence,
+          rawCx: video.cx,
+          rawCy: video.cy,
+          rawRadius: video.radius,
+          poseQuality: dial?.confidence ?? null,
+          poseRejectReason: 'dial-unrecognized',
+          posePending: true,
+          poseDeltaPx: 0,
+        });
       }
 
-      if (!skipNormal) {
-        poseCandidate = null;
-        lastFrameStep = null;
-        trustedFrameStep = null;
-        let nextCx = pose.cx;
+      let nextCx = pose.cx;
         let nextCy = pose.cy;
         if (shift >= immediate) {
           nextCx = pose.cx + 0.85 * dx;
@@ -962,17 +852,14 @@ export function createGaugeTracker() {
           radius: nextRadius,
           rotationDeg: pose.rotationDeg,
         };
-      }
 
       recovering = false;
-      if (!geometryHeld) {
-        lossStreak = 0;
-        searchMisses = 0;
-        searchCandidate = null;
-        reacquireReason = null;
-        observed = null;
-        mode = 'locked';
-      }
+      lossStreak = 0;
+      searchMisses = 0;
+      searchCandidate = null;
+      reacquireReason = null;
+      observed = null;
+      mode = 'locked';
       const profile = measureRimProfile(
         found.edges,
         found.width,
@@ -991,7 +878,7 @@ export function createGaugeTracker() {
         { innerRatio: FACE_INNER_RATIO, outerRatio: FACE_OUTER_RATIO },
       );
       return finish(windowFraction, {
-        held: geometryHeld,
+        held: false,
         confidence: found.confidence,
         profile,
         reacquired: false,
@@ -1004,11 +891,14 @@ export function createGaugeTracker() {
         poseDeltaPx: Math.hypot(pose.cx - beforeCx, pose.cy - beforeCy),
       });
     },
-    trackOrientation(profile, needleDeg, { positionHeld = false, needleLikeness = null, rimConfidence = null } = {}) {
+    trackOrientation(profile, needleDeg, {
+      positionHeld = false,
+      needleLikeness = null,
+      rimConfidence = null,
+      needleQuality = null,
+    } = {}) {
       const trusted = trustedRotationDeg;
-      const trustedStep = trustedFrameStep;
       trustedRotationDeg = null;
-      trustedFrameStep = null;
       const rememberNeedle = () => {
         if (needleDeg == null) return;
         if (maskNeedleDeg == null || Math.abs(wrapDelta(maskNeedleDeg, needleDeg)) <= 30) {
@@ -1021,17 +911,30 @@ export function createGaugeTracker() {
         confidence: 0,
         held: false,
         captured: false,
-        poseBlocked: false,
+        pressureHold: false,
         posePending: false,
         poseRejectReason: null,
         poseQuality: null,
         poseDeltaRot: 0,
+        narrowOk: null,
+        needleAgrees: null,
+        estimateBin: null,
+        storedBin: binIndex(rotationCandidate),
+        incrementBins: null,
+        poseDecision: null,
+        anchorAccumDeg,
+        stableNeedleDeg: null,
         ...fields,
         referenceCaptured: reference != null,
       });
       if (!pose || positionHeld || !profile || needleDeg == null) {
         rotationCandidate = null;
-        return orientResult({ held: true });
+        pendingStepBins = null;
+        return orientResult({
+          held: true,
+          pressureHold: true,
+          stableNeedleDeg: maskNeedleDeg,
+        });
       }
       if (!reference) {
         const identified = needleLikeness >= NEEDLE_LIKENESS_GATE && rimConfidence >= CONFIDENCE_MIN;
@@ -1041,7 +944,9 @@ export function createGaugeTracker() {
         referenceNeedleDeg = needleDeg;
         rememberNeedle();
         rotationCandidate = null;
-        rotationVelocity = 0;
+        pendingStepBins = null;
+        anchorRotationDeg = 0;
+        anchorAccumDeg = 0;
         pose = { ...pose, rotationDeg: 0 };
         return orientResult({
           rotationDeg: 0,
@@ -1049,6 +954,9 @@ export function createGaugeTracker() {
           confidence: 1,
           captured: true,
           poseQuality: 1,
+          poseDecision: 'commit',
+          anchorAccumDeg: 0,
+          storedBin: null,
         });
       }
       const needleStep = wrapDelta(maskNeedleDeg ?? needleDeg, needleDeg);
@@ -1056,9 +964,10 @@ export function createGaugeTracker() {
         const proposed = wrapDelta(pose.rotationDeg, estimateDeg);
         return Math.abs(wrapDelta(needleStep, proposed)) <= ROTATION_RIGID_DEG;
       };
-      const matchAt = (maxShiftDeg) => {
+      const qualityOk = needleQuality != null && needleQuality >= NEEDLE_TRACK_QUALITY;
+      const matchAt = (maxShiftDeg, previousDeg = pose.rotationDeg) => {
         const orientationOpts = {
-          previousDeg: pose.rotationDeg,
+          previousDeg,
           needleDeg: maskNeedleDeg,
           alsoNeedleDeg: needleDeg,
           referenceNeedleDeg,
@@ -1073,94 +982,162 @@ export function createGaugeTracker() {
           ...matchGaugeRotation(reference, profile, orientationOpts),
         };
       };
-      const narrow = matchAt(LOCKED_MAX_SHIFT_DEG);
-      let chosen = null;
-      let unresolved = false;
-      if (narrow.ok && agrees(narrow.estimateDeg)) {
-        chosen = narrow;
-      } else {
-        const wide = matchAt(SEARCH_MAX_SHIFT_DEG);
-        const wideAgrees = Boolean(wide.ok && agrees(wide.estimateDeg));
-        if (wideAgrees && largeRotationSupported(wide)) {
-          chosen = wide;
-        } else if (wideAgrees || !narrow.ok || Math.abs(wrapDelta(pose.rotationDeg, narrow.estimateDeg)) > ROTATION_BIN_DEG) {
-          unresolved = true;
+      const anchorIdentityOk = (targetDeg) => {
+        const wide = matchAt(SEARCH_MAX_SHIFT_DEG, anchorRotationDeg);
+        if (!wide.ok) return false;
+        if (Math.abs(wrapDelta(targetDeg, wide.estimateDeg)) > PROFILE_BIN_DEG) return false;
+        if (wide.confidence < LARGE_ROTATION_CONFIDENCE) return false;
+        if ((wide.periodMargin ?? 0) < LARGE_ROTATION_PERIOD_MARGIN) return false;
+        const face = wide.face;
+        if (face && face.ok && face.confidence >= FACE_SIGNAL_CONFIDENCE) {
+          if (Math.abs(wrapDelta(wide.estimateDeg, face.estimateDeg)) > FACE_AGREE_DEG) return false;
+        }
+        return true;
+      };
+      const holdTurn = (decision, match, extra) => orientResult({
+        rotationDeg: pose.rotationDeg,
+        rawRotationDeg: match.estimateDeg,
+        confidence: match.confidence,
+        pressureHold: true,
+        posePending: true,
+        poseRejectReason: 'rotation-unconfirmed',
+        poseQuality: match.confidence,
+        poseDecision: decision,
+        stableNeedleDeg: maskNeedleDeg,
+        estimateBin: binIndex(match.estimateDeg),
+        storedBin: binIndex(rotationCandidate),
+        needleAgrees: agrees(match.estimateDeg),
+        narrowOk: extra.narrowOk,
+        incrementBins: extra.incrementBins ?? null,
+      });
+      const commitTurn = (estimate, decision, match, motionBins, narrowOk) => {
+        const before = pose.rotationDeg;
+        pose = { ...pose, rotationDeg: estimate };
+        if (decision === 're-anchor') {
+          anchorRotationDeg = estimate;
+          anchorAccumDeg = 0;
+          rotationCandidate = null;
+          pendingStepBins = null;
         } else {
-          chosen = narrow;
+          anchorAccumDeg = Math.abs(wrapDelta(anchorRotationDeg, estimate));
+          rotationCandidate = estimate;
+          pendingStepBins = motionBins;
+        }
+        rememberNeedle();
+        return orientResult({
+          rotationDeg: estimate,
+          rawRotationDeg: estimate,
+          confidence: match.confidence,
+          poseQuality: match.confidence,
+          poseDeltaRot: wrapDelta(before, estimate),
+          poseDecision: decision,
+          pressureHold: false,
+          estimateBin: binIndex(estimate),
+          storedBin: binIndex(rotationCandidate),
+          incrementBins: motionBins,
+          needleAgrees: true,
+          narrowOk,
+          anchorAccumDeg,
+        });
+      };
+      const decide = (match, outside, narrowOk) => {
+        const estimate = match.estimateDeg;
+        const step = wrapDelta(pose.rotationDeg, estimate);
+        const magnitude = Math.abs(step);
+        const stepBins = wholeBins(step);
+        const needleAgrees = agrees(estimate);
+        if (trusted != null && wholeBins(wrapDelta(trusted, estimate)) === 0) {
+          rememberNeedle();
+          rotationCandidate = null;
+          pendingStepBins = null;
+          return orientResult({
+            rotationDeg: pose.rotationDeg,
+            rawRotationDeg: estimate,
+            confidence: match.confidence,
+            poseQuality: match.confidence,
+            poseDecision: 're-anchor',
+            pressureHold: false,
+            estimateBin: binIndex(estimate),
+            storedBin: null,
+            needleAgrees,
+            narrowOk,
+          });
+        }
+        if (match.ok && (magnitude < ROTATION_QUIET_DEG || (!outside && stepBins === 0 && rotationCandidate == null))) {
+          rotationCandidate = null;
+          pendingStepBins = null;
+          rememberNeedle();
+          return orientResult({
+            rotationDeg: pose.rotationDeg,
+            rawRotationDeg: estimate,
+            confidence: match.confidence,
+            poseQuality: match.confidence,
+            poseDecision: 'quiet',
+            pressureHold: false,
+            estimateBin: binIndex(estimate),
+            storedBin: null,
+            needleAgrees,
+            narrowOk,
+          });
+        }
+        if (outside && magnitude > LARGE_ROTATION_DEG && !largeRotationSupported(match)) {
+          return holdTurn('re-anchor-fail', match, { narrowOk, incrementBins: null });
+        }
+        if (!match.ok || !needleAgrees || !qualityOk) {
+          if (match.ok && !needleAgrees && qualityOk) {
+            if (rotationCandidate == null) {
+              rotationCandidate = estimate;
+              pendingStepBins = stepBins;
+            } else {
+              const moved = wholeBins(wrapDelta(rotationCandidate, estimate));
+              if (moved !== 0 && moved !== pendingStepBins) {
+                rotationCandidate = estimate;
+                pendingStepBins = moved;
+              } else if (moved === 0) {
+                rotationCandidate = estimate;
+              }
+            }
+          }
+          return holdTurn(needleAgrees ? null : 'veto', match, {
+            narrowOk,
+            incrementBins: rotationCandidate == null ? null : wholeBins(wrapDelta(rotationCandidate, estimate)),
+          });
+        }
+        const increment = rotationCandidate == null ? null : wholeBins(wrapDelta(rotationCandidate, estimate));
+        const sameStep = increment != null && (increment === 0 || (pendingStepBins !== 0 && increment === pendingStepBins));
+        if (!sameStep) {
+          rotationCandidate = estimate;
+          pendingStepBins = stepBins;
+          return holdTurn('store', match, { narrowOk, incrementBins: stepBins });
+        }
+        const motionBins = increment === 0 ? pendingStepBins : increment;
+        if (Math.abs(wrapDelta(anchorRotationDeg, estimate)) > LARGE_ROTATION_DEG) {
+          if (!anchorIdentityOk(estimate)) {
+            return holdTurn('re-anchor-fail', match, { narrowOk, incrementBins: increment });
+          }
+          return commitTurn(estimate, 're-anchor', match, motionBins, narrowOk);
+        }
+        return commitTurn(estimate, 'commit', match, motionBins, narrowOk);
+      };
+      const narrow = matchAt(LOCKED_MAX_SHIFT_DEG);
+      const narrowMag = Math.abs(wrapDelta(pose.rotationDeg, narrow.estimateDeg));
+      const narrowAgrees = agrees(narrow.estimateDeg);
+      let outsideMatch = null;
+      if (!narrow.ok || !narrowAgrees || narrowMag >= LOCKED_MATCH_LIMIT_DEG) {
+        const wide = matchAt(SEARCH_MAX_SHIFT_DEG);
+        const wideMag = Math.abs(wrapDelta(pose.rotationDeg, wide.estimateDeg));
+        if (
+          wide.ok
+          && wideMag > LOCKED_MATCH_LIMIT_DEG
+          && wideMag < SEARCH_MAX_SHIFT_DEG
+          && agrees(wide.estimateDeg)
+          && qualityOk
+        ) {
+          outsideMatch = wide;
         }
       }
-      if (unresolved || !chosen) {
-        rotationCandidate = null;
-        rotationVelocity *= 0.5;
-        return orientResult({
-          rotationDeg: pose.rotationDeg,
-          rawRotationDeg: narrow.estimateDeg ?? pose.rotationDeg,
-          confidence: narrow.confidence,
-          held: true,
-          poseBlocked: true,
-          posePending: true,
-          poseRejectReason: 'rotation-unconfirmed',
-          poseQuality: narrow.confidence,
-          stableNeedleDeg: maskNeedleDeg,
-        });
-      }
-      const match = chosen;
-      const estimate = match.estimateDeg;
-      const step = wrapDelta(pose.rotationDeg, estimate);
-      const magnitude = Math.abs(step);
-      const rigid = Math.abs(wrapDelta(needleStep, step)) <= ROTATION_RIGID_DEG;
-      let next = pose.rotationDeg;
-      let poseBlocked = false;
-      let posePending = false;
-      let poseRejectReason = null;
-      const continuing = Math.abs(rotationVelocity) >= 1
-        && magnitude <= ROTATION_BIN_DEG
-        && Math.abs(wrapDelta(rotationVelocity, step)) <= ROTATION_AGREE_DEG;
-      const pendingStep = rotationCandidate == null ? null : wrapDelta(pose.rotationDeg, rotationCandidate);
-      const further = rotationCandidate == null ? null : wrapDelta(rotationCandidate, estimate);
-      const continuesPending = pendingStep != null
-        && further != null
-        && Math.abs(pendingStep) > ROTATION_BIN_DEG
-        && magnitude <= LOCKED_MATCH_LIMIT_DEG
-        && Math.abs(wrapDelta(pendingStep, further)) <= ROTATION_AGREE_DEG;
-      const continuingLocked = Math.abs(rotationVelocity) >= 1
-        && magnitude <= LOCKED_MATCH_LIMIT_DEG
-        && Math.abs(wrapDelta(rotationVelocity, step)) <= ROTATION_AGREE_DEG;
-      const trustedOk = trusted != null && Math.abs(wrapDelta(trusted, estimate)) <= ROTATION_AGREE_DEG;
-      const repeated = rotationCandidate != null && Math.abs(wrapDelta(rotationCandidate, estimate)) <= ROTATION_AGREE_DEG;
-      const large = magnitude > ROTATION_BIN_DEG;
-      const lockedContinuation = magnitude <= LOCKED_MATCH_LIMIT_DEG && (continuesPending || continuingLocked);
-      if (magnitude < ROTATION_QUIET_DEG) {
-        rotationCandidate = null;
-        rotationVelocity *= 0.5;
-      } else if ((!large && (continuing || repeated)) || (large && rigid && (trustedOk || repeated || lockedContinuation))) {
-        next = estimate;
-        if (trustedOk && trustedStep != null) rotationVelocity = trustedStep;
-        else if (continuesPending && further != null) rotationVelocity = further;
-        else rotationVelocity = wrapDelta(pose.rotationDeg, next);
-        rotationCandidate = null;
-      } else {
-        rotationCandidate = estimate;
-        rotationVelocity *= 0.5;
-        posePending = true;
-        poseRejectReason = 'rotation-unconfirmed';
-        poseBlocked = large;
-      }
-      const poseDeltaRot = wrapDelta(pose.rotationDeg, next);
-      pose = { ...pose, rotationDeg: next };
-      if (!poseBlocked) rememberNeedle();
-      return orientResult({
-        rotationDeg: next,
-        rawRotationDeg: estimate,
-        confidence: match.confidence,
-        held: false,
-        poseBlocked,
-        posePending,
-        poseRejectReason,
-        poseQuality: match.confidence,
-        poseDeltaRot,
-        stableNeedleDeg: poseBlocked ? maskNeedleDeg : null,
-      });
+      if (outsideMatch) return decide(outsideMatch, true, narrow.ok);
+      return decide(narrow, false, narrow.ok);
     },
   };
 }
@@ -1227,10 +1204,12 @@ function completeReading({
     positionHeld: position.held,
     needleLikeness: detection.likeness,
     rimConfidence: position.confidence,
+    needleQuality: detection.quality,
   });
   const settled = tracker.getPose() || center;
   const minDim = Math.min(videoWidth, videoHeight);
-  const publishedNeedle = orientation.poseBlocked && orientation.stableNeedleDeg != null
+  const pressureHold = Boolean(position.held || orientation.pressureHold);
+  const publishedNeedle = pressureHold && orientation.stableNeedleDeg != null
     ? orientation.stableNeedleDeg
     : detection.angleDeg;
   return {
@@ -1252,8 +1231,16 @@ function completeReading({
       rawRotationDeg: orientation.rawRotationDeg ?? orientation.rotationDeg,
       confidence: position.confidence,
       orientationConfidence: orientation.confidence,
-      held: Boolean(position.held || orientation.poseBlocked),
+      held: Boolean(position.held),
+      pressureHold,
       poseQuality: orientation.poseQuality ?? position.poseQuality ?? null,
+      narrowOk: orientation.narrowOk ?? null,
+      needleAgrees: orientation.needleAgrees ?? null,
+      estimateBin: orientation.estimateBin ?? null,
+      storedBin: orientation.storedBin ?? null,
+      incrementBins: orientation.incrementBins ?? null,
+      poseDecision: orientation.poseDecision ?? null,
+      anchorAccumDeg: orientation.anchorAccumDeg ?? null,
       poseRejectReason: position.poseRejectReason || orientation.poseRejectReason || null,
       posePending: Boolean(position.posePending || orientation.posePending),
       poseDeltaPx: position.poseDeltaPx ?? 0,
