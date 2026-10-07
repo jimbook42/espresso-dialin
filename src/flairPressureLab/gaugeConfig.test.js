@@ -774,6 +774,79 @@ export function runFlairPressureLabTests() {
   const stepFollow = Math.hypot(stepped.gauge.cx - (108 + 30), stepped.gauge.cy - (76 - 12));
   assert.ok(stepFollow <= 8, `continuous move stopped at ${stepped.gauge.cx.toFixed(1)},${stepped.gauge.cy.toFixed(1)}`);
 
+  const glideTracker = createGaugeTracker();
+  const glideHome = makeGaugeImage(220, { cx: 70, cy: 110, radius: 36, needleDeg: 47, rotationDeg: 0 });
+  glideTracker.seed({ cx: 70, cy: 110, radius: 36 });
+  let glideSettled = null;
+  for (let i = 0; i < 6; i += 1) glideSettled = analyzeGaugeImage(glideHome, glideTracker);
+  const glideFirst = analyzeGaugeImage(
+    makeGaugeImage(220, { cx: 72, cy: 109, radius: 36, needleDeg: 57, rotationDeg: 10 }),
+    glideTracker,
+  );
+  assert.ok(
+    Math.hypot(glideFirst.gauge.cx - glideSettled.gauge.cx, glideFirst.gauge.cy - glideSettled.gauge.cy) < 2,
+    `one rigid frame moved the centre to ${glideFirst.gauge.cx.toFixed(1)},${glideFirst.gauge.cy.toFixed(1)}`,
+  );
+  assert.ok(Math.abs(wrapDelta(glideSettled.gauge.rotationDeg, glideFirst.gauge.rotationDeg)) < 1.5, `one rigid frame rotated to ${glideFirst.gauge.rotationDeg}`);
+  let glide = glideFirst;
+  for (let step = 2; step <= 3; step += 1) {
+    glide = analyzeGaugeImage(
+      makeGaugeImage(220, {
+        cx: 70 + step * 2,
+        cy: 110 - step * 1,
+        radius: 36,
+        needleDeg: 47 + step * 10,
+        rotationDeg: step * 10,
+      }),
+      glideTracker,
+    );
+  }
+  const glideError = Math.hypot(glide.gauge.cx - 76, glide.gauge.cy - 107);
+  assert.ok(glideError <= 6, `continuous rigid move stopped at ${glide.gauge.cx.toFixed(1)},${glide.gauge.cy.toFixed(1)}`);
+  assert.ok(Math.abs(wrapDelta(30, glide.gauge.rotationDeg)) <= 8, `continuous rotation ${glide.gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(47, glide.relativeAngleDeg)) <= 10, `continuous relative ${glide.relativeAngleDeg}`);
+  assert.equal(glide.gauge.reacquireAccepted, false, 'continuous rigid motion used reacquisition');
+
+  const glideSpinTracker = createGaugeTracker();
+  glideSpinTracker.seed({ cx: 90, cy: 88, radius: 42 });
+  const glideSpinHome = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0 });
+  for (let i = 0; i < 6; i += 1) analyzeGaugeImage(glideSpinHome, glideSpinTracker);
+  let glideSpin = null;
+  for (let step = 1; step <= 4; step += 1) {
+    glideSpin = analyzeGaugeImage(
+      makeGaugeImage(200, {
+        cx: 90, cy: 88, radius: 42, needleDeg: 47 + step * 10, rotationDeg: step * 10,
+      }),
+      glideSpinTracker,
+    );
+  }
+  assert.ok(Math.abs(wrapDelta(40, glideSpin.gauge.rotationDeg)) <= 8, `continuous spin stayed at ${glideSpin.gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(47, glideSpin.relativeAngleDeg)) <= 10, `continuous spin relative ${glideSpin.relativeAngleDeg}`);
+  assert.ok(Math.hypot(glideSpin.gauge.cx - 90, glideSpin.gauge.cy - 88) <= 6, 'continuous spin moved the centre');
+
+  const glideVetoTracker = createGaugeTracker();
+  const glideVetoHome = makeGaugeImage(220, { cx: 70, cy: 110, radius: 36, needleDeg: 47, rotationDeg: 0 });
+  glideVetoTracker.seed({ cx: 70, cy: 110, radius: 36 });
+  for (let i = 0; i < 6; i += 1) analyzeGaugeImage(glideVetoHome, glideVetoTracker);
+  let glideVeto = null;
+  for (let step = 1; step <= 2; step += 1) {
+    glideVeto = analyzeGaugeImage(
+      makeGaugeImage(220, {
+        cx: 70 + step * 4,
+        cy: 110 - step * 3,
+        radius: 36,
+        needleDeg: 47,
+        rotationDeg: step * 10,
+      }),
+      glideVetoTracker,
+    );
+  }
+  assert.ok(Math.abs(wrapDelta(0, glideVeto.gauge.rotationDeg)) < 2, `unmatched spin rotated to ${glideVeto.gauge.rotationDeg}`);
+  assert.ok(
+    Math.hypot(glideVeto.gauge.cx - 70, glideVeto.gauge.cy - 110) < 4,
+    `unmatched spin moved the centre to ${glideVeto.gauge.cx.toFixed(1)},${glideVeto.gauge.cy.toFixed(1)}`,
+  );
+
   const farTracker = createGaugeTracker();
   const farHome = makeGaugeImage(280, { cx: 90, cy: 140, radius: 32, needleDeg: 47, rotationDeg: 0 });
   farTracker.seed({ cx: 90, cy: 140, radius: 32 });

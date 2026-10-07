@@ -11,14 +11,17 @@ import { detectNeedleAngle } from './needleFromFrame.js';
  * pattern, with the needle sector ignored, so a lever twist is not read as
  * pressure. Pressure uses needle angle minus that gauge rotation.
  *
- * Locked tracking is modest motion only. The search stays near the last pose.
- * A weak rim score holds the last pose instead of inventing a new one.
- * Centre, radius, and rotation are one pose. A large change has to be the same
- * pose again on the next frame. The needle is masked out of the dial match, so
- * it cannot turn or translate the gauge.
+ * Locked tracking follows modest motion, and a rigid gauge that keeps moving
+ * inside that window. The search stays near the last pose. A weak rim score
+ * holds the last pose instead of inventing a new one. Centre, radius, and
+ * rotation are one pose. A step past one dial bin is applied when the next
+ * frame continues that same step and the needle turns with the dial. One frame
+ * is not enough, and the pose does not have to sit still. A step the needle
+ * does not match is held. The needle is masked out of the dial match, so it
+ * cannot turn or translate the gauge.
  *
- * A lever move can carry the gauge outside that window. Locked acceptance is
- * unchanged. After the pose is no longer supported, a separate search confirms
+ * A lever move can carry the gauge outside that window. A jump outside the
+ * locked match is unchanged. After the pose is no longer supported, a separate search confirms
  * the same dial over several frames and only then moves the locked pose.
  * Repeating an orientation is not enough when the step is large. The outer
  * tick ring repeats about every 30°, and covering its one unique sector leaves
@@ -285,11 +288,12 @@ export function matchGaugeRotation(reference, current, {
  * 188px search image. Centre and rotation are gated separately.
  * A centre shift inside the quiet band is ignored. A larger shift under
  * one tenth of the radius has to agree for three frames, and only when the
- * dial at that circle still matches the current rotation. A bigger jump, or a
- * jump that only matches after a large spin, has to be the same pose twice.
- * Rotation under one degree is ignored. One dial bin can repeat and then
- * keep turning. Anything larger is held until the same angle comes back,
- * so one bad frame cannot walk the pressure reading.
+ * dial at that circle still matches the current rotation. A bigger jump that
+ * settles has to be the same pose twice. A spin that keeps going is applied
+ * when the next step matches the last one and the needle agrees, still inside
+ * the locked match. Rotation under one degree is ignored. One dial bin can
+ * repeat and then keep turning. A larger step that does not continue, or that
+ * the needle does not match, is held, so one bad frame cannot walk the reading.
  */
 const CENTRE_QUIET_FRACTION = 0.03;
 const CENTRE_IMMEDIATE_FRACTION = 0.1;
@@ -322,6 +326,8 @@ const ROTATION_BIN_DEG = 5.5;
 const ROTATION_AGREE_DEG = 4;
 const ROTATION_RIGID_DEG = 6;
 const LOCKED_MAX_SHIFT_DEG = 18;
+/** Narrow match reach after bin rounding. 18° lands on the 20° bin. */
+const LOCKED_MATCH_LIMIT_DEG = Math.round(LOCKED_MAX_SHIFT_DEG / (360 / PROFILE_BINS)) * (360 / PROFILE_BINS);
 const SEARCH_FRACTIONS = [0.9, 1.25, 1.6, 2];
 /** Agreeing observations of one candidate, including the first. The third accepts. */
 const SEARCH_CONFIRM_FRAMES = 3;
@@ -364,6 +370,8 @@ export function createGaugeTracker() {
   let rotationCandidate = null;
   let rotationVelocity = 0;
   let trustedRotationDeg = null;
+  let trustedFrameStep = null;
+  let lastFrameStep = null;
   let poseCandidate = null;
   let maskNeedleDeg = null;
   let mode = 'locked';
@@ -381,6 +389,8 @@ export function createGaugeTracker() {
     rotationCandidate = null;
     rotationVelocity = 0;
     trustedRotationDeg = null;
+    trustedFrameStep = null;
+    lastFrameStep = null;
     poseCandidate = null;
     maskNeedleDeg = null;
   };
@@ -394,6 +404,8 @@ export function createGaugeTracker() {
     searchMisses = 0;
     reacquireReason = null;
     observed = null;
+    lastFrameStep = null;
+    trustedFrameStep = null;
   };
 
   const beginSearch = () => {
@@ -792,16 +804,44 @@ export function createGaugeTracker() {
           rotationDeg: proposedRotation,
         };
         const agree = pose.radius * CENTRE_AGREE_FRACTION;
+        const radiusBand = pose.radius * RADIUS_QUIET_FRACTION;
         const same = poseCandidate
           && Math.hypot(video.cx - poseCandidate.cx, video.cy - poseCandidate.cy) <= agree
-          && Math.abs(video.radius - poseCandidate.radius) <= pose.radius * RADIUS_QUIET_FRACTION
+          && Math.abs(video.radius - poseCandidate.radius) <= radiusBand
           && Math.abs(wrapDelta(poseCandidate.rotationDeg, proposedRotation)) <= ROTATION_AGREE_DEG;
-        poseCandidate = same
-          ? { ...proposal, hits: poseCandidate.hits + 1 }
-          : { ...proposal, hits: 1 };
+        const fromPoseRot = wrapDelta(pose.rotationDeg, proposedRotation);
+        let continuedFromCandidate = false;
+        if (poseCandidate && surprisingSpin && rotDelta <= LOCKED_MATCH_LIMIT_DEG) {
+          const prevDx = poseCandidate.cx - pose.cx;
+          const prevDy = poseCandidate.cy - pose.cy;
+          const nextDx = video.cx - poseCandidate.cx;
+          const nextDy = video.cy - poseCandidate.cy;
+          const prevRot = wrapDelta(pose.rotationDeg, poseCandidate.rotationDeg);
+          const nextRot = wrapDelta(poseCandidate.rotationDeg, proposedRotation);
+          // The still-pose band is tighter than rim-finder noise on a moving step.
+          const centreBand = pose.radius * CENTRE_IMMEDIATE_FRACTION;
+          const centreFollows = Math.hypot(nextDx - prevDx, nextDy - prevDy) <= centreBand
+            || Math.hypot(nextDx, nextDy) <= agree;
+          const rotFollows = Math.abs(prevRot) > ROTATION_BIN_DEG
+            && Math.abs(wrapDelta(prevRot, nextRot)) <= ROTATION_AGREE_DEG;
+          const radiusOk = Math.abs(video.radius - poseCandidate.radius) <= radiusBand;
+          continuedFromCandidate = centreFollows && rotFollows && radiusOk;
+        }
+        const velocityContinue = Boolean(lastFrameStep)
+          && surprisingSpin
+          && rotDelta <= LOCKED_MATCH_LIMIT_DEG
+          && Math.hypot(dx - lastFrameStep.dx, dy - lastFrameStep.dy) <= pose.radius * CENTRE_IMMEDIATE_FRACTION
+          && Math.abs(wrapDelta(lastFrameStep.rot, fromPoseRot)) <= ROTATION_AGREE_DEG;
+        const remembered = poseCandidate;
+        const hits = same
+          ? poseCandidate.hits + 1
+          : continuedFromCandidate
+            ? Math.max(poseCandidate.hits + 1, 2)
+            : 1;
+        poseCandidate = { ...proposal, hits };
         let spinOk = !surprisingSpin;
         // The dial proposed a spin. The needle can veto it, not create it.
-        if (surprisingSpin && poseCandidate.hits >= 2) {
+        if (surprisingSpin && (hits >= 2 || velocityContinue)) {
           const coarse = detectNeedleAngle(
             image,
             found.cx,
@@ -814,7 +854,22 @@ export function createGaugeTracker() {
           spinOk = coarse.quality >= 0.18
             && Math.abs(wrapDelta(needleStep, rotationStep)) <= ROTATION_RIGID_DEG;
         }
-        if (poseCandidate.hits >= 2 && spinOk) {
+        if ((hits >= 2 || velocityContinue) && spinOk) {
+          let frameDx = dx;
+          let frameDy = dy;
+          let frameRot = fromPoseRot;
+          if (continuedFromCandidate && remembered) {
+            frameDx = video.cx - remembered.cx;
+            frameDy = video.cy - remembered.cy;
+            frameRot = wrapDelta(remembered.rotationDeg, proposedRotation);
+          }
+          if (continuedFromCandidate || velocityContinue) {
+            lastFrameStep = { dx: frameDx, dy: frameDy, rot: frameRot };
+            trustedFrameStep = frameRot;
+          } else {
+            lastFrameStep = null;
+            trustedFrameStep = null;
+          }
           pose = {
             cx: video.cx,
             cy: video.cy,
@@ -828,17 +883,30 @@ export function createGaugeTracker() {
         } else {
           posePending = true;
           poseRejectReason = surprisingSpin ? 'pose-inconsistent' : 'dial-unrecognized';
-          geometryHeld = shift >= immediate;
           centreCandidate = null;
           radiusCandidate = null;
-          if (geometryHeld) {
-            const wide = wideMatch(found);
-            if (considerCandidate(video, wide)) {
-              return acceptCandidate(found, video, wide, mapping, windowFraction);
-            }
-            lossStreak += 1;
-            if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
-              beginSearch();
+          const rigidityFailed = surprisingSpin && (hits >= 2 || velocityContinue) && !spinOk;
+          if ((!continuedFromCandidate && !velocityContinue) || rigidityFailed) lastFrameStep = null;
+          // A spin still inside the narrow match waits for the next step.
+          // Search stays for a lost dial, a failed needle veto, or a wider jump.
+          const inWindowSpin = surprisingSpin && rotDelta <= LOCKED_MATCH_LIMIT_DEG && !rigidityFailed;
+          // A small centre shift keeps the dial in view, so orientation can
+          // remember the step. A real jump holds until the next frame.
+          if (inWindowSpin && shift < immediate) {
+            geometryHeld = false;
+          } else if (inWindowSpin) {
+            geometryHeld = true;
+          } else {
+            geometryHeld = shift >= immediate;
+            if (geometryHeld) {
+              const wide = wideMatch(found);
+              if (considerCandidate(video, wide)) {
+                return acceptCandidate(found, video, wide, mapping, windowFraction);
+              }
+              lossStreak += 1;
+              if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
+                beginSearch();
+              }
             }
           }
         }
@@ -847,6 +915,8 @@ export function createGaugeTracker() {
 
       if (!skipNormal) {
         poseCandidate = null;
+        lastFrameStep = null;
+        trustedFrameStep = null;
         let nextCx = pose.cx;
         let nextCy = pose.cy;
         if (shift >= immediate) {
@@ -936,7 +1006,9 @@ export function createGaugeTracker() {
     },
     trackOrientation(profile, needleDeg, { positionHeld = false, needleLikeness = null, rimConfidence = null } = {}) {
       const trusted = trustedRotationDeg;
+      const trustedStep = trustedFrameStep;
       trustedRotationDeg = null;
+      trustedFrameStep = null;
       const rememberNeedle = () => {
         if (needleDeg == null) return;
         if (maskNeedleDeg == null || Math.abs(wrapDelta(maskNeedleDeg, needleDeg)) <= 30) {
@@ -1044,15 +1116,28 @@ export function createGaugeTracker() {
       const continuing = Math.abs(rotationVelocity) >= 1
         && magnitude <= ROTATION_BIN_DEG
         && Math.abs(wrapDelta(rotationVelocity, step)) <= ROTATION_AGREE_DEG;
+      const pendingStep = rotationCandidate == null ? null : wrapDelta(pose.rotationDeg, rotationCandidate);
+      const further = rotationCandidate == null ? null : wrapDelta(rotationCandidate, estimate);
+      const continuesPending = pendingStep != null
+        && further != null
+        && Math.abs(pendingStep) > ROTATION_BIN_DEG
+        && magnitude <= LOCKED_MATCH_LIMIT_DEG
+        && Math.abs(wrapDelta(pendingStep, further)) <= ROTATION_AGREE_DEG;
+      const continuingLocked = Math.abs(rotationVelocity) >= 1
+        && magnitude <= LOCKED_MATCH_LIMIT_DEG
+        && Math.abs(wrapDelta(rotationVelocity, step)) <= ROTATION_AGREE_DEG;
       const trustedOk = trusted != null && Math.abs(wrapDelta(trusted, estimate)) <= ROTATION_AGREE_DEG;
       const repeated = rotationCandidate != null && Math.abs(wrapDelta(rotationCandidate, estimate)) <= ROTATION_AGREE_DEG;
       const large = magnitude > ROTATION_BIN_DEG;
+      const lockedContinuation = magnitude <= LOCKED_MATCH_LIMIT_DEG && (continuesPending || continuingLocked);
       if (magnitude < ROTATION_QUIET_DEG) {
         rotationCandidate = null;
         rotationVelocity *= 0.5;
-      } else if ((!large && (continuing || repeated)) || (large && rigid && (trustedOk || repeated))) {
+      } else if ((!large && (continuing || repeated)) || (large && rigid && (trustedOk || repeated || lockedContinuation))) {
         next = estimate;
-        rotationVelocity = wrapDelta(pose.rotationDeg, next);
+        if (trustedOk && trustedStep != null) rotationVelocity = trustedStep;
+        else if (continuesPending && further != null) rotationVelocity = further;
+        else rotationVelocity = wrapDelta(pose.rotationDeg, next);
         rotationCandidate = null;
       } else {
         rotationCandidate = estimate;
