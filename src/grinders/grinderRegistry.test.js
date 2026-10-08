@@ -87,6 +87,14 @@ function testPresentation() {
   assert.equal(isSunbeamGrinderModel(SUNBEAM_GRINDER_ID), true);
   assert.equal(brewGuideGrindSettingLabelForGrinder(SUNBEAM_GRINDER_ID), 'Dial setting');
   assert.equal(brewGuideGrindSettingLabelForGrinder('your grinder'), 'Grind setting');
+  assert.match(
+    getGrinderDefinitionById(SUNBEAM_GRINDER_ID).brewGuideChangedGrindPurgeExtraLine,
+    /hopper empty/i
+  );
+  assert.doesNotMatch(
+    getGrinderDefinitionById(SETTE_GRINDER_ID).brewGuideChangedGrindPurgeExtraLine,
+    /hopper empty/i
+  );
 
   const parsedSette = parseGrindForShotSave(SETTE_GRINDER_ID, { setteMacro: '11', setteMicro: 'B' });
   assert.equal(parsedSette.ok, true);

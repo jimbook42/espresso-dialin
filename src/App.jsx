@@ -53,6 +53,7 @@ import {
   shouldShowGraduationPrompt,
   shouldNavigateToBrewAfterFirstBean,
 } from './brewGuide/guidance';
+import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
@@ -1679,17 +1680,17 @@ export default function App() {
               usePreInfusion,
               preInfusionPhase,
             }}
-            dial={{
-              beanName: activeBean?.name || '',
-              doseG: activeRecipe?.targetDoseG,
-              yieldG: activeRecipe?.targetYieldG,
-              timeMinS: activeRecipe?.targetTimeMinS,
-              timeMaxS: activeRecipe?.targetTimeMaxS,
+            dial={buildBrewGuideDialPayload({
+              beanName: activeBean?.name,
+              targetDoseG: activeRecipe?.targetDoseG,
+              targetYieldG: activeRecipe?.targetYieldG,
+              targetTimeMinS: activeRecipe?.targetTimeMinS,
+              targetTimeMaxS: activeRecipe?.targetTimeMaxS,
               brewTemperatureC: activeRecipe?.brewTemperatureC,
               grinderModel,
               grindLabel: recommendedGrindDisplay,
               previousGrindLabel,
-            }}
+            })}
           />
         )}
 

@@ -48,6 +48,8 @@ const setteDefinition = {
   setupCardLabel: 'Baratza Sette 270Wi',
   defaultBrewTemperatureC: 93,
   brewGuideGrindSettingLabel: 'Grind setting',
+  brewGuideMachineKey: null,
+  brewGuideChangedGrindPurgeExtraLine: 'Keep the purge separate from the dose.',
   macroFieldLabel: 'Macro 1–31',
   microFieldLabel: 'Micro A–I',
   macroValidationError: 'Sette Macro setting must be a valid number.',
@@ -121,6 +123,9 @@ const sunbeamDefinition = {
   setupCardLabel: SUNBEAM_GRINDER_ID,
   defaultBrewTemperatureC: 92,
   brewGuideGrindSettingLabel: 'Dial setting',
+  brewGuideMachineKey: 'sunbeam',
+  brewGuideChangedGrindPurgeExtraLine:
+    'Keep the purge separate from the dose. A short run is enough — do not run the hopper empty.',
   dialFieldLabel: 'Dial setting 1–30',
   dialValidationError: 'Sunbeam dial setting must be a valid number.',
   adjustSetting(shift, { sunbeamSetting }) {
@@ -276,4 +281,15 @@ export function brewGuideGrindSettingLabelForGrinder(grinderModel) {
   return isSunbeamGrinderModel(grinderModel)
     ? sunbeamDefinition.brewGuideGrindSettingLabel
     : setteDefinition.brewGuideGrindSettingLabel;
+}
+
+export function getBrewGuideMachineKey(grinderModel) {
+  const def = getGrinderDefinitionById(grinderModel);
+  return def?.brewGuideMachineKey ?? null;
+}
+
+export function getBrewGuideChangedGrindPurgeExtraLine(grinderModel) {
+  return isSunbeamGrinderModel(grinderModel)
+    ? sunbeamDefinition.brewGuideChangedGrindPurgeExtraLine
+    : setteDefinition.brewGuideChangedGrindPurgeExtraLine;
 }

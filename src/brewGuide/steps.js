@@ -72,7 +72,7 @@ export function formatBrewAmount(value) {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
 }
 
-import { brewGuideGrindSettingLabelForGrinder, isSunbeamGrinderModel } from '../grinders/grinderRegistry.js';
+import { getBrewGuideGrindConfig } from './grinderBrewGuide.js';
 
 export function brewDialIsReady(dial) {
   if (!dial?.beanName || !dial?.grinderModel || !dial?.grindLabel) return false;
@@ -166,8 +166,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
   const grindLabel = summary.grindLabel ?? '—';
   const grinder = summary.grinder || 'your grinder';
   const bean = summary.bean || 'your coffee';
-  const grindSettingLabel = brewGuideGrindSettingLabelForGrinder(grinder);
-  const isSunbeam = isSunbeamGrinderModel(grinder);
+  const { grindSettingLabel, changedGrindPurgeExtraLine } = getBrewGuideGrindConfig(grinder);
   const changed = grindSettingChanged(dial);
   const previous = dial.previousGrindLabel ? String(dial.previousGrindLabel) : '';
   const stopAt = brewStopYield(dial.yieldG);
@@ -182,9 +181,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     grindLines.push(previous
       ? `The setting changed from ${previous}. Purge a small amount of fresh beans through the grinder, then discard those grounds.`
       : 'The setting changed. Purge a small amount of fresh beans through the grinder, then discard those grounds.');
-    grindLines.push(isSunbeam
-      ? 'Keep the purge separate from the dose. A short run is enough — do not run the hopper empty.'
-      : 'Keep the purge separate from the dose.');
+    grindLines.push(changedGrindPurgeExtraLine);
   } else if (!previous) {
     grindLines.push('If the grind setting changed, purge a little fresh coffee through and discard it before you weigh the dose.');
   }
