@@ -10,7 +10,14 @@ import {
   resolveShotStatsGrinderModel,
   getShotStatsGrinderProfile,
   isSetteGrinderModel,
+  isNicheZeroGrinderModel,
+  isSunbeamGrinderModel,
+  grinderSupportsQuantitativeRecommendations,
+  NICHE_ZERO_GRINDER_ID,
 } from '../grinders/grinderRegistry.js';
+import { parseNicheZeroSetting, NICHE_ZERO_DEFAULT_SETTING } from '../grinders/nicheZero.js';
+
+export { NICHE_ZERO_GRINDER_ID } from '../grinders/grinderRegistry.js';
 
 export { setteToNumeric, numericToSette, adjustSette, adjustSunbeam } from '../grinders/grinderRegistry.js';
 
@@ -315,10 +322,15 @@ export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = []
     const weight = Math.pow(0.7, idx);
     const profile = getRecommendationGrinderProfile(grinderModel);
     const num = profile.shotToNumeric(s);
+    if (!Number.isFinite(num)) return;
     weightedSum += num * weight;
     totalWeight += weight;
   });
-  return Math.round(weightedSum / totalWeight);
+  const average = weightedSum / totalWeight;
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return Math.round(average * 10) / 10;
+  }
+  return Math.round(average);
 }
 
 export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = null) {
@@ -357,6 +369,8 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
     adjustedSetting = adjustSette(adjustedSetting.macro, adjustedSetting.micro, ageShiftSette);
   } else if (lastShot.grinderModel === SUNBEAM_GRINDER_ID && ageShiftSunbeam !== 0) {
     adjustedSetting.setting = adjustSunbeam(adjustedSetting.setting, ageShiftSunbeam);
+  } else if (isNicheZeroGrinderModel(lastShot.grinderModel)) {
+    // Niche has no calibrated quantitative age shift.
   }
 
   return {
@@ -396,16 +410,26 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
     if (adjustedRec && adjustedRec.recommendedSetting) {
       if (isSetteGrinderModel(grinderModel)) {
         return { macro: adjustedRec.recommendedSetting.macro, micro: adjustedRec.recommendedSetting.micro };
-      } else {
-        return { setting: adjustedRec.recommendedSetting.setting };
       }
-    } else {
-      if (isSetteGrinderModel(grinderModel)) {
-        return { macro: bestShot.setteMacro || 13, micro: bestShot.setteMicro || 'E' };
-      } else {
-        return { setting: bestShot.sunbeamSetting || 15 };
+      if (isNicheZeroGrinderModel(grinderModel)) {
+        return {
+          nicheZeroSetting:
+            parseNicheZeroSetting(adjustedRec.recommendedSetting.nicheZeroSetting)
+            ?? parseNicheZeroSetting(bestShot.nicheZeroSetting)
+            ?? NICHE_ZERO_DEFAULT_SETTING,
+        };
       }
+      return { setting: adjustedRec.recommendedSetting.setting };
     }
+    if (isSetteGrinderModel(grinderModel)) {
+      return { macro: bestShot.setteMacro || 13, micro: bestShot.setteMicro || 'E' };
+    }
+    if (isNicheZeroGrinderModel(grinderModel)) {
+      return {
+        nicheZeroSetting: parseNicheZeroSetting(bestShot.nicheZeroSetting) ?? NICHE_ZERO_DEFAULT_SETTING,
+      };
+    }
+    return { setting: bestShot.sunbeamSetting || 15 };
   }
 
   const ageData = calculateEffectiveBeanAge(activeBean, mockDateOverride);
@@ -426,10 +450,44 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
   if (isSetteGrinderModel(grinderModel)) {
     let baseNumeric = baseline !== null ? baseline : (roastType === 'Light' ? 15 * 9 + 2 : roastType === 'Dark' ? 12 * 9 + 5 : 13 * 9 + 4);
     return numericToSette(baseNumeric + ageData.recommendedOffsetSette);
-  } else {
-    let baseSetting = baseline !== null ? baseline : (roastType === 'Light' ? 17 : roastType === 'Dark' ? 13 : 15);
-    return { setting: Math.min(Math.max(baseSetting + ageData.recommendedOffsetSunbeam, 1), 30) };
   }
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    const baseDial = baseline !== null ? baseline : NICHE_ZERO_DEFAULT_SETTING;
+    return { nicheZeroSetting: parseNicheZeroSetting(baseDial) ?? NICHE_ZERO_DEFAULT_SETTING };
+  }
+  let baseSetting = baseline !== null ? baseline : (roastType === 'Light' ? 17 : roastType === 'Dark' ? 13 : 15);
+  return { setting: Math.min(Math.max(baseSetting + ageData.recommendedOffsetSunbeam, 1), 30) };
+}
+
+function buildNicheZeroQualitativeReason({
+  severeChoke,
+  isTimeInRange,
+  tasteProfile,
+  timeDelta,
+}) {
+  if (severeChoke) {
+    return 'SEVERE CHOKE — Grind substantially coarser on the Niche dial (higher number). Dial step size is not auto-calibrated in this app.';
+  }
+  if (isTimeInRange) {
+    if (tasteProfile === 'very_sour') {
+      return 'Shot is in range but tastes very sour — grind finer (lower dial number). Auto step size is not calibrated.';
+    }
+    if (tasteProfile === 'sour') {
+      return 'Shot is in range but tastes sour — grind finer (lower dial number). Auto step size is not calibrated.';
+    }
+    if (tasteProfile === 'bitter') {
+      return 'Shot is in range but tastes bitter — grind coarser (higher dial number). Auto step size is not calibrated.';
+    }
+    if (tasteProfile === 'very_bitter') {
+      return 'Shot is in range but tastes very bitter — grind coarser (higher dial number). Auto step size is not calibrated.';
+    }
+    return 'KEEP GRIND — Balanced and in range.';
+  }
+  const secOff = Math.abs(Math.round(timeDelta));
+  if (timeDelta < 0) {
+    return `Shot was ${secOff}s fast — consider grinding finer (lower dial number). Timing guidance only; dial steps are not auto-calibrated.`;
+  }
+  return `Shot was ${secOff}s slow — consider grinding coarser (higher dial number). Timing guidance only; dial steps are not auto-calibrated.`;
 }
 
 export function calculateRecommendation(shotData, recipe, recentShots = [], flairEnabled = false) {
@@ -439,6 +497,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     setteMacro,
     setteMicro,
     sunbeamSetting,
+    nicheZeroSetting,
     wasPurged,
     actualTime,
     actualYield,
@@ -462,7 +521,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   let reason = '';
   let warning = null;
 
-  if (lastShotGrind && JSON.stringify(lastShotGrind) !== JSON.stringify({ setteMacro, setteMicro, sunbeamSetting }) && !wasPurged) {
+  if (
+    lastShotGrind
+    && JSON.stringify(lastShotGrind) !== JSON.stringify({ setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting })
+    && !wasPurged
+  ) {
     warning = "⚠️ Unpurged setting change detected. Retention may have skewed flow.";
   }
 
@@ -493,6 +556,92 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   }
 
   const grinderProfile = getRecommendationGrinderProfile(grinderModel);
+
+  if (!grinderSupportsQuantitativeRecommendations(grinderModel)) {
+    const currentDial = parseNicheZeroSetting(nicheZeroSetting) ?? NICHE_ZERO_DEFAULT_SETTING;
+    const reason = buildNicheZeroQualitativeReason({
+      severeChoke,
+      isTimeInRange,
+      tasteProfile,
+      timeDelta,
+    });
+
+    let flairWaterTempAdvice = null;
+    const currentTemp = recipe.brewTemperatureC;
+    const currentOutcome = classifyShotOutcome(
+      { actualTimeS: actualTime, actualYieldG: actualYield, tasteProfile, targetTimeMinS: targetMin, targetTimeMaxS: targetMax },
+      recipe
+    );
+
+    if (isTimeInRange && currentTemp && (isSour || isBitter) && !currentOutcome.isDialledIn) {
+      const qualifyingHistory = learningRecentShots.filter((s) => {
+        const ctx = recipeContextForShot(s, recipe);
+        const outcome = classifyShotOutcome(s, ctx);
+        if (!outcome.isTimeInRange || outcome.isDialledIn) return false;
+        if (!shotMatchesRecipeContext(s, recipe, flairEnabled)) return false;
+        const temp = s.brewTemperatureC || (s.flairProfile && s.flairProfile.waterTempC);
+        if (!temp || temp !== currentTemp) return false;
+        if (!s.tasteProfile) return false;
+        return true;
+      });
+      const allQualifying = [{ tasteProfile }, ...qualifyingHistory.map((s) => ({ tasteProfile: s.tasteProfile }))];
+      if (allQualifying.length >= 3) {
+        const recent3 = allQualifying.slice(0, 3);
+        const allSour = recent3.every((s) => s.tasteProfile === 'sour' || s.tasteProfile === 'very_sour');
+        const allBitter = recent3.every((s) => s.tasteProfile === 'bitter' || s.tasteProfile === 'very_bitter');
+        if (allSour) {
+          flairWaterTempAdvice =
+            'Persistent sourness despite shots in target time — consider increasing Flair temperature 1–2°C.';
+        } else if (allBitter) {
+          flairWaterTempAdvice =
+            'Persistent bitterness despite shots in target time — consider decreasing Flair temperature 1–2°C.';
+        }
+      }
+    }
+
+    let subRecommendation = null;
+    if (isTimeInRange) {
+      const dialedInRecentShots = learningRecentShots.filter(s => s.actualTimeS >= targetMin && s.actualTimeS <= targetMax);
+      const dialedInBitterCount = dialedInRecentShots.filter(s => s.tasteProfile === 'bitter' || s.tasteProfile === 'very_bitter').length;
+      const dialedInSourCount = dialedInRecentShots.filter(s => s.tasteProfile === 'sour' || s.tasteProfile === 'very_sour').length;
+      const totalDialedInBitter = dialedInBitterCount + (isBitter ? 1 : 0);
+      const totalDialedInSour = dialedInSourCount + (isSour ? 1 : 0);
+      const safeDoseG = recipe.targetDoseG || 18;
+      if (totalDialedInBitter >= 2 && targetYield / safeDoseG <= 2.0) {
+        subRecommendation = "Ratio Advisory: Time is dialed in with persistent bitterness. Consider lengthening your ratio.";
+      } else if (totalDialedInSour >= 2) {
+        subRecommendation = "Ratio Advisory: Time is dialed in with persistent sourness. Consider tightening your ratio or increasing brew temperature.";
+      }
+    }
+
+    const sortedRecent = [...learningRecentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const evidenceContext = getRecommendationEvidenceContext(sortedRecent, recipe, flairEnabled);
+    const shotOutcome = classifyShotOutcome(
+      { actualTimeS: actualTime, actualYieldG: actualYield, tasteProfile, targetTimeMinS: targetMin, targetTimeMaxS: targetMax },
+      recipe
+    );
+
+    return {
+      recommendedSetting: { nicheZeroSetting: currentDial },
+      reason,
+      warning,
+      subRecommendation,
+      flairWaterTempAdvice,
+      evidenceContext,
+      shotOutcome,
+      engineStats: {
+        timeDelta,
+        yieldDelta,
+        targetMid,
+        targetYield,
+        sensitivity: null,
+        shift: 0,
+        shiftUnit: grinderProfile.shiftUnit,
+        severeChoke: severeChoke,
+        tasteOverride: isTimeInRange && tasteProfile !== 'good' && tasteProfile !== 'balanced',
+      },
+    };
+  }
 
   if (severeChoke) {
     shift = severeChokeCoarseShift(grinderModel, targetMin, targetMax);

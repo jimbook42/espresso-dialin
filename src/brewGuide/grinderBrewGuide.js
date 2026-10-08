@@ -6,7 +6,7 @@ import {
   SETTE_GRINDER_ID,
   SUNBEAM_GRINDER_ID,
 } from '../grinders/grinderRegistry.js';
-import { SUNBEAM_MACHINE_BREW_GUIDE } from './machine/index.js';
+import { GENERIC_BREW_GUIDE_MENU, SUNBEAM_MACHINE_BREW_GUIDE } from './machine/index.js';
 
 const MACHINE_PACKAGES = Object.freeze({
   [SUNBEAM_MACHINE_BREW_GUIDE.key]: SUNBEAM_MACHINE_BREW_GUIDE,
@@ -34,8 +34,16 @@ export function getBrewGuideMachinePackageForGrinder(grinderModel) {
  * Machine reference UI shown in Brew Guide today (Sunbeam EM5300 content for all grinders).
  * Workflow grind behaviour still follows the active grinder via getBrewGuideGrindConfig.
  */
+export function getBrewGuideMenuShell() {
+  return GENERIC_BREW_GUIDE_MENU;
+}
+
 export function getBrewGuideMachinePackage() {
-  return SUNBEAM_MACHINE_BREW_GUIDE;
+  return {
+    ...GENERIC_BREW_GUIDE_MENU,
+    machineSettingsDetail: SUNBEAM_MACHINE_BREW_GUIDE.machineSettingsDetail,
+    guides: SUNBEAM_MACHINE_BREW_GUIDE.guides,
+  };
 }
 
 export function buildBrewGuideDialPayload({

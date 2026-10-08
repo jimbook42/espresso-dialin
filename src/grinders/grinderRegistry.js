@@ -1,6 +1,17 @@
+import {
+  NICHE_ZERO_GRINDER_ID,
+  NICHE_ZERO_DEFAULT_SETTING,
+  NICHE_ZERO_DIAL_MIN,
+  NICHE_ZERO_DIAL_MAX,
+  parseNicheZeroSetting,
+  formatNicheZeroSetting,
+} from './nicheZero.js';
+
 /** Stored grinder identity strings (must not change). */
 export const SETTE_GRINDER_ID = 'Sette 270Wi';
 export const SUNBEAM_GRINDER_ID = 'Sunbeam Barista Max';
+
+export { NICHE_ZERO_GRINDER_ID } from './nicheZero.js';
 
 const SETTE_MICROS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
@@ -29,6 +40,7 @@ export function adjustSunbeam(currentSetting, stepShift) {
 
 const setteDefinition = {
   id: SETTE_GRINDER_ID,
+  supportsQuantitativeRecommendations: true,
   sensitivity: 1.25,
   shiftUnit: 'micro',
   inRangeVerySourShift: -2,
@@ -108,6 +120,7 @@ const setteDefinition = {
 
 const sunbeamDefinition = {
   id: SUNBEAM_GRINDER_ID,
+  supportsQuantitativeRecommendations: true,
   sensitivity: 4.5,
   shiftUnit: 'macro',
   inRangeVerySourShift: -1,
@@ -178,10 +191,90 @@ const sunbeamDefinition = {
   },
 };
 
+const nicheZeroDefinition = {
+  id: NICHE_ZERO_GRINDER_ID,
+  supportsQuantitativeRecommendations: false,
+  sensitivity: null,
+  shiftUnit: 'reference',
+  controlType: 'nicheZero',
+  shortBadgeLabel: 'Niche Zero',
+  settingsSelectLabel: NICHE_ZERO_GRINDER_ID,
+  setupCardLabel: NICHE_ZERO_GRINDER_ID,
+  defaultBrewTemperatureC: 93,
+  brewGuideGrindSettingLabel: 'Grind setting',
+  brewGuideMachineKey: null,
+  brewGuideChangedGrindPurgeExtraLine: 'Keep the purge separate from the dose.',
+  dialFieldLabel: 'Dial reference (0–50, stepless)',
+  dialValidationError: 'Niche Zero dial reference must be a number from 0 to 50.',
+  dialMin: NICHE_ZERO_DIAL_MIN,
+  dialMax: NICHE_ZERO_DIAL_MAX,
+  defaultSetting: NICHE_ZERO_DEFAULT_SETTING,
+  adjustSetting() {
+    throw new Error('Niche Zero does not support quantitative adjustSetting');
+  },
+  shotToNumeric(shot) {
+    const n = parseNicheZeroSetting(shot?.nicheZeroSetting);
+    return n === null ? NaN : n;
+  },
+  formatShotGrindForHistory(shot) {
+    return formatNicheZeroSetting(shot?.nicheZeroSetting) || String(NICHE_ZERO_DEFAULT_SETTING);
+  },
+  formatPreviousGrindLabel(shot) {
+    if (shot?.nicheZeroSetting == null || shot.nicheZeroSetting === '') return '';
+    return formatNicheZeroSetting(shot.nicheZeroSetting);
+  },
+  formatCurrentGrindLabel({ nicheZeroSetting }) {
+    return formatNicheZeroSetting(nicheZeroSetting) || String(nicheZeroSetting ?? '');
+  },
+  formatRecommendedGrindDisplay(recommendedSetting) {
+    return formatNicheZeroSetting(recommendedSetting?.nicheZeroSetting)
+      || String(recommendedSetting?.nicheZeroSetting ?? NICHE_ZERO_DEFAULT_SETTING);
+  },
+  formatInitialGrindDisplay(initialSetting) {
+    return formatNicheZeroSetting(initialSetting.nicheZeroSetting)
+      || String(initialSetting.nicheZeroSetting ?? NICHE_ZERO_DEFAULT_SETTING);
+  },
+  uiStateFromLastShot(shot) {
+    return {
+      nicheZeroSetting: parseNicheZeroSetting(shot.nicheZeroSetting) ?? NICHE_ZERO_DEFAULT_SETTING,
+    };
+  },
+  uiStateFromRecommendedSetting(recSet) {
+    if (recSet?.nicheZeroSetting == null) return null;
+    const parsed = parseNicheZeroSetting(recSet.nicheZeroSetting);
+    if (parsed === null) return null;
+    return { nicheZeroSetting: parsed };
+  },
+  persistedSettingsPatchFromRecommendation(recSet) {
+    const parsed = parseNicheZeroSetting(recSet?.nicheZeroSetting);
+    if (parsed === null) return {};
+    return { lastNicheZeroSetting: parsed };
+  },
+  parseGrindForShotSave({ nicheZeroSetting }) {
+    const parsed = parseNicheZeroSetting(nicheZeroSetting);
+    if (parsed === null) {
+      return { ok: false, error: this.dialValidationError };
+    }
+    return {
+      ok: true,
+      setteMacro: null,
+      setteMicro: null,
+      sunbeamSetting: null,
+      nicheZeroSetting: parsed,
+    };
+  },
+  grindMatchesRecommendation({ nicheZeroSetting }, rec) {
+    const a = parseNicheZeroSetting(nicheZeroSetting);
+    const b = parseNicheZeroSetting(rec?.nicheZeroSetting);
+    return a !== null && b !== null && a === b;
+  },
+};
+
 /** Exact stored ID lookup only; unknown IDs return null. */
 export function getGrinderDefinitionById(grinderModel) {
   if (grinderModel === SETTE_GRINDER_ID) return setteDefinition;
   if (grinderModel === SUNBEAM_GRINDER_ID) return sunbeamDefinition;
+  if (grinderModel === NICHE_ZERO_GRINDER_ID) return nicheZeroDefinition;
   return null;
 }
 
@@ -190,8 +283,20 @@ export function isSetteGrinderModel(grinderModel) {
   return grinderModel === SETTE_GRINDER_ID;
 }
 
+export function isNicheZeroGrinderModel(grinderModel) {
+  return grinderModel === NICHE_ZERO_GRINDER_ID;
+}
+
+export function grinderSupportsQuantitativeRecommendations(grinderModel) {
+  const profile = getRecommendationGrinderProfile(grinderModel);
+  return profile.supportsQuantitativeRecommendations !== false;
+}
+
 export function getRecommendationGrinderProfile(grinderModel) {
-  return isSetteGrinderModel(grinderModel) ? setteDefinition : sunbeamDefinition;
+  if (isSetteGrinderModel(grinderModel)) return setteDefinition;
+  if (isSunbeamGrinderModel(grinderModel)) return sunbeamDefinition;
+  if (isNicheZeroGrinderModel(grinderModel)) return nicheZeroDefinition;
+  return sunbeamDefinition;
 }
 
 /** getShotEngineStats: missing/null/empty grinder identity defaults to Sette. */
@@ -200,7 +305,9 @@ export function resolveShotStatsGrinderModel(grinderModel) {
 }
 
 export function getShotStatsGrinderProfile(resolvedGrinderModel) {
-  return isSetteGrinderModel(resolvedGrinderModel) ? setteDefinition : sunbeamDefinition;
+  const def = getGrinderDefinitionById(resolvedGrinderModel);
+  if (def) return def;
+  return sunbeamDefinition;
 }
 
 export function getFreshnessOffsetKey(grinderModel) {
@@ -211,9 +318,11 @@ export function isSunbeamGrinderModel(grinderModel) {
   return grinderModel === SUNBEAM_GRINDER_ID;
 }
 
-/** UI/presentation profile: exact Sette id, otherwise Sunbeam presentation (matches recommendation path). */
+/** Known grinder presentation, or legacy Sunbeam presentation for unknown ids. */
 export function getUiGrinderPresentation(grinderModel) {
-  return isSetteGrinderModel(grinderModel) ? setteDefinition : sunbeamDefinition;
+  const def = getGrinderDefinitionById(grinderModel);
+  if (def) return def;
+  return sunbeamDefinition;
 }
 
 export function defaultBrewTemperatureForGrinder(grinderModel) {
@@ -252,6 +361,9 @@ export function grindMatchesStoredRecommendation(lastShotGrinderModel, savedGrin
   if (isSunbeamGrinderModel(lastShotGrinderModel)) {
     return sunbeamDefinition.grindMatchesRecommendation(savedGrind, rec);
   }
+  if (isNicheZeroGrinderModel(lastShotGrinderModel)) {
+    return nicheZeroDefinition.grindMatchesRecommendation(savedGrind, rec);
+  }
   return true;
 }
 
@@ -262,6 +374,9 @@ export function uiStateFromLastShot(grinderModel, shot) {
 export function uiStateFromInitialRecommendation(grinderModel, initialSetting) {
   if (isSetteGrinderModel(grinderModel)) {
     return { setteMacro: initialSetting.macro, setteMicro: initialSetting.micro };
+  }
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return { nicheZeroSetting: initialSetting.nicheZeroSetting };
   }
   return { sunbeamSetting: initialSetting.setting };
 }
@@ -274,7 +389,7 @@ export function persistedSettingsPatchFromRecommendation(grinderModel, recSet) {
   return getUiGrinderPresentation(grinderModel).persistedSettingsPatchFromRecommendation(recSet);
 }
 
-export const GRINDER_SETUP_OPTIONS = [setteDefinition, sunbeamDefinition];
+export const GRINDER_SETUP_OPTIONS = [setteDefinition, sunbeamDefinition, nicheZeroDefinition];
 
 /** Brew Guide copy: only exact Sunbeam id uses dial wording (matches legacy /sunbeam/i on stored ids). */
 export function brewGuideGrindSettingLabelForGrinder(grinderModel) {

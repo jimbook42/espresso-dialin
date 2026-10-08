@@ -103,6 +103,13 @@ function testPresentation() {
   const parsedSunbeam = parseGrindForShotSave(SUNBEAM_GRINDER_ID, { sunbeamSetting: '20' });
   assert.equal(parsedSunbeam.ok, true);
   assert.equal(parsedSunbeam.sunbeamSetting, 20);
+
+  const nicheDef = getGrinderDefinitionById('Niche Zero');
+  assert.ok(nicheDef);
+  assert.equal(nicheDef.controlType, 'nicheZero');
+  const parsedNiche = parseGrindForShotSave('Niche Zero', { nicheZeroSetting: '14.5' });
+  assert.equal(parsedNiche.ok, true);
+  assert.equal(parsedNiche.nicheZeroSetting, 14.5);
 }
 
 testSetteDefinition();

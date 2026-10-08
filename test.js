@@ -19,6 +19,7 @@ import {
   shotResultImproved,
 } from './src/utils/grinderLogic.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
+import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
 import assert from 'assert';
@@ -133,6 +134,7 @@ async function runTests() {
     shotResultImproved(createShot(35, 'sour'), { actualTime: 29, actualYield: 36, tasteProfile: 'good' }, recipe)
   );
 
+  runNicheZeroTests();
   runBrewGuideTests();
   runBrewGuidanceTests();
   runFlairPressureLabTests();

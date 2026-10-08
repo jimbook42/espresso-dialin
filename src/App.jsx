@@ -189,6 +189,7 @@ export default function App() {
   const [setteMacro, setSetteMacro] = useState(13);
   const [setteMicro, setSetteMicro] = useState('E');
   const [sunbeamSetting, setSunbeamSetting] = useState(15);
+  const [nicheZeroSetting, setNicheZeroSetting] = useState(15);
   const [wasPurged, setWasPurged] = useState(true);
   const [actualDoseG, setActualDoseG] = useState(18);
   const [actualYieldG, setActualYieldG] = useState('');
@@ -340,11 +341,13 @@ export default function App() {
           if (uiState?.setteMacro != null) setSetteMacro(uiState.setteMacro);
           if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
           if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
+          if (uiState?.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
         } else {
           const uiState = uiStateFromLastShot(grinderModel, last);
           if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
           if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
           if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
+          if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
         }
       } else {
         const recParams = getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate);
@@ -352,6 +355,7 @@ export default function App() {
         if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
         if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
         if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
+        if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
       }
     }
   }, [selectedBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
@@ -698,12 +702,17 @@ export default function App() {
     }
     setShotFieldHighlights(EMPTY_SHOT_FIELD_HIGHLIGHTS);
 
-    const parsedGrind = parseGrindForShotSave(grinderModel, { setteMacro, setteMicro, sunbeamSetting });
+    const parsedGrind = parseGrindForShotSave(grinderModel, { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting });
     if (!parsedGrind.ok) {
       setValidationError(parsedGrind.error);
       return;
     }
-    const { setteMacro: finalMacro, setteMicro: finalMicro, sunbeamSetting: finalSunbeam } = parsedGrind;
+    const {
+      setteMacro: finalMacro,
+      setteMicro: finalMicro,
+      sunbeamSetting: finalSunbeam,
+      nicheZeroSetting: finalNicheZero,
+    } = parsedGrind;
 
     if (!activeBean || !activeRecipe) {
       setValidationError('Missing active coffee profile or recipe.');
@@ -718,7 +727,12 @@ export default function App() {
 
       if (!grindMatchesStoredRecommendation(
         lastLearningShot.grinderModel,
-        { setteMacro: finalMacro, setteMicro: finalMicro, sunbeamSetting: finalSunbeam },
+        {
+          setteMacro: finalMacro,
+          setteMicro: finalMicro,
+          sunbeamSetting: finalSunbeam,
+          nicheZeroSetting: finalNicheZero,
+        },
         rec
       )) {
         recommendationFollowed = false;
@@ -728,7 +742,8 @@ export default function App() {
     const lastShotGrind = lastLearningShot ? {
       setteMacro: lastLearningShot.setteMacro,
       setteMicro: lastLearningShot.setteMicro,
-      sunbeamSetting: lastLearningShot.sunbeamSetting
+      sunbeamSetting: lastLearningShot.sunbeamSetting,
+      nicheZeroSetting: lastLearningShot.nicheZeroSetting,
     } : null;
 
     let referenceNow = new Date();
@@ -747,7 +762,8 @@ export default function App() {
         grinderModel, 
         setteMacro: finalMacro, 
         setteMicro: finalMicro, 
-        sunbeamSetting: finalSunbeam, 
+        sunbeamSetting: finalSunbeam,
+        nicheZeroSetting: finalNicheZero,
         wasPurged, 
         actualTime: parsedTime, 
         actualDose: parsedDose, 
@@ -770,6 +786,7 @@ export default function App() {
       setteMacro: finalMacro,
       setteMicro: finalMicro,
       sunbeamSetting: finalSunbeam,
+      nicheZeroSetting: finalNicheZero,
       wasPurged,
       actualDoseG: parsedDose,
       actualYieldG: parsedYield,
@@ -839,7 +856,12 @@ export default function App() {
     ? getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate)
     : null;
 
-  const currentGrindLabel = formatCurrentGrindLabel(grinderModel, { setteMacro, setteMicro, sunbeamSetting });
+  const currentGrindLabel = formatCurrentGrindLabel(grinderModel, {
+    setteMacro,
+    setteMicro,
+    sunbeamSetting,
+    nicheZeroSetting,
+  });
 
   const timerWindowSeconds =
     (usePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
@@ -879,6 +901,7 @@ export default function App() {
       if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
       if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
+      if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
       await db.settings.put({
         ...currentSettings,
         ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet),
@@ -1019,6 +1042,7 @@ export default function App() {
       if (uiState?.setteMacro != null) setSetteMacro(uiState.setteMacro);
       if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
+      if (uiState?.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
     }
     setBrewTimerHost(false);
     setShotFieldHighlights({ ...EMPTY_SHOT_FIELD_HIGHLIGHTS, taste: true });
@@ -1478,9 +1502,11 @@ export default function App() {
                       setteMacro={setteMacro}
                       setteMicro={setteMicro}
                       sunbeamSetting={sunbeamSetting}
+                      nicheZeroSetting={nicheZeroSetting}
                       onSetteMacroChange={setSetteMacro}
                       onSetteMicroChange={setSetteMicro}
                       onSunbeamChange={setSunbeamSetting}
+                      onNicheZeroChange={setNicheZeroSetting}
                       ui={ui}
                     />
 

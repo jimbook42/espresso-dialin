@@ -31,7 +31,8 @@ export function runGrinderBrewGuideTests() {
 
   assert.equal(getBrewGuideMachinePackageForGrinder(SUNBEAM_GRINDER_ID)?.key, 'sunbeam');
   assert.equal(getBrewGuideMachinePackageForGrinder(SETTE_GRINDER_ID), null);
-  assert.equal(getBrewGuideMachinePackage().menuTitle, 'Sunbeam Barista Max');
+  assert.equal(getBrewGuideMachinePackage().menuTitle, 'Machine & Grinder Guide');
+  assert.match(getBrewGuideMachinePackage().machineSettingsDetail, /Sunbeam Barista Max EM5300/);
 
   const changedSette = grindStepInstruction(none(), {
     beanName: 'Bean',

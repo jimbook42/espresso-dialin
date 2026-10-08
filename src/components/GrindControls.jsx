@@ -2,13 +2,16 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   SETTE_GRINDER_ID,
   SUNBEAM_GRINDER_ID,
+  NICHE_ZERO_GRINDER_ID,
   adjustSunbeam,
   getGrinderDefinitionById,
   isSetteGrinderModel,
+  isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
 
 const setteUi = getGrinderDefinitionById(SETTE_GRINDER_ID);
 const sunbeamUi = getGrinderDefinitionById(SUNBEAM_GRINDER_ID);
+const nicheUi = getGrinderDefinitionById(NICHE_ZERO_GRINDER_ID);
 const SETTE_MICROS = setteUi.microLetters;
 const SETTE_MACRO_MIN = setteUi.macroMin;
 const SETTE_MACRO_MAX = setteUi.macroMax;
@@ -173,9 +176,11 @@ export function GrinderGrindControls({
   setteMacro,
   setteMicro,
   sunbeamSetting,
+  nicheZeroSetting,
   onSetteMacroChange,
   onSetteMicroChange,
   onSunbeamChange,
+  onNicheZeroChange,
   ui,
 }) {
   if (isSetteGrinderModel(grinderModel)) {
@@ -189,12 +194,48 @@ export function GrinderGrindControls({
       />
     );
   }
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return (
+      <NicheZeroGrindControl
+        setting={nicheZeroSetting}
+        onChange={onNicheZeroChange}
+        ui={ui}
+      />
+    );
+  }
   return (
     <SunbeamGrindControl
       setting={sunbeamSetting}
       onChange={onSunbeamChange}
       ui={ui}
     />
+  );
+}
+
+export function NicheZeroGrindControl({ setting, onChange, ui }) {
+  return (
+    <div className={`${ui.cardInset} rounded-2xl p-3 ring-1 ring-[rgba(200,138,75,0.12)]`}>
+      <p className={`text-[9px] uppercase tracking-widest ${ui.muted} mb-2 leading-snug font-semibold`}>
+        {nicheUi.dialFieldLabel}
+      </p>
+      <label className="block">
+        <span className={`${ui.fieldLabel} block mb-2`}>Reference position on the stepless dial</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          min={nicheUi.dialMin}
+          max={nicheUi.dialMax}
+          value={setting ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full ${ui.input} border rounded-xl p-3 text-3xl font-black font-mono tabular-nums text-center`}
+          aria-label="Niche Zero dial reference"
+        />
+      </label>
+      <p className={`text-[10px] leading-relaxed mt-2 ${ui.muted}`}>
+        Lower numbers are finer; higher numbers are coarser. Markings are reference positions — the dial is stepless between them.
+      </p>
+    </div>
   );
 }
 
