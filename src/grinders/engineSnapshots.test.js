@@ -33,7 +33,10 @@ import {
   storedDialledShot,
   STOPPED_SHOT,
 } from './fixtures.js';
-import { verifyOrRecordSnapshotSuite } from './snapshotHarness.js';
+import { loadGolden, stableEqual, verifyOrRecordSnapshotSuite } from './snapshotHarness.js';
+import { captureRealDate, installTestClock, uninstallTestClock } from './testClock.js';
+
+captureRealDate();
 
 const SETTE = 'Sette 270Wi';
 const SUNBEAM = 'Sunbeam Barista Max';
@@ -58,6 +61,9 @@ function buildAllCases() {
 
   const add = (group, id, value) => {
     const key = `${group}/${id}`;
+    if (Object.hasOwn(cases, key)) {
+      throw new Error(`duplicate snapshot case id: ${key}`);
+    }
     cases[key] = value;
     counts[group] = (counts[group] || 0) + 1;
   };
@@ -209,6 +215,27 @@ function buildAllCases() {
   for (const [name, bean] of Object.entries(ageBeans)) {
     add('calculateEffectiveBeanAge', name, calculateEffectiveBeanAge(bean, MOCK_NOW));
   }
+  const freshnessBoundaryRoasts = [
+    ['fresh_3d', '2026-09-17'],
+    ['fresh_4d', '2026-09-16'],
+    ['fresh_8d', '2026-09-12'],
+    ['fresh_15d', '2026-09-05'],
+    ['fresh_31d', '2026-08-20'],
+    ['fresh_46d', '2026-08-05'],
+    ['fresh_61d', '2026-07-21'],
+  ];
+  for (const [label, roastDate] of freshnessBoundaryRoasts) {
+    add(
+      'calculateEffectiveBeanAge',
+      label,
+      calculateEffectiveBeanAge({ roastDate, storageType: 'bag', roastType: 'Medium' }, MOCK_NOW)
+    );
+  }
+  add(
+    'calculateEffectiveBeanAge',
+    'wall_clock_uses_test_clock',
+    calculateEffectiveBeanAge({ roastDate: '2026-09-01', storageType: 'bag', roastType: 'Medium' })
+  );
 
   // --- getHistoricalRoastBaseline ---
   const beanMed = { id: 'bm', roastType: 'Medium', roastDate: '2026-09-01', storageType: 'bag' };
@@ -218,6 +245,18 @@ function buildAllCases() {
   const dialled = (beanId, macro, micro, ts, grinder = SETTE) =>
     storedDialledShot({ beanId, macro, micro, timestamp: ts, grinder });
   add('getHistoricalRoastBaseline', 'no_history', getHistoricalRoastBaseline(SETTE, 'Medium', recipes, [], beans));
+  add('getHistoricalRoastBaseline', 'no_history_light', getHistoricalRoastBaseline(SETTE, 'Light', recipes, [], beans));
+  add('getHistoricalRoastBaseline', 'no_history_dark', getHistoricalRoastBaseline(SETTE, 'Dark', recipes, [], beans));
+  add(
+    'getHistoricalRoastBaseline',
+    'no_history_sunbeam_light',
+    getHistoricalRoastBaseline(SUNBEAM, 'Light', recipes, [], beans)
+  );
+  add(
+    'getHistoricalRoastBaseline',
+    'no_history_sunbeam_dark',
+    getHistoricalRoastBaseline(SUNBEAM, 'Dark', recipes, [], beans)
+  );
   for (const roast of ['Light', 'Medium', 'Dark']) {
     const b = { id: `b-${roast}`, roastType: roast, roastDate: '2026-09-01', storageType: 'bag' };
     const r = [recipeForBean(b)];
@@ -304,6 +343,44 @@ function buildAllCases() {
     'sette_no_history',
     getInitialGrindRecommendation(SETTE, 'Medium', initBean, initRecipes, [], [initBean], MOCK_NOW)
   );
+  const initLight = { id: 'init-light', roastType: 'Light', roastDate: '2026-09-01', storageType: 'bag' };
+  const initDark = { id: 'init-dark', roastType: 'Dark', roastDate: '2026-09-01', storageType: 'bag' };
+  add(
+    'getInitialGrindRecommendation',
+    'sette_no_history_light',
+    getInitialGrindRecommendation(SETTE, 'Light', initLight, [recipeForBean(initLight)], [], [initLight], MOCK_NOW)
+  );
+  add(
+    'getInitialGrindRecommendation',
+    'sette_no_history_dark',
+    getInitialGrindRecommendation(SETTE, 'Dark', initDark, [recipeForBean(initDark)], [], [initDark], MOCK_NOW)
+  );
+  add(
+    'getInitialGrindRecommendation',
+    'sunbeam_no_history_light',
+    getInitialGrindRecommendation(
+      SUNBEAM,
+      'Light',
+      initLight,
+      [recipeForBean(initLight)],
+      [],
+      [initLight],
+      MOCK_NOW
+    )
+  );
+  add(
+    'getInitialGrindRecommendation',
+    'sunbeam_no_history_dark',
+    getInitialGrindRecommendation(
+      SUNBEAM,
+      'Dark',
+      initDark,
+      [recipeForBean(initDark)],
+      [],
+      [initDark],
+      MOCK_NOW
+    )
+  );
   add(
     'getInitialGrindRecommendation',
     'decaf_no_history_matches_regular',
@@ -323,18 +400,44 @@ function buildAllCases() {
   );
   add(
     'getInitialGrindRecommendation',
-    'grinder_switch_sette',
+    'sette_with_own_grinder_history',
     getInitialGrindRecommendation(SETTE, 'Medium', initBean, initRecipes, [regShot], [initBean], MOCK_NOW)
   );
   add(
     'getInitialGrindRecommendation',
-    'grinder_switch_sunbeam',
+    'sunbeam_with_own_grinder_history',
     getInitialGrindRecommendation(
       SUNBEAM,
       'Medium',
       initBean,
       initRecipes,
       [dialled('init', 10, 'A', '2026-09-10T00:00:00.000Z', SUNBEAM)],
+      [initBean],
+      MOCK_NOW
+    )
+  );
+  add(
+    'getInitialGrindRecommendation',
+    'sette_history_only_sunbeam_shots',
+    getInitialGrindRecommendation(
+      SETTE,
+      'Medium',
+      initBean,
+      initRecipes,
+      [dialled('init', 10, 'A', '2026-09-10T00:00:00.000Z', SUNBEAM)],
+      [initBean],
+      MOCK_NOW
+    )
+  );
+  add(
+    'getInitialGrindRecommendation',
+    'sunbeam_history_only_sette_shots',
+    getInitialGrindRecommendation(
+      SUNBEAM,
+      'Medium',
+      initBean,
+      initRecipes,
+      [regShot],
       [initBean],
       MOCK_NOW
     )
@@ -403,6 +506,23 @@ function buildAllCases() {
   for (const time of [26.25, 26.75, 28.75]) {
     add(`calculateRecommendation/sette`, `rounding_t${String(time).replace('.', '_')}`, runCalcSette(createSetteShot(time, 'sour')));
   }
+  // timeDelta/1.25 = +0.5 → Math.round(0.5) === 1 (positive half-step boundary)
+  add(
+    `calculateRecommendation/sette`,
+    'rounding_half_step_positive',
+    runCalcSette(createSetteShot(28.125, 'sour'))
+  );
+  // timeDelta/1.25 = -0.5 → Math.round(-0.5) === 0, then minimum one-step applies
+  add(
+    `calculateRecommendation/sette`,
+    'rounding_half_step_negative_then_min_step',
+    runCalcSette(createSetteShot(26.875, 'sour'))
+  );
+  add(
+    `calculateRecommendation/sette`,
+    'one_step_near_mid_fast',
+    runCalcSette(createSetteShot(27.1, 'sour'))
+  );
 
   const inRangeTastes = [
     ['sour', 'sour'],
@@ -428,7 +548,28 @@ function buildAllCases() {
   ];
   for (const [label, time, taste, y] of yieldCases) {
     add(`calculateRecommendation/sette`, `yield_${label}`, runCalcSette(createSetteShot(time, taste, y)));
+    add(`calculateRecommendation/sunbeam`, `yield_${label}`, runCalcSunbeam(createSunbeamShot(time, taste, y)));
   }
+  add(
+    `calculateRecommendation/sunbeam`,
+    'rounding_half_step_positive',
+    runCalcSunbeam(createSunbeamShot(29.75, 'sour'))
+  );
+  add(
+    `calculateRecommendation/sunbeam`,
+    'one_step_near_mid_fast',
+    runCalcSunbeam(createSunbeamShot(27.2, 'sour'))
+  );
+  add(
+    `calculateRecommendation/sunbeam`,
+    'clamp_max_coarse',
+    runCalcSunbeam(createSunbeamShot(38, 'bitter', 36, { sunbeamSetting: 30 }))
+  );
+  add(
+    `calculateRecommendation/sunbeam`,
+    'clamp_min_fine',
+    runCalcSunbeam(createSunbeamShot(18, 'sour', 36, { sunbeamSetting: 1 }))
+  );
 
   // Flair temp advice
   const sourHist = (ts) => ({
@@ -470,7 +611,7 @@ function buildAllCases() {
   );
   add(
     `calculateRecommendation/sette`,
-    'flair_off_no_advice',
+    'flair_off_still_shows_flair_temp_advice',
     runCalcSette(createSetteShot(27, 'sour'), FLAIR_RECIPE, [sourHist('2026-09-09T00:00:00.000Z'), sourHist('2026-09-10T00:00:00.000Z')], false)
   );
 
@@ -486,8 +627,24 @@ function buildAllCases() {
   );
   add(
     `calculateRecommendation/sette`,
-    'not_followed_improved',
+    'good_with_slow_history',
     runCalcSette(createSetteShot(29, 'good'), BASE_RECIPE, [prev], false)
+  );
+  const prevRec = pinCalculateRecommendation(prev, BASE_RECIPE, [], false);
+  add(
+    `calculateRecommendation/sette`,
+    'not_followed_improved',
+    runCalcSette(
+      {
+        ...createSetteShot(28, 'good'),
+        recommendationFollowed: false,
+        previousShot: prev,
+        recommendation: prevRec,
+      },
+      BASE_RECIPE,
+      [prev],
+      false
+    )
   );
   add(
     `calculateRecommendation/sette`,
@@ -527,22 +684,45 @@ function buildAllCases() {
   return { cases, counts };
 }
 
-export function runEngineSnapshotTests() {
-  const originalNow = Date.now;
-  const fixedNow = new Date(MOCK_NOW).getTime();
-  Date.now = () => fixedNow;
+export { buildAllCases };
 
+function runClockRobustnessCheck(liveCases) {
+  const golden = loadGolden();
+  const wallClockCase = 'calculateEffectiveBeanAge/wall_clock_uses_test_clock';
+  assert.ok(Object.hasOwn(liveCases, wallClockCase), 'missing wall clock characterisation case');
+
+  installTestClock(MOCK_NOW);
+  const hostileNow = Date.now;
+  try {
+    Date.now = () => new Date('2099-06-15T00:00:00.000Z').getTime();
+    const liveAge = calculateEffectiveBeanAge({ roastDate: '2026-09-01', storageType: 'bag', roastType: 'Medium' });
+    stableEqual(liveAge, golden.cases[wallClockCase]);
+    stableEqual(liveCases[wallClockCase], golden.cases[wallClockCase]);
+
+    for (const id of Object.keys(liveCases)) {
+      if (!Object.hasOwn(golden.cases, id)) continue;
+      stableEqual(liveCases[id], golden.cases[id]);
+    }
+  } finally {
+    Date.now = hostileNow;
+    uninstallTestClock();
+  }
+}
+
+export function runEngineSnapshotTests() {
+  installTestClock(MOCK_NOW);
   try {
     const { cases, counts } = buildAllCases();
     const result = verifyOrRecordSnapshotSuite(cases);
     if (result.mode === 'record') {
       console.log(`Engine snapshots RECORDED (${result.caseCount} cases)`);
     } else {
+      runClockRobustnessCheck(cases);
       console.log(`Engine snapshots verified (${result.caseCount} cases)`);
     }
     return counts;
   } finally {
-    Date.now = originalNow;
+    uninstallTestClock();
   }
 }
 

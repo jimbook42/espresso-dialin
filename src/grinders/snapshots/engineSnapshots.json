@@ -45,6 +45,48 @@
       "recommendedOffsetSette": -3,
       "recommendedOffsetSunbeam": -2
     },
+    "calculateEffectiveBeanAge/fresh_15d": {
+      "daysOld": 15,
+      "notice": "(Standard Bag • Medium Roast) Effective age: 15 days.",
+      "recommendedOffsetSette": 0,
+      "recommendedOffsetSunbeam": 0
+    },
+    "calculateEffectiveBeanAge/fresh_31d": {
+      "daysOld": 31,
+      "notice": "(Standard Bag • Medium Roast) Effective age: 31 days.",
+      "recommendedOffsetSette": 1,
+      "recommendedOffsetSunbeam": 1
+    },
+    "calculateEffectiveBeanAge/fresh_3d": {
+      "daysOld": 3,
+      "notice": "(Standard Bag • Medium Roast) Effective age: 3 days.",
+      "recommendedOffsetSette": -3,
+      "recommendedOffsetSunbeam": -2
+    },
+    "calculateEffectiveBeanAge/fresh_46d": {
+      "daysOld": 46,
+      "notice": "(Standard Bag • Medium Roast) Effective age: 46 days.",
+      "recommendedOffsetSette": 2,
+      "recommendedOffsetSunbeam": 1
+    },
+    "calculateEffectiveBeanAge/fresh_4d": {
+      "daysOld": 4,
+      "notice": "(Standard Bag • Medium Roast) Effective age: 4 days.",
+      "recommendedOffsetSette": -2,
+      "recommendedOffsetSunbeam": -1
+    },
+    "calculateEffectiveBeanAge/fresh_61d": {
+      "daysOld": 61,
+      "notice": "(Standard Bag • Medium Roast) Effective age: 61 days.",
+      "recommendedOffsetSette": 3,
+      "recommendedOffsetSunbeam": 2
+    },
+    "calculateEffectiveBeanAge/fresh_8d": {
+      "daysOld": 8,
+      "notice": "(Standard Bag • Medium Roast) Effective age: 8 days.",
+      "recommendedOffsetSette": -1,
+      "recommendedOffsetSunbeam": 0
+    },
     "calculateEffectiveBeanAge/frozen_no_freeze_date": {
       "daysOld": 19,
       "notice": "(Frozen Storage • Medium Roast) Effective age: 19 days.",
@@ -78,6 +120,12 @@
     "calculateEffectiveBeanAge/vacuum_19d": {
       "daysOld": 16,
       "notice": "(Vacuum Sealed Bag • Medium Roast) Effective age: 16 days.",
+      "recommendedOffsetSette": 0,
+      "recommendedOffsetSunbeam": 0
+    },
+    "calculateEffectiveBeanAge/wall_clock_uses_test_clock": {
+      "daysOld": 19,
+      "notice": "(Standard Bag • Medium Roast) Effective age: 19 days.",
       "recommendedOffsetSette": 0,
       "recommendedOffsetSunbeam": 0
     },
@@ -347,7 +395,7 @@
       "subRecommendation": "Ratio Advisory: Time is dialed in with persistent sourness. Consider tightening your ratio or increasing brew temperature.",
       "warning": null
     },
-    "calculateRecommendation/sette/flair_off_no_advice": {
+    "calculateRecommendation/sette/flair_off_still_shows_flair_temp_advice": {
       "engineStats": {
         "sensitivity": 1.25,
         "severeChoke": false,
@@ -435,6 +483,36 @@
         "statusLabel": "IN RANGE"
       },
       "subRecommendation": "Ratio Advisory: Time is dialed in with persistent sourness. Consider tightening your ratio or increasing brew temperature.",
+      "warning": null
+    },
+    "calculateRecommendation/sette/good_with_slow_history": {
+      "engineStats": {
+        "sensitivity": 1.25,
+        "severeChoke": false,
+        "shift": 0,
+        "shiftUnit": "micro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": false,
+        "timeDelta": 1.5,
+        "yieldDelta": 0
+      },
+      "evidenceContext": "Based on recent shots with this recipe",
+      "flairWaterTempAdvice": null,
+      "reason": "KEEP GRIND — Balanced and in range.",
+      "recommendedSetting": {
+        "macro": 13,
+        "micro": "E"
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": true,
+        "isNegativeTaste": false,
+        "isSevereChoke": false,
+        "isTimeInRange": true,
+        "statusLabel": "DIALLED IN"
+      },
+      "subRecommendation": null,
       "warning": null
     },
     "calculateRecommendation/sette/in_range_balanced": {
@@ -656,7 +734,7 @@
         "targetMid": 27.5,
         "targetYield": 36,
         "tasteOverride": false,
-        "timeDelta": 1.5,
+        "timeDelta": 0.5,
         "yieldDelta": 0
       },
       "evidenceContext": "Based on recent shots with this recipe",
@@ -707,6 +785,36 @@
       "subRecommendation": null,
       "warning": "Previous grind recommendation was not followed and the result did not clearly improve."
     },
+    "calculateRecommendation/sette/one_step_near_mid_fast": {
+      "engineStats": {
+        "sensitivity": 1.25,
+        "severeChoke": false,
+        "shift": -1,
+        "shiftUnit": "micro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": true,
+        "timeDelta": -0.3999999999999986,
+        "yieldDelta": 0
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 1 STEP FINER — Shot is in range but tastes sour.",
+      "recommendedSetting": {
+        "macro": 13,
+        "micro": "D"
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": true,
+        "statusLabel": "IN RANGE"
+      },
+      "subRecommendation": null,
+      "warning": null
+    },
     "calculateRecommendation/sette/ratio_advisory_bitter": {
       "engineStats": {
         "sensitivity": 1.25,
@@ -736,6 +844,66 @@
       },
       "subRecommendation": "Ratio Advisory: Time is dialed in with persistent bitterness. Consider lengthening your ratio.",
       "warning": "Shot ran fast but tasted bitter. Uneven extraction likely. Check puck prep before large grind changes."
+    },
+    "calculateRecommendation/sette/rounding_half_step_negative_then_min_step": {
+      "engineStats": {
+        "sensitivity": 1.25,
+        "severeChoke": false,
+        "shift": -1,
+        "shiftUnit": "micro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": true,
+        "timeDelta": -0.625,
+        "yieldDelta": 0
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 1 STEP FINER — Shot is in range but tastes sour.",
+      "recommendedSetting": {
+        "macro": 13,
+        "micro": "D"
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": true,
+        "statusLabel": "IN RANGE"
+      },
+      "subRecommendation": null,
+      "warning": null
+    },
+    "calculateRecommendation/sette/rounding_half_step_positive": {
+      "engineStats": {
+        "sensitivity": 1.25,
+        "severeChoke": false,
+        "shift": -1,
+        "shiftUnit": "micro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": true,
+        "timeDelta": 0.625,
+        "yieldDelta": 0
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 1 STEP FINER — Shot is in range but tastes sour.",
+      "recommendedSetting": {
+        "macro": 13,
+        "micro": "D"
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": true,
+        "statusLabel": "IN RANGE"
+      },
+      "subRecommendation": null,
+      "warning": null
     },
     "calculateRecommendation/sette/rounding_t26_25": {
       "engineStats": {
@@ -1067,6 +1235,64 @@
       "subRecommendation": null,
       "warning": "Shot was far outside the target time and yield. Check that the shot was stopped at the intended yield and puck preparation was normal before relying heavily on this result."
     },
+    "calculateRecommendation/sunbeam/clamp_max_coarse": {
+      "engineStats": {
+        "sensitivity": 4.5,
+        "severeChoke": false,
+        "shift": 2,
+        "shiftUnit": "macro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": false,
+        "timeDelta": 10.5,
+        "yieldDelta": 0
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 2 SETTING(S) COARSER — Shot was 11s off target midpoint.",
+      "recommendedSetting": {
+        "setting": 30
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": false,
+        "statusLabel": null
+      },
+      "subRecommendation": null,
+      "warning": null
+    },
+    "calculateRecommendation/sunbeam/clamp_min_fine": {
+      "engineStats": {
+        "sensitivity": 4.5,
+        "severeChoke": false,
+        "shift": -2,
+        "shiftUnit": "macro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": false,
+        "timeDelta": -9.5,
+        "yieldDelta": 0
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 2 SETTING(S) FINER — Shot was 9s off target midpoint.",
+      "recommendedSetting": {
+        "setting": 1
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": false,
+        "statusLabel": null
+      },
+      "subRecommendation": null,
+      "warning": null
+    },
     "calculateRecommendation/sunbeam/edge_max": {
       "engineStats": {
         "sensitivity": 4.5,
@@ -1386,6 +1612,64 @@
       "subRecommendation": null,
       "warning": null
     },
+    "calculateRecommendation/sunbeam/one_step_near_mid_fast": {
+      "engineStats": {
+        "sensitivity": 4.5,
+        "severeChoke": false,
+        "shift": -1,
+        "shiftUnit": "macro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": true,
+        "timeDelta": -0.3000000000000007,
+        "yieldDelta": 0
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 1 STEP FINER — Shot is in range but tastes sour.",
+      "recommendedSetting": {
+        "setting": 14
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": true,
+        "statusLabel": "IN RANGE"
+      },
+      "subRecommendation": null,
+      "warning": null
+    },
+    "calculateRecommendation/sunbeam/rounding_half_step_positive": {
+      "engineStats": {
+        "sensitivity": 4.5,
+        "severeChoke": false,
+        "shift": -1,
+        "shiftUnit": "macro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": true,
+        "timeDelta": 2.25,
+        "yieldDelta": 0
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 1 STEP FINER — Shot is in range but tastes sour.",
+      "recommendedSetting": {
+        "setting": 14
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": true,
+        "statusLabel": "IN RANGE"
+      },
+      "subRecommendation": null,
+      "warning": null
+    },
     "calculateRecommendation/sunbeam/severe_choke": {
       "engineStats": {
         "sensitivity": 4.5,
@@ -1472,6 +1756,122 @@
       },
       "subRecommendation": null,
       "warning": null
+    },
+    "calculateRecommendation/sunbeam/yield_in_range_over": {
+      "engineStats": {
+        "sensitivity": 4.5,
+        "severeChoke": false,
+        "shift": 0,
+        "shiftUnit": "macro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": false,
+        "timeDelta": 0.5,
+        "yieldDelta": 4
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "KEEP GRIND — Balanced and in range.",
+      "recommendedSetting": {
+        "setting": 15
+      },
+      "shotOutcome": {
+        "hasYieldIssue": true,
+        "isDialledIn": false,
+        "isNegativeTaste": false,
+        "isSevereChoke": false,
+        "isTimeInRange": true,
+        "statusLabel": "IN RANGE"
+      },
+      "subRecommendation": null,
+      "warning": "Shot hit target time but over-yielded (high flow / channeling)."
+    },
+    "calculateRecommendation/sunbeam/yield_in_range_under": {
+      "engineStats": {
+        "sensitivity": 4.5,
+        "severeChoke": false,
+        "shift": 0,
+        "shiftUnit": "macro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": false,
+        "timeDelta": 0.5,
+        "yieldDelta": -4
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "KEEP GRIND — Balanced and in range.",
+      "recommendedSetting": {
+        "setting": 15
+      },
+      "shotOutcome": {
+        "hasYieldIssue": true,
+        "isDialledIn": false,
+        "isNegativeTaste": false,
+        "isSevereChoke": false,
+        "isTimeInRange": true,
+        "statusLabel": "IN RANGE"
+      },
+      "subRecommendation": null,
+      "warning": "Shot hit target time but under-yielded (restricted flow)."
+    },
+    "calculateRecommendation/sunbeam/yield_out_fast_under": {
+      "engineStats": {
+        "sensitivity": 4.5,
+        "severeChoke": false,
+        "shift": -2,
+        "shiftUnit": "macro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": false,
+        "timeDelta": -7.5,
+        "yieldDelta": -6
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 2 SETTING(S) FINER — Shot was 7s off target midpoint.",
+      "recommendedSetting": {
+        "setting": 13
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": false,
+        "statusLabel": null
+      },
+      "subRecommendation": null,
+      "warning": "Shot was far outside the target time and yield. Check that the shot was stopped at the intended yield and puck preparation was normal before relying heavily on this result."
+    },
+    "calculateRecommendation/sunbeam/yield_out_slow_under": {
+      "engineStats": {
+        "sensitivity": 4.5,
+        "severeChoke": false,
+        "shift": 3,
+        "shiftUnit": "macro",
+        "targetMid": 27.5,
+        "targetYield": 36,
+        "tasteOverride": false,
+        "timeDelta": 12.5,
+        "yieldDelta": -6
+      },
+      "evidenceContext": null,
+      "flairWaterTempAdvice": null,
+      "reason": "GO 3 SETTING(S) COARSER — Shot was 13s off target midpoint.",
+      "recommendedSetting": {
+        "setting": 18
+      },
+      "shotOutcome": {
+        "hasYieldIssue": false,
+        "isDialledIn": false,
+        "isNegativeTaste": true,
+        "isSevereChoke": false,
+        "isTimeInRange": false,
+        "statusLabel": null
+      },
+      "subRecommendation": null,
+      "warning": "Shot was far outside the target time and yield. Check that the shot was stopped at the intended yield and puck preparation was normal before relying heavily on this result."
     },
     "classifyShotOutcome/fast_balanced": {
       "hasYieldIssue": false,
@@ -1668,6 +2068,10 @@
     "getHistoricalRoastBaseline/decaf_excluded_from_regular": null,
     "getHistoricalRoastBaseline/decaf_pool": 122,
     "getHistoricalRoastBaseline/no_history": null,
+    "getHistoricalRoastBaseline/no_history_dark": null,
+    "getHistoricalRoastBaseline/no_history_light": null,
+    "getHistoricalRoastBaseline/no_history_sunbeam_dark": null,
+    "getHistoricalRoastBaseline/no_history_sunbeam_light": null,
     "getHistoricalRoastBaseline/not_dialled_in_null": null,
     "getHistoricalRoastBaseline/recency_weighting": 139,
     "getHistoricalRoastBaseline/roast_Dark": 102,
@@ -1706,20 +2110,41 @@
       "macro": 14,
       "micro": "E"
     },
-    "getInitialGrindRecommendation/grinder_switch_sette": {
-      "macro": 10,
-      "micro": "A"
-    },
-    "getInitialGrindRecommendation/grinder_switch_sunbeam": {
-      "setting": 15
-    },
     "getInitialGrindRecommendation/regular_ignores_decaf_pool": {
       "macro": 10,
       "micro": "A"
     },
+    "getInitialGrindRecommendation/sette_history_only_sunbeam_shots": {
+      "macro": 14,
+      "micro": "E"
+    },
     "getInitialGrindRecommendation/sette_no_history": {
       "macro": 14,
       "micro": "E"
+    },
+    "getInitialGrindRecommendation/sette_no_history_dark": {
+      "macro": 13,
+      "micro": "F"
+    },
+    "getInitialGrindRecommendation/sette_no_history_light": {
+      "macro": 16,
+      "micro": "C"
+    },
+    "getInitialGrindRecommendation/sette_with_own_grinder_history": {
+      "macro": 10,
+      "micro": "A"
+    },
+    "getInitialGrindRecommendation/sunbeam_history_only_sette_shots": {
+      "setting": 15
+    },
+    "getInitialGrindRecommendation/sunbeam_no_history_dark": {
+      "setting": 13
+    },
+    "getInitialGrindRecommendation/sunbeam_no_history_light": {
+      "setting": 17
+    },
+    "getInitialGrindRecommendation/sunbeam_with_own_grinder_history": {
+      "setting": 15
     },
     "getRecommendationEvidenceContext/excluded_ignored": "Based on recent shots with this recipe",
     "getRecommendationEvidenceContext/none": null,
