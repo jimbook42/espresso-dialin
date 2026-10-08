@@ -9,7 +9,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node test.js && node src/grinders/engineSnapshots.test.js"
+    "test": "node test.js && node src/grinders/grinderRegistry.test.js && node src/grinders/engineSnapshots.test.js"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

@@ -1,4 +1,18 @@
 import Dexie from 'dexie';
+import {
+  SETTE_GRINDER_ID,
+  SUNBEAM_GRINDER_ID,
+  adjustSette,
+  adjustSunbeam,
+  numericToSette,
+  setteToNumeric,
+  getRecommendationGrinderProfile,
+  resolveShotStatsGrinderModel,
+  getShotStatsGrinderProfile,
+  isSetteGrinderModel,
+} from '../grinders/grinderRegistry.js';
+
+export { setteToNumeric, numericToSette, adjustSette, adjustSunbeam } from '../grinders/grinderRegistry.js';
 
 export const db = new Dexie('EspressoDialDB');
 
@@ -71,33 +85,6 @@ export function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 10);
 }
 
-const SETTE_MICROS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
-
-export function setteToNumeric(macro, micro) {
-  const macroVal = parseInt(macro, 10) || 13;
-  const microIdx = SETTE_MICROS.indexOf(micro);
-  // (Macro - 1) gives us a 0-based index so 1A starts at 0.
-  return (macroVal - 1) * 9 + (microIdx !== -1 ? microIdx : 4);
-}
-
-export function numericToSette(num) {
-  // Clamp between 0 (1A) and 278 (31I)
-  const clamped = Math.min(Math.max(Math.round(num), 0), (31 - 1) * 9 + 8);
-  const macro = Math.floor(clamped / 9) + 1;
-  const microIdx = clamped % 9;
-  return { macro, micro: SETTE_MICROS[microIdx] };
-}
-
-export function adjustSette(macro, microLetter, letterShift) {
-  const numeric = setteToNumeric(macro, microLetter) + letterShift;
-  return numericToSette(numeric);
-}
-
-export function adjustSunbeam(currentSetting, stepShift) {
-  const setting = parseInt(currentSetting, 10);
-  return Math.min(Math.max(setting + stepShift, 1), 30);
-}
-
 /** Recipe + optional Flair context for evidence (current recipe targets). */
 export function shotMatchesRecipeContext(shot, recipe, flairEnabled = false) {
   const targetDose = recipe?.targetDoseG ?? 18;
@@ -156,7 +143,7 @@ export function shotIsSevereChoke(actualTimeS, actualYieldG, targetTimeMinS, tar
 function severeChokeCoarseShift(grinderModel, targetMin, targetMax) {
   const windowS = Math.max(targetMax - targetMin, 0);
   const cappedDelta = 1.5 * windowS;
-  const sensitivity = grinderModel === 'Sette 270Wi' ? 1.25 : 4.5;
+  const sensitivity = getRecommendationGrinderProfile(grinderModel).sensitivity;
   const shift = Math.round(cappedDelta / sensitivity);
   return shift > 0 ? shift : 1;
 }
@@ -326,7 +313,8 @@ export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = []
   let totalWeight = 0;
   successfulShots.forEach((s, idx) => {
     const weight = Math.pow(0.7, idx);
-    const num = grinderModel === 'Sette 270Wi' ? setteToNumeric(s.setteMacro, s.setteMicro) : s.sunbeamSetting;
+    const profile = getRecommendationGrinderProfile(grinderModel);
+    const num = profile.shotToNumeric(s);
     weightedSum += num * weight;
     totalWeight += weight;
   });
@@ -365,9 +353,9 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
 
   let adjustedSetting = { ...lastShot.recommendation.recommendedSetting };
 
-  if (lastShot.grinderModel === 'Sette 270Wi' && ageShiftSette !== 0) {
+  if (lastShot.grinderModel === SETTE_GRINDER_ID && ageShiftSette !== 0) {
     adjustedSetting = adjustSette(adjustedSetting.macro, adjustedSetting.micro, ageShiftSette);
-  } else if (lastShot.grinderModel === 'Sunbeam Barista Max' && ageShiftSunbeam !== 0) {
+  } else if (lastShot.grinderModel === SUNBEAM_GRINDER_ID && ageShiftSunbeam !== 0) {
     adjustedSetting.setting = adjustSunbeam(adjustedSetting.setting, ageShiftSunbeam);
   }
 
@@ -406,13 +394,13 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
     const adjustedRec = getAgeAdjustedRecommendation(bestShot, activeBean, mockDateOverride);
     
     if (adjustedRec && adjustedRec.recommendedSetting) {
-      if (grinderModel === 'Sette 270Wi') {
+      if (isSetteGrinderModel(grinderModel)) {
         return { macro: adjustedRec.recommendedSetting.macro, micro: adjustedRec.recommendedSetting.micro };
       } else {
         return { setting: adjustedRec.recommendedSetting.setting };
       }
     } else {
-      if (grinderModel === 'Sette 270Wi') {
+      if (isSetteGrinderModel(grinderModel)) {
         return { macro: bestShot.setteMacro || 13, micro: bestShot.setteMicro || 'E' };
       } else {
         return { setting: bestShot.sunbeamSetting || 15 };
@@ -435,7 +423,7 @@ export function getInitialGrindRecommendation(grinderModel, roastType, activeBea
     decafBean ? 'decaf' : 'regular'
   );
 
-  if (grinderModel === 'Sette 270Wi') {
+  if (isSetteGrinderModel(grinderModel)) {
     let baseNumeric = baseline !== null ? baseline : (roastType === 'Light' ? 15 * 9 + 2 : roastType === 'Dark' ? 12 * 9 + 5 : 13 * 9 + 4);
     return numericToSette(baseNumeric + ageData.recommendedOffsetSette);
   } else {
@@ -504,18 +492,16 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     warning = (warning ? warning + " " : "") + "Shot ran fast but tasted bitter. Uneven extraction likely. Check puck prep before large grind changes.";
   }
 
+  const grinderProfile = getRecommendationGrinderProfile(grinderModel);
+
   if (severeChoke) {
     shift = severeChokeCoarseShift(grinderModel, targetMin, targetMax);
     const absShift = Math.abs(shift);
     const chokeReason = "Severe choke detected — shot produced very little yield over an extended time. Go substantially coarser.";
-    if (grinderModel === 'Sette 270Wi') {
-      reason = `GO ${absShift} MICRO STEP(S) COARSER — ${chokeReason}`;
-    } else {
-      reason = `GO ${absShift} SETTING(S) COARSER — ${chokeReason}`;
-    }
+    reason = `GO ${absShift} ${grinderProfile.chokeReasonStepLabel} COARSER — ${chokeReason}`;
   } else if (isTimeInRange) {
     if (tasteProfile === 'very_sour') {
-      shift = grinderModel === 'Sette 270Wi' ? -2 : -1;
+      shift = grinderProfile.inRangeVerySourShift;
       reason = `GO ${Math.abs(shift)} STEP(S) FINER — Shot is in range but tastes very sour.`;
     } else if (tasteProfile === 'sour') {
       shift = -1;
@@ -524,13 +510,13 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       shift = 1;
       reason = `GO 1 STEP COARSER — Shot is in range but tastes bitter.`;
     } else if (tasteProfile === 'very_bitter') {
-      shift = grinderModel === 'Sette 270Wi' ? 2 : 1;
+      shift = grinderProfile.inRangeVeryBitterShift;
       reason = `GO ${Math.abs(shift)} STEP(S) COARSER — Shot is in range but tastes very bitter.`;
     } else {
       reason = "KEEP GRIND — Balanced and in range.";
     }
   } else {
-    const sensitivity = grinderModel === 'Sette 270Wi' ? 1.25 : 4.5;
+    const sensitivity = grinderProfile.sensitivity;
     shift = Math.round(timeDelta / sensitivity);
     if (shift === 0) shift = timeDelta < 0 ? -1 : 1;
 
@@ -538,11 +524,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     const direction = shift < 0 ? "FINER" : "COARSER";
     const secOff = Math.abs(Math.round(timeDelta));
 
-    if (grinderModel === 'Sette 270Wi') {
-      reason = `GO ${absShift} MICRO STEP(S) ${direction} — Shot was ${secOff}s off target midpoint.`;
-    } else {
-      reason = `GO ${absShift} SETTING(S) ${direction} — Shot was ${secOff}s off target midpoint.`;
-    }
+    reason = `GO ${absShift} ${grinderProfile.timeOffTargetStepLabel} ${direction} — Shot was ${secOff}s off target midpoint.`;
   }
 
   let flairWaterTempAdvice = null;
@@ -602,12 +584,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     }
   }
 
-  let recommendedSetting = {};
-  if (grinderModel === 'Sette 270Wi') {
-    recommendedSetting = adjustSette(setteMacro || 13, setteMicro || 'E', shift);
-  } else {
-    recommendedSetting = { setting: adjustSunbeam(sunbeamSetting || 15, shift) };
-  }
+  const recommendedSetting = grinderProfile.adjustSetting(shift, {
+    setteMacro,
+    setteMicro,
+    sunbeamSetting,
+  });
 
   const sortedRecent = [...learningRecentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   const evidenceContext = getRecommendationEvidenceContext(sortedRecent, recipe, flairEnabled);
@@ -616,8 +597,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     recipe
   );
 
-  const sensitivity = grinderModel === 'Sette 270Wi' ? 1.25 : 4.5;
-  const shiftUnit = grinderModel === 'Sette 270Wi' ? 'micro' : 'macro';
+  const sensitivity = grinderProfile.sensitivity;
+  const shiftUnit = grinderProfile.shiftUnit;
 
   return {
     recommendedSetting,
@@ -652,12 +633,13 @@ export function getShotEngineStats(shot, recipe = {}) {
   const targetMax = ctx.targetTimeMaxS;
   const targetMid = stored?.targetMid ?? (targetMin + targetMax) / 2;
   const targetYield = stored?.targetYield ?? ctx.targetYieldG ?? 36;
-  const grinderModel = shot?.grinderModel || 'Sette 270Wi';
-  const sensitivity = stored?.sensitivity ?? (grinderModel === 'Sette 270Wi' ? 1.25 : 4.5);
+  const grinderModel = resolveShotStatsGrinderModel(shot?.grinderModel);
+  const statsProfile = getShotStatsGrinderProfile(grinderModel);
+  const sensitivity = stored?.sensitivity ?? statsProfile.sensitivity;
   const timeDelta = stored?.timeDelta ?? actualTime - targetMid;
   const yieldDelta = stored?.yieldDelta ?? actualYield - targetYield;
   const shift = stored?.shift ?? null;
-  const shiftUnit = stored?.shiftUnit ?? (grinderModel === 'Sette 270Wi' ? 'micro' : 'macro');
+  const shiftUnit = stored?.shiftUnit ?? statsProfile.shiftUnit;
 
   let shiftSummary = rec?.reason || null;
   if (shift !== null && shift !== 0) {
@@ -673,7 +655,7 @@ export function getShotEngineStats(shot, recipe = {}) {
   let ageOffsetNote = null;
   if (beanAgeDays !== undefined && beanAgeDays !== null) {
     const { offsetSette, offsetSunbeam } = freshnessOffsetsForEffectiveDays(beanAgeDays);
-    const offsetSteps = grinderModel === 'Sette 270Wi' ? offsetSette : offsetSunbeam;
+    const offsetSteps = isSetteGrinderModel(grinderModel) ? offsetSette : offsetSunbeam;
     if (offsetSteps !== 0) {
       ageOffsetNote = `Effective age ${beanAgeDays}d → freshness offset ${offsetSteps > 0 ? '+' : ''}${offsetSteps} ${shiftUnit} step(s) on starting grind only`;
     } else {
