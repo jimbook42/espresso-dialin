@@ -1,7 +1,17 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { adjustSunbeam } from '../utils/grinderLogic';
+import {
+  SETTE_GRINDER_ID,
+  SUNBEAM_GRINDER_ID,
+  adjustSunbeam,
+  getGrinderDefinitionById,
+  isSetteGrinderModel,
+} from '../grinders/grinderRegistry.js';
 
-const SETTE_MICROS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+const setteUi = getGrinderDefinitionById(SETTE_GRINDER_ID);
+const sunbeamUi = getGrinderDefinitionById(SUNBEAM_GRINDER_ID);
+const SETTE_MICROS = setteUi.microLetters;
+const SETTE_MACRO_MIN = setteUi.macroMin;
+const SETTE_MACRO_MAX = setteUi.macroMax;
 
 const SWIPE_THRESHOLD_PX = 14;
 const VISIBLE_TICKS = 9;
@@ -158,9 +168,39 @@ function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
   );
 }
 
+export function GrinderGrindControls({
+  grinderModel,
+  setteMacro,
+  setteMicro,
+  sunbeamSetting,
+  onSetteMacroChange,
+  onSetteMicroChange,
+  onSunbeamChange,
+  ui,
+}) {
+  if (isSetteGrinderModel(grinderModel)) {
+    return (
+      <SetteGrindControls
+        macro={setteMacro}
+        micro={setteMicro}
+        onMacroChange={onSetteMacroChange}
+        onMicroChange={onSetteMicroChange}
+        ui={ui}
+      />
+    );
+  }
+  return (
+    <SunbeamGrindControl
+      setting={sunbeamSetting}
+      onChange={onSunbeamChange}
+      ui={ui}
+    />
+  );
+}
+
 export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange, ui }) {
   const bumpMacro = (delta) => {
-    const next = Math.min(31, Math.max(1, (parseInt(macro, 10) || 13) + delta));
+    const next = Math.min(SETTE_MACRO_MAX, Math.max(SETTE_MACRO_MIN, (parseInt(macro, 10) || 13) + delta));
     onMacroChange(next);
   };
 
@@ -174,7 +214,7 @@ export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange,
   return (
     <div className="grid grid-cols-2 gap-3">
       <AxisStepper
-        label="Macro 1–31"
+        label={setteUi.macroFieldLabel}
         display={macro}
         onDec={() => bumpMacro(-1)}
         onInc={() => bumpMacro(1)}
@@ -182,7 +222,7 @@ export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange,
         dialKind="macro"
       />
       <AxisStepper
-        label="Micro A–I"
+        label={setteUi.microFieldLabel}
         display={micro}
         onDec={() => bumpMicro(-1)}
         onInc={() => bumpMicro(1)}
@@ -201,7 +241,7 @@ export function SunbeamGrindControl({ setting, onChange, ui }) {
 
   return (
     <AxisStepper
-      label="Dial setting 1–30"
+      label={sunbeamUi.dialFieldLabel}
       display={setting}
       onDec={() => bump(-1)}
       onInc={() => bump(1)}

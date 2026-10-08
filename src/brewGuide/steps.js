@@ -72,6 +72,8 @@ export function formatBrewAmount(value) {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
 }
 
+import { brewGuideGrindSettingLabelForGrinder, isSunbeamGrinderModel } from '../grinders/grinderRegistry.js';
+
 export function brewDialIsReady(dial) {
   if (!dial?.beanName || !dial?.grinderModel || !dial?.grindLabel) return false;
   const dose = formatBrewAmount(dial.doseG);
@@ -164,8 +166,8 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
   const grindLabel = summary.grindLabel ?? '—';
   const grinder = summary.grinder || 'your grinder';
   const bean = summary.bean || 'your coffee';
-  const isSunbeam = /sunbeam/i.test(grinder);
-  const grindSettingLabel = isSunbeam ? 'Dial setting' : 'Grind setting';
+  const grindSettingLabel = brewGuideGrindSettingLabelForGrinder(grinder);
+  const isSunbeam = isSunbeamGrinderModel(grinder);
   const changed = grindSettingChanged(dial);
   const previous = dial.previousGrindLabel ? String(dial.previousGrindLabel) : '';
   const stopAt = brewStopYield(dial.yieldG);

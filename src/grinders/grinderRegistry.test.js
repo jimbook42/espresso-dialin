@@ -4,10 +4,18 @@ import {
   SUNBEAM_GRINDER_ID,
   adjustSette,
   adjustSunbeam,
+  brewGuideGrindSettingLabelForGrinder,
+  formatCurrentGrindLabel,
+  formatPreviousGrindLabel,
+  formatRecommendedGrindDisplay,
+  formatShotGrindForHistory,
   getGrinderDefinitionById,
   getRecommendationGrinderProfile,
   getShotStatsGrinderProfile,
+  getUiGrinderPresentation,
   isSetteGrinderModel,
+  isSunbeamGrinderModel,
+  parseGrindForShotSave,
   resolveShotStatsGrinderModel,
   setteToNumeric,
 } from './grinderRegistry.js';
@@ -65,7 +73,32 @@ function testCompatibility() {
   assert.equal(getShotStatsGrinderProfile('Mystery').sensitivity, 4.5);
 }
 
+function testPresentation() {
+  const setteDef = getGrinderDefinitionById(SETTE_GRINDER_ID);
+  const sunbeamDef = getGrinderDefinitionById(SUNBEAM_GRINDER_ID);
+  assert.equal(setteDef.settingsSelectLabel, 'Baratza Sette 270Wi');
+  assert.equal(sunbeamDef.shortBadgeLabel, 'Sunbeam');
+  assert.equal(formatShotGrindForHistory({ grinderModel: SETTE_GRINDER_ID, setteMacro: 11, setteMicro: 'B' }), '11-B');
+  assert.equal(formatShotGrindForHistory({ grinderModel: SUNBEAM_GRINDER_ID, sunbeamSetting: 14 }), '14');
+  assert.equal(formatCurrentGrindLabel(SETTE_GRINDER_ID, { setteMacro: 13, setteMicro: 'E' }), '13-E');
+  assert.equal(formatPreviousGrindLabel(SETTE_GRINDER_ID, { setteMacro: '', setteMicro: 'E' }), '');
+  assert.equal(formatRecommendedGrindDisplay(SUNBEAM_GRINDER_ID, { setting: 12 }), '12');
+  assert.equal(getUiGrinderPresentation(SETTE_GRINDER_ID).controlType, 'sette');
+  assert.equal(isSunbeamGrinderModel(SUNBEAM_GRINDER_ID), true);
+  assert.equal(brewGuideGrindSettingLabelForGrinder(SUNBEAM_GRINDER_ID), 'Dial setting');
+  assert.equal(brewGuideGrindSettingLabelForGrinder('your grinder'), 'Grind setting');
+
+  const parsedSette = parseGrindForShotSave(SETTE_GRINDER_ID, { setteMacro: '11', setteMicro: 'B' });
+  assert.equal(parsedSette.ok, true);
+  assert.equal(parsedSette.setteMacro, 11);
+  assert.equal(parsedSette.setteMicro, 'B');
+  const parsedSunbeam = parseGrindForShotSave(SUNBEAM_GRINDER_ID, { sunbeamSetting: '20' });
+  assert.equal(parsedSunbeam.ok, true);
+  assert.equal(parsedSunbeam.sunbeamSetting, 20);
+}
+
 testSetteDefinition();
 testSunbeamDefinition();
 testCompatibility();
+testPresentation();
 console.log('grinderRegistry tests passed.');

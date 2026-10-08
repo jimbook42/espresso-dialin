@@ -22,7 +22,24 @@ import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, 
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
-import { SetteGrindControls, SunbeamGrindControl } from './components/GrindControls';
+import { GrinderGrindControls } from './components/GrindControls';
+import {
+  GRINDER_SETUP_OPTIONS,
+  defaultBrewTemperatureForGrinder,
+  formatCurrentGrindLabel,
+  formatInitialGrindDisplay,
+  formatPreviousGrindLabel,
+  formatRecommendedGrindDisplay,
+  formatShotGrindForHistory,
+  getUiGrinderPresentation,
+  grindMatchesStoredRecommendation,
+  isSunbeamGrinderModel,
+  parseGrindForShotSave,
+  persistedSettingsPatchFromRecommendation,
+  uiStateFromInitialRecommendation,
+  uiStateFromLastShot,
+  uiStateFromRecommendedSetting,
+} from './grinders/grinderRegistry.js';
 import { SettingsToggle } from './components/SettingsToggle';
 import { BrewGuide } from './components/BrewGuide';
 import { BrewGuideIntroModal } from './components/BrewGuideIntroModal';
@@ -201,7 +218,7 @@ export default function App() {
         setGrinderModel(settingsSetting.grinderModel);
         if (!isEditingBean && brewTempDefaultRef.current !== settingsSetting.grinderModel) {
           brewTempDefaultRef.current = settingsSetting.grinderModel;
-          const nextTemp = settingsSetting.grinderModel === 'Sunbeam Barista Max' ? 92 : 93;
+          const nextTemp = defaultBrewTemperatureForGrinder(settingsSetting.grinderModel);
           setNewRecipe((prev) => {
             const current = prev.brewTemperatureC;
             const isUnset = current === '' || current === null || current === undefined;
@@ -318,28 +335,22 @@ export default function App() {
         const adjustedRec = getAgeAdjustedRecommendation(last, activeBean, mockDate);
         
         if (adjustedRec && adjustedRec.recommendedSetting) {
-          if (grinderModel === 'Sette 270Wi') {
-            setSetteMacro(adjustedRec.recommendedSetting.macro);
-            setSetteMicro(adjustedRec.recommendedSetting.micro);
-          } else {
-            setSunbeamSetting(adjustedRec.recommendedSetting.setting);
-          }
+          const uiState = uiStateFromRecommendedSetting(grinderModel, adjustedRec.recommendedSetting);
+          if (uiState?.setteMacro != null) setSetteMacro(uiState.setteMacro);
+          if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
+          if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
         } else {
-          if (grinderModel === 'Sette 270Wi') {
-            setSetteMacro(last.setteMacro || 13);
-            setSetteMicro(last.setteMicro || 'E');
-          } else {
-            setSunbeamSetting(last.sunbeamSetting || 15);
-          }
+          const uiState = uiStateFromLastShot(grinderModel, last);
+          if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
+          if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
+          if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
         }
       } else {
         const recParams = getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate);
-        if (grinderModel === 'Sette 270Wi') {
-          setSetteMacro(recParams.macro);
-          setSetteMicro(recParams.micro);
-        } else {
-          setSunbeamSetting(recParams.setting);
-        }
+        const uiState = uiStateFromInitialRecommendation(grinderModel, recParams);
+        if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
+        if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
+        if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
       }
     }
   }, [selectedBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
@@ -349,7 +360,7 @@ export default function App() {
     setGrinderModel(model);
     if (!isEditingBean) {
       brewTempDefaultRef.current = model;
-      const nextTemp = model === 'Sunbeam Barista Max' ? 92 : 93;
+      const nextTemp = defaultBrewTemperatureForGrinder(model);
       setNewRecipe((prev) => {
         const current = prev.brewTemperatureC;
         const isUnset = current === '' || current === null || current === undefined;
@@ -568,7 +579,7 @@ export default function App() {
       targetYieldG: '', 
       targetTimeMinS: 27, 
       targetTimeMaxS: 32,
-      brewTemperatureC: grinderModel === 'Sunbeam Barista Max' ? 92 : 93,
+      brewTemperatureC: defaultBrewTemperatureForGrinder(grinderModel),
       flairProfile: { preinfusionPressure: '', preinfusionTime: '', peakPressure: '', peakEndYield: '', taperPressure: '' }
     });
   };
@@ -686,24 +697,12 @@ export default function App() {
     }
     setShotFieldHighlights(EMPTY_SHOT_FIELD_HIGHLIGHTS);
 
-    let finalMacro = null;
-    let finalMicro = null;
-    let finalSunbeam = null;
-
-    if (grinderModel === 'Sette 270Wi') {
-      finalMacro = parseInt(setteMacro, 10);
-      if (isNaN(finalMacro)) {
-        setValidationError('Sette Macro setting must be a valid number.');
-        return;
-      }
-      finalMicro = setteMicro || 'E';
-    } else {
-      finalSunbeam = parseInt(sunbeamSetting, 10);
-      if (isNaN(finalSunbeam)) {
-        setValidationError('Sunbeam dial setting must be a valid number.');
-        return;
-      }
+    const parsedGrind = parseGrindForShotSave(grinderModel, { setteMacro, setteMicro, sunbeamSetting });
+    if (!parsedGrind.ok) {
+      setValidationError(parsedGrind.error);
+      return;
     }
+    const { setteMacro: finalMacro, setteMicro: finalMicro, sunbeamSetting: finalSunbeam } = parsedGrind;
 
     if (!activeBean || !activeRecipe) {
       setValidationError('Missing active coffee profile or recipe.');
@@ -716,14 +715,12 @@ export default function App() {
       const adjustedRec = getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate);
       const rec = adjustedRec?.recommendedSetting || lastLearningShot.recommendation.recommendedSetting;
 
-      if (lastLearningShot.grinderModel === 'Sette 270Wi') {
-        if (finalMacro !== rec.macro || finalMicro !== rec.micro) {
-          recommendationFollowed = false;
-        }
-      } else if (lastLearningShot.grinderModel === 'Sunbeam Barista Max') {
-        if (finalSunbeam !== rec.setting) {
-          recommendationFollowed = false;
-        }
+      if (!grindMatchesStoredRecommendation(
+        lastLearningShot.grinderModel,
+        { setteMacro: finalMacro, setteMicro: finalMicro, sunbeamSetting: finalSunbeam },
+        rec
+      )) {
+        recommendationFollowed = false;
       }
     }
 
@@ -841,9 +838,7 @@ export default function App() {
     ? getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate)
     : null;
 
-  const currentGrindLabel = grinderModel === 'Sette 270Wi'
-    ? `${setteMacro}-${setteMicro}`
-    : `${sunbeamSetting}`;
+  const currentGrindLabel = formatCurrentGrindLabel(grinderModel, { setteMacro, setteMicro, sunbeamSetting });
 
   const timerWindowSeconds =
     (usePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
@@ -876,15 +871,17 @@ export default function App() {
     
     const currentSettings = await db.settings.get('global') || { id: 'global' };
 
-    if (lastLearningShot.grinderModel === 'Sette 270Wi' && recSet.macro) {
-      setGrinderModel('Sette 270Wi');
-      setSetteMacro(recSet.macro);
-      setSetteMicro(recSet.micro);
-      await db.settings.put({ ...currentSettings, lastSetteMacro: recSet.macro, lastSetteMicro: recSet.micro });
-    } else if (lastLearningShot.grinderModel === 'Sunbeam Barista Max' && recSet.setting) {
-      setGrinderModel('Sunbeam Barista Max');
-      setSunbeamSetting(recSet.setting);
-      await db.settings.put({ ...currentSettings, lastSunbeamSetting: recSet.setting });
+    const applyGrinder = lastLearningShot.grinderModel;
+    const uiState = uiStateFromRecommendedSetting(applyGrinder, recSet);
+    if (uiState) {
+      setGrinderModel(applyGrinder);
+      if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
+      if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
+      if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
+      await db.settings.put({
+        ...currentSettings,
+        ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet),
+      });
     }
 
     if (grindSettingsRef.current) {
@@ -898,7 +895,7 @@ export default function App() {
     const headers = ['Timestamp', 'Bean', 'Grinder', 'Grind Setting', 'Purged', 'Dose(g)', 'Yield(g)', 'Ratio', 'Time(s)', 'Taste', 'Rating', 'Bean Age (Days)', 'Storage', 'Rec Followed', 'Excluded From Learning', 'Known Issue Reason', 'Notes'];
     const rows = shots.map(s => {
       const bean = beans.find(b => b.id === s.beanId);
-      const grind = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro}-${s.setteMicro}` : s.sunbeamSetting;
+      const grind = formatShotGrindForHistory(s);
       return [
         new Date(s.timestamp).toLocaleString(),
         bean ? bean.name : 'Unknown',
@@ -967,29 +964,20 @@ export default function App() {
   const previousGrindLabel = (() => {
     const shot = shots.find((s) => s.grinderModel === grinderModel);
     if (!shot) return '';
-    if (grinderModel === 'Sette 270Wi') {
-      if (shot.setteMacro == null || shot.setteMacro === '') return '';
-      return `${shot.setteMacro}-${shot.setteMicro ?? ''}`;
-    }
-    if (shot.sunbeamSetting == null || shot.sunbeamSetting === '') return '';
-    return String(shot.sunbeamSetting);
+    return formatPreviousGrindLabel(grinderModel, shot);
   })();
 
   const recommendedGrindDisplay = (() => {
     if (lastLearningShot && dynamicRec?.recommendedSetting) {
-      return lastLearningShot.grinderModel === 'Sette 270Wi'
-        ? `${dynamicRec.recommendedSetting.macro || 13}-${dynamicRec.recommendedSetting.micro || 'E'}`
-        : `${dynamicRec.recommendedSetting.setting || 15}`;
+      return formatRecommendedGrindDisplay(lastLearningShot.grinderModel, dynamicRec.recommendedSetting);
     }
     if (!hasLoggedShotForBean && initialGrindSetting) {
-      return grinderModel === 'Sette 270Wi'
-        ? `${initialGrindSetting.macro}-${initialGrindSetting.micro}`
-        : `${initialGrindSetting.setting}`;
+      return formatInitialGrindDisplay(grinderModel, initialGrindSetting);
     }
     return currentGrindLabel;
   })();
 
-  const grinderBadgeLabel = grinderModel === 'Sette 270Wi' ? 'Sette 270Wi' : 'Sunbeam';
+  const grinderBadgeLabel = getUiGrinderPresentation(grinderModel).shortBadgeLabel;
 
   const formatShotWhen = (timestamp) => {
     const d = new Date(timestamp);
@@ -1026,13 +1014,10 @@ export default function App() {
     if (yieldG != null && yieldG !== '' && Number(yieldG) > 0) setActualYieldG(yieldG);
     setWasPurged(true);
     if (lastLearningShot && dynamicRec?.recommendedSetting && lastLearningShot.grinderModel === grinderModel) {
-      const recSet = dynamicRec.recommendedSetting;
-      if (grinderModel === 'Sette 270Wi' && recSet.macro) {
-        setSetteMacro(recSet.macro);
-        setSetteMicro(recSet.micro);
-      } else if (grinderModel === 'Sunbeam Barista Max' && recSet.setting) {
-        setSunbeamSetting(recSet.setting);
-      }
+      const uiState = uiStateFromRecommendedSetting(grinderModel, dynamicRec.recommendedSetting);
+      if (uiState?.setteMacro != null) setSetteMacro(uiState.setteMacro);
+      if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
+      if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
     }
     setBrewTimerHost(false);
     setShotFieldHighlights({ ...EMPTY_SHOT_FIELD_HIGHLIGHTS, taste: true });
@@ -1070,18 +1055,20 @@ export default function App() {
               </div>
             </div>
             <div className="space-y-3">
-              <button
-                onClick={() => handleSaveGrinderSetup('Sette 270Wi', { brewGuideEnabled: setupBrewGuideEnabled })}
-                className="w-full bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-bold py-4 rounded-xl text-sm transition-colors"
-              >
-                Baratza Sette 270Wi
-              </button>
-              <button
-                onClick={() => handleSaveGrinderSetup('Sunbeam Barista Max', { brewGuideEnabled: setupBrewGuideEnabled })}
-                className="w-full bg-[#211e1a] hover:bg-[#2e2b26] text-[#f5f2eb] font-bold py-4 rounded-xl text-sm transition-colors border border-[#2e2b26]"
-              >
-                Sunbeam Barista Max
-              </button>
+              {GRINDER_SETUP_OPTIONS.map((option, index) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => handleSaveGrinderSetup(option.id, { brewGuideEnabled: setupBrewGuideEnabled })}
+                  className={`w-full font-bold py-4 rounded-xl text-sm transition-colors ${
+                    index === 0
+                      ? 'bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110]'
+                      : 'bg-[#211e1a] hover:bg-[#2e2b26] text-[#f5f2eb] border border-[#2e2b26]'
+                  }`}
+                >
+                  {option.setupCardLabel}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -1485,21 +1472,16 @@ export default function App() {
                       <span className={`text-[10px] ${ui.accentText} font-semibold`}>{grinderModel}</span>
                     </div>
 
-                    {grinderModel === 'Sette 270Wi' ? (
-                      <SetteGrindControls
-                        macro={setteMacro}
-                        micro={setteMicro}
-                        onMacroChange={setSetteMacro}
-                        onMicroChange={setSetteMicro}
-                        ui={ui}
-                      />
-                    ) : (
-                      <SunbeamGrindControl
-                        setting={sunbeamSetting}
-                        onChange={setSunbeamSetting}
-                        ui={ui}
-                      />
-                    )}
+                    <GrinderGrindControls
+                      grinderModel={grinderModel}
+                      setteMacro={setteMacro}
+                      setteMicro={setteMicro}
+                      sunbeamSetting={sunbeamSetting}
+                      onSetteMacroChange={setSetteMacro}
+                      onSetteMicroChange={setSetteMicro}
+                      onSunbeamChange={setSunbeamSetting}
+                      ui={ui}
+                    />
 
                     <div className="mt-4 flex items-center justify-between pt-3 border-t border-[#2e2b26]">
                       <span className="text-sm text-[#a09880]">Grinder purged?</span>
@@ -1893,7 +1875,7 @@ export default function App() {
                       className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                     />
                     <span className={`text-[9px] ${ui.muted} text-center block`}>°C</span>
-                    {grinderModel === 'Sunbeam Barista Max' && (
+                    {isSunbeamGrinderModel(grinderModel) && (
                       <span className={`text-[10px] ${ui.muted} text-center block mt-1`}>92°C is the Barista Max&apos;s default temperature.</span>
                     )}
                   </div>
@@ -2045,7 +2027,7 @@ export default function App() {
             ) : (
               filteredShots.map(s => {
                 const bean = beans.find(b => b.id === s.beanId);
-                const grindStr = s.grinderModel === 'Sette 270Wi' ? `${s.setteMacro || 13}-${s.setteMicro || 'E'}` : `${s.sunbeamSetting || 15}`;
+                const grindStr = formatShotGrindForHistory(s);
                 const recipeForShot = recipes.find(r => r.beanId === s.beanId);
                 const minT = recipeForShot?.targetTimeMinS || 27;
                 const maxT = recipeForShot?.targetTimeMaxS || 32;
@@ -2324,8 +2306,9 @@ export default function App() {
                     onChange={(e) => handleSaveGrinderSetup(e.target.value)}
                     className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
                   >
-                    <option value="Sette 270Wi">Baratza Sette 270Wi</option>
-                    <option value="Sunbeam Barista Max">Sunbeam Barista Max</option>
+                    {GRINDER_SETUP_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>{option.settingsSelectLabel}</option>
+                    ))}
                   </select>
                 </div>
 
