@@ -14,6 +14,7 @@ import {
   decafContextNote,
   getHistoricalRoastBaseline,
   shotEligibleForLearning,
+  filterShotsForGrinderLearning,
   KNOWN_ISSUE_REASONS,
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
@@ -246,7 +247,11 @@ export default function App() {
   const activeBean = beans.find(b => b.id === selectedBeanId) || activeBeansList[0] || beans[0];
   const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
   const lastLoggedShot = shots.find(s => s.beanId === activeBean?.id);
-  const lastLearningShot = shots.find((s) => s.beanId === activeBean?.id && shotEligibleForLearning(s));
+  const lastLearningShot = activeBean && grinderModel
+    ? shots.find(
+        (s) => s.beanId === activeBean.id && s.grinderModel === grinderModel && shotEligibleForLearning(s)
+      )
+    : null;
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
 
   const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
@@ -350,7 +355,16 @@ export default function App() {
           if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
         }
       } else {
-        const recParams = getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate);
+        const recParams = getInitialGrindRecommendation(
+          grinderModel,
+          activeBean.roastType,
+          activeBean,
+          recipes,
+          shots,
+          beans,
+          mockDate,
+          flairEnabled
+        );
         const uiState = uiStateFromInitialRecommendation(grinderModel, recParams);
         if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
         if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
@@ -755,7 +769,10 @@ export default function App() {
     }
 
     const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
-    const recentBeanShots = shots.filter((s) => s.beanId === activeBean.id && shotEligibleForLearning(s));
+    const recentBeanShots = filterShotsForGrinderLearning(shots, {
+      beanId: activeBean.id,
+      grinderModel,
+    });
 
     const rec = calculateRecommendation(
       { 
@@ -799,6 +816,8 @@ export default function App() {
       recommendationFollowed,
       targetTimeMinS: activeRecipe.targetTimeMinS,
       targetTimeMaxS: activeRecipe.targetTimeMaxS,
+      targetDoseG: activeRecipe.targetDoseG,
+      targetYieldG: activeRecipe.targetYieldG,
       brewTemperatureC: activeRecipe.brewTemperatureC || null,
       flairProfile: flairEnabled && activeRecipe.flairProfile ? { ...activeRecipe.flairProfile } : null,
       recommendation: rec,
@@ -829,20 +848,22 @@ export default function App() {
     }
   };
 
-  const dynamicRec = lastLearningShot ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate) : null;
+  const dynamicRec =
+    lastLearningShot && lastLearningShot.grinderModel === grinderModel
+      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate)
+      : null;
   const lastShotOutcome =
     lastLoggedShot && activeRecipe
       ? classifyShotOutcome(lastLoggedShot, recipeContextForShot(lastLoggedShot, activeRecipe))
       : null;
+  const beanShotsForGrinder = activeBean
+    ? filterShotsForGrinderLearning(shots, { beanId: activeBean.id, grinderModel })
+    : [];
   const recommendationEvidenceContext =
     dynamicRec?.evidenceContext ||
-    (activeRecipe && beanShots.some(shotEligibleForLearning)
-      ? getRecommendationEvidenceContext(beanShots, activeRecipe, flairEnabled)
+    (activeRecipe && beanShotsForGrinder.length > 0
+      ? getRecommendationEvidenceContext(beanShotsForGrinder, activeRecipe, flairEnabled)
       : null);
-
-  const beanShotsForGrinder = activeBean
-    ? shots.filter((s) => s.beanId === activeBean.id && s.grinderModel === grinderModel && shotEligibleForLearning(s))
-    : [];
   const hasLoggedShotForBean = beanShots.length > 0;
   const decafNoteSource = !beanIsDecaf(activeBean)
     ? null
@@ -853,8 +874,35 @@ export default function App() {
         : 'roast-baseline';
   const decafNote = decafNoteSource ? decafContextNote(activeBean, decafNoteSource) : null;
   const initialGrindSetting = activeBean && grinderModel && beanShotsForGrinder.length === 0
-    ? getInitialGrindRecommendation(grinderModel, activeBean.roastType, activeBean, recipes, shots, beans, mockDate)
+    ? getInitialGrindRecommendation(
+        grinderModel,
+        activeBean.roastType,
+        activeBean,
+        recipes,
+        shots,
+        beans,
+        mockDate,
+        flairEnabled
+      )
     : null;
+  const initialGrindHint = (() => {
+    if (!initialGrindSetting?.initialSource) return null;
+    const isNiche = grinderModel === 'Niche Zero';
+    switch (initialGrindSetting.initialSource) {
+      case 'app-default':
+        return isNiche
+          ? `Starting dial ${initialGrindSetting.nicheZeroSetting ?? '—'} — app default, not from your shot history.`
+          : 'Starting grind uses the app roast baseline — not from your logged shots on this bean.';
+      case 'roast-baseline':
+        return 'Starting grind from your dialled-in shots on other beans of this roast class.';
+      case 'bean-history':
+        return 'Starting grind from your logged shots on this bean (matching recipe).';
+      case 'bean-history-other-recipe':
+        return 'Starting grind from this bean; recipe differs from current targets — verify before brewing.';
+      default:
+        return null;
+    }
+  })();
 
   const currentGrindLabel = formatCurrentGrindLabel(grinderModel, {
     setteMacro,
@@ -889,12 +937,13 @@ export default function App() {
   };
 
   const applyRecommendation = async () => {
-    if (!dynamicRec || !dynamicRec.recommendedSetting) return;
+    if (!dynamicRec || !dynamicRec.recommendedSetting || !lastLearningShot) return;
+    if (lastLearningShot.grinderModel !== grinderModel) return;
     const recSet = dynamicRec.recommendedSetting;
     
     const currentSettings = await db.settings.get('global') || { id: 'global' };
 
-    const applyGrinder = lastLearningShot.grinderModel;
+    const applyGrinder = grinderModel;
     const uiState = uiStateFromRecommendedSetting(applyGrinder, recSet);
     if (uiState) {
       setGrinderModel(applyGrinder);
@@ -992,8 +1041,8 @@ export default function App() {
   })();
 
   const recommendedGrindDisplay = (() => {
-    if (lastLearningShot && dynamicRec?.recommendedSetting) {
-      return formatRecommendedGrindDisplay(lastLearningShot.grinderModel, dynamicRec.recommendedSetting);
+    if (lastLearningShot && lastLearningShot.grinderModel === grinderModel && dynamicRec?.recommendedSetting) {
+      return formatRecommendedGrindDisplay(grinderModel, dynamicRec.recommendedSetting);
     }
     if (!hasLoggedShotForBean && initialGrindSetting) {
       return formatInitialGrindDisplay(grinderModel, initialGrindSetting);
@@ -1391,7 +1440,10 @@ export default function App() {
                   {!dynamicRec && !hasLoggedShotForBean && (
                     <>
                       <p className={`text-sm ${ui.sub}`}>Start here, then log your first shot to begin dialling in.</p>
-                      {initialGrindSetting && (
+                      {initialGrindHint && (
+                        <p className={`text-[10px] ${ui.muted}`}>{initialGrindHint}</p>
+                      )}
+                      {initialGrindSetting && !initialGrindHint && (
                         <p className={`text-[10px] ${ui.muted}`}>Based on previous bean history</p>
                       )}
                     </>
@@ -1418,7 +1470,7 @@ export default function App() {
                         ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${lastLoggedShot.tasteProfile?.replace('_', ' ') || '—'})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ` · kept in history, not used for learning${lastLoggedShot.knownIssueReason ? ` (${knownIssueReasonLabel(lastLoggedShot.knownIssueReason)})` : ''}` : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
                         : `Logging grind ${currentGrindLabel}`}
                     </p>
-                    {lastLearningShot && dynamicRec?.recommendedSetting && (
+                    {lastLearningShot && lastLearningShot.grinderModel === grinderModel && dynamicRec?.recommendedSetting && (
                       <button
                         type="button"
                         onClick={applyRecommendation}

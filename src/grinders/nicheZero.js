@@ -1,7 +1,8 @@
 /**
  * Niche Zero dial reference (stepless between markings).
  * Product dial is commonly marked ~0 (finest) through ~50 (coarsest); numbers are reference positions, not calibrated steps.
- * No defensible seconds-per-mark sensitivity exists in this app — quantitative recommendations are disabled.
+ * Application default dial reference when no history exists (not a manufacturer setting).
+ * Numeric recommendations use per-user empirical learning when comparable shot evidence is reliable.
  */
 
 export const NICHE_ZERO_GRINDER_ID = 'Niche Zero';

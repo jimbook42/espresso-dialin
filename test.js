@@ -17,12 +17,64 @@ import {
   shotIsSevereChoke,
   shotMatchesRecipeContext,
   shotResultImproved,
+  filterShotsForGrinderLearning,
 } from './src/utils/grinderLogic.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
 import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
 import assert from 'assert';
+
+/** Ignore metadata fields when comparing initial grind outputs. */
+function initialGrindOutput(result) {
+  if (!result || typeof result !== 'object') return result;
+  const { initialSource, ...grind } = result;
+  return grind;
+}
+
+function runRecommendationIntegrityTests() {
+  const recipe = { targetTimeMinS: 27, targetTimeMaxS: 32, targetDoseG: 18, targetYieldG: 36 };
+  const setteHistory = [
+    {
+      beanId: 'b1',
+      grinderModel: 'Sette 270Wi',
+      timestamp: '2026-09-19T12:00:00.000Z',
+      actualDoseG: 18,
+      actualYieldG: 36,
+      actualTimeS: 20,
+      setteMacro: 12,
+      setteMicro: 'D',
+    },
+  ];
+  const nicheOnly = calculateRecommendation(
+    {
+      grinderModel: 'Niche Zero',
+      nicheZeroSetting: 15,
+      wasPurged: true,
+      actualTime: 24,
+      actualDose: 18,
+      actualYield: 36,
+      tasteProfile: 'sour',
+    },
+    recipe,
+    setteHistory
+  );
+  assert.equal(nicheOnly.nicheEvidenceMode, 'qualitative-fallback');
+
+  const filtered = filterShotsForGrinderLearning(
+    [...setteHistory, { beanId: 'b1', grinderModel: 'Niche Zero', excludeFromLearning: false }],
+    { beanId: 'b1', grinderModel: 'Niche Zero' }
+  );
+  assert.equal(filtered.length, 1);
+
+  const editedRecipeShot = {
+    actualDoseG: 18,
+    actualYieldG: 36,
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+  };
+  assert.equal(shotMatchesRecipeContext(editedRecipeShot, recipe, false), false);
+}
 
 async function runTests() {
   const recipe = {
@@ -135,6 +187,7 @@ async function runTests() {
   );
 
   runNicheZeroTests();
+  runRecommendationIntegrityTests();
   runBrewGuideTests();
   runBrewGuidanceTests();
   runFlairPressureLabTests();
@@ -199,7 +252,7 @@ function runKnownIssueLearningTests() {
   const fromValid = getInitialGrindRecommendation(...initArgs, [shotA, shotB], [bean], mockDate);
   assert.deepEqual(fromExcludedOnly, fromNoShots);
   assert.notDeepEqual(fromExcludedOnly, { macro: 15, micro: 'F' });
-  assert.deepEqual(fromValid, { macro: 10, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(fromValid), { macro: 10, micro: 'A' });
 
   const baselineWithExcluded = getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [shotA, shotB], [bean]);
   const baselineValidOnly = getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [shotA], [bean]);
@@ -293,7 +346,7 @@ function runKnownIssueLearningTests() {
     [bean],
     mockDate
   );
-  assert.deepEqual(reIncluded, { macro: 14, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(reIncluded), { macro: 14, micro: 'A' });
 
   const { recommendation: _dropRec, ...shotBGrindOnly } = shotB;
   const reIncludedGrind = getInitialGrindRecommendation(
@@ -302,7 +355,7 @@ function runKnownIssueLearningTests() {
     [bean],
     mockDate
   );
-  assert.deepEqual(reIncludedGrind, { macro: 15, micro: 'F' });
+  assert.deepEqual(initialGrindOutput(reIncludedGrind), { macro: 15, micro: 'F' });
 }
 
 async function runKnownIssuePersistenceTests() {
@@ -497,7 +550,7 @@ function runDecafRegressionTests() {
     const recipes = beans.map(b => recipeFor(b.id));
     const live = getInitialGrindRecommendation(grinder, bean.roastType, bean, recipes, shots, beans, mockDate);
     const previous = preFeatureInitialGrind(grinder, bean.roastType, bean, recipes, shots, beans, mockDate);
-    assert.deepEqual(live, previous, label);
+    assert.deepEqual(initialGrindOutput(live), previous, label);
   }
 
   // With no learned history, decaf uses the same roast-class default as regular coffee.
@@ -540,7 +593,7 @@ function runDecafRegressionTests() {
   const newDecaf = historyBeans.find(b => b.id === 'new-decaf');
   const liveRegular = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newRegular, historyRecipes, historyShots, historyBeans, mockDate);
   const preRegular = preFeatureInitialGrind('Sette 270Wi', 'Medium', newRegular, historyRecipes, historyShots, historyBeans, mockDate);
-  assert.deepEqual(liveRegular, { macro: 10, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(liveRegular), { macro: 10, micro: 'A' });
   assert.notDeepEqual(liveRegular, preRegular);
 
   const regularOnlyBeans = historyBeans.filter(b => b.id !== 'decaf-shot');
@@ -552,7 +605,7 @@ function runDecafRegressionTests() {
   );
 
   const liveDecafStart = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newDecaf, historyRecipes, historyShots, historyBeans, mockDate);
-  assert.deepEqual(liveDecafStart, { macro: 15, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(liveDecafStart), { macro: 15, micro: 'A' });
   assert.equal(
     getHistoricalRoastBaseline('Sette 270Wi', 'Medium', historyRecipes, historyShots, historyBeans, 'regular'),
     preFeatureHistoricalRoastBaseline('Sette 270Wi', 'Medium', regularOnlyRecipes, regularOnlyShots, regularOnlyBeans)
@@ -584,7 +637,7 @@ function runDecafRegressionTests() {
   const priorRecipes = priorBeans.map(b => recipeFor(b.id));
   const decafPrior = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newDecaf, priorRecipes, regularOnlyMedium, priorBeans, mockDate);
   const regularFromHistory = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newRegular, priorRecipes, regularOnlyMedium, priorBeans, mockDate);
-  assert.deepEqual(regularFromHistory, { macro: 10, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(regularFromHistory), { macro: 10, micro: 'A' });
   assert.notDeepEqual(decafPrior, regularFromHistory);
   assert.deepEqual(decafPrior, decafStart);
 
@@ -638,7 +691,7 @@ function runDecafRegressionTests() {
     [decafBean, historyBeans.find(b => b.id === 'decaf-shot')],
     mockDate
   );
-  assert.deepEqual(ownAndOther, { macro: 11, micro: 'C' });
+  assert.deepEqual(initialGrindOutput(ownAndOther), { macro: 11, micro: 'C' });
 
   const age = calculateEffectiveBeanAge(decafBean, mockDate).daysOld;
   const followedShot = {
@@ -655,7 +708,7 @@ function runDecafRegressionTests() {
     [decafBean],
     mockDate
   );
-  assert.deepEqual(afterFirst, { macro: 11, micro: 'C' });
+  assert.deepEqual(initialGrindOutput(afterFirst), { macro: 11, micro: 'C' });
 
   const correctedShot = {
     ...followedShot,
@@ -671,7 +724,7 @@ function runDecafRegressionTests() {
     [decafBean],
     mockDate
   );
-  assert.deepEqual(afterFeedback, { macro: 14, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(afterFeedback), { macro: 14, micro: 'A' });
   assert.deepEqual(
     afterFeedback,
     getInitialGrindRecommendation(

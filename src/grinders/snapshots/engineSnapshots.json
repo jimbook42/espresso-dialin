@@ -2099,6 +2099,7 @@
       "min": 7
     },
     "getInitialGrindRecommendation/decaf_from_own_shot": {
+      "initialSource": "bean-history",
       "macro": 15,
       "micro": "F"
     },
@@ -2111,6 +2112,7 @@
       "micro": "E"
     },
     "getInitialGrindRecommendation/regular_ignores_decaf_pool": {
+      "initialSource": "bean-history",
       "macro": 10,
       "micro": "A"
     },
@@ -2131,6 +2133,7 @@
       "micro": "C"
     },
     "getInitialGrindRecommendation/sette_with_own_grinder_history": {
+      "initialSource": "bean-history",
       "macro": 10,
       "micro": "A"
     },
@@ -2144,6 +2147,7 @@
       "setting": 17
     },
     "getInitialGrindRecommendation/sunbeam_with_own_grinder_history": {
+      "initialSource": "bean-history",
       "setting": 15
     },
     "getRecommendationEvidenceContext/excluded_ignored": "Based on recent shots with this recipe",
