@@ -8,6 +8,7 @@ import {
 import {
   estimateSecondsPerMark,
   recommendNicheZeroFromEvidence,
+  buildNicheLearningTransparencyNote,
   NICHE_LEARNING_MIN_OBSERVATIONS,
 } from './nicheZeroLearning.js';
 import {
@@ -89,6 +90,9 @@ export function runNicheZeroTests() {
     []
   );
   assert.equal(recInsufficient.nicheEvidenceMode, 'timing-bounded');
+  assert.equal(recInsufficient.nicheEmpiricalReasonCode, 'insufficient_observations');
+  assert.ok(recInsufficient.nicheLearningNote);
+  assert.match(recInsufficient.nicheLearningNote, /at least 3/i);
   assert.ok(recInsufficient.recommendedSetting.nicheZeroSetting < 15);
   assert.match(recInsufficient.reason, /Set dial to/i);
 
@@ -227,6 +231,59 @@ export function runNicheZeroTests() {
     BASE_RECIPE
   );
   assert.match(setteRec.reason, /FINER/i);
+
+  const sameDialHistory = [
+    nicheShot({ timestamp: '2026-09-18T12:00:00.000Z', nicheZeroSetting: 15, actualTimeS: 24 }),
+    nicheShot({ timestamp: '2026-09-19T12:00:00.000Z', nicheZeroSetting: 15, actualTimeS: 25 }),
+    nicheShot({ timestamp: '2026-09-20T11:00:00.000Z', nicheZeroSetting: 15, actualTimeS: 26 }),
+  ];
+  const recSameDial = calculateRecommendation(
+    {
+      grinderModel: NICHE_ZERO_GRINDER_ID,
+      nicheZeroSetting: 15,
+      wasPurged: true,
+      actualTime: 24,
+      actualDose: 18,
+      actualYield: 36,
+      tasteProfile: 'sour',
+    },
+    BASE_RECIPE,
+    sameDialHistory
+  );
+  assert.equal(recSameDial.nicheEvidenceMode, 'timing-bounded');
+  assert.equal(recSameDial.nicheEmpiricalReasonCode, 'insufficient_variation');
+  assert.match(recSameDial.nicheLearningNote, /nearly the same dial/i);
+
+  const setteOnlyBeanShots = [
+    {
+      beanId: 'b1',
+      grinderModel: 'Sette 270Wi',
+      timestamp: '2026-09-19T12:00:00.000Z',
+      actualTimeS: 30,
+      setteMacro: 12,
+      setteMicro: 'E',
+      nicheZeroSetting: 8,
+    },
+  ];
+  const nicheInitialWithSetteHistory = getInitialGrindRecommendation(
+    NICHE_ZERO_GRINDER_ID,
+    'Medium',
+    BEAN,
+    [{ beanId: 'b1', ...BASE_RECIPE }],
+    setteOnlyBeanShots,
+    [BEAN]
+  );
+  assert.equal(nicheInitialWithSetteHistory.nicheZeroSetting, NICHE_ZERO_DEFAULT_SETTING);
+  assert.equal(nicheInitialWithSetteHistory.initialSource, 'app-default');
+
+  assert.ok(buildNicheLearningTransparencyNote('contradictory_response', {}).includes('disagree'));
+  assert.ok(buildNicheLearningTransparencyNote('noisy_response', {}).includes('inconsistent'));
+  assert.ok(
+    buildNicheLearningTransparencyNote('insufficient_observations', { observationCount: 1 }, {
+      recipeComparableCount: 0,
+      grinderLearningShotCount: 2,
+    }).includes('recipe')
+  );
 
   const boundary = recommendNicheZeroFromEvidence({
     currentDial: 49,

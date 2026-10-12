@@ -9,6 +9,10 @@ export const NICHE_ZERO_GRINDER_ID = 'Niche Zero';
 
 export const NICHE_ZERO_DIAL_MIN = 0;
 export const NICHE_ZERO_DIAL_MAX = 50;
+/** Typical espresso dial range per Niche guidance; not enforced — calibration varies by coffee. */
+export const NICHE_ZERO_ESPRESSO_TYPICAL_MIN = 10;
+export const NICHE_ZERO_ESPRESSO_TYPICAL_MAX = 20;
+/** App default espresso starting reference when no eligible history exists (not a manufacturer optimum). */
 export const NICHE_ZERO_DEFAULT_SETTING = 15;
 
 export function parseNicheZeroSetting(value) {

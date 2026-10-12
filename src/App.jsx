@@ -909,7 +909,7 @@ export default function App() {
     switch (initialGrindSetting.initialSource) {
       case 'app-default':
         return isNiche
-          ? `Starting dial ${initialGrindSetting.nicheZeroSetting ?? '—'} — app default, not from your shot history.`
+          ? `Starting dial ${initialGrindSetting.nicheZeroSetting ?? '—'} — common espresso starting point (app default, not manufacturer guidance). Not from your shot history.`
           : 'Starting grind uses the app roast baseline — not from your logged shots on this bean.';
       case 'roast-baseline':
         return 'Starting grind from your dialled-in shots on other beans of this roast class.';
@@ -1455,6 +1455,9 @@ export default function App() {
                   )}
                   {recommendationEvidenceContext && (
                     <p className={`text-[10px] ${ui.muted}`}>{recommendationEvidenceContext}</p>
+                  )}
+                  {dynamicRec?.nicheLearningNote && (
+                    <p className={`text-[10px] ${ui.muted} leading-relaxed`}>{dynamicRec.nicheLearningNote}</p>
                   )}
                   {decafNote && (
                     <p className={`text-[10px] ${ui.accentText} ${ui.freezeHint} p-2.5 rounded-lg`}>{decafNote}</p>

@@ -17,6 +17,51 @@ export const NICHE_MIN_ABS_SECONDS_PER_MARK = 0.4;
 export const NICHE_MAX_ABS_SECONDS_PER_MARK = 18;
 export const NICHE_MAX_RESIDUAL_STD = 4.5;
 
+function learningPointsFromShots({
+  currentDial,
+  actualTime,
+  comparableShots = [],
+  currentObservation = null,
+}) {
+  const points = [];
+  const seenKeys = new Set();
+  if (currentObservation) {
+    const dial = parseNicheZeroSetting(currentObservation.nicheZeroSetting ?? currentDial);
+    const timeS = Number(currentObservation.actualTimeS ?? actualTime);
+    if (dial !== null && Number.isFinite(timeS)) {
+      const key = `${dial}|${timeS}|current`;
+      seenKeys.add(key);
+      points.push({ dial, timeS, weight: 1.15 });
+    }
+  }
+  comparableShots.forEach((s, idx) => {
+    const dial = parseNicheZeroSetting(s.nicheZeroSetting);
+    const timeS = Number(s.actualTimeS ?? s.actualTime ?? NaN);
+    if (dial === null || !Number.isFinite(timeS)) return;
+    const key = `${dial}|${timeS}|${s.timestamp || idx}`;
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    const weight = Math.pow(0.85, idx);
+    points.push({ dial, timeS, weight });
+  });
+  return points;
+}
+
+function nicheLearningDiagnostics(points, estimate = null) {
+  const observationCount = points.length;
+  const dialSpread =
+    observationCount > 0
+      ? Math.max(...points.map((p) => p.dial)) - Math.min(...points.map((p) => p.dial))
+      : 0;
+  const est = estimate ?? estimateSecondsPerMark(points);
+  return {
+    observationCount,
+    dialSpread: Math.round(dialSpread * 10) / 10,
+    pairCount: est.pairCount ?? 0,
+    spreadOk: est.spreadOk ?? false,
+  };
+}
+
 function clampDial(n) {
   return Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, n)) * 10) / 10;
 }
@@ -113,26 +158,11 @@ export function recommendNicheZeroFromEvidence(params) {
   const targetMid = (targetMin + targetMax) / 2;
   const timeDelta = actualTime - targetMid;
 
-  const points = [];
-  const seenKeys = new Set();
-  if (currentObservation) {
-    const dial = parseNicheZeroSetting(currentObservation.nicheZeroSetting ?? currentDial);
-    const timeS = Number(currentObservation.actualTimeS ?? actualTime);
-    if (dial !== null && Number.isFinite(timeS)) {
-      const key = `${dial}|${timeS}|current`;
-      seenKeys.add(key);
-      points.push({ dial, timeS, weight: 1.15 });
-    }
-  }
-  comparableShots.forEach((s, idx) => {
-    const dial = parseNicheZeroSetting(s.nicheZeroSetting);
-    const timeS = Number(s.actualTimeS ?? s.actualTime ?? NaN);
-    if (dial === null || !Number.isFinite(timeS)) return;
-    const key = `${dial}|${timeS}|${s.timestamp || idx}`;
-    if (seenKeys.has(key)) return;
-    seenKeys.add(key);
-    const weight = Math.pow(0.85, idx);
-    points.push({ dial, timeS, weight });
+  const points = learningPointsFromShots({
+    currentDial,
+    actualTime,
+    comparableShots,
+    currentObservation,
   });
 
   if (points.length < NICHE_LEARNING_MIN_OBSERVATIONS) {
@@ -141,11 +171,17 @@ export function recommendNicheZeroFromEvidence(params) {
       reasonCode: 'insufficient_observations',
       recommendedDial: currentDial,
       shift: 0,
+      diagnostics: nicheLearningDiagnostics(points),
     };
   }
 
   const { secondsPerMark, spreadOk, contradictory, implausible, noisy, pairCount } =
     estimateSecondsPerMark(points);
+  const diagnostics = nicheLearningDiagnostics(points, {
+    secondsPerMark,
+    spreadOk,
+    pairCount,
+  });
 
   if (!spreadOk || secondsPerMark === null) {
     return {
@@ -160,12 +196,19 @@ export function recommendNicheZeroFromEvidence(params) {
       recommendedDial: currentDial,
       shift: 0,
       pairCount,
+      diagnostics,
     };
   }
 
   let dialShift = -timeDelta / secondsPerMark;
   if (!Number.isFinite(dialShift)) {
-    return { ok: false, reasonCode: 'invalid_prediction', recommendedDial: currentDial, shift: 0 };
+    return {
+      ok: false,
+      reasonCode: 'invalid_prediction',
+      recommendedDial: currentDial,
+      shift: 0,
+      diagnostics,
+    };
   }
 
   if (severeChoke) {
@@ -188,6 +231,7 @@ export function recommendNicheZeroFromEvidence(params) {
       shift: 0,
       attemptedShift: dialShift,
       secondsPerMark,
+      diagnostics,
     };
   }
 
@@ -205,6 +249,7 @@ export function recommendNicheZeroFromEvidence(params) {
         recommendedDial: currentDial,
         shift: 0,
         secondsPerMark,
+        diagnostics,
       };
     }
   }
@@ -218,6 +263,7 @@ export function recommendNicheZeroFromEvidence(params) {
       shift: 0,
       secondsPerMark,
       keepGrind: true,
+      diagnostics,
     };
   }
 
@@ -227,7 +273,44 @@ export function recommendNicheZeroFromEvidence(params) {
     shift,
     secondsPerMark,
     pairCount,
+    diagnostics,
   };
+}
+
+/**
+ * User-facing note for why empirical dial learning is not active (from model reason codes).
+ */
+export function buildNicheLearningTransparencyNote(
+  reasonCode,
+  diagnostics = {},
+  { recipeComparableCount = 0, grinderLearningShotCount = 0 } = {}
+) {
+  const { observationCount = 0, dialSpread = 0 } = diagnostics;
+  if (reasonCode === 'insufficient_observations') {
+    if (recipeComparableCount === 0 && grinderLearningShotCount > 0) {
+      return 'Dial learning needs shots logged at this recipe’s dose, yield, and target time (and Flair profile when enabled). None of your saved shots match yet.';
+    }
+    return `Need at least ${NICHE_LEARNING_MIN_OBSERVATIONS} comparable dial/time observations for this recipe — you have ${observationCount}.`;
+  }
+  if (reasonCode === 'insufficient_variation') {
+    return `Comparable shots use nearly the same dial (spread ${dialSpread} marks; need about ${NICHE_MIN_SETTING_SPREAD}+). Try a few settings further apart and log the times.`;
+  }
+  if (reasonCode === 'contradictory_response') {
+    return 'Your comparable shots disagree on whether a coarser dial speeds up or slows down the shot — log a few more consistent pulls before numeric learning can activate.';
+  }
+  if (reasonCode === 'noisy_response') {
+    return 'The dial/time pattern in your comparable shots is too inconsistent for a reliable local estimate.';
+  }
+  if (reasonCode === 'implausible_slope') {
+    return 'The inferred seconds-per-mark from your history looks unrealistic for this recipe — verify dial readings and shot times, then log again.';
+  }
+  if (reasonCode === 'excessive_adjustment') {
+    return 'A learned dial step would be larger than the app allows in one move — adjust manually in smaller steps and log results.';
+  }
+  if (reasonCode === 'boundary') {
+    return 'A learned recommendation would hit the dial limit — adjust manually at the boundary.';
+  }
+  return null;
 }
 
 /** Empirical failure codes that should not block a separate timing-based numeric step. */
@@ -279,7 +362,7 @@ export function recommendNicheTimingBounded(params) {
 export function buildNicheTimingBoundedReason({ recommendedDial, shift, empiricalUnavailable }) {
   const dir = shift < 0 ? 'finer' : 'coarser';
   const detail = empiricalUnavailable
-    ? 'timing-based step until more comparable dial history is available'
+    ? 'timing-based step until local dial learning is reliable'
     : 'timing-based step';
   return `Set dial to ${recommendedDial} (${Math.abs(shift)} mark${Math.abs(shift) === 1 ? '' : 's'} ${dir}) — ${detail}.`;
 }

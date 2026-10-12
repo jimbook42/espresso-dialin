@@ -27,6 +27,7 @@ import {
   buildNicheEmpiricalReason,
   buildNicheFallbackReason,
   buildNicheTimingBoundedReason,
+  buildNicheLearningTransparencyNote,
   TIMING_BOUNDED_UNRELIABLE_CODES,
 } from '../grinders/nicheZeroLearning.js';
 
@@ -671,6 +672,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     let shift = 0;
     let reason;
     let nicheEvidenceMode = 'qualitative-fallback';
+    let nicheEmpiricalReasonCode = empirical.ok ? null : empirical.reasonCode;
+    let nicheLearningNote = null;
 
     if (empirical.ok) {
       recommendedDial = empirical.recommendedDial;
@@ -701,6 +704,14 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         recommendedDial = timingBounded.recommendedDial;
         shift = timingBounded.shift;
         nicheEvidenceMode = 'timing-bounded';
+        nicheLearningNote = buildNicheLearningTransparencyNote(
+          empirical.reasonCode,
+          empirical.diagnostics,
+          {
+            recipeComparableCount: comparableHistory.length,
+            grinderLearningShotCount: learningRecentShots.length,
+          }
+        );
         reason = buildNicheTimingBoundedReason({
           recommendedDial,
           shift,
@@ -789,6 +800,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       evidenceContext,
       shotOutcome,
       nicheEvidenceMode,
+      nicheEmpiricalReasonCode,
+      nicheLearningNote,
       engineStats: {
         timeDelta,
         yieldDelta,
