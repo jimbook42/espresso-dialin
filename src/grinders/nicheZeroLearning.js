@@ -107,6 +107,7 @@ export function recommendNicheZeroFromEvidence(params) {
     severeChoke,
     isTimeInRange,
     comparableShots = [],
+    currentObservation = null,
   } = params;
 
   const targetMid = (targetMin + targetMax) / 2;
@@ -114,6 +115,15 @@ export function recommendNicheZeroFromEvidence(params) {
 
   const points = [];
   const seenKeys = new Set();
+  if (currentObservation) {
+    const dial = parseNicheZeroSetting(currentObservation.nicheZeroSetting ?? currentDial);
+    const timeS = Number(currentObservation.actualTimeS ?? actualTime);
+    if (dial !== null && Number.isFinite(timeS)) {
+      const key = `${dial}|${timeS}|current`;
+      seenKeys.add(key);
+      points.push({ dial, timeS, weight: 1.15 });
+    }
+  }
   comparableShots.forEach((s, idx) => {
     const dial = parseNicheZeroSetting(s.nicheZeroSetting);
     const timeS = Number(s.actualTimeS ?? s.actualTime ?? NaN);
@@ -220,6 +230,60 @@ export function recommendNicheZeroFromEvidence(params) {
   };
 }
 
+/** Empirical failure codes that should not block a separate timing-based numeric step. */
+const TIMING_BOUNDED_UNRELIABLE_CODES = new Set([]);
+
+/**
+ * Conservative numeric step from shot time / taste when empirical learning is not yet reliable.
+ */
+export function recommendNicheTimingBounded(params) {
+  const {
+    currentDial,
+    actualTime,
+    targetMin,
+    targetMax,
+    tasteProfile,
+    severeChoke,
+    isTimeInRange,
+  } = params;
+  const targetMid = (targetMin + targetMax) / 2;
+  const timeDelta = actualTime - targetMid;
+  const halfWindow = Math.max((targetMax - targetMin) / 2, 1);
+
+  let shift = 0;
+  if (severeChoke) {
+    shift = Math.min(NICHE_MAX_SINGLE_ADJUSTMENT, 2);
+  } else if (!isTimeInRange && Math.abs(timeDelta) >= 0.25) {
+    const magnitude = Math.min(
+      NICHE_MAX_SINGLE_ADJUSTMENT,
+      Math.max(0.5, Math.abs(timeDelta) / halfWindow)
+    );
+    shift = timeDelta > 0 ? magnitude : -magnitude;
+  } else if (isTimeInRange) {
+    if (tasteProfile === 'very_sour') shift = -1;
+    else if (tasteProfile === 'sour') shift = -0.5;
+    else if (tasteProfile === 'bitter') shift = 0.5;
+    else if (tasteProfile === 'very_bitter') shift = 1;
+    else return { ok: false };
+  } else {
+    return { ok: false };
+  }
+
+  if (shift === 0) return { ok: false };
+  const recommendedDial = clampDial(currentDial + shift);
+  const appliedShift = Math.round((recommendedDial - currentDial) * 10) / 10;
+  if (appliedShift === 0) return { ok: false };
+  return { ok: true, recommendedDial, shift: appliedShift };
+}
+
+export function buildNicheTimingBoundedReason({ recommendedDial, shift, empiricalUnavailable }) {
+  const dir = shift < 0 ? 'finer' : 'coarser';
+  const detail = empiricalUnavailable
+    ? 'timing-based step until more comparable dial history is available'
+    : 'timing-based step';
+  return `Set dial to ${recommendedDial} (${Math.abs(shift)} mark${Math.abs(shift) === 1 ? '' : 's'} ${dir}) — ${detail}.`;
+}
+
 export function buildNicheEmpiricalReason({ currentDial, recommendedDial, shift, secondsPerMark, keepGrind }) {
   if (keepGrind) return 'KEEP GRIND — Balanced and in range.';
   const dir = shift < 0 ? 'finer (lower number)' : 'coarser (higher number)';
@@ -266,3 +330,5 @@ export function buildNicheFallbackReason({
   }
   return 'Insufficient reliable Niche history for a numeric dial step — qualitative timing guidance only.';
 }
+
+export { TIMING_BOUNDED_UNRELIABLE_CODES };

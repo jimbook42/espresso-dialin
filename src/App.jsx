@@ -15,6 +15,7 @@ import {
   getHistoricalRoastBaseline,
   shotEligibleForLearning,
   filterShotsForGrinderLearning,
+  recomputeNicheRecommendationFromLastShot,
   KNOWN_ISSUE_REASONS,
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
@@ -35,6 +36,7 @@ import {
   getUiGrinderPresentation,
   grindMatchesStoredRecommendation,
   isSunbeamGrinderModel,
+  isNicheZeroGrinderModel,
   parseGrindForShotSave,
   persistedSettingsPatchFromRecommendation,
   uiStateFromInitialRecommendation,
@@ -848,10 +850,6 @@ export default function App() {
     }
   };
 
-  const dynamicRec =
-    lastLearningShot && lastLearningShot.grinderModel === grinderModel
-      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate)
-      : null;
   const lastShotOutcome =
     lastLoggedShot && activeRecipe
       ? classifyShotOutcome(lastLoggedShot, recipeContextForShot(lastLoggedShot, activeRecipe))
@@ -859,6 +857,26 @@ export default function App() {
   const beanShotsForGrinder = activeBean
     ? filterShotsForGrinderLearning(shots, { beanId: activeBean.id, grinderModel })
     : [];
+  const ageAdjustedRec =
+    lastLearningShot && lastLearningShot.grinderModel === grinderModel
+      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate)
+      : null;
+  const liveNicheRec =
+    isNicheZeroGrinderModel(grinderModel) && lastLearningShot && activeRecipe
+      ? recomputeNicheRecommendationFromLastShot(
+          lastLearningShot,
+          activeRecipe,
+          beanShotsForGrinder,
+          flairEnabled
+        )
+      : null;
+  const dynamicRec = liveNicheRec
+    ? {
+        ...liveNicheRec,
+        ageWarning: ageAdjustedRec?.ageWarning ?? null,
+        originalReason: liveNicheRec.reason,
+      }
+    : ageAdjustedRec;
   const recommendationEvidenceContext =
     dynamicRec?.evidenceContext ||
     (activeRecipe && beanShotsForGrinder.length > 0
@@ -1424,11 +1442,15 @@ export default function App() {
                     </div>
                   </div>
 
-                  {dynamicRec?.originalReason && (
+                  {(dynamicRec?.reason || dynamicRec?.originalReason) && (
                     <p className={`text-sm ${ui.sub} leading-relaxed`}>
-                      {dynamicRec.originalReason.includes('—')
-                        ? dynamicRec.originalReason.split('—').slice(1).join('—').trim() || dynamicRec.originalReason
-                        : dynamicRec.originalReason}
+                      {(() => {
+                        const text = dynamicRec.reason || dynamicRec.originalReason;
+                        if (isNicheZeroGrinderModel(grinderModel)) return text;
+                        return text.includes('—')
+                          ? text.split('—').slice(1).join('—').trim() || text
+                          : text;
+                      })()}
                     </p>
                   )}
                   {recommendationEvidenceContext && (

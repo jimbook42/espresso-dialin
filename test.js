@@ -18,6 +18,7 @@ import {
   shotMatchesRecipeContext,
   shotResultImproved,
   filterShotsForGrinderLearning,
+  recomputeNicheRecommendationFromLastShot,
 } from './src/utils/grinderLogic.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
 import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
@@ -59,7 +60,9 @@ function runRecommendationIntegrityTests() {
     recipe,
     setteHistory
   );
-  assert.equal(nicheOnly.nicheEvidenceMode, 'qualitative-fallback');
+  assert.equal(nicheOnly.nicheEvidenceMode, 'timing-bounded');
+  assert.ok(nicheOnly.recommendedSetting.nicheZeroSetting < 15);
+  assert.match(nicheOnly.reason, /Set dial to/i);
 
   const filtered = filterShotsForGrinderLearning(
     [...setteHistory, { beanId: 'b1', grinderModel: 'Niche Zero', excludeFromLearning: false }],
@@ -74,6 +77,32 @@ function runRecommendationIntegrityTests() {
     targetTimeMaxS: 30,
   };
   assert.equal(shotMatchesRecipeContext(editedRecipeShot, recipe, false), false);
+
+  const lastNiche = {
+    id: 'n3',
+    grinderModel: 'Niche Zero',
+    beanId: 'b1',
+    nicheZeroSetting: 15,
+    actualTimeS: 24,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'sour',
+    wasPurged: true,
+    timestamp: '2026-09-20T12:00:00.000Z',
+    recommendation: {
+      recommendedSetting: { nicheZeroSetting: 15 },
+      reason: 'Shot was 6s fast — consider grinding finer (lower dial number).',
+    },
+  };
+  const nicheHistory = [
+    { id: 'n1', grinderModel: 'Niche Zero', beanId: 'b1', nicheZeroSetting: 15, actualTimeS: 24, actualYieldG: 36, actualDoseG: 18, timestamp: '2026-09-18T12:00:00.000Z' },
+    { id: 'n2', grinderModel: 'Niche Zero', beanId: 'b1', nicheZeroSetting: 15, actualTimeS: 24, actualYieldG: 36, actualDoseG: 18, timestamp: '2026-09-19T12:00:00.000Z' },
+    lastNiche,
+  ];
+  const live = recomputeNicheRecommendationFromLastShot(lastNiche, recipe, nicheHistory, false);
+  assert.ok(live.recommendedSetting.nicheZeroSetting < 15);
+  assert.match(live.reason, /Set dial to/i);
+  assert.notEqual(live.recommendedSetting.nicheZeroSetting, lastNiche.recommendation.recommendedSetting.nicheZeroSetting);
 }
 
 async function runTests() {

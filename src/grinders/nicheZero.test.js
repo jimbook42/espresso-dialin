@@ -22,7 +22,9 @@ import {
   getInitialGrindRecommendation,
   filterShotsForGrinderLearning,
   shotMatchesRecipeContext,
+  recomputeNicheRecommendationFromLastShot,
 } from '../utils/grinderLogic.js';
+import { recommendNicheTimingBounded } from './nicheZeroLearning.js';
 
 const BASE_RECIPE = { targetTimeMinS: 27, targetTimeMaxS: 32, targetYieldG: 36, targetDoseG: 18 };
 const BEAN = { id: 'b1', roastType: 'Medium', roastDate: '2026-09-01' };
@@ -84,10 +86,49 @@ export function runNicheZeroTests() {
       tasteProfile: 'sour',
     },
     BASE_RECIPE,
-    [nicheShot({ actualTimeS: 24, nicheZeroSetting: 15 })]
+    []
   );
-  assert.equal(recInsufficient.nicheEvidenceMode, 'qualitative-fallback');
-  assert.match(recInsufficient.reason, /comparable|numeric|Log more/i);
+  assert.equal(recInsufficient.nicheEvidenceMode, 'timing-bounded');
+  assert.ok(recInsufficient.recommendedSetting.nicheZeroSetting < 15);
+  assert.match(recInsufficient.reason, /Set dial to/i);
+
+  const timingOnly = recommendNicheTimingBounded({
+    currentDial: 15,
+    actualTime: 24,
+    targetMin: 27,
+    targetMax: 32,
+    tasteProfile: 'sour',
+    severeChoke: false,
+    isTimeInRange: false,
+  });
+  assert.equal(timingOnly.ok, true);
+  assert.ok(timingOnly.recommendedDial < 15);
+
+  const lastShot = {
+    id: 'shot-3',
+    grinderModel: NICHE_ZERO_GRINDER_ID,
+    nicheZeroSetting: 15,
+    actualTimeS: 30,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'sour',
+    wasPurged: true,
+    timestamp: '2026-09-20T12:00:00.000Z',
+  };
+  const historyForDisplay = [
+    nicheShot({ id: 'shot-1', timestamp: '2026-09-18T12:00:00.000Z', nicheZeroSetting: 14, actualTimeS: 34 }),
+    nicheShot({ id: 'shot-2', timestamp: '2026-09-19T12:00:00.000Z', nicheZeroSetting: 15, actualTimeS: 30 }),
+    lastShot,
+  ];
+  const live = recomputeNicheRecommendationFromLastShot(
+    lastShot,
+    BASE_RECIPE,
+    historyForDisplay,
+    false
+  );
+  assert.equal(live.nicheEvidenceMode, 'empirical');
+  assert.ok(live.recommendedSetting.nicheZeroSetting < 15);
+  assert.match(live.reason, /Set dial to/i);
 
   const history = [
     nicheShot({ timestamp: '2026-09-18T12:00:00.000Z', nicheZeroSetting: 14, actualTimeS: 34 }),
@@ -134,7 +175,8 @@ export function runNicheZeroTests() {
       }),
     ]
   );
-  assert.equal(contaminated.nicheEvidenceMode, 'empirical');
+  assert.ok(['empirical', 'timing-bounded'].includes(contaminated.nicheEvidenceMode));
+  assert.ok(contaminated.recommendedSetting.nicheZeroSetting < 15);
 
   const slopes = estimateSecondsPerMark([
     { dial: 14, timeS: 34, weight: 1 },

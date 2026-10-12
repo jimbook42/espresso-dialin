@@ -23,8 +23,11 @@ import {
 } from '../grinders/nicheZero.js';
 import {
   recommendNicheZeroFromEvidence,
+  recommendNicheTimingBounded,
   buildNicheEmpiricalReason,
   buildNicheFallbackReason,
+  buildNicheTimingBoundedReason,
+  TIMING_BOUNDED_UNRELIABLE_CODES,
 } from '../grinders/nicheZeroLearning.js';
 
 export { NICHE_ZERO_GRINDER_ID } from '../grinders/grinderRegistry.js';
@@ -421,6 +424,33 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
   };
 }
 
+/**
+ * Re-run Niche recommendation for display using full saved shot history (excluding the evaluated shot from learning pool).
+ */
+export function recomputeNicheRecommendationFromLastShot(lastShot, recipe, grinderBeanShots = [], flairEnabled = false) {
+  if (!lastShot || !isNicheZeroGrinderModel(lastShot.grinderModel) || !recipe) return null;
+  const history = grinderBeanShots.filter((s) => s.id !== lastShot.id);
+  return calculateRecommendation(
+    {
+      grinderModel: lastShot.grinderModel,
+      setteMacro: null,
+      setteMicro: null,
+      sunbeamSetting: null,
+      nicheZeroSetting: lastShot.nicheZeroSetting,
+      wasPurged: lastShot.wasPurged !== false,
+      actualTime: lastShot.actualTimeS,
+      actualYield: lastShot.actualYieldG,
+      tasteProfile: lastShot.tasteProfile,
+      lastShotGrind: null,
+      recommendationFollowed: true,
+      previousShot: null,
+    },
+    recipe,
+    history,
+    flairEnabled
+  );
+}
+
 export function getInitialGrindRecommendation(
   grinderModel,
   roastType,
@@ -630,6 +660,10 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       severeChoke,
       isTimeInRange,
       comparableShots: comparableHistory,
+      currentObservation: {
+        nicheZeroSetting: currentDial,
+        actualTimeS: actualTime,
+      },
     };
     const empirical = recommendNicheZeroFromEvidence(empiricalInput);
 
@@ -650,35 +684,44 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         keepGrind: empirical.keepGrind,
       });
     } else {
-      reason = buildNicheFallbackReason({
-        severeChoke,
-        isTimeInRange,
-        tasteProfile,
-        timeDelta,
-        reasonCode: empirical.reasonCode,
-      });
-      if (
-        !severeChoke
-        && !isTimeInRange
-        && empirical.reasonCode === 'insufficient_variation'
-        && comparableHistory.length >= 1
-      ) {
-        const directionShift = timeDelta < 0 ? -0.5 : timeDelta > 0 ? 0.5 : 0;
-        if (directionShift !== 0) {
-          const conservative = Math.round((currentDial + directionShift) * 10) / 10;
-          recommendedDial = Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, conservative));
-          shift = recommendedDial - currentDial;
-          reason = `Try dial ${recommendedDial} (${Math.abs(shift)} mark${Math.abs(shift) === 1 ? '' : 's'} ${shift < 0 ? 'finer' : 'coarser'}) — small step from timing; log more varied dial positions for measured steps.`;
-          nicheEvidenceMode = 'conservative-timing';
-        }
-      }
-      if (!reason) {
-        reason = buildNicheZeroQualitativeReason({
+      const canUseTimingBounded = !TIMING_BOUNDED_UNRELIABLE_CODES.has(empirical.reasonCode);
+      const timingBounded = canUseTimingBounded
+        ? recommendNicheTimingBounded({
+            currentDial,
+            actualTime,
+            targetMin,
+            targetMax,
+            tasteProfile,
+            severeChoke,
+            isTimeInRange,
+          })
+        : { ok: false };
+
+      if (timingBounded.ok) {
+        recommendedDial = timingBounded.recommendedDial;
+        shift = timingBounded.shift;
+        nicheEvidenceMode = 'timing-bounded';
+        reason = buildNicheTimingBoundedReason({
+          recommendedDial,
+          shift,
+          empiricalUnavailable: true,
+        });
+      } else {
+        reason = buildNicheFallbackReason({
           severeChoke,
           isTimeInRange,
           tasteProfile,
           timeDelta,
+          reasonCode: empirical.reasonCode,
         });
+        if (!reason) {
+          reason = buildNicheZeroQualitativeReason({
+            severeChoke,
+            isTimeInRange,
+            tasteProfile,
+            timeDelta,
+          });
+        }
       }
     }
 
