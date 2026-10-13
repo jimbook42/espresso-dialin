@@ -21,8 +21,9 @@ const NEAR_GRIND_NUMERIC_TOLERANCE = {
 };
 
 const MIN_OBS_FOR_FULL_CONFIDENCE = 5;
-const LOW_CONFIDENCE_MAX_SHIFT = 1;
-const MID_CONFIDENCE_MAX_SHIFT = 2;
+export const SECONDS_PER_UNIT_LOW_CONFIDENCE = 7.5;
+export const LOW_CONFIDENCE_SHIFT_MIN = 1;
+export const LOW_CONFIDENCE_SHIFT_MAX = 3;
 
 export const KNOWN_ISSUE_OUTLIER_HINT =
   "If channeling, puck prep, or an early stop caused this, mark the shot as a known issue so it won't affect future recommendations.";
@@ -213,27 +214,45 @@ function estimateSecondsPerStepFromPairs(points) {
   };
 }
 
+function shiftMagnitudeFromMiss(secondsOffMidpoint) {
+  const secOff = Math.max(0, Number(secondsOffMidpoint) || 0);
+  if (secOff <= 0) return LOW_CONFIDENCE_SHIFT_MIN;
+  let units = Math.round(secOff / SECONDS_PER_UNIT_LOW_CONFIDENCE);
+  if (units < LOW_CONFIDENCE_SHIFT_MIN) units = LOW_CONFIDENCE_SHIFT_MIN;
+  if (secOff >= 8 && secOff < 15 && units < 2) units = 2;
+  return Math.min(LOW_CONFIDENCE_SHIFT_MAX, units);
+}
+
 /**
- * Confidence-weighted cap for a raw step count from timing / slope estimate.
+ * Confidence-weighted step from timing miss (~1 unit per 7–8s when confidence is low).
  */
-export function dampQuantitativeShift(rawShift, confidence, { isOutlier = false, holdOutlier = false } = {}) {
+export function dampQuantitativeShift(
+  rawShift,
+  confidence,
+  { isOutlier = false, holdOutlier = false, secondsOffMidpoint = null } = {}
+) {
   if (!rawShift) return 0;
   if (isOutlier && holdOutlier) return 0;
-  if (isOutlier) {
-    const sign = rawShift < 0 ? -1 : 1;
-    return sign * Math.min(1, Math.abs(rawShift));
-  }
 
+  const sign = rawShift < 0 ? -1 : 1;
   const absRaw = Math.abs(rawShift);
   const conf = Math.max(0, Math.min(1, confidence ?? 0));
-  const scaled = Math.round(absRaw * (0.35 + 0.65 * conf));
-  const maxCap =
-    conf >= 0.75 ? Math.max(absRaw, 4)
-      : conf >= 0.45 ? MID_CONFIDENCE_MAX_SHIFT
-        : LOW_CONFIDENCE_MAX_SHIFT;
+  const fromMiss = shiftMagnitudeFromMiss(secondsOffMidpoint);
 
-  const magnitude = Math.max(1, Math.min(scaled, maxCap, absRaw));
-  return rawShift < 0 ? -magnitude : magnitude;
+  if (isOutlier) {
+    return sign * Math.min(absRaw, fromMiss, LOW_CONFIDENCE_SHIFT_MAX);
+  }
+
+  let magnitude;
+  if (conf >= 0.75) {
+    magnitude = Math.max(LOW_CONFIDENCE_SHIFT_MIN, Math.min(absRaw, Math.max(fromMiss, LOW_CONFIDENCE_SHIFT_MAX)));
+  } else if (conf >= 0.45) {
+    magnitude = Math.max(LOW_CONFIDENCE_SHIFT_MIN, Math.min(LOW_CONFIDENCE_SHIFT_MAX, fromMiss, absRaw));
+  } else {
+    magnitude = Math.max(LOW_CONFIDENCE_SHIFT_MIN, Math.min(LOW_CONFIDENCE_SHIFT_MAX, fromMiss));
+  }
+
+  return sign * magnitude;
 }
 
 export function buildOutlierRecommendationReason({ baseReason, outlierDetail }) {

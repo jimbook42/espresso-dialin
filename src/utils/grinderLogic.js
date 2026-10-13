@@ -29,11 +29,13 @@ import {
   NICHE_EMPIRICAL_VALIDATION_NOTE,
   buildNicheFallbackReason,
   buildNicheTimingBoundedReason,
+  buildNicheLearningTransparencyNote,
   TIMING_BOUNDED_UNRELIABLE_CODES,
 } from '../grinders/nicheZeroLearning.js';
 import {
   diagnoseNicheLearningEligibility,
   buildNicheEligibilityLearningNote,
+  buildNicheEligibilityCompactCounts,
 } from '../grinders/nicheEligibility.js';
 import { isBalancedTaste, normalizeTasteProfile } from './tasteProfile.js';
 import {
@@ -719,6 +721,28 @@ function buildNicheZeroQualitativeReason({
   return `Shot was ${secOff}s slow — consider grinding coarser (higher dial number). Timing guidance only; dial steps are not auto-calibrated.`;
 }
 
+function nicheSupplementalLearningNote(empirical, nicheEligibility) {
+  if (empirical.ok || !empirical.reasonCode) return null;
+  if (!['insufficient_observations', 'insufficient_variation'].includes(empirical.reasonCode)) {
+    return null;
+  }
+  const transparency = buildNicheLearningTransparencyNote(
+    empirical.reasonCode,
+    empirical.diagnostics ?? nicheEligibility.diagnostics,
+    {
+      recipeComparableCount: nicheEligibility.counts.recipeMatched,
+      grinderLearningShotCount: nicheEligibility.counts.grinderMatched,
+    }
+  );
+  if (!transparency) {
+    return buildNicheEligibilityLearningNote(nicheEligibility, empirical.reasonCode, {
+      recipeComparableCount: nicheEligibility.counts.recipeMatched,
+      grinderLearningShotCount: nicheEligibility.counts.grinderMatched,
+    });
+  }
+  return `${transparency} — ${buildNicheEligibilityCompactCounts(nicheEligibility)}`;
+}
+
 export function calculateRecommendation(shotData, recipe, recentShots = [], flairEnabled = false, options = {}) {
   const settings = options.settings ?? null;
   const learningRecentShots = recentShots.filter(
@@ -854,18 +878,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     let nicheLearningNote = null;
     let nicheEmpiricalValidationNote = null;
 
-    const attachLearningNote = () => {
-      if (empirical.ok) return;
-      nicheLearningNote = buildNicheEligibilityLearningNote(
-        nicheEligibility,
-        empirical.reasonCode,
-        {
-          recipeComparableCount: nicheEligibility.counts.recipeMatched,
-          grinderLearningShotCount: nicheEligibility.counts.grinderMatched,
-        }
-      );
-    };
-
     const { confidence: nicheStepConfidence } = sensitivityConfidenceForQuantitativeGrinder(
       comparableForLearning,
       grinderModel,
@@ -880,6 +892,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         rawShift = dampQuantitativeShift(rawShift, nicheStepConfidence, {
           isOutlier: outlierCheck.isOutlier,
           holdOutlier: outlierCheck.holdGrind === true,
+          secondsOffMidpoint: Math.abs(timeDelta),
         });
         recommendedDial = Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, currentDial + rawShift)) * 10) / 10;
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
@@ -925,13 +938,14 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         shift = dampQuantitativeShift(timingBounded.shift, nicheStepConfidence, {
           isOutlier: outlierCheck.isOutlier,
           holdOutlier: outlierCheck.holdGrind === true,
+          secondsOffMidpoint: Math.abs(timeDelta),
         });
         recommendedDial = Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, currentDial + shift)) * 10) / 10;
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
         if (shift !== 0) {
           usedTimingBounded = true;
           nicheEvidenceMode = 'timing-bounded';
-          attachLearningNote();
+          nicheLearningNote = nicheSupplementalLearningNote(empirical, nicheEligibility);
           reason = buildNicheTimingBoundedReason({
             recommendedDial,
             shift,
@@ -943,7 +957,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         }
       }
       if (!usedTimingBounded) {
-        attachLearningNote();
         reason = buildNicheFallbackReason({
           severeChoke,
           isTimeInRange,
@@ -959,6 +972,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
             timeDelta,
           });
         }
+        nicheLearningNote = nicheSupplementalLearningNote(empirical, nicheEligibility);
         if (outlierCheck.isOutlier) {
           reason = buildOutlierRecommendationReason({
             baseReason: reason || 'KEEP GRIND — Balanced and in range.',
@@ -966,6 +980,12 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
           });
         }
       }
+    }
+
+    if (outlierCheck.isOutlier) {
+      warning = warning
+        ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
+        : KNOWN_ISSUE_OUTLIER_HINT;
     }
 
     let flairWaterTempAdvice = null;
@@ -1105,6 +1125,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     shift = dampQuantitativeShift(signedRaw, confidence, {
       isOutlier: outlierCheck.isOutlier,
       holdOutlier: outlierCheck.holdGrind === true,
+      secondsOffMidpoint: Math.abs(timeDelta),
     });
 
     const absShift = Math.abs(shift);

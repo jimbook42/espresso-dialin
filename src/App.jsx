@@ -2813,10 +2813,19 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => handleToggleShotLearningExclusion(s)}
-                          className={`text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${s.excludeFromLearning ? 'bg-[rgba(200,138,75,0.15)] text-[#c88a4b]' : `${ui.chip} ${ui.muted}`}`}
-                          title={s.excludeFromLearning ? 'Include in grind learning again' : 'Mark as known issue — exclude from learning'}
+                          aria-pressed={s.excludeFromLearning ? 'true' : 'false'}
+                          className={`text-[10px] font-semibold px-2.5 py-1 rounded-md border ${
+                            s.excludeFromLearning
+                              ? 'bg-[rgba(200,138,75,0.15)] text-[#c88a4b] border-[rgba(200,138,75,0.35)]'
+                              : `${ui.chip} ${ui.muted} border-transparent hover:border-[rgba(255,255,255,0.12)]`
+                          }`}
+                          title={
+                            s.excludeFromLearning
+                              ? 'Turn learning back on for this shot'
+                              : 'Mark as a known issue (puck prep, channeling, etc.) — exclude from learning'
+                          }
                         >
-                          {s.excludeFromLearning ? 'Use for learning' : 'Exclude from learning'}
+                          {s.excludeFromLearning ? 'Include in learning' : 'Known issue — exclude'}
                         </button>
                         <button type="button" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
                           <Trash2 className="w-3.5 h-3.5" />

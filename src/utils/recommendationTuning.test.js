@@ -76,8 +76,12 @@ function runQaSeriesTests() {
 
   for (const rows of [sette, sunbeam, niche]) {
     for (const row of rows) {
-      assert.ok(Math.abs(row.shift) <= 2, `shift ${row.shift} too large at ${row.timeS}s`);
+      assert.ok(Math.abs(row.shift) <= 3, `shift ${row.shift} too large at ${row.timeS}s`);
     }
+    const fastRow = rows.find((r) => r.timeS === 12);
+    const slowRow = rows.find((r) => r.timeS === 45);
+    assert.equal(Math.abs(fastRow.shift), 2, '12s gusher should move ~2 units');
+    assert.equal(Math.abs(slowRow.shift), 2, '45s choke should move ~2 units');
     const outlierRow = rows.find((r) => r.timeS === 8);
     assert.equal(outlierRow.shift, 0, '8s outlier should not move grind');
     const final = rows[rows.length - 1].recommended;
@@ -163,9 +167,34 @@ function runOutlierDetectionTests() {
   assert.equal(outlier.isOutlier, true);
   assert.equal(outlier.holdGrind, true);
   assert.equal(dampQuantitativeShift(-12, 0.2, { isOutlier: true, holdOutlier: true }), 0);
+  assert.equal(
+    dampQuantitativeShift(-12, 0, { secondsOffMidpoint: 15 }),
+    -2
+  );
+  assert.equal(
+    dampQuantitativeShift(14, 0, { secondsOffMidpoint: 18 }),
+    2
+  );
+}
+
+function runSteadyFastSeriesTest() {
+  const recipe = QA_RECIPE;
+  let macro = 13;
+  let micro = 'E';
+  const history = [];
+  for (let i = 0; i < 3; i++) {
+    const time = 19;
+    const shot = baseShot('Sette 270Wi', { setteMacro: macro, setteMicro: micro }, time, i);
+    const rec = calculateRecommendation(shot, recipe, history, false);
+    assert.equal(Math.abs(rec.engineStats.shift), 2, `steady ${time}s shot should step 2 units`);
+    history.push({ ...shot, id: `steady-${i}`, recommendation: rec });
+    macro = rec.recommendedSetting.macro;
+    micro = rec.recommendedSetting.micro;
+  }
 }
 
 runQaSeriesTests();
 runKnownIssueExclusionTests();
 runOutlierDetectionTests();
+runSteadyFastSeriesTest();
 console.log('recommendationTuning tests passed');

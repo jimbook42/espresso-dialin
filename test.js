@@ -1366,7 +1366,7 @@ function runSevereDeviationTests() {
 
   const slow = calculateRecommendation(setteShot(40, 'bitter', 36), recipe, [], false);
   assert.match(slow.reason, /GO \d+ MICRO STEP\(S\) COARSER — Shot was \d+s off target midpoint/);
-  assert.deepEqual(slow.recommendedSetting, { macro: 13, micro: 'F' });
+  assert.deepEqual(slow.recommendedSetting, { macro: 13, micro: 'G' });
   assert.equal(slow.shotOutcome.isSevereChoke, false);
   assert.ok(!slow.warning || !outsideYieldWarning.test(slow.warning));
 
@@ -1424,7 +1424,7 @@ function runSevereDeviationTests() {
   const sunRaw = calculateRecommendation(sunbeamShot(60, 'bitter', 36), recipe, [], false);
   const sunBoundary = calculateRecommendation(sunbeamShot(35, 'bitter', 36), recipe, [], false);
   assert.deepEqual(sunFast.recommendedSetting, { setting: 14 });
-  assert.deepEqual(sunSlow.recommendedSetting, { setting: 16 });
+  assert.deepEqual(sunSlow.recommendedSetting, { setting: 17 });
   assert.match(sunFast.reason, /off target midpoint/);
   assert.match(sunSlow.reason, /off target midpoint/);
   assert.deepEqual(sunChoke.recommendedSetting, { setting: 17 });
