@@ -39,7 +39,7 @@ export function getAppTheme(dark) {
       chartToggleIdle: 'text-[#a09880] hover:text-[#f5f2eb]',
       tempPill: 'bg-[rgba(200,138,75,0.14)] text-[#e0c9a8] border border-[rgba(200,138,75,0.35)]',
       stepperBtn:
-        'w-10 h-10 shrink-0 rounded-full border-2 border-[#5a5248] bg-[#1a1815] text-[#f5f2eb] font-bold text-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] active:scale-95 transition-transform',
+        'min-w-[44px] min-h-[44px] w-11 h-11 shrink-0 rounded-full border-2 border-[#5a5248] bg-[#1a1815] text-[#f5f2eb] font-bold text-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] active:scale-95 transition-transform',
       tabActive: 'bg-[#211e1a] text-[#c88a4b] shadow-sm',
     };
   }
@@ -82,7 +82,7 @@ export function getAppTheme(dark) {
     chartToggleIdle: 'text-[#6b6358] hover:text-[#2a261f]',
     tempPill: 'bg-[rgba(200,138,75,0.16)] text-[#7a4a1c] border border-[rgba(138,85,40,0.3)]',
     stepperBtn:
-      'w-10 h-10 shrink-0 rounded-full border-2 border-[#a89a88] bg-[#f7f3eb] text-[#2a261f] font-bold text-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] active:scale-95 transition-transform',
+      'min-w-[44px] min-h-[44px] w-11 h-11 shrink-0 rounded-full border-2 border-[#a89a88] bg-[#f7f3eb] text-[#2a261f] font-bold text-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] active:scale-95 transition-transform',
     tabActive: 'bg-[#eae4d8] text-[#8a5528] shadow-sm',
   };
 }

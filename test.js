@@ -35,6 +35,7 @@ import { runPreinfusionAutoEndTests } from './src/scales/preinfusionAutoEnd.test
 import { runFlairScaleTriggerTests } from './src/scales/flairScaleTriggers.test.js';
 import { runSimulatedTransportTests } from './src/scales/transport/simulatedTransport.test.js';
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
+import { runGrindControlsTests } from './src/components/grindControls.test.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
   capturePendingGrindState,
@@ -495,6 +496,7 @@ async function runTests() {
   runBalancedTasteTests(recipe, createShot, runCalc);
   runNicheZeroTests();
   runShotCountDisplayTests();
+  runGrindControlsTests();
   runPressureLabFlagTests();
   runScaleFlagTests();
   runTimemoreFramedTests();

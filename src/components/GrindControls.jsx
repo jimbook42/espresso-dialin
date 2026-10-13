@@ -12,8 +12,16 @@ import {
   adjustNicheZero,
   formatNicheZeroSetting,
   NICHE_ZERO_DEFAULT_SETTING,
+  NICHE_ZERO_DIAL_MAX,
+  NICHE_ZERO_DIAL_MIN,
   parseNicheZeroSetting,
 } from '../grinders/nicheZero.js';
+import {
+  CENTER_TICK,
+  computeTickStripTranslate,
+  computeTickWindow,
+  VISIBLE_TICKS,
+} from './grindControlsTickStrip.js';
 
 const setteUi = getGrinderDefinitionById(SETTE_GRINDER_ID);
 const sunbeamUi = getGrinderDefinitionById(SUNBEAM_GRINDER_ID);
@@ -23,28 +31,35 @@ const SETTE_MACRO_MIN = setteUi.macroMin;
 const SETTE_MACRO_MAX = setteUi.macroMax;
 
 const SWIPE_THRESHOLD_PX = 14;
-const VISIBLE_TICKS = 9;
-const CENTER_TICK = 4;
 
 const DIAL_CONFIG = {
-  macro: { valueIndex: (v) => (parseInt(v, 10) || 13) - 1 },
+  macro: {
+    valueIndex: (v) => (parseInt(v, 10) || 13) - 1,
+    maxValueIndex: SETTE_MACRO_MAX - 1,
+  },
   micro: {
     valueIndex: (v) => {
       const idx = SETTE_MICROS.indexOf(v || 'E');
       return idx === -1 ? 4 : idx;
     },
+    maxValueIndex: SETTE_MICROS.length - 1,
   },
-  sunbeam: { valueIndex: (v) => (parseInt(v, 10) || 15) - 1 },
+  sunbeam: {
+    valueIndex: (v) => (parseInt(v, 10) || 15) - 1,
+    maxValueIndex: 29,
+  },
   niche: {
     valueIndex: (v) => {
       const n = parseNicheZeroSetting(v) ?? NICHE_ZERO_DEFAULT_SETTING;
       return Math.round(n * 10);
     },
+    maxValueIndex: NICHE_ZERO_DIAL_MAX * 10,
   },
 };
 
 function SpinningTickScale({
   valueIndex,
+  maxValueIndex,
   dragOffsetPx,
   isDragging,
   onPointerDown,
@@ -70,9 +85,11 @@ function SpinningTickScale({
     return () => ro.disconnect();
   }, []);
 
-  const translateX = tickSpacing > 0 ? CENTER_TICK * tickSpacing - (CENTER_TICK + valueIndex) * tickSpacing + dragOffsetPx : 0;
-
-  const stripLength = 120;
+  const clampedIndex = Math.min(Math.max(0, valueIndex), maxValueIndex);
+  const { start: windowStart, end: windowEnd } = computeTickWindow(clampedIndex, maxValueIndex);
+  const translateX = computeTickStripTranslate(clampedIndex, windowStart, tickSpacing, dragOffsetPx);
+  const tickIndices = [];
+  for (let i = windowStart; i <= windowEnd; i += 1) tickIndices.push(i);
 
   return (
     <div
@@ -97,12 +114,12 @@ function SpinningTickScale({
                   willChange: 'transform',
                 }}
               >
-                {Array.from({ length: stripLength }, (_, i) => (
+                {tickIndices.map((tickIndex) => (
                   <div
-                    key={i}
+                    key={tickIndex}
                     className="absolute bottom-0 w-px h-2 rounded-full"
                     style={{
-                      left: i * tickSpacing,
+                      left: (tickIndex - windowStart) * tickSpacing,
                       backgroundColor: 'var(--tick-strong, #6b6457)',
                     }}
                   />
@@ -120,13 +137,23 @@ function SpinningTickScale({
   );
 }
 
-function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
+function AxisStepper({
+  label,
+  display,
+  onDec,
+  onInc,
+  ui,
+  dialKind,
+  canDec = true,
+  canInc = true,
+}) {
   const config = DIAL_CONFIG[dialKind];
   const dragRef = useRef({ active: false, lastX: 0, acc: 0 });
   const [dragOffsetPx, setDragOffsetPx] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
   const valueIndex = config.valueIndex(display);
+  const stepperBtnClass = `${ui.stepperBtn} disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100`;
 
   const endDrag = useCallback(() => {
     dragRef.current.active = false;
@@ -149,11 +176,11 @@ function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
     setDragOffsetPx((o) => o - dx);
 
     while (dragRef.current.acc >= SWIPE_THRESHOLD_PX) {
-      onInc();
+      if (canInc) onInc();
       dragRef.current.acc -= SWIPE_THRESHOLD_PX;
     }
     while (dragRef.current.acc <= -SWIPE_THRESHOLD_PX) {
-      onDec();
+      if (canDec) onDec();
       dragRef.current.acc += SWIPE_THRESHOLD_PX;
     }
   };
@@ -161,21 +188,34 @@ function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
   return (
     <div className={`${ui.cardInset} rounded-2xl p-3 ring-1 ring-[rgba(200,138,75,0.12)]`}>
       <p className={`text-[9px] uppercase tracking-widest ${ui.muted} mb-2 leading-snug font-semibold`}>{label}</p>
-      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-1">
-        <button type="button" onClick={onDec} className={ui.stepperBtn} aria-label="Decrease">
+      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-x-0.5">
+        <button
+          type="button"
+          onClick={onDec}
+          disabled={!canDec}
+          className={stepperBtnClass}
+          aria-label="Decrease"
+        >
           −
         </button>
         <span
-          className={`min-w-0 text-center text-[clamp(1.125rem,5.2vw,1.75rem)] leading-none font-black font-mono tabular-nums tracking-tight ${ui.text} drop-shadow-sm`}
+          className={`min-w-0 px-0.5 text-center text-[clamp(1rem,4.6vw,1.65rem)] leading-none font-black font-mono tabular-nums tracking-tight ${ui.text} drop-shadow-sm`}
         >
           {display}
         </span>
-        <button type="button" onClick={onInc} className={ui.stepperBtn} aria-label="Increase">
+        <button
+          type="button"
+          onClick={onInc}
+          disabled={!canInc}
+          className={stepperBtnClass}
+          aria-label="Increase"
+        >
           +
         </button>
       </div>
       <SpinningTickScale
         valueIndex={valueIndex}
+        maxValueIndex={config.maxValueIndex}
         dragOffsetPx={dragOffsetPx}
         isDragging={isDragging}
         onPointerDown={handlePointerDown}
@@ -233,9 +273,8 @@ export function NicheZeroGrindControl({ setting, onChange, ui }) {
     onChange(adjustNicheZero(setting, delta));
   };
 
-  const display =
-    formatNicheZeroSetting(setting)
-    || formatNicheZeroSetting(NICHE_ZERO_DEFAULT_SETTING);
+  const parsed = parseNicheZeroSetting(setting) ?? NICHE_ZERO_DEFAULT_SETTING;
+  const display = formatNicheZeroSetting(parsed) || formatNicheZeroSetting(NICHE_ZERO_DEFAULT_SETTING);
 
   return (
     <AxisStepper
@@ -243,6 +282,8 @@ export function NicheZeroGrindControl({ setting, onChange, ui }) {
       display={display}
       onDec={() => bump(-1)}
       onInc={() => bump(1)}
+      canDec={parsed > NICHE_ZERO_DIAL_MIN}
+      canInc={parsed < NICHE_ZERO_DIAL_MAX}
       ui={ui}
       dialKind="niche"
     />
@@ -262,13 +303,19 @@ export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange,
     onMicroChange(SETTE_MICROS[nextIdx]);
   };
 
+  const macroNum = parseInt(macro, 10) || 13;
+  const microIdx = SETTE_MICROS.indexOf(micro || 'E');
+  const microBase = microIdx === -1 ? 4 : microIdx;
+
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3">
       <AxisStepper
         label={setteUi.macroFieldLabel}
         display={macro}
         onDec={() => bumpMacro(-1)}
         onInc={() => bumpMacro(1)}
+        canDec={macroNum > SETTE_MACRO_MIN}
+        canInc={macroNum < SETTE_MACRO_MAX}
         ui={ui}
         dialKind="macro"
       />
@@ -277,6 +324,8 @@ export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange,
         display={micro}
         onDec={() => bumpMicro(-1)}
         onInc={() => bumpMicro(1)}
+        canDec={microBase > 0}
+        canInc={microBase < SETTE_MICROS.length - 1}
         ui={ui}
         dialKind="micro"
       />
@@ -285,9 +334,9 @@ export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange,
 }
 
 export function SunbeamGrindControl({ setting, onChange, ui }) {
+  const dial = parseInt(setting, 10) || 15;
   const bump = (delta) => {
-    const next = adjustSunbeam(parseInt(setting, 10) || 15, delta);
-    onChange(next);
+    onChange(adjustSunbeam(dial, delta));
   };
 
   return (
@@ -296,6 +345,8 @@ export function SunbeamGrindControl({ setting, onChange, ui }) {
       display={setting}
       onDec={() => bump(-1)}
       onInc={() => bump(1)}
+      canDec={dial > 1}
+      canInc={dial < 30}
       ui={ui}
       dialKind="sunbeam"
     />
