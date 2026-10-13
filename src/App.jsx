@@ -239,6 +239,8 @@ export default function App() {
   const tasteInputRef = useRef(null);
   const recommendationRef = useRef(null);
   const grindSettingsRef = useRef(null);
+  const flairPressureProfileRef = useRef(null);
+  const pendingFocusFlairProfileRef = useRef(false);
   const pendingGrindByKeyRef = useRef({});
   const brewTempDefaultRef = useRef('');
   const [validationError, setValidationError] = useState('');
@@ -755,16 +757,41 @@ export default function App() {
     }
   };
 
-  const startEditBean = (bean) => {
+  const startEditBean = (bean, options = {}) => {
+    const { focusFlairProfile = false } = options;
     const recipe = recipes.find(r => r.beanId === bean.id);
     setNewBean(bean);
     if (recipe) setNewRecipe(recipe);
     setIsEditingBean(true);
     setActiveTab('beans');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (focusFlairProfile) {
+      pendingFocusFlairProfileRef.current = true;
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
+  const handleEditOnBeansFromDial = () => {
+    if (activeBean?.id) {
+      startEditBean(activeBean, { focusFlairProfile: true });
+      return;
+    }
+    setActiveTab('beans');
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'beans' || !isEditingBean || !pendingFocusFlairProfileRef.current) return;
+    pendingFocusFlairProfileRef.current = false;
+    const frame = requestAnimationFrame(() => {
+      flairPressureProfileRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const firstField = flairPressureProfileRef.current?.querySelector('input, select');
+      firstField?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab, isEditingBean, newBean.id]);
+
   const cancelEditBean = () => {
+    pendingFocusFlairProfileRef.current = false;
     setIsEditingBean(false);
     setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
     setNewRecipe({ 
@@ -1709,7 +1736,7 @@ export default function App() {
                     <div className={`pt-3 border-t ${ui.headerBorder} space-y-3`}>
                       <div className="flex items-end justify-between gap-2">
                         <p className={`text-[10px] uppercase tracking-wider ${ui.muted}`}>Pressure profile</p>
-                        <button type="button" onClick={() => setActiveTab('beans')} className={`text-[10px] ${ui.accentText} font-semibold`}>
+                        <button type="button" onClick={handleEditOnBeansFromDial} className={`text-[10px] ${ui.accentText} font-semibold`}>
                           Edit on Beans
                         </button>
                       </div>
@@ -2335,7 +2362,7 @@ export default function App() {
                   const showPeakEndYield =
                     !scaleFeatureEnabled || taperStartTrig === 'weight';
                   return (
-                  <div className={`pt-4 mt-2 border-t ${ui.modalDivider} space-y-3`}>
+                  <div ref={flairPressureProfileRef} className={`pt-4 mt-2 border-t ${ui.modalDivider} space-y-3`}>
                     <h3 className={`${ui.sectionTitle}`}>Flair pressure profile</h3>
 
                     <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
