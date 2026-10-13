@@ -13,13 +13,12 @@ export function runCsvExportTests() {
   assert.equal(escapeCsvField('say "hi"'), '"say ""hi"""');
   assert.equal(escapeCsvField(null), '""');
 
-  const timestampWithComma = new Date('2026-10-13T14:27:35.000Z').toLocaleString();
-  assert.ok(timestampWithComma.includes(','));
-  const quotedRow = formatCsvRow([timestampWithComma, 'Notes with, comma']);
-  assert.match(quotedRow, /^"/);
+  const iso = '2026-10-13T14:27:35.000Z';
+  const display = '13/10/2026, 14:27:35';
+  const quotedRow = formatCsvRow([iso, display, 'Notes with, comma']);
+  assert.ok(quotedRow.includes(`"${iso}"`));
+  assert.ok(quotedRow.includes(`"${display}"`));
   assert.ok(quotedRow.includes('"Notes with, comma"'));
-  const csvWithTimestamp = buildShotsCsvContent(['Timestamp', 'Notes'], [[timestampWithComma, 'ok']]);
-  assert.ok(csvWithTimestamp.includes(`"${timestampWithComma.replace(/"/g, '""')}"`));
 
   const headers = ['Timestamp', 'Bean', 'Notes'];
   const rows = [
@@ -50,12 +49,12 @@ export function runCsvExportTests() {
     knownIssueReasonLabel: () => 'Puck prep issue',
   });
   assert.equal(exportRows.length, 3);
-  assert.equal(exportRows[1][1], 'Unknown');
-  assert.equal(exportRows[1][16], 'channel #1');
-  assert.equal(exportRows[0][17], '');
-  assert.equal(SHOT_CSV_HEADERS.length, 21);
+  assert.equal(exportRows[0][0], '2026-10-01T12:00:00.000Z');
+  assert.equal(exportRows[1][3], 'Unknown');
+  assert.equal(exportRows[1][18], 'channel #1');
+  assert.equal(SHOT_CSV_HEADERS.length, 23);
   const excludedIdx = SHOT_CSV_HEADERS.indexOf('Excluded');
-  assert.equal(excludedIdx, 14);
+  assert.equal(excludedIdx, 16);
   assert.equal(exportRows[2][excludedIdx], 'Yes');
   assert.equal(exportRows[2][excludedIdx + 1], 'Puck prep issue');
   assert.equal(exportRows[0][excludedIdx], 'No');
@@ -106,7 +105,7 @@ export function runCsvExportTests() {
     formatRecFollowedForCsv: () => 'Yes',
     knownIssueReasonLabel: () => '',
   });
-  assert.deepEqual(customRows.map((row) => row[3]), customValues.map(String));
+  assert.deepEqual(customRows.map((row) => row[5]), customValues.map(String));
 
   console.log('CSV export tests passed.');
 }

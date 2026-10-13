@@ -26,6 +26,8 @@ import {
 import { runCsvExportTests } from './src/utils/csvExport.test.js';
 import { runCsvImportTests } from './src/utils/csvImport.test.js';
 import { runBeanRecipeResolutionTests } from './src/utils/beanRecipeResolution.test.js';
+import { runCsvTimestampTests } from './src/utils/csvTimestamp.test.js';
+import { runCsvRoundTripTests } from './src/utils/csvRoundTrip.test.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
 import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
@@ -55,6 +57,7 @@ import {
 } from './src/grinders/pendingGrindSession.js';
 import {
   formatRecFollowedForCsv,
+  parseRecFollowedFromCsv,
   resolveRecommendationFollowedForSave,
 } from './src/utils/recommendationFollowed.js';
 import {
@@ -267,6 +270,9 @@ function runRecFollowedCsvTests() {
   assert.equal(formatRecFollowedForCsv({ recommendationFollowed: false }), 'No');
   assert.equal(formatRecFollowedForCsv({}), 'N/A');
   assert.equal(formatRecFollowedForCsv({ recommendationFollowed: null }), 'N/A');
+  assert.equal(parseRecFollowedFromCsv('Yes'), true);
+  assert.equal(parseRecFollowedFromCsv('No'), false);
+  assert.equal(parseRecFollowedFromCsv('N/A'), null);
 
   const noRec = resolveRecommendationFollowedForSave({
     lastLearningShot: { grinderModel: 'Sette 270Wi', recommendation: {} },
@@ -556,7 +562,9 @@ async function runTests() {
   runPendingGrindSessionTests();
   runRecFollowedCsvTests();
   runCsvExportTests();
+  runCsvTimestampTests();
   await runCsvImportTests();
+  await runCsvRoundTripTests();
   await runBeanRecipeResolutionTests();
   runPreviousRecipeRecommendationTests();
   runBalancedTasteTests(recipe, createShot, runCalc);

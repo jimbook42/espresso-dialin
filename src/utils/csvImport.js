@@ -4,6 +4,11 @@ import {
   parseGrindForShotSave,
 } from '../grinders/grinderRegistry.js';
 import { inferRecipeTargetsFromShots } from './beanRecipeResolution.js';
+import {
+  parseLegacyDisplayTimestamp,
+  resolveShotTimestampFromCsvRow,
+} from './csvTimestamp.js';
+import { parseRecFollowedFromCsv } from './recommendationFollowed.js';
 import { normalizeTasteProfile, tasteProfileForSave } from './tasteProfile.js';
 
 const LEGACY_EXCLUDED_HEADER = 'Excluded From Learning';
@@ -59,25 +64,35 @@ export function mergeTimestampFields(cols, header) {
 /**
  * Align a parsed data row with the header when unquoted timestamps (or other fields) added extra commas.
  */
+function headerHasIsoTimestamp(header) {
+  return header.includes('Timestamp (ISO)');
+}
+
+function mergeSplitTimestampAtIndex(fields, index) {
+  if (index < 0 || fields.length < index + 2) return fields;
+  const merged = `${fields[index]}, ${fields[index + 1].trim()}`;
+  if (parseLegacyDisplayTimestamp(merged) || !parseLegacyDisplayTimestamp(fields[index])) {
+    return [...fields.slice(0, index), merged, ...fields.slice(index + 2)];
+  }
+  return [...fields.slice(0, index), `${fields[index]},${fields[index + 1]}`, ...fields.slice(index + 2)];
+}
+
 export function alignDataRowToHeader(cols, header) {
   if (!header?.length) return cols;
   let fields = [...cols];
   if (fields[0]?.charCodeAt(0) === 0xfeff) {
     fields[0] = fields[0].slice(1);
   }
-  const timestampHeader = normalizeHeaderName(header[0]);
-  if (timestampHeader !== 'Timestamp') {
-    return fields.slice(0, header.length);
-  }
 
-  while (fields.length > header.length) {
-    if (fields.length < 2) break;
-    const merged = `${fields[0]}, ${fields[1].trim()}`;
-    const parsed = parseExportedTimestamp(merged);
-    if (parsed || !parseExportedTimestamp(fields[0])) {
-      fields = [merged, ...fields.slice(2)];
-    } else {
-      fields = [`${fields[0]},${fields[1]}`, ...fields.slice(2)];
+  const timestampMergeIndex = headerHasIsoTimestamp(header)
+    ? header.indexOf('Timestamp')
+    : header[0] === 'Timestamp'
+      ? 0
+      : -1;
+
+  if (timestampMergeIndex >= 0) {
+    while (fields.length > header.length) {
+      fields = mergeSplitTimestampAtIndex(fields, timestampMergeIndex);
     }
   }
 
@@ -87,24 +102,9 @@ export function alignDataRowToHeader(cols, header) {
   return fields.slice(0, header.length);
 }
 
-/**
- * Parse export timestamp (locale string or ISO).
- * @param {string} raw
- */
+/** @deprecated Use parseLegacyDisplayTimestamp from csvTimestamp.js */
 export function parseExportedTimestamp(raw) {
-  const text = String(raw || '').trim();
-  if (!text) return null;
-  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(text);
-  if (dmy) {
-    const [, day, month, year, hour, minute, second = '0'] = dmy;
-    const iso = new Date(
-      `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute}:${second.padStart(2, '0')}`
-    );
-    if (!Number.isNaN(iso.getTime())) return iso.toISOString();
-  }
-  const parsed = new Date(text);
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
-  return null;
+  return parseLegacyDisplayTimestamp(raw);
 }
 
 function yesNo(value) {
@@ -222,7 +222,7 @@ export function buildShotRecordsFromCsvRows(rows, header, options) {
         continue;
       }
 
-      const timestamp = parseExportedTimestamp(col(row, header, 'Timestamp'));
+      const timestamp = resolveShotTimestampFromCsvRow(row, header, col);
       if (!timestamp) {
         errors.push({ row: lineNo + 2, message: 'Invalid timestamp' });
         continue;
@@ -253,6 +253,7 @@ export function buildShotRecordsFromCsvRows(rows, header, options) {
 
       const ratingRaw = col(row, header, 'Rating');
       const shotRating = ratingRaw !== '' && ratingRaw != null ? Number(ratingRaw) : undefined;
+      const recommendationFollowed = parseRecFollowedFromCsv(col(row, header, 'Rec Followed'));
 
       const targetMinRaw = col(row, header, 'Target Time Min (s)');
       const targetMaxRaw = col(row, header, 'Target Time Max (s)');
@@ -279,6 +280,9 @@ export function buildShotRecordsFromCsvRows(rows, header, options) {
         brewRatio: col(row, header, 'Ratio') || undefined,
         beanAgeDays: Number(col(row, header, 'Bean Age (Days)')) || 0,
         storageType: col(row, header, 'Storage') || 'bag',
+        ...(recommendationFollowed === true || recommendationFollowed === false
+          ? { recommendationFollowed }
+          : {}),
         notes: col(row, header, 'Notes') || '',
         ...(targetMinRaw !== '' && Number.isFinite(Number(targetMinRaw))
           ? { targetTimeMinS: Number(targetMinRaw) }

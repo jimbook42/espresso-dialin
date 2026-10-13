@@ -1552,12 +1552,14 @@ export default function App() {
   };
 
   const exportDataCSV = async () => {
-    const [allShots, allBeans] = await Promise.all([
+    const [allShots, allBeans, allRecipes] = await Promise.all([
       db.shots.orderBy('timestamp').reverse().toArray(),
       db.beans.toArray(),
+      db.recipes.toArray(),
     ]);
     const rows = buildShotsCsvRows(allShots, {
       beans: allBeans,
+      recipes: allRecipes,
       formatShotGrindForHistory: (shot) => formatShotGrindForHistory(shot, appSettings),
       normalizeTasteProfile,
       formatRecFollowedForCsv,
