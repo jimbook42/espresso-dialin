@@ -32,3 +32,11 @@ export function formatRecFollowedForCsv(shot) {
   if (shot?.recommendationFollowed === false) return 'No';
   return 'N/A';
 }
+
+/** @returns {true|false|null} */
+export function parseRecFollowedFromCsv(cell) {
+  const text = String(cell ?? '').trim().toLowerCase();
+  if (text === 'yes') return true;
+  if (text === 'no') return false;
+  return null;
+}

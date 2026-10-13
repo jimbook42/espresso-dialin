@@ -61,7 +61,12 @@ function parseFixtureShots(csvText) {
       cols = [`${cols[0]}, ${cols[1].trim()}`, ...cols.slice(2)];
     }
     const grind = parseSetteGrind(cols[idx('Grind Setting')]);
-    const excluded = String(cols[idx('Excluded From Learning')]).toLowerCase() === 'yes';
+    const excludedCol = idx('Excluded') >= 0 ? idx('Excluded') : idx('Excluded From Learning');
+    const excluded = String(cols[excludedCol]).toLowerCase() === 'yes';
+    const targetMin = cols[idx('Target Time Min (s)')];
+    const targetMax = cols[idx('Target Time Max (s)')];
+    const targetDose = cols[idx('Target Dose (g)')];
+    const targetYield = cols[idx('Target Yield (g)')];
     return {
       id: `isaac-b2-${lineNo}`,
       beanId: 'B2',
@@ -75,10 +80,10 @@ function parseFixtureShots(csvText) {
       tasteProfile: normalizeTasteProfile(cols[idx('Taste')]),
       timestamp: parseTimestamp(cols[idx('Timestamp')]),
       excludeFromLearning: excluded,
-      targetTimeMinS: 27,
-      targetTimeMaxS: 32,
-      targetDoseG: 18,
-      targetYieldG: 30,
+      targetTimeMinS: targetMin !== '' && targetMin != null ? Number(targetMin) : 27,
+      targetTimeMaxS: targetMax !== '' && targetMax != null ? Number(targetMax) : 32,
+      targetDoseG: targetDose !== '' && targetDose != null ? Number(targetDose) : 18,
+      targetYieldG: targetYield !== '' && targetYield != null ? Number(targetYield) : 30,
     };
   });
 }

@@ -1,14 +1,16 @@
 {
   "name": "espresso-dialin",
   "private": true,
-  "version": "4.4.0",
+  "version": "4.4.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:flair-lab": "vite --mode flairlab --host",
     "build": "vite build",
+    "build:scale": "VITE_SCALE_ALLOW_SIM=true vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "preview:scale": "VITE_SCALE_ALLOW_SIM=true vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test": "node test.js && node src/utils/recommendationTuning.test.js && node src/grinders/grinderRegistry.test.js && node src/grinders/engineSnapshots.test.js"
   },
   "dependencies": {

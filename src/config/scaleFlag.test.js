@@ -8,7 +8,7 @@ function isScaleSimPickerEnabledFromEnv(scaleRaw, simRaw, dev) {
 }
 
 export function runScaleFlagTests() {
-  assert.equal(isScaleEnabledFromEnv(undefined), false);
+  assert.equal(isScaleEnabledFromEnv(undefined), true);
   assert.equal(isScaleEnabledFromEnv('false'), false);
   assert.equal(isScaleEnabledFromEnv('true'), true);
   assert.equal(isScaleSimPickerEnabledFromEnv('true', 'false', false), false);

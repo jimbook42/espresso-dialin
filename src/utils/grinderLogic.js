@@ -130,6 +130,16 @@ export function knownIssueReasonLabel(reasonKey) {
   return KNOWN_ISSUE_REASONS[reasonKey] || KNOWN_ISSUE_REASONS.other;
 }
 
+/** Map exported reason label back to a stored reason key (defaults to other). */
+export function knownIssueReasonKeyFromLabel(label) {
+  const trimmed = String(label || '').trim();
+  if (!trimmed) return undefined;
+  for (const [key, text] of Object.entries(KNOWN_ISSUE_REASONS)) {
+    if (text === trimmed) return key;
+  }
+  return 'other';
+}
+
 /**
  * Explainability only. Does not change grind, age, yield, taste, or warnings.
  * Regular and legacy beans return null so their recommendation UI is unchanged.
@@ -689,6 +699,11 @@ function attachExtremeTimeKnownIssueHint(warning, actualTime) {
   return appendKnownIssueSoftNote(warning, actualTime);
 }
 
+/** CSV export / import: known-issue shots are omitted from learning. */
+export function shotExcludedFromLearning(shot) {
+  return shot?.excludeFromLearning === true;
+}
+
 function prefixEstimatedGrindReason(reason, grinderProfile) {
   if (!grinderProfile?.recommendationIsEstimated) return reason;
   const text = reason || '';
@@ -998,9 +1013,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       }
     }
 
-    if (outlierCheck.isOutlier) {
-      warning = appendKnownIssueSoftNote(warning, actualTime, { isOutlier: true });
-    }
     warning = attachExtremeTimeKnownIssueHint(warning, actualTime);
 
     let flairWaterTempAdvice = null;
@@ -1125,19 +1137,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     } else {
       reason = "KEEP GRIND — Balanced and in range.";
     }
-    const comparableHistory = [...learningRecentShots]
-      .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const inRangeOutlier = detectLikelyShotOutlier({
-      actualTime,
-      grindNumeric: grindNumericFromShotData(shotData, grinderProfile),
-      recipe,
-      comparableShots: shotsForOutlierContext(learningRecentShots, comparableHistory),
-      grinderProfile,
-    });
-    if (inRangeOutlier.isOutlier) {
-      warning = appendKnownIssueSoftNote(warning, actualTime, { isOutlier: true });
-    }
   } else {
     const comparableHistory = [...learningRecentShots]
       .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
@@ -1188,9 +1187,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
           outlierDetail: outlierCheck.detail,
         });
       }
-    }
-    if (outlierCheck.isOutlier) {
-      warning = appendKnownIssueSoftNote(warning, actualTime, { isOutlier: true });
     }
   }
   warning = attachExtremeTimeKnownIssueHint(warning, actualTime);

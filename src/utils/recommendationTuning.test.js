@@ -7,6 +7,8 @@ import {
   proportionalGrindShiftFromTimeDelta,
   GRIND_SHIFT_DAMPING,
   filterOutliersFromLearningShots,
+  KNOWN_ISSUE_OUTLIER_HINT,
+  KNOWN_ISSUE_CHOKE_HINT,
 } from './recommendationTuning.js';
 import { getRecommendationGrinderProfile } from '../grinders/grinderRegistry.js';
 
@@ -53,11 +55,77 @@ function replayQaSeries(grinderModel, initialGrind, applyRecommendation, calcOpt
       shift: rec.engineStats?.shift ?? 0,
       recommended: { ...rec.recommendedSetting },
       reason: rec.reason,
+      warning: rec.warning,
     });
     history.push({ ...shot, id: `qa-${i}`, recommendation: rec });
     grind = applyRecommendation(grind, rec.recommendedSetting);
   }
   return rows;
+}
+
+function runKnownIssueSoftNoteQaSeriesTests() {
+  const grinders = [
+    {
+      name: 'Sette 270Wi',
+      initial: { setteMacro: 13, setteMicro: 'E' },
+      apply: (g, rec) => ({
+        setteMacro: rec.macro ?? g.setteMacro,
+        setteMicro: rec.micro ?? g.setteMicro,
+      }),
+    },
+    {
+      name: 'Sunbeam Barista Max',
+      initial: { sunbeamSetting: 15 },
+      apply: (g, rec) => ({ sunbeamSetting: rec.setting ?? g.sunbeamSetting }),
+    },
+    {
+      name: 'Niche Zero',
+      initial: { nicheZeroSetting: 15 },
+      apply: (g, rec) => ({ nicheZeroSetting: rec.nicheZeroSetting ?? g.nicheZeroSetting }),
+    },
+    {
+      name: 'DF64',
+      initial: { customGrindValue: 11 },
+      apply: (g, rec) => ({ customGrindValue: rec.customGrindValue ?? g.customGrindValue }),
+      options: {
+        settings: {
+          grinderModel: 'DF64',
+          customGrinder: {
+            name: 'DF64',
+            dialType: 'stepped',
+            min: 1,
+            max: 20,
+            step: 1,
+            lowerIsFiner: true,
+          },
+        },
+      },
+    },
+  ];
+
+  for (const grinder of grinders) {
+    const rows = replayQaSeries(
+      grinder.name,
+      grinder.initial,
+      grinder.apply,
+      grinder.options
+    );
+    const shot6 = rows[5];
+    assert.match(shot6.reason, /KEEP GRIND/i, `${grinder.name} shot 6 should keep grind`);
+    const warning = shot6.warning || '';
+    assert.ok(
+      !warning.includes(KNOWN_ISSUE_OUTLIER_HINT) && !warning.includes(KNOWN_ISSUE_CHOKE_HINT),
+      `${grinder.name} shot 6 must not show stale known-issue soft note`
+    );
+    const outlierRows = rows.filter((r) => r.timeS === 8 || r.timeS === 12 || r.timeS === 45);
+    for (const row of outlierRows) {
+      const text = row.warning || '';
+      assert.ok(
+        text.includes(KNOWN_ISSUE_OUTLIER_HINT) || text.includes(KNOWN_ISSUE_CHOKE_HINT),
+        `${grinder.name} ${row.timeS}s outlier should surface soft note`
+      );
+    }
+  }
 }
 
 function runQaSeriesTests() {
@@ -277,6 +345,7 @@ function runSteadyFastSeriesTest() {
 }
 
 runQaSeriesTests();
+runKnownIssueSoftNoteQaSeriesTests();
 runKnownIssueExclusionTests();
 runOutlierHintParityTests();
 runOutlierDetectionTests();

@@ -59,7 +59,10 @@ import {
 } from './grinders/customGrinder.js';
 import { FirstLaunchWizard } from './components/FirstLaunchWizard.jsx';
 import { CustomGrinderForm } from './components/CustomGrinderForm.jsx';
-import { shouldRenderFirstLaunchWizard } from './settings/firstLaunchRenderGate.js';
+import {
+  shouldDeferMainShellForFirstLaunch,
+  shouldRenderFirstLaunchWizard,
+} from './settings/firstLaunchRenderGate.js';
 import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
 import {
   isSmartScaleIntegrationActive,
@@ -83,6 +86,12 @@ import {
   downloadCsvFile,
   SHOT_CSV_HEADERS,
 } from './utils/csvExport.js';
+import { importShotsFromCsv } from './utils/csvImport.js';
+import {
+  inferRecipeTargetsFromShots,
+  persistBeanRecipeForBean,
+  resolveRecipeForBean,
+} from './utils/beanRecipeResolution.js';
 import {
   BALANCED_TASTE_PROFILE,
   normalizeTasteProfile,
@@ -110,7 +119,6 @@ import { normalizeBrewAccessories } from './brewGuide/steps';
 import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
-import { isScaleEnabled } from './config/scaleFlag.js';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
@@ -252,8 +260,7 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
-  const scaleBuildEnabled = isScaleEnabled();
-  const scaleFeatureEnabled = scaleBuildEnabled && isSmartScaleIntegrationActive(settingsSetting);
+  const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting);
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
   const appSettings = settingsSetting;
 
@@ -321,6 +328,8 @@ export default function App() {
   const [validationError, setValidationError] = useState('');
   const [beanFieldErrors, setBeanFieldErrors] = useState({});
   const [applyRecConfirmation, setApplyRecConfirmation] = useState('');
+  const [csvImportSummary, setCsvImportSummary] = useState('');
+  const csvImportInputRef = useRef(null);
   const [highlightGrind, setHighlightGrind] = useState(false);
   const [shotFieldHighlights, setShotFieldHighlights] = useState(EMPTY_SHOT_FIELD_HIGHLIGHTS);
   const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
@@ -400,7 +409,9 @@ export default function App() {
     return activeBeansList[0]?.id || beans[0]?.id || '';
   })();
   const activeBean = beans.find(b => b.id === effectiveBeanId) || activeBeansList[0] || beans[0];
-  const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
+  const beanShots = shots.filter(s => s.beanId === activeBean?.id);
+  const storedRecipe = recipes.find(r => r.beanId === activeBean?.id);
+  const activeRecipe = resolveRecipeForBean(activeBean, storedRecipe, beanShots, grinderModel);
   const lastLoggedShot = findLatestShotForBeanAndGrinder(shots, activeBean?.id, grinderModel);
   const lastLearningShot = activeBean && grinderModel
     ? shots.find(
@@ -410,7 +421,6 @@ export default function App() {
           && shotMatchesGrinderForLearning(s, grinderModel)
       )
     : null;
-  const beanShots = shots.filter(s => s.beanId === activeBean?.id);
 
   const scaleRecipePreinfusion =
     flairEnabled && recipeDefinesPreinfusion(activeRecipe?.flairProfile);
@@ -966,9 +976,7 @@ export default function App() {
       if (isEditingBean && newBean.id) {
         await db.beans.update(newBean.id, beanToSave);
         const existingRecipe = recipes.find(r => r.beanId === newBean.id);
-        if (existingRecipe) {
-          await db.recipes.update(existingRecipe.id, { ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36 });
-        }
+        await persistBeanRecipeForBean(db, newBean.id, newRecipe, existingRecipe, grinderModel);
         prefillDoseFromRecipe(newRecipe);
       } else {
         const isFirstBeanAdd = beans.length === 0;
@@ -1001,8 +1009,18 @@ export default function App() {
   const startEditBean = (bean, options = {}) => {
     const { focusFlairProfile = false } = options;
     const recipe = recipes.find(r => r.beanId === bean.id);
+    const beanShotHistory = shots.filter((s) => s.beanId === bean.id);
     setNewBean(bean);
-    if (recipe) setNewRecipe(sanitizeRecipeFormState(recipe, grinderModel));
+    if (recipe) {
+      setNewRecipe(sanitizeRecipeFormState(recipe, grinderModel));
+    } else {
+      setNewRecipe(
+        sanitizeRecipeFormState(
+          { ...createDefaultNewRecipe(grinderModel), ...inferRecipeTargetsFromShots(beanShotHistory) },
+          grinderModel
+        )
+      );
+    }
     setIsEditingBean(true);
     setActiveTab('beans');
     if (focusFlairProfile) {
@@ -1532,12 +1550,14 @@ export default function App() {
   };
 
   const exportDataCSV = async () => {
-    const [allShots, allBeans] = await Promise.all([
+    const [allShots, allBeans, allRecipes] = await Promise.all([
       db.shots.orderBy('timestamp').reverse().toArray(),
       db.beans.toArray(),
+      db.recipes.toArray(),
     ]);
     const rows = buildShotsCsvRows(allShots, {
       beans: allBeans,
+      recipes: allRecipes,
       formatShotGrindForHistory: (shot) => formatShotGrindForHistory(shot, appSettings),
       normalizeTasteProfile,
       formatRecFollowedForCsv,
@@ -1545,6 +1565,32 @@ export default function App() {
     });
     const csvText = buildShotsCsvContent(SHOT_CSV_HEADERS, rows);
     downloadCsvFile(`espresso_shots_${new Date().toISOString().slice(0, 10)}.csv`, csvText);
+  };
+
+  const handleImportCsvFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const csvText = await file.text();
+      const result = await importShotsFromCsv(db, csvText, { settings: appSettings });
+      const errorCount = result.errors.length;
+      const parts = [
+        `Imported ${result.imported} shot${result.imported === 1 ? '' : 's'}`,
+        `skipped ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}`,
+      ];
+      if (result.createdBeans > 0) {
+        parts.push(`created ${result.createdBeans} bean${result.createdBeans === 1 ? '' : 's'}`);
+      }
+      if (errorCount > 0) {
+        parts.push(`${errorCount} row${errorCount === 1 ? '' : 's'} with errors`);
+      }
+      setCsvImportSummary(parts.join(', ') + '.');
+      window.setTimeout(() => setCsvImportSummary(''), 8000);
+    } catch (err) {
+      setCsvImportSummary(err?.message || 'Import failed.');
+      window.setTimeout(() => setCsvImportSummary(''), 8000);
+    }
   };
 
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, mockDate) : null;
@@ -1662,8 +1708,14 @@ export default function App() {
     }, 200);
   };
 
+  const hasExistingUserData = shots.length > 0 || beans.length > 0;
+
+  if (shouldDeferMainShellForFirstLaunch(settingsQueryResult, { hasExistingUserData })) {
+    return null;
+  }
+
   if (shouldRenderFirstLaunchWizard(settingsQueryResult, {
-    hasExistingUserData: shots.length > 0 || beans.length > 0,
+    hasExistingUserData,
   })) {
     return (
       <FirstLaunchWizard
@@ -3135,23 +3187,21 @@ export default function App() {
                   )}
                 </div>
 
-                {scaleBuildEnabled && (
-                  <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
-                    <label className={`block ${ui.fieldLabel}`}>Smart scale</label>
-                    <select
-                      value={normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId)}
-                      onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
-                      className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
-                    >
-                      {listSmartScalePickerOptions().map((opt) => (
-                        <option key={opt.id} value={opt.id}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <p className={`text-[10px] ${ui.muted}`}>
-                      Active: {smartScaleChoiceSummary(settingsSetting)}. Manual shot logging always works.
-                    </p>
-                  </div>
-                )}
+                <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
+                  <label className={`block ${ui.fieldLabel}`}>Smart scale</label>
+                  <select
+                    value={normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId)}
+                    onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                  >
+                    {listSmartScalePickerOptions().map((opt) => (
+                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <p className={`text-[10px] ${ui.muted}`}>
+                    Active: {smartScaleChoiceSummary(settingsSetting)}. Manual shot logging always works.
+                  </p>
+                </div>
 
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <div className="flex items-center justify-between gap-3">
@@ -3229,7 +3279,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className={`pt-2 border-t ${ui.modalDivider}`}>
+                <div className={`pt-2 border-t ${ui.modalDivider} space-y-2`}>
                   <button
                     type="button"
                     onClick={exportDataCSV}
@@ -3237,6 +3287,23 @@ export default function App() {
                   >
                     <Download className="w-4 h-4" /> Export All Shots to CSV
                   </button>
+                  <input
+                    ref={csvImportInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(e) => { void handleImportCsvFile(e); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => csvImportInputRef.current?.click()}
+                    className={`w-full font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 ${ui.secondaryBtn}`}
+                  >
+                    <PlusCircle className="w-4 h-4" /> Import Shots from CSV
+                  </button>
+                  {csvImportSummary && (
+                    <p className={`text-[11px] ${ui.muted} text-center px-2`}>{csvImportSummary}</p>
+                  )}
                 </div>
 
                 <div className="pt-3 border-t border-rose-900/40 space-y-2">
