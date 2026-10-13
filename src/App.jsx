@@ -119,7 +119,6 @@ import { normalizeBrewAccessories } from './brewGuide/steps';
 import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
-import { isScaleEnabled } from './config/scaleFlag.js';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
@@ -261,8 +260,7 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
-  const scaleBuildEnabled = isScaleEnabled();
-  const scaleFeatureEnabled = scaleBuildEnabled && isSmartScaleIntegrationActive(settingsSetting);
+  const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting);
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
   const appSettings = settingsSetting;
 
@@ -3189,23 +3187,21 @@ export default function App() {
                   )}
                 </div>
 
-                {scaleBuildEnabled && (
-                  <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
-                    <label className={`block ${ui.fieldLabel}`}>Smart scale</label>
-                    <select
-                      value={normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId)}
-                      onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
-                      className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
-                    >
-                      {listSmartScalePickerOptions().map((opt) => (
-                        <option key={opt.id} value={opt.id}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <p className={`text-[10px] ${ui.muted}`}>
-                      Active: {smartScaleChoiceSummary(settingsSetting)}. Manual shot logging always works.
-                    </p>
-                  </div>
-                )}
+                <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
+                  <label className={`block ${ui.fieldLabel}`}>Smart scale</label>
+                  <select
+                    value={normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId)}
+                    onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                  >
+                    {listSmartScalePickerOptions().map((opt) => (
+                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <p className={`text-[10px] ${ui.muted}`}>
+                    Active: {smartScaleChoiceSummary(settingsSetting)}. Manual shot logging always works.
+                  </p>
+                </div>
 
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <div className="flex items-center justify-between gap-3">

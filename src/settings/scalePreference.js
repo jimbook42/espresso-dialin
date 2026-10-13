@@ -1,4 +1,3 @@
-import { isScaleEnabled } from '../config/scaleFlag.js';
 import { SCALE_DEVICES } from '../scales/scaleRegistry.js';
 
 export const SMART_SCALE_MANUAL_ID = 'manual';
@@ -21,9 +20,8 @@ export function normalizeSmartScaleDeviceId(raw) {
   return known ? raw : SMART_SCALE_MANUAL_ID;
 }
 
-/** BLE scale features run only when build flag is on and the user chose a supported model. */
+/** Live weight / flow on Dial+timer when the user chose a supported scale model in Settings. */
 export function isSmartScaleIntegrationActive(settings) {
-  if (!isScaleEnabled()) return false;
   const id = normalizeSmartScaleDeviceId(settings?.smartScaleDeviceId);
   return SCALE_DEVICES.some((d) => d.id === id);
 }

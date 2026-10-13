@@ -34,6 +34,7 @@ import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
 import { runPressureLabFlagTests } from './src/config/pressureLabFlag.test.js';
 import { runScaleFlagTests } from './src/config/scaleFlag.test.js';
+import { runScalePreferenceTests } from './src/settings/scalePreference.test.js';
 import { runTimemoreFramedTests } from './src/scales/protocols/timemoreFramed.test.js';
 import { runScaleFlowMetricsTests } from './src/scales/flowMetrics.test.js';
 import { runPreinfusionAutoEndTests } from './src/scales/preinfusionAutoEnd.test.js';
@@ -580,6 +581,7 @@ async function runTests() {
   runCustomGrinderRecommendationTests(recipe);
   runPressureLabFlagTests();
   runScaleFlagTests();
+  runScalePreferenceTests();
   runTimemoreFramedTests();
   runScaleFlowMetricsTests();
   runPreinfusionAutoEndTests();
