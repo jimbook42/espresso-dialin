@@ -40,6 +40,7 @@ export function grindNumericFromShot(shot, grinderProfile) {
 function nearGrindTolerance(grinderProfile) {
   if (grinderProfile.controlType === 'sette') return NEAR_GRIND_NUMERIC_TOLERANCE.sette;
   if (grinderProfile.controlType === 'sunbeam') return NEAR_GRIND_NUMERIC_TOLERANCE.sunbeam;
+  if (grinderProfile.controlType === 'custom') return 1;
   return NEAR_GRIND_NUMERIC_TOLERANCE.niche;
 }
 
@@ -154,8 +155,8 @@ export function detectLikelyShotOutlier({
 /**
  * Drop historical outliers from pools used for seconds-per-step learning (does not mutate stored shots).
  */
-export function filterOutliersFromLearningShots(shots, recipe, grinderModel) {
-  const grinderProfile = getRecommendationGrinderProfile(grinderModel);
+export function filterOutliersFromLearningShots(shots, recipe, grinderModel, settings = null) {
+  const grinderProfile = getRecommendationGrinderProfile(grinderModel, settings);
   const sorted = [...shots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   return shots.filter((shot) => {
     if (!shotEligibleForLearning(shot)) return false;
@@ -243,8 +244,8 @@ export function buildOutlierRecommendationReason({ baseReason, outlierDetail }) 
 /**
  * @param {Array<object>} comparableShots recipe-matched, learning-eligible history (newest first)
  */
-export function sensitivityConfidenceForQuantitativeGrinder(comparableShots, grinderModel, recipe) {
-  const grinderProfile = getRecommendationGrinderProfile(grinderModel);
+export function sensitivityConfidenceForQuantitativeGrinder(comparableShots, grinderModel, recipe, settings = null) {
+  const grinderProfile = getRecommendationGrinderProfile(grinderModel, settings);
   const cleaned = filterOutliersFromLearningShots(comparableShots, recipe, grinderModel);
   const points = cleaned
     .map((s, idx) => ({
@@ -291,6 +292,9 @@ export function shotsForOutlierContext(learningRecentShots, recipeMatchedShots) 
 export function grindNumericFromShotData(shotData, grinderProfile) {
   if (isNicheZeroGrinderModel(shotData.grinderModel)) {
     return parseNicheZeroSetting(shotData.nicheZeroSetting);
+  }
+  if (shotData.customGrindValue != null && grinderProfile?.controlType === 'custom') {
+    return grindNumericFromShot(shotData, grinderProfile);
   }
   return grindNumericFromShot(shotData, grinderProfile);
 }

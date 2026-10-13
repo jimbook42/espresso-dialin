@@ -33,7 +33,7 @@ import { PressureProfileChart } from './components/PressureProfileChart';
 import { GrinderGrindControls } from './components/GrindControls';
 import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
 import {
-  GRINDER_SETUP_OPTIONS,
+  CUSTOM_GRINDER_PICKER_ID,
   defaultBrewTemperatureForGrinder,
   formatCurrentGrindLabel,
   formatInitialGrindDisplay,
@@ -41,12 +41,31 @@ import {
   formatRecommendedGrindDisplay,
   formatShotGrindForHistory,
   getUiGrinderPresentation,
+  grinderPickerValueForSettings,
+  isCustomGrinderModel,
   isSunbeamGrinderModel,
   isNicheZeroGrinderModel,
+  listGrinderPickerOptions,
+  normalizeCustomGrinderSettingsPatch,
   parseGrindForShotSave,
   persistedSettingsPatchFromRecommendation,
   uiStateFromRecommendedSetting,
 } from './grinders/grinderRegistry.js';
+import {
+  defaultCustomGrindValue,
+  isCustomGrinderFormValid,
+  normalizeCustomGrinderProfile,
+} from './grinders/customGrinder.js';
+import { FirstLaunchWizard } from './components/FirstLaunchWizard.jsx';
+import { CustomGrinderForm } from './components/CustomGrinderForm.jsx';
+import { shouldShowFirstLaunchOnboarding } from './settings/onboardingGate.js';
+import {
+  isSmartScaleIntegrationActive,
+  listSmartScalePickerOptions,
+  normalizeSmartScaleDeviceId,
+  SMART_SCALE_MANUAL_ID,
+  smartScaleChoiceSummary,
+} from './settings/scalePreference.js';
 import {
   capturePendingGrindState,
   pendingGrindSessionKey,
@@ -227,8 +246,10 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
-  const scaleFeatureEnabled = isScaleEnabled();
+  const scaleBuildEnabled = isScaleEnabled();
+  const scaleFeatureEnabled = scaleBuildEnabled && isSmartScaleIntegrationActive(settingsSetting);
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
+  const appSettings = settingsSetting;
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
@@ -269,6 +290,7 @@ export default function App() {
   const [setteMicro, setSetteMicro] = useState('E');
   const [sunbeamSetting, setSunbeamSetting] = useState(15);
   const [nicheZeroSetting, setNicheZeroSetting] = useState(15);
+  const [customGrindValue, setCustomGrindValue] = useState(15);
   const [wasPurged, setWasPurged] = useState(true);
   const [actualDoseG, setActualDoseG] = useState(18);
   const [actualYieldG, setActualYieldG] = useState('');
@@ -297,11 +319,28 @@ export default function App() {
   const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
   const [setupFlairEnabled, setSetupFlairEnabled] = useState(false);
   const [setupPreInfusionEnabled, setSetupPreInfusionEnabled] = useState(false);
+  const [setupGrinderPickerValue, setSetupGrinderPickerValue] = useState('');
+  const [setupCustomGrinderDraft, setSetupCustomGrinderDraft] = useState({
+    name: '',
+    dialType: 'stepped',
+    min: 1,
+    max: 40,
+    step: 1,
+    lowerIsFiner: true,
+  });
+  const [setupUseSmartScale, setSetupUseSmartScale] = useState(false);
+  const [setupSmartScaleDeviceId, setSetupSmartScaleDeviceId] = useState(SMART_SCALE_MANUAL_ID);
+  const [settingsGrinderPickerValue, setSettingsGrinderPickerValue] = useState('');
+  const [settingsCustomGrinderDraft, setSettingsCustomGrinderDraft] = useState(null);
   const [brewAccessoriesOpenRequest, setBrewAccessoriesOpenRequest] = useState(0);
   const [brewAccessoriesReturnTo, setBrewAccessoriesReturnTo] = useState('brew');
 
   useEffect(() => {
     if (settingsSetting) {
+      setSettingsGrinderPickerValue(grinderPickerValueForSettings(settingsSetting));
+      if (settingsSetting.customGrinder) {
+        setSettingsCustomGrinderDraft(settingsSetting.customGrinder);
+      }
       if (settingsSetting.grinderModel) {
         setGrinderModel(settingsSetting.grinderModel);
         if (!isEditingBean && brewTempDefaultRef.current !== settingsSetting.grinderModel) {
@@ -319,6 +358,14 @@ export default function App() {
       if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
       if (settingsSetting.preInfusionEnabled !== undefined) setUsePreInfusion(settingsSetting.preInfusionEnabled);
       if (settingsSetting.darkMode !== undefined) setDarkMode(settingsSetting.darkMode);
+      if (isCustomGrinderModel(settingsSetting.grinderModel, settingsSetting)) {
+        const profile = normalizeCustomGrinderProfile(settingsSetting.customGrinder);
+        if (profile) {
+          setCustomGrindValue(
+            settingsSetting.lastCustomGrindValue ?? defaultCustomGrindValue(profile)
+          );
+        }
+      }
     }
   }, [settingsSetting, isEditingBean]);
 
@@ -527,7 +574,7 @@ export default function App() {
 
   const stashPendingGrind = (model, beanId, grindFields) => {
     const key = pendingGrindSessionKey(beanId, model);
-    const snap = capturePendingGrindState(model, grindFields);
+    const snap = capturePendingGrindState(model, grindFields, appSettings);
     if (key && snap) pendingGrindByKeyRef.current[key] = snap;
   };
 
@@ -543,6 +590,7 @@ export default function App() {
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting,
+      customGrindValue,
     });
   };
 
@@ -553,6 +601,7 @@ export default function App() {
       setteMicro: value,
       sunbeamSetting,
       nicheZeroSetting,
+      customGrindValue,
     });
   };
 
@@ -563,6 +612,7 @@ export default function App() {
       setteMicro,
       sunbeamSetting: value,
       nicheZeroSetting,
+      customGrindValue,
     });
   };
 
@@ -573,6 +623,18 @@ export default function App() {
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting: value,
+      customGrindValue,
+    });
+  };
+
+  const handleCustomGrindChange = (value) => {
+    setCustomGrindValue(value);
+    stashPendingGrind(grinderModel, activeBean?.id, {
+      setteMacro,
+      setteMicro,
+      sunbeamSetting,
+      nicheZeroSetting,
+      customGrindValue: value,
     });
   };
 
@@ -587,20 +649,36 @@ export default function App() {
       beans,
       mockDate,
       flairEnabled,
+      settings: appSettings,
     });
     if (!uiState) return;
     if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
     if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
     if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
     if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
+    if (uiState.customGrindValue != null) setCustomGrindValue(uiState.customGrindValue);
   }, [effectiveBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
 
-  const handleSaveGrinderSetup = async (model, options = {}) => {
+  const handleSaveGrinderSetup = async (modelOrPicker, options = {}) => {
     const {
       brewGuideEnabled: brewGuideChoice,
       flairEnabled: flairChoice,
       preInfusionEnabled: preInfusionChoice,
+      customGrinder: customGrinderChoice,
+      smartScaleDeviceId: smartScaleChoice,
     } = options;
+
+    let model = modelOrPicker;
+    let customGrinderPatch = {};
+    if (modelOrPicker === CUSTOM_GRINDER_PICKER_ID) {
+      const normalized = normalizeCustomGrinderProfile(customGrinderChoice);
+      if (!normalized) return;
+      model = normalized.name;
+      customGrinderPatch = { customGrinder: normalized };
+    } else if (!isCustomGrinderModel(modelOrPicker, { grinderModel: modelOrPicker, customGrinder: customGrinderChoice })) {
+      customGrinderPatch = { customGrinder: undefined };
+    }
+
     setGrinderModel(model);
     if (!isEditingBean) {
       brewTempDefaultRef.current = model;
@@ -616,12 +694,60 @@ export default function App() {
     const currentSettings = await db.settings.get('global') || { id: 'global' };
     if (typeof flairChoice === 'boolean') setFlairEnabled(flairChoice);
     if (typeof preInfusionChoice === 'boolean') setUsePreInfusion(preInfusionChoice);
-    await db.settings.put({
+    const nextSettings = {
       ...currentSettings,
       grinderModel: model,
+      ...customGrinderPatch,
       ...(typeof brewGuideChoice === 'boolean' ? { brewGuideEnabled: brewGuideChoice } : {}),
       ...(typeof flairChoice === 'boolean' ? { flairEnabled: flairChoice } : {}),
       ...(typeof preInfusionChoice === 'boolean' ? { preInfusionEnabled: preInfusionChoice } : {}),
+      ...(smartScaleChoice !== undefined
+        ? { smartScaleDeviceId: normalizeSmartScaleDeviceId(smartScaleChoice) }
+        : {}),
+    };
+    if (nextSettings.customGrinder === undefined) {
+      delete nextSettings.customGrinder;
+    }
+    await db.settings.put(nextSettings);
+  };
+
+  const handleFinishFirstLaunch = async () => {
+    const scaleId = setupUseSmartScale
+      ? normalizeSmartScaleDeviceId(setupSmartScaleDeviceId)
+      : SMART_SCALE_MANUAL_ID;
+    await handleSaveGrinderSetup(setupGrinderPickerValue || CUSTOM_GRINDER_PICKER_ID, {
+      brewGuideEnabled: setupBrewGuideEnabled,
+      flairEnabled: setupFlairEnabled,
+      preInfusionEnabled: setupPreInfusionEnabled,
+      customGrinder: setupCustomGrinderDraft,
+      smartScaleDeviceId: scaleId,
+    });
+  };
+
+  const handleSettingsGrinderPickerChange = async (pickerValue) => {
+    setSettingsGrinderPickerValue(pickerValue);
+    if (pickerValue === CUSTOM_GRINDER_PICKER_ID) {
+      setSettingsCustomGrinderDraft(
+        settingsCustomGrinderDraft || settingsSetting?.customGrinder || setupCustomGrinderDraft
+      );
+      return;
+    }
+    await handleSaveGrinderSetup(pickerValue);
+  };
+
+  const handleSaveCustomGrinderFromSettings = async () => {
+    if (!isCustomGrinderFormValid(settingsCustomGrinderDraft)) return;
+    const patch = normalizeCustomGrinderSettingsPatch(settingsCustomGrinderDraft);
+    if (!patch) return;
+    await handleSaveGrinderSetup(CUSTOM_GRINDER_PICKER_ID, { customGrinder: patch.customGrinder });
+    setSettingsGrinderPickerValue(CUSTOM_GRINDER_PICKER_ID);
+  };
+
+  const handleSmartScaleDeviceChange = async (deviceId) => {
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({
+      ...currentSettings,
+      smartScaleDeviceId: normalizeSmartScaleDeviceId(deviceId),
     });
   };
 
@@ -986,7 +1112,11 @@ export default function App() {
     }
     setShotFieldHighlights(EMPTY_SHOT_FIELD_HIGHLIGHTS);
 
-    const parsedGrind = parseGrindForShotSave(grinderModel, { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting });
+    const parsedGrind = parseGrindForShotSave(
+      grinderModel,
+      { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting, customGrindValue },
+      appSettings
+    );
     if (!parsedGrind.ok) {
       setValidationError(parsedGrind.error);
       return;
@@ -996,6 +1126,7 @@ export default function App() {
       setteMicro: finalMicro,
       sunbeamSetting: finalSunbeam,
       nicheZeroSetting: finalNicheZero,
+      customGrindValue: finalCustomGrind,
     } = parsedGrind;
 
     if (!activeBean || !activeRecipe) {
@@ -1007,12 +1138,13 @@ export default function App() {
       lastLearningShot,
       activeBean,
       mockDate,
-      grinderModel,
+      settings: appSettings,
       savedGrind: {
         setteMacro: finalMacro,
         setteMicro: finalMicro,
         sunbeamSetting: finalSunbeam,
         nicheZeroSetting: finalNicheZero,
+        customGrindValue: finalCustomGrind,
       },
     });
 
@@ -1021,6 +1153,7 @@ export default function App() {
       setteMicro: lastLearningShot.setteMicro,
       sunbeamSetting: lastLearningShot.sunbeamSetting,
       nicheZeroSetting: lastLearningShot.nicheZeroSetting,
+      customGrindValue: lastLearningShot.customGrindValue,
     } : null;
 
     let referenceNow = new Date();
@@ -1047,6 +1180,7 @@ export default function App() {
         setteMicro: finalMicro, 
         sunbeamSetting: finalSunbeam,
         nicheZeroSetting: finalNicheZero,
+        customGrindValue: finalCustomGrind,
         wasPurged, 
         actualTime: parsedTime, 
         actualDose: parsedDose, 
@@ -1059,7 +1193,8 @@ export default function App() {
       },
       activeRecipe,
       recentBeanShots,
-      flairEnabled
+      flairEnabled,
+      { settings: appSettings }
     );
 
     const shotRecord = {
@@ -1071,6 +1206,7 @@ export default function App() {
       setteMicro: finalMicro,
       sunbeamSetting: finalSunbeam,
       nicheZeroSetting: finalNicheZero,
+      customGrindValue: finalCustomGrind,
       wasPurged,
       actualDoseG: parsedDose,
       actualYieldG: parsedYield,
@@ -1141,13 +1277,13 @@ export default function App() {
   });
   const previousRecipeRec =
     usePreviousRecipeRecommendation && lastLoggedShot
-      ? getAgeAdjustedRecommendation(lastLoggedShot, activeBean, mockDate)
+      ? getAgeAdjustedRecommendation(lastLoggedShot, activeBean, mockDate, appSettings)
       : null;
   const ageAdjustedRec =
     !usePreviousRecipeRecommendation
     && lastLearningShot
     && lastLearningShot.grinderModel === grinderModel
-      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate)
+      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate, appSettings)
       : null;
   const liveNicheRec =
     !usePreviousRecipeRecommendation
@@ -1163,7 +1299,7 @@ export default function App() {
       : null;
   const liveQuantitativeRec =
     !usePreviousRecipeRecommendation
-    && grinderSupportsQuantitativeRecommendations(grinderModel)
+    && grinderSupportsQuantitativeRecommendations(grinderModel, appSettings)
     && !isNicheZeroGrinderModel(grinderModel)
     && lastLearningShot
     && activeRecipe
@@ -1171,7 +1307,8 @@ export default function App() {
           lastLearningShot,
           activeRecipe,
           beanShotsForGrinder,
-          flairEnabled
+          flairEnabled,
+          appSettings
         )
       : null;
   const dynamicRec = usePreviousRecipeRecommendation && previousRecipeRec
@@ -1219,7 +1356,8 @@ export default function App() {
         shots,
         beans,
         mockDate,
-        flairEnabled
+        flairEnabled,
+        appSettings
       )
     : null;
   const initialGrindHintSource = (() => {
@@ -1244,7 +1382,7 @@ export default function App() {
       case 'app-default': {
         const grindLabel = isNiche
           ? `Starting dial ${initialGrindSetting.nicheZeroSetting ?? '—'}`
-          : `Starting grind ${formatInitialGrindDisplay(grinderModel, initialGrindSetting)}`;
+          : `Starting grind ${formatInitialGrindDisplay(grinderModel, initialGrindSetting, appSettings)}`;
         return `${grindLabel} — common espresso starting point (app default, not manufacturer guidance). Not from your shot history.`;
       }
       case 'roast-baseline':
@@ -1258,12 +1396,17 @@ export default function App() {
     }
   })();
 
-  const currentGrindLabel = formatCurrentGrindLabel(grinderModel, {
-    setteMacro,
-    setteMicro,
-    sunbeamSetting,
-    nicheZeroSetting,
-  });
+  const currentGrindLabel = formatCurrentGrindLabel(
+    grinderModel,
+    {
+      setteMacro,
+      setteMicro,
+      sunbeamSetting,
+      nicheZeroSetting,
+      customGrindValue,
+    },
+    appSettings
+  );
 
   const timerWindowSeconds =
     (timerUsePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
@@ -1318,27 +1461,29 @@ export default function App() {
   const applyRecommendation = async () => {
     if (!dynamicRec || !dynamicRec.recommendedSetting) return;
     const recSet = dynamicRec.recommendedSetting;
-    const appliedLabel = formatRecommendedGrindDisplay(grinderModel, recSet);
+    const appliedLabel = formatRecommendedGrindDisplay(grinderModel, recSet, appSettings);
     
     const currentSettings = await db.settings.get('global') || { id: 'global' };
 
     const applyGrinder = grinderModel;
-    const uiState = uiStateFromRecommendedSetting(applyGrinder, recSet);
+    const uiState = uiStateFromRecommendedSetting(applyGrinder, recSet, appSettings);
     if (uiState) {
       setGrinderModel(applyGrinder);
       if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
       if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
       if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
+      if (uiState.customGrindValue != null) setCustomGrindValue(uiState.customGrindValue);
       stashPendingGrind(applyGrinder, activeBean?.id, {
         setteMacro: uiState.setteMacro ?? setteMacro,
         setteMicro: uiState.setteMicro ?? setteMicro,
         sunbeamSetting: uiState.sunbeamSetting ?? sunbeamSetting,
         nicheZeroSetting: uiState.nicheZeroSetting ?? nicheZeroSetting,
+        customGrindValue: uiState.customGrindValue ?? customGrindValue,
       });
       await db.settings.put({
         ...currentSettings,
-        ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet),
+        ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet, appSettings),
       });
     }
 
@@ -1405,20 +1550,20 @@ export default function App() {
   const previousGrindLabel = (() => {
     const shot = shots.find((s) => s.grinderModel === grinderModel);
     if (!shot) return '';
-    return formatPreviousGrindLabel(grinderModel, shot);
+    return formatPreviousGrindLabel(grinderModel, shot, appSettings);
   })();
 
   const recommendedGrindDisplay = (() => {
     if (lastLearningShot && lastLearningShot.grinderModel === grinderModel && dynamicRec?.recommendedSetting) {
-      return formatRecommendedGrindDisplay(grinderModel, dynamicRec.recommendedSetting);
+      return formatRecommendedGrindDisplay(grinderModel, dynamicRec.recommendedSetting, appSettings);
     }
     if (beanShotsForGrinder.length === 0 && initialGrindSetting) {
-      return formatInitialGrindDisplay(grinderModel, initialGrindSetting);
+      return formatInitialGrindDisplay(grinderModel, initialGrindSetting, appSettings);
     }
     return currentGrindLabel;
   })();
 
-  const grinderBadgeLabel = getUiGrinderPresentation(grinderModel).shortBadgeLabel;
+  const grinderBadgeLabel = getUiGrinderPresentation(grinderModel, appSettings).shortBadgeLabel;
 
   const formatShotWhen = (timestamp) => {
     const d = new Date(timestamp);
@@ -1455,16 +1600,18 @@ export default function App() {
     if (yieldG != null && yieldG !== '' && Number(yieldG) > 0) setActualYieldG(yieldG);
     setWasPurged(true);
     if (lastLearningShot && dynamicRec?.recommendedSetting && lastLearningShot.grinderModel === grinderModel) {
-      const uiState = uiStateFromRecommendedSetting(grinderModel, dynamicRec.recommendedSetting);
+      const uiState = uiStateFromRecommendedSetting(grinderModel, dynamicRec.recommendedSetting, appSettings);
       if (uiState?.setteMacro != null) setSetteMacro(uiState.setteMacro);
       if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
       if (uiState?.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
+      if (uiState?.customGrindValue != null) setCustomGrindValue(uiState.customGrindValue);
       stashPendingGrind(grinderModel, activeBean?.id, {
         setteMacro: uiState?.setteMacro ?? setteMacro,
         setteMicro: uiState?.setteMicro ?? setteMicro,
         sunbeamSetting: uiState?.sunbeamSetting ?? sunbeamSetting,
         nicheZeroSetting: uiState?.nicheZeroSetting ?? nicheZeroSetting,
+        customGrindValue: uiState?.customGrindValue ?? customGrindValue,
       });
     }
     setBrewTimerHost(false);
@@ -1476,87 +1623,26 @@ export default function App() {
     }, 200);
   };
 
-  if (!grinderModel) {
+  if (shouldShowFirstLaunchOnboarding(settingsSetting)) {
     return (
-      <div className={`min-h-screen ${ui.page} flex items-center justify-center p-6`}>
-        <div className={`${ui.card} p-8 rounded-2xl max-w-sm w-full space-y-8 shadow-2xl`}>
-          <div className="flex flex-col items-center gap-4">
-            <img src="/logo.jpg" alt="Espresso Dial-In" className="w-16 h-16 rounded-full object-cover ring-2 ring-[#2e2b26]" />
-            <div className="text-center">
-              <h1 className="text-xl font-bold text-[#f5f2eb] tracking-tight">Espresso Dial-In</h1>
-              <p className="text-xs text-[#6b6457] mt-1 tracking-wide uppercase">Precision dial-in assistant</p>
-            </div>
-          </div>
-          <div>
-            <p className="text-sm text-[#c4bcaa] text-center leading-relaxed mb-4">
-              Espresso Dial-In helps you log shots, tune grind settings from taste and time, and optionally walk through brewing step by step.
-            </p>
-            <p className="text-sm text-[#a09880] text-center mb-6">Choose your grinder to set a starting calibration. You can change these options later in Settings.</p>
-            <div className="space-y-3 mb-4">
-              <div className={`bg-[#211e1a] border border-[#2e2b26] rounded-xl p-4 flex items-center justify-between gap-3`}>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-[#f5f2eb]">Enable Flair manual profile</p>
-                  <p className="text-[11px] text-[#6b6457] mt-1">For Flair lever machines: pressure chart and water temperature on Dial-In.</p>
-                </div>
-                <SettingsToggle
-                  checked={setupFlairEnabled}
-                  onChange={setSetupFlairEnabled}
-                  label="Enable Flair manual profile"
-                />
-              </div>
-              <div className={`bg-[#211e1a] border border-[#2e2b26] rounded-xl p-4 flex items-center justify-between gap-3`}>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-[#f5f2eb]">Track pre-infusion time</p>
-                  <p className="text-[11px] text-[#6b6457] mt-1">Adds a pre-soak phase to the shot timer before extraction time.</p>
-                </div>
-                <SettingsToggle
-                  checked={setupPreInfusionEnabled}
-                  onChange={setSetupPreInfusionEnabled}
-                  label="Track pre-infusion time"
-                />
-              </div>
-              <div className={`bg-[#211e1a] border border-[#2e2b26] rounded-xl p-4 flex items-center justify-between gap-3`}>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-[#f5f2eb]">Would you like to use the Brew Guide?</p>
-                  <p className="text-[11px] text-[#6b6457] mt-1">Optional checklists and full-screen brew steps tied to your recipe.</p>
-                </div>
-                <SettingsToggle
-                  checked={setupBrewGuideEnabled}
-                  onChange={setSetupBrewGuideEnabled}
-                  label="Brew Guide"
-                />
-              </div>
-            </div>
-            <div className="space-y-3">
-              {GRINDER_SETUP_OPTIONS.map((option, index) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() =>
-                    handleSaveGrinderSetup(option.id, {
-                      brewGuideEnabled: setupBrewGuideEnabled,
-                      flairEnabled: setupFlairEnabled,
-                      preInfusionEnabled: setupPreInfusionEnabled,
-                    })
-                  }
-                  className={`w-full text-left font-bold py-4 px-4 rounded-xl text-sm transition-colors ${
-                    index === 0
-                      ? 'bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110]'
-                      : 'bg-[#211e1a] hover:bg-[#2e2b26] text-[#f5f2eb] border border-[#2e2b26]'
-                  }`}
-                >
-                  <span className="block">{option.setupCardLabel}</span>
-                  {option.setupCardHint && (
-                    <span className={`block text-[11px] font-normal mt-1 ${index === 0 ? 'text-[#3d3428]' : 'text-[#6b6457]'}`}>
-                      {option.setupCardHint}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      <FirstLaunchWizard
+        ui={ui}
+        grinderPickerValue={setupGrinderPickerValue}
+        onGrinderPickerChange={setSetupGrinderPickerValue}
+        customGrinderDraft={setupCustomGrinderDraft}
+        onCustomGrinderDraftChange={setSetupCustomGrinderDraft}
+        smartScaleDeviceId={setupSmartScaleDeviceId}
+        onSmartScaleChange={setSetupSmartScaleDeviceId}
+        useSmartScale={setupUseSmartScale}
+        onUseSmartScaleChange={setSetupUseSmartScale}
+        setupFlairEnabled={setupFlairEnabled}
+        onSetupFlairChange={setSetupFlairEnabled}
+        setupPreInfusionEnabled={setupPreInfusionEnabled}
+        onSetupPreInfusionChange={setSetupPreInfusionEnabled}
+        setupBrewGuideEnabled={setupBrewGuideEnabled}
+        onSetupBrewGuideChange={setSetupBrewGuideEnabled}
+        onComplete={() => { void handleFinishFirstLaunch(); }}
+      />
     );
   }
 
@@ -2033,13 +2119,16 @@ export default function App() {
 
                     <GrinderGrindControls
                       grinderModel={grinderModel}
+                      settings={appSettings}
                       setteMacro={setteMacro}
                       setteMicro={setteMicro}
                       sunbeamSetting={sunbeamSetting}
                       nicheZeroSetting={nicheZeroSetting}
+                      customGrindValue={customGrindValue}
                       onSetteMacroChange={handleSetteMacroChange}
                       onSetteMicroChange={handleSetteMicroChange}
                       onSunbeamChange={handleSunbeamChange}
+                      onCustomGrindChange={handleCustomGrindChange}
                       onNicheZeroChange={handleNicheZeroChange}
                       ui={ui}
                     />
@@ -2959,17 +3048,52 @@ export default function App() {
 
               <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
-                  <label className={`block ${ui.fieldLabel}`}>Primary grinder setup</label>
+                  <label className={`block ${ui.fieldLabel}`}>Primary grinder</label>
                   <select
-                    value={grinderModel}
-                    onChange={(e) => handleSaveGrinderSetup(e.target.value)}
+                    value={settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting)}
+                    onChange={(e) => { void handleSettingsGrinderPickerChange(e.target.value); }}
                     className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
                   >
-                    {GRINDER_SETUP_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>{option.settingsSelectLabel}</option>
+                    {listGrinderPickerOptions().map((option) => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
                     ))}
                   </select>
+                  {settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID && (
+                    <div className="space-y-2">
+                      <CustomGrinderForm
+                        value={settingsCustomGrinderDraft}
+                        onChange={setSettingsCustomGrinderDraft}
+                        ui={ui}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { void handleSaveCustomGrinderFromSettings(); }}
+                        disabled={!isCustomGrinderFormValid(settingsCustomGrinderDraft)}
+                        className={`w-full font-bold py-2.5 rounded-xl ${ui.secondaryBtn} disabled:opacity-40`}
+                      >
+                        Save custom grinder
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {scaleBuildEnabled && (
+                  <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
+                    <label className={`block ${ui.fieldLabel}`}>Smart scale</label>
+                    <select
+                      value={normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId)}
+                      onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
+                      className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                    >
+                      {listSmartScalePickerOptions().map((opt) => (
+                        <option key={opt.id} value={opt.id}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <p className={`text-[10px] ${ui.muted}`}>
+                      Active: {smartScaleChoiceSummary(settingsSetting)}. Manual shot logging always works.
+                    </p>
+                  </div>
+                )}
 
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <div className="flex items-center justify-between gap-3">

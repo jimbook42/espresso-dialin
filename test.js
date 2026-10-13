@@ -39,6 +39,9 @@ import { runScaleShotBaselineTests } from './src/scales/scaleShotBaseline.test.j
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
 import { runGrindRecommendationDisplayTests } from './src/utils/grindRecommendationDisplay.test.js';
 import { runGrindControlsTests } from './src/components/grindControls.test.js';
+import { runCustomGrinderTests } from './src/grinders/customGrinder.test.js';
+import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
+import { shouldShowFirstLaunchOnboarding } from './src/settings/onboardingGate.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
   capturePendingGrindState,
@@ -402,6 +405,37 @@ function runRecommendationIntegrityTests() {
   assert.match(liveSette.reason, /FINER|COARSER|KEEP GRIND/i);
 }
 
+function runCustomGrinderRecommendationTests(recipe) {
+  const settings = {
+    grinderModel: 'DF64',
+    customGrinder: {
+      name: 'DF64',
+      dialType: 'stepped',
+      min: 1,
+      max: 20,
+      step: 1,
+      lowerIsFiner: true,
+    },
+  };
+  const rec = calculateRecommendation(
+    {
+      grinderModel: 'DF64',
+      customGrindValue: 10,
+      wasPurged: true,
+      actualTime: 27,
+      actualYield: 36,
+      tasteProfile: 'sour',
+    },
+    recipe,
+    [],
+    false,
+    { settings }
+  );
+  assert.match(rec.reason, /^ESTIMATED —/);
+  assert.match(rec.reason, /FINER/);
+  assert.equal(rec.recommendedSetting.customGrindValue, 9);
+}
+
 async function runTests() {
   const recipe = {
     targetTimeMinS: 25,
@@ -522,6 +556,9 @@ async function runTests() {
   runShotCountDisplayTests();
   runGrindRecommendationDisplayTests();
   runGrindControlsTests();
+  runCustomGrinderTests();
+  runOnboardingGateTests();
+  runCustomGrinderRecommendationTests(recipe);
   runPressureLabFlagTests();
   runScaleFlagTests();
   runTimemoreFramedTests();
@@ -1608,6 +1645,9 @@ async function runLegacyShotDataTests() {
   assert.equal(shotEligibleForLearning(loadedShot), true);
   assert.equal(loadedSettings.grinderModel, 'Sette 270Wi');
   assert.equal(loadedSettings.darkMode, true);
+  assert.equal(shouldShowFirstLaunchOnboarding(loadedSettings), false);
+  assert.equal(Object.hasOwn(loadedSettings, 'smartScaleDeviceId'), false);
+  assert.equal(Object.hasOwn(loadedSettings, 'customGrinder'), false);
 
   await db.shots.add({
     id: 'stopped-shot',

@@ -22,6 +22,7 @@ export function resolveGrindControlUiState({
   beans,
   mockDate,
   flairEnabled,
+  settings = null,
 }) {
   if (!activeBean || !grinderModel) return null;
 
@@ -33,7 +34,7 @@ export function resolveGrindControlUiState({
   );
 
   if (currentBeanShots.length > 0) {
-    return uiStateFromLastShot(grinderModel, currentBeanShots[0]);
+    return uiStateFromLastShot(grinderModel, currentBeanShots[0], settings);
   }
 
   const recParams = getInitialGrindRecommendation(
@@ -44,7 +45,8 @@ export function resolveGrindControlUiState({
     shots,
     beans,
     mockDate,
-    flairEnabled
+    flairEnabled,
+    settings
   );
-  return uiStateFromInitialRecommendation(grinderModel, recParams);
+  return uiStateFromInitialRecommendation(grinderModel, recParams, settings);
 }

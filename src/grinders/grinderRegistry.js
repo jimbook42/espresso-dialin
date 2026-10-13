@@ -6,12 +6,19 @@ import {
   parseNicheZeroSetting,
   formatNicheZeroSetting,
 } from './nicheZero.js';
+import {
+  CUSTOM_GRINDER_PICKER_ID,
+  buildCustomGrinderDefinition,
+  isCustomGrinderProfileActive,
+  normalizeCustomGrinderProfile,
+} from './customGrinder.js';
 
 /** Stored grinder identity strings (must not change). */
 export const SETTE_GRINDER_ID = 'Sette 270Wi';
 export const SUNBEAM_GRINDER_ID = 'Sunbeam Barista Max';
 
 export { NICHE_ZERO_GRINDER_ID } from './nicheZero.js';
+export { CUSTOM_GRINDER_PICKER_ID } from './customGrinder.js';
 
 const SETTE_MICROS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
@@ -273,11 +280,18 @@ const nicheZeroDefinition = {
   },
 };
 
-/** Exact stored ID lookup only; unknown IDs return null. */
-export function getGrinderDefinitionById(grinderModel) {
+export function resolveCustomGrinderDefinition(grinderModel, settings) {
+  if (!isCustomGrinderProfileActive(grinderModel, settings)) return null;
+  return buildCustomGrinderDefinition(settings.customGrinder);
+}
+
+/** Exact stored ID lookup only; unknown IDs return null unless custom profile matches. */
+export function getGrinderDefinitionById(grinderModel, settings = null) {
   if (grinderModel === SETTE_GRINDER_ID) return setteDefinition;
   if (grinderModel === SUNBEAM_GRINDER_ID) return sunbeamDefinition;
   if (grinderModel === NICHE_ZERO_GRINDER_ID) return nicheZeroDefinition;
+  const custom = resolveCustomGrinderDefinition(grinderModel, settings);
+  if (custom) return custom;
   return null;
 }
 
@@ -290,12 +304,18 @@ export function isNicheZeroGrinderModel(grinderModel) {
   return grinderModel === NICHE_ZERO_GRINDER_ID;
 }
 
-export function grinderSupportsQuantitativeRecommendations(grinderModel) {
-  const profile = getRecommendationGrinderProfile(grinderModel);
+export function isCustomGrinderModel(grinderModel, settings = null) {
+  return isCustomGrinderProfileActive(grinderModel, settings);
+}
+
+export function grinderSupportsQuantitativeRecommendations(grinderModel, settings = null) {
+  const profile = getRecommendationGrinderProfile(grinderModel, settings);
   return profile.supportsQuantitativeRecommendations !== false;
 }
 
-export function getRecommendationGrinderProfile(grinderModel) {
+export function getRecommendationGrinderProfile(grinderModel, settings = null) {
+  const custom = resolveCustomGrinderDefinition(grinderModel, settings);
+  if (custom) return custom;
   if (isSetteGrinderModel(grinderModel)) return setteDefinition;
   if (isSunbeamGrinderModel(grinderModel)) return sunbeamDefinition;
   if (isNicheZeroGrinderModel(grinderModel)) return nicheZeroDefinition;
@@ -322,8 +342,8 @@ export function isSunbeamGrinderModel(grinderModel) {
 }
 
 /** Known grinder presentation, or legacy Sunbeam presentation for unknown ids. */
-export function getUiGrinderPresentation(grinderModel) {
-  const def = getGrinderDefinitionById(grinderModel);
+export function getUiGrinderPresentation(grinderModel, settings = null) {
+  const def = getGrinderDefinitionById(grinderModel, settings);
   if (def) return def;
   return sunbeamDefinition;
 }
@@ -332,32 +352,36 @@ export function defaultBrewTemperatureForGrinder(grinderModel) {
   return getUiGrinderPresentation(grinderModel).defaultBrewTemperatureC;
 }
 
-export function formatShotGrindForHistory(shot) {
-  return getUiGrinderPresentation(shot?.grinderModel).formatShotGrindForHistory(shot);
+export function formatShotGrindForHistory(shot, settings = null) {
+  return getUiGrinderPresentation(shot?.grinderModel, settings).formatShotGrindForHistory(shot);
 }
 
-export function formatPreviousGrindLabel(grinderModel, shot) {
-  return getUiGrinderPresentation(grinderModel).formatPreviousGrindLabel(shot);
+export function formatPreviousGrindLabel(grinderModel, shot, settings = null) {
+  return getUiGrinderPresentation(grinderModel, settings).formatPreviousGrindLabel(shot);
 }
 
-export function formatCurrentGrindLabel(grinderModel, grindState) {
-  return getUiGrinderPresentation(grinderModel).formatCurrentGrindLabel(grindState);
+export function formatCurrentGrindLabel(grinderModel, grindState, settings = null) {
+  return getUiGrinderPresentation(grinderModel, settings).formatCurrentGrindLabel(grindState);
 }
 
-export function formatRecommendedGrindDisplay(grinderModel, recommendedSetting) {
-  return getUiGrinderPresentation(grinderModel).formatRecommendedGrindDisplay(recommendedSetting);
+export function formatRecommendedGrindDisplay(grinderModel, recommendedSetting, settings = null) {
+  return getUiGrinderPresentation(grinderModel, settings).formatRecommendedGrindDisplay(recommendedSetting);
 }
 
-export function formatInitialGrindDisplay(grinderModel, initialSetting) {
-  return getUiGrinderPresentation(grinderModel).formatInitialGrindDisplay(initialSetting);
+export function formatInitialGrindDisplay(grinderModel, initialSetting, settings = null) {
+  return getUiGrinderPresentation(grinderModel, settings).formatInitialGrindDisplay(initialSetting);
 }
 
-export function parseGrindForShotSave(grinderModel, grindState) {
-  return getUiGrinderPresentation(grinderModel).parseGrindForShotSave(grindState);
+export function parseGrindForShotSave(grinderModel, grindState, settings = null) {
+  return getUiGrinderPresentation(grinderModel, settings).parseGrindForShotSave(grindState);
 }
 
-export function grindMatchesStoredRecommendation(lastShotGrinderModel, savedGrind, rec) {
+export function grindMatchesStoredRecommendation(lastShotGrinderModel, savedGrind, rec, settings = null) {
   if (!rec) return true;
+  if (isCustomGrinderModel(lastShotGrinderModel, settings)) {
+    const def = getGrinderDefinitionById(lastShotGrinderModel, settings);
+    return def.grindMatchesRecommendation(savedGrind, rec);
+  }
   if (isSetteGrinderModel(lastShotGrinderModel)) {
     return setteDefinition.grindMatchesRecommendation(savedGrind, rec);
   }
@@ -370,29 +394,62 @@ export function grindMatchesStoredRecommendation(lastShotGrinderModel, savedGrin
   return true;
 }
 
-export function uiStateFromLastShot(grinderModel, shot) {
-  return getUiGrinderPresentation(grinderModel).uiStateFromLastShot(shot);
+export function uiStateFromLastShot(grinderModel, shot, settings = null) {
+  return getUiGrinderPresentation(grinderModel, settings).uiStateFromLastShot(shot);
 }
 
-export function uiStateFromInitialRecommendation(grinderModel, initialSetting) {
+export function uiStateFromInitialRecommendation(grinderModel, initialSetting, settings = null) {
   if (isSetteGrinderModel(grinderModel)) {
     return { setteMacro: initialSetting.macro, setteMicro: initialSetting.micro };
   }
   if (isNicheZeroGrinderModel(grinderModel)) {
     return { nicheZeroSetting: initialSetting.nicheZeroSetting };
   }
+  if (isCustomGrinderModel(grinderModel, settings)) {
+    return { customGrindValue: initialSetting.customGrindValue };
+  }
   return { sunbeamSetting: initialSetting.setting };
 }
 
-export function uiStateFromRecommendedSetting(grinderModel, recSet) {
-  return getUiGrinderPresentation(grinderModel).uiStateFromRecommendedSetting(recSet);
+export function uiStateFromRecommendedSetting(grinderModel, recSet, settings = null) {
+  return getUiGrinderPresentation(grinderModel, settings).uiStateFromRecommendedSetting(recSet);
 }
 
-export function persistedSettingsPatchFromRecommendation(grinderModel, recSet) {
-  return getUiGrinderPresentation(grinderModel).persistedSettingsPatchFromRecommendation(recSet);
+export function persistedSettingsPatchFromRecommendation(grinderModel, recSet, settings = null) {
+  return getUiGrinderPresentation(grinderModel, settings).persistedSettingsPatchFromRecommendation(recSet);
 }
 
-export const GRINDER_SETUP_OPTIONS = [setteDefinition, sunbeamDefinition, nicheZeroDefinition];
+export const GRINDER_REGISTRY_ENTRIES = [setteDefinition, sunbeamDefinition, nicheZeroDefinition];
+
+export const GRINDER_SETUP_OPTIONS = GRINDER_REGISTRY_ENTRIES;
+
+export function listGrinderPickerOptions() {
+  return [
+    ...GRINDER_REGISTRY_ENTRIES.map((entry) => ({
+      id: entry.id,
+      label: entry.settingsSelectLabel,
+      hint: entry.setupCardHint,
+    })),
+    {
+      id: CUSTOM_GRINDER_PICKER_ID,
+      label: 'Not listed — custom grinder',
+      hint: 'Enter your dial range; recommendations stay estimated until you log shots.',
+    },
+  ];
+}
+
+export function grinderPickerValueForSettings(settings) {
+  if (isCustomGrinderProfileActive(settings?.grinderModel, settings)) {
+    return CUSTOM_GRINDER_PICKER_ID;
+  }
+  return settings?.grinderModel || '';
+}
+
+export function normalizeCustomGrinderSettingsPatch(partialProfile) {
+  const profile = normalizeCustomGrinderProfile(partialProfile);
+  if (!profile) return null;
+  return { customGrinder: profile, grinderModel: profile.name };
+}
 
 /** Brew Guide copy: only exact Sunbeam id uses dial wording (matches legacy /sunbeam/i on stored ids). */
 export function brewGuideGrindSettingLabelForGrinder(grinderModel) {

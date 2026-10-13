@@ -5,9 +5,18 @@ import {
   NICHE_ZERO_GRINDER_ID,
   adjustSunbeam,
   getGrinderDefinitionById,
+  isCustomGrinderModel,
   isSetteGrinderModel,
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
+import {
+  adjustCustomGrind,
+  customDialIndexToValue,
+  customDialMaxIndex,
+  customDialValueIndex,
+  formatCustomGrindDisplay,
+  parseCustomGrindValue,
+} from '../grinders/customGrinder.js';
 import {
   adjustNicheZero,
   formatNicheZeroSetting,
@@ -229,16 +238,31 @@ function AxisStepper({
 
 export function GrinderGrindControls({
   grinderModel,
+  settings,
   setteMacro,
   setteMicro,
   sunbeamSetting,
   nicheZeroSetting,
+  customGrindValue,
   onSetteMacroChange,
   onSetteMicroChange,
   onSunbeamChange,
   onNicheZeroChange,
+  onCustomGrindChange,
   ui,
 }) {
+  if (isCustomGrinderModel(grinderModel, settings)) {
+    const def = getGrinderDefinitionById(grinderModel, settings);
+    return (
+      <CustomGrindControl
+        setting={customGrindValue}
+        profile={def.customProfile}
+        label={def.dialFieldLabel}
+        onChange={onCustomGrindChange}
+        ui={ui}
+      />
+    );
+  }
   if (isSetteGrinderModel(grinderModel)) {
     return (
       <SetteGrindControls
@@ -349,6 +373,40 @@ export function SunbeamGrindControl({ setting, onChange, ui }) {
       canInc={dial < 30}
       ui={ui}
       dialKind="sunbeam"
+    />
+  );
+}
+
+export function CustomGrindControl({ setting, profile, label, onChange, ui }) {
+  const parsed = parseCustomGrindValue(setting, profile);
+  const display = formatCustomGrindDisplay(parsed ?? setting, profile);
+  const maxIndex = customDialMaxIndex(profile);
+  const valueIndex = customDialValueIndex(parsed ?? setting, profile);
+
+  const bump = (delta) => {
+    const nextIndex = Math.min(maxIndex, Math.max(0, valueIndex + delta));
+    onChange(customDialIndexToValue(nextIndex, profile));
+  };
+
+  const customDialKind = `custom-${profile.min}-${profile.max}-${profile.step}`;
+
+  if (!DIAL_CONFIG[customDialKind]) {
+    DIAL_CONFIG[customDialKind] = {
+      valueIndex: (v) => customDialValueIndex(v, profile),
+      maxValueIndex: maxIndex,
+    };
+  }
+
+  return (
+    <AxisStepper
+      label={label}
+      display={display}
+      onDec={() => bump(-1)}
+      onInc={() => bump(1)}
+      canDec={valueIndex > 0}
+      canInc={valueIndex < maxIndex}
+      ui={ui}
+      dialKind={customDialKind}
     />
   );
 }

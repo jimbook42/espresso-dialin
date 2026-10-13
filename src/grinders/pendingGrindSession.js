@@ -1,4 +1,5 @@
 import {
+  isCustomGrinderModel,
   isNicheZeroGrinderModel,
   isSetteGrinderModel,
   isSunbeamGrinderModel,
@@ -16,7 +17,8 @@ export function capturePendingGrindState(grinderModel, {
   setteMicro,
   sunbeamSetting,
   nicheZeroSetting,
-}) {
+  customGrindValue,
+}, settings = null) {
   if (!grinderModel) return null;
   if (isSetteGrinderModel(grinderModel)) {
     return { setteMacro, setteMicro };
@@ -26,6 +28,9 @@ export function capturePendingGrindState(grinderModel, {
   }
   if (isNicheZeroGrinderModel(grinderModel)) {
     return { nicheZeroSetting };
+  }
+  if (isCustomGrinderModel(grinderModel, settings)) {
+    return { customGrindValue };
   }
   return null;
 }
@@ -43,6 +48,7 @@ export function resolveGrindControlUiStateWithPending({
   beans,
   mockDate,
   flairEnabled,
+  settings = null,
 }) {
   const key = pendingGrindSessionKey(activeBean?.id, grinderModel);
   const pending = key ? pendingGrindByKey[key] : null;
@@ -56,5 +62,6 @@ export function resolveGrindControlUiStateWithPending({
     beans,
     mockDate,
     flairEnabled,
+    settings,
   });
 }

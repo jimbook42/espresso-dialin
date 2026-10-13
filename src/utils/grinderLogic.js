@@ -13,9 +13,12 @@ import {
   isSetteGrinderModel,
   isNicheZeroGrinderModel,
   isSunbeamGrinderModel,
+  isCustomGrinderModel,
   grinderSupportsQuantitativeRecommendations,
   NICHE_ZERO_GRINDER_ID,
+  getGrinderDefinitionById,
 } from '../grinders/grinderRegistry.js';
+import { adjustCustomGrind, defaultCustomGrindValue } from '../grinders/customGrinder.js';
 import {
   parseNicheZeroSetting,
   NICHE_ZERO_DEFAULT_SETTING,
@@ -217,10 +220,10 @@ export function shotIsSevereChoke(actualTimeS, actualYieldG, targetTimeMinS, tar
  * as a normal out-of-range shot. The clock stops counting at the choke
  * boundary (one target window past targetMax). Extra seconds are ignored.
  */
-function severeChokeCoarseShift(grinderModel, targetMin, targetMax) {
+function severeChokeCoarseShift(grinderModel, targetMin, targetMax, settings = null) {
   const windowS = Math.max(targetMax - targetMin, 0);
   const cappedDelta = 1.5 * windowS;
-  const sensitivity = getRecommendationGrinderProfile(grinderModel).sensitivity;
+  const sensitivity = getRecommendationGrinderProfile(grinderModel, settings).sensitivity;
   const shift = Math.round(cappedDelta / sensitivity);
   return shift > 0 ? shift : 1;
 }
@@ -411,7 +414,7 @@ export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = []
   return Math.round(average);
 }
 
-export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = null) {
+export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = null, settings = null) {
   if (!lastShot || !lastShot.recommendation || !lastShot.recommendation.recommendedSetting) return null;
 
   const currentAgeData = calculateEffectiveBeanAge(activeBean, mockDate);
@@ -449,6 +452,12 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
     adjustedSetting.setting = adjustSunbeam(adjustedSetting.setting, ageShiftSunbeam);
   } else if (isNicheZeroGrinderModel(lastShot.grinderModel)) {
     // Niche has no calibrated quantitative age shift.
+  } else if (isCustomGrinderModel(lastShot.grinderModel, settings)) {
+    const def = getGrinderDefinitionById(lastShot.grinderModel, settings);
+    const shift = ageShiftSunbeam !== 0 ? ageShiftSunbeam : ageShiftSette;
+    if (shift !== 0 && adjustedSetting.customGrindValue != null) {
+      adjustedSetting = def.adjustSetting(shift, { customGrindValue: adjustedSetting.customGrindValue });
+    }
   }
 
   return {
@@ -469,11 +478,12 @@ export function recomputeQuantitativeRecommendationFromLastShot(
   lastShot,
   recipe,
   grinderBeanShots = [],
-  flairEnabled = false
+  flairEnabled = false,
+  settings = null
 ) {
   if (!lastShot || !recipe) return null;
   if (
-    !grinderSupportsQuantitativeRecommendations(lastShot.grinderModel)
+    !grinderSupportsQuantitativeRecommendations(lastShot.grinderModel, settings)
     || isNicheZeroGrinderModel(lastShot.grinderModel)
   ) {
     return null;
@@ -488,6 +498,7 @@ export function recomputeQuantitativeRecommendationFromLastShot(
       setteMicro: lastShot.setteMicro,
       sunbeamSetting: lastShot.sunbeamSetting,
       nicheZeroSetting: null,
+      customGrindValue: lastShot.customGrindValue,
       wasPurged: lastShot.wasPurged !== false,
       actualTime: lastShot.actualTimeS,
       actualYield: lastShot.actualYieldG,
@@ -499,7 +510,7 @@ export function recomputeQuantitativeRecommendationFromLastShot(
     recipe,
     history,
     flairEnabled,
-    { eligibilityShots: grinderBeanShots }
+    { eligibilityShots: grinderBeanShots, settings }
   );
 }
 
@@ -566,7 +577,8 @@ export function getInitialGrindRecommendation(
   allShots = [],
   beans = [],
   mockDateOverride = null,
-  flairEnabled = undefined
+  flairEnabled = undefined,
+  settings = null
 ) {
   const beanShots = allShots.filter(
     (s) =>
@@ -593,7 +605,7 @@ export function getInitialGrindRecommendation(
   }
 
   if (bestShot) {
-    const adjustedRec = getAgeAdjustedRecommendation(bestShot, activeBean, mockDateOverride);
+    const adjustedRec = getAgeAdjustedRecommendation(bestShot, activeBean, mockDateOverride, settings);
     const fromComparableRecipe = sameRecipeShots.some((s) => s.id === bestShot.id);
     const historySource = fromComparableRecipe ? 'bean-history' : 'bean-history-other-recipe';
 
@@ -610,6 +622,13 @@ export function getInitialGrindRecommendation(
           initialSource: historySource,
         };
       }
+      if (isCustomGrinderModel(grinderModel, settings)) {
+        return {
+          customGrindValue:
+            adjustedRec.recommendedSetting.customGrindValue ?? bestShot.customGrindValue,
+          initialSource: historySource,
+        };
+      }
       return { setting: adjustedRec.recommendedSetting.setting, initialSource: historySource };
     }
     if (isSetteGrinderModel(grinderModel)) {
@@ -618,6 +637,13 @@ export function getInitialGrindRecommendation(
     if (isNicheZeroGrinderModel(grinderModel)) {
       return {
         nicheZeroSetting: parseNicheZeroSetting(bestShot.nicheZeroSetting) ?? NICHE_ZERO_DEFAULT_SETTING,
+        initialSource: historySource,
+      };
+    }
+    if (isCustomGrinderModel(grinderModel, settings)) {
+      const def = getGrinderDefinitionById(grinderModel, settings);
+      return {
+        customGrindValue: bestShot.customGrindValue ?? defaultCustomGrindValue(def.customProfile),
         initialSource: historySource,
       };
     }
@@ -650,8 +676,22 @@ export function getInitialGrindRecommendation(
       initialSource: baseline !== null ? 'roast-baseline' : 'app-default',
     };
   }
+  if (isCustomGrinderModel(grinderModel, settings)) {
+    const def = getGrinderDefinitionById(grinderModel, settings);
+    const profile = def.customProfile;
+    let base = baseline !== null ? baseline : defaultCustomGrindValue(profile);
+    base = adjustCustomGrind(base, ageData.recommendedOffsetSunbeam, profile);
+    return { customGrindValue: base, initialSource: baseline !== null ? 'roast-baseline' : 'app-default' };
+  }
   let baseSetting = baseline !== null ? baseline : (roastType === 'Light' ? 17 : roastType === 'Dark' ? 13 : 15);
   return { setting: Math.min(Math.max(baseSetting + ageData.recommendedOffsetSunbeam, 1), 30) };
+}
+
+function prefixEstimatedGrindReason(reason, grinderProfile) {
+  if (!grinderProfile?.recommendationIsEstimated) return reason;
+  const text = reason || '';
+  if (text.toUpperCase().startsWith('ESTIMATED')) return text;
+  return `ESTIMATED — ${text}`;
 }
 
 function buildNicheZeroQualitativeReason({
@@ -686,6 +726,7 @@ function buildNicheZeroQualitativeReason({
 }
 
 export function calculateRecommendation(shotData, recipe, recentShots = [], flairEnabled = false, options = {}) {
+  const settings = options.settings ?? null;
   const learningRecentShots = recentShots.filter(
     (s) => shotEligibleForLearning(s) && shotMatchesGrinderForLearning(s, shotData.grinderModel)
   );
@@ -695,6 +736,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     setteMicro,
     sunbeamSetting,
     nicheZeroSetting,
+    customGrindValue,
     wasPurged,
     actualTime,
     actualYield,
@@ -722,7 +764,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   if (
     lastShotGrind
-    && JSON.stringify(lastShotGrind) !== JSON.stringify({ setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting })
+    && JSON.stringify(lastShotGrind)
+      !== JSON.stringify({ setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting, customGrindValue })
     && !wasPurged
   ) {
     warning = "⚠️ Unpurged setting change detected. Retention may have skewed flow.";
@@ -754,10 +797,10 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     warning = (warning ? warning + " " : "") + "Shot ran fast but tasted bitter. Uneven extraction likely. Check puck prep before large grind changes.";
   }
 
-  const grinderProfile = getRecommendationGrinderProfile(grinderModel);
+  const grinderProfile = getRecommendationGrinderProfile(grinderModel, settings);
   effectiveSensitivity = grinderProfile.sensitivity;
 
-  if (!grinderSupportsQuantitativeRecommendations(grinderModel)) {
+  if (!grinderSupportsQuantitativeRecommendations(grinderModel, settings)) {
     const currentDial = parseNicheZeroSetting(nicheZeroSetting) ?? NICHE_ZERO_DEFAULT_SETTING;
 
     const comparableHistory = [...learningRecentShots]
@@ -834,7 +877,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     const { confidence: nicheStepConfidence } = sensitivityConfidenceForQuantitativeGrinder(
       comparableForLearning,
       grinderModel,
-      recipe
+      recipe,
+      settings
     );
 
     if (empirical.ok) {
@@ -1020,7 +1064,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   }
 
   if (severeChoke) {
-    shift = severeChokeCoarseShift(grinderModel, targetMin, targetMax);
+    shift = severeChokeCoarseShift(grinderModel, targetMin, targetMax, settings);
     const absShift = Math.abs(shift);
     const chokeReason = "Severe choke detected — shot produced very little yield over an extended time. Go substantially coarser.";
     reason = `GO ${absShift} ${grinderProfile.chokeReasonStepLabel} COARSER — ${chokeReason}`;
@@ -1047,7 +1091,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     const { secondsPerStep, confidence } = sensitivityConfidenceForQuantitativeGrinder(
       comparableHistory,
       grinderModel,
-      recipe
+      recipe,
+      settings
     );
     effectiveSensitivity = secondsPerStep || grinderProfile.sensitivity;
     const sensitivity = effectiveSensitivity;
@@ -1153,6 +1198,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     setteMacro,
     setteMicro,
     sunbeamSetting,
+    customGrindValue,
   });
 
   const evidenceContext = evidenceContextForRecommendation(
@@ -1171,7 +1217,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   return {
     recommendedSetting,
-    reason,
+    reason: prefixEstimatedGrindReason(reason, grinderProfile),
     warning,
     subRecommendation,
     flairWaterTempAdvice,
