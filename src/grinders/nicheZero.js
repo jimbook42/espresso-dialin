@@ -42,8 +42,12 @@ export function getNicheZeroDialLimits(settings = null) {
   let max = maxOverride ?? NICHE_ZERO_DIAL_MAX;
 
   if (zeroOffset !== null) {
-    if (zeroOffset < 0) min = Math.min(min, zeroOffset);
-    if (zeroOffset > 0) max = Math.max(max, NICHE_ZERO_DIAL_MAX + zeroOffset);
+    if (zeroOffset < 0) {
+      min = Math.min(min, zeroOffset);
+      max = Math.max(max, NICHE_ZERO_DIAL_MAX - zeroOffset);
+    } else if (zeroOffset > 0) {
+      max = Math.max(max, NICHE_ZERO_DIAL_MAX + zeroOffset);
+    }
   }
 
   if (max <= min) {
@@ -74,6 +78,16 @@ export function adjustNicheZero(currentSetting, stepShift, settings = null) {
   const base = parseNicheZeroSetting(currentSetting, settings) ?? NICHE_ZERO_DEFAULT_SETTING;
   const next = Math.round((base + stepShift * 0.1) * 10) / 10;
   return Math.min(max, Math.max(min, next));
+}
+
+export function formatNicheZeroDialRangeLabel(settings = null) {
+  const { min, max, hasCalibration } = getNicheZeroDialLimits(settings);
+  if (!hasCalibration) {
+    return 'Dial reference (0–50, stepless)';
+  }
+  const minLabel = min % 1 === 0 ? String(min) : String(min);
+  const maxLabel = max % 1 === 0 ? String(max) : String(max);
+  return `Dial reference (${minLabel}–${maxLabel}, stepless)`;
 }
 
 export function clampNicheZeroDial(value, settings = null) {

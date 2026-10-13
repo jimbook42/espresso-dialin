@@ -374,6 +374,14 @@ export function defaultBrewTemperatureForGrinder(grinderModel) {
 
 export function formatShotGrindForHistory(shot, settings = null) {
   const model = shot?.grinderModel;
+  if (isNicheZeroGrinderModel(model)) {
+    const formatted = formatNicheZeroSetting(shot?.nicheZeroSetting, settings);
+    if (formatted !== '') return formatted;
+    if (shot?.nicheZeroSetting != null && shot.nicheZeroSetting !== '') {
+      return String(shot.nicheZeroSetting);
+    }
+    return String(NICHE_ZERO_DEFAULT_SETTING);
+  }
   const customDef = resolveCustomGrinderDefinition(model, settings);
   if (customDef) {
     return customDef.formatShotGrindForHistory(shot);
@@ -393,6 +401,11 @@ export function formatShotGrindForHistory(shot, settings = null) {
 }
 
 export function formatPreviousGrindLabel(grinderModel, shot, settings = null) {
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    if (shot?.nicheZeroSetting == null || shot.nicheZeroSetting === '') return '';
+    return formatNicheZeroSetting(shot.nicheZeroSetting, settings)
+      || String(shot.nicheZeroSetting);
+  }
   return getUiGrinderPresentation(grinderModel, settings).formatPreviousGrindLabel(shot);
 }
 
@@ -450,12 +463,20 @@ export function grindMatchesStoredRecommendation(lastShotGrinderModel, savedGrin
     return sunbeamDefinition.grindMatchesRecommendation(savedGrind, rec);
   }
   if (isNicheZeroGrinderModel(lastShotGrinderModel)) {
-    return nicheZeroDefinition.grindMatchesRecommendation(savedGrind, rec);
+    const a = parseNicheZeroSetting(savedGrind?.nicheZeroSetting, settings);
+    const b = parseNicheZeroSetting(rec?.recommendedSetting?.nicheZeroSetting, settings);
+    return a !== null && b !== null && a === b;
   }
   return true;
 }
 
 export function uiStateFromLastShot(grinderModel, shot, settings = null) {
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    const parsed = parseNicheZeroSetting(shot?.nicheZeroSetting, settings);
+    return {
+      nicheZeroSetting: parsed ?? parseNicheZeroSetting(shot?.nicheZeroSetting, null) ?? NICHE_ZERO_DEFAULT_SETTING,
+    };
+  }
   return getUiGrinderPresentation(grinderModel, settings).uiStateFromLastShot(shot);
 }
 
@@ -473,10 +494,21 @@ export function uiStateFromInitialRecommendation(grinderModel, initialSetting, s
 }
 
 export function uiStateFromRecommendedSetting(grinderModel, recSet, settings = null) {
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    if (recSet?.nicheZeroSetting == null) return null;
+    const parsed = parseNicheZeroSetting(recSet.nicheZeroSetting, settings);
+    if (parsed === null) return null;
+    return { nicheZeroSetting: parsed };
+  }
   return getUiGrinderPresentation(grinderModel, settings).uiStateFromRecommendedSetting(recSet);
 }
 
 export function persistedSettingsPatchFromRecommendation(grinderModel, recSet, settings = null) {
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    const parsed = parseNicheZeroSetting(recSet?.nicheZeroSetting, settings);
+    if (parsed === null) return {};
+    return { lastNicheZeroSetting: parsed };
+  }
   return getUiGrinderPresentation(grinderModel, settings).persistedSettingsPatchFromRecommendation(recSet);
 }
 
@@ -500,6 +532,9 @@ export function listGrinderPickerOptions() {
 }
 
 export function grinderPickerValueForSettings(settings) {
+  if (settings?.grinderPickerSelection === CUSTOM_GRINDER_PICKER_ID) {
+    return CUSTOM_GRINDER_PICKER_ID;
+  }
   if (isCustomGrinderProfileActive(settings?.grinderModel, settings)) {
     return CUSTOM_GRINDER_PICKER_ID;
   }

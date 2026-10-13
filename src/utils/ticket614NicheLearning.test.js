@@ -5,9 +5,18 @@ import { fileURLToPath } from 'node:url';
 import 'fake-indexeddb/auto';
 import {
   adjustNicheZero,
+  formatNicheZeroDialRangeLabel,
   getNicheZeroDialLimits,
   parseNicheZeroSetting,
 } from '../grinders/nicheZero.js';
+import { buildAppDefaultInitialGrindHint } from './initialGrindHint.js';
+import {
+  CUSTOM_GRINDER_PICKER_ID,
+  formatShotGrindForHistory,
+  grinderPickerValueForSettings,
+  parseGrindForShotSave,
+} from '../grinders/grinderRegistry.js';
+import { buildShotsCsvRows, SHOT_CSV_HEADERS } from './csvExport.js';
 import { formatSecondsPerStepDisplay } from './grinderSensitivityDisplay.js';
 import { HIGH_LEARNED_CONFIDENCE_THRESHOLD } from './grindShiftDamping.js';
 import {
@@ -49,6 +58,91 @@ function runNicheCalibrationTests() {
   assert.equal(parseNicheZeroSetting(53, extendedMax), 53);
   assert.equal(parseNicheZeroSetting(54, extendedMax), 54);
   assert.equal(parseNicheZeroSetting(55, extendedMax), null);
+
+  const symmetricNeg = { nicheZeroDialZeroOffset: -5, grinderModel: 'Niche Zero' };
+  const negLimits = getNicheZeroDialLimits(symmetricNeg);
+  assert.equal(negLimits.min, -5);
+  assert.equal(negLimits.max, 55);
+  assert.match(formatNicheZeroDialRangeLabel(symmetricNeg), /-5–55/);
+  assert.equal(parseNicheZeroSetting(-5, symmetricNeg), -5);
+  assert.equal(parseNicheZeroSetting(55, symmetricNeg), 55);
+
+  const savedNeg = parseGrindForShotSave('Niche Zero', { nicheZeroSetting: -5 }, symmetricNeg);
+  assert.equal(savedNeg.ok, true);
+  assert.equal(savedNeg.nicheZeroSetting, -5);
+  const savedHigh = parseGrindForShotSave('Niche Zero', { nicheZeroSetting: 55 }, symmetricNeg);
+  assert.equal(savedHigh.nicheZeroSetting, 55);
+  assert.equal(
+    formatShotGrindForHistory(
+      { grinderModel: 'Niche Zero', nicheZeroSetting: -5 },
+      symmetricNeg
+    ),
+    '-5'
+  );
+  assert.equal(
+    formatShotGrindForHistory(
+      { grinderModel: 'Niche Zero', nicheZeroSetting: 55 },
+      symmetricNeg
+    ),
+    '55'
+  );
+
+  const csvRows = buildShotsCsvRows(
+    [
+      {
+        grinderModel: 'Niche Zero',
+        nicheZeroSetting: 55,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        beanId: 'b1',
+        actualTimeS: 30,
+        actualDoseG: 18,
+        actualYieldG: 36,
+        tasteProfile: 'balanced',
+      },
+    ],
+    {
+      beans: [{ id: 'b1', name: 'B1' }],
+      formatShotGrindForHistory: (shot) => formatShotGrindForHistory(shot, symmetricNeg),
+      normalizeTasteProfile: (t) => t,
+      formatRecFollowedForCsv: () => 'N/A',
+      knownIssueReasonLabel: () => '',
+    }
+  );
+  const grindIdx = SHOT_CSV_HEADERS.indexOf('Grind Setting');
+  assert.equal(csvRows[0][grindIdx], '55');
+}
+
+function runInitialGrindHintLiveTrackingTests() {
+  const hintAt7 = buildAppDefaultInitialGrindHint('DF64', '7');
+  assert.match(hintAt7, /Starting grind 7/);
+  assert.doesNotMatch(hintAt7, /Starting grind 11/);
+  const hintAt20 = buildAppDefaultInitialGrindHint('DF64', '20');
+  assert.match(hintAt20, /Starting grind 20/);
+}
+
+function runCustomGrinderPickerPersistenceTests() {
+  assert.equal(
+    grinderPickerValueForSettings({
+      grinderModel: 'Niche Zero',
+      grinderPickerSelection: CUSTOM_GRINDER_PICKER_ID,
+    }),
+    CUSTOM_GRINDER_PICKER_ID
+  );
+  assert.equal(
+    grinderPickerValueForSettings({
+      grinderModel: 'Niche Zero',
+      customGrinderSetupDraft: {
+        name: 'DF64',
+        dialType: 'stepped',
+        min: 1,
+        max: 20,
+        step: 1,
+        lowerIsFiner: true,
+      },
+      grinderPickerSelection: CUSTOM_GRINDER_PICKER_ID,
+    }),
+    CUSTOM_GRINDER_PICKER_ID
+  );
 }
 
 function runEstimatedLabelTests() {
@@ -235,6 +329,8 @@ export async function runTicket614NicheLearningTests() {
   runEstimatedLabelTests();
   runCrossBeanCarryOverTests();
   runCustomStartingGrindConsistencyTests();
+  runInitialGrindHintLiveTrackingTests();
+  runCustomGrinderPickerPersistenceTests();
   runLegacyRecordCompatibilityTests();
   await runLegacyCsvImportEvidenceTests();
   console.log('Ticket 6.14 niche learning tests passed.');

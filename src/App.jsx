@@ -33,6 +33,7 @@ import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { GrinderGrindControls } from './components/GrindControls';
 import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
+import { buildAppDefaultInitialGrindHint } from './utils/initialGrindHint.js';
 import {
   CUSTOM_GRINDER_PICKER_ID,
   defaultBrewTemperatureForGrinder,
@@ -356,7 +357,9 @@ export default function App() {
     if (settingsSetting) {
       queueMicrotask(() => {
       setSettingsGrinderPickerValue(grinderPickerValueForSettings(settingsSetting));
-      if (settingsSetting.customGrinder) {
+      if (settingsSetting.customGrinderSetupDraft) {
+        setSettingsCustomGrinderDraft(settingsSetting.customGrinderSetupDraft);
+      } else if (settingsSetting.customGrinder) {
         setSettingsCustomGrinderDraft(settingsSetting.customGrinder);
       }
       const resolvedGrinderModel = resolveActiveGrinderModel(settingsSetting);
@@ -751,6 +754,10 @@ export default function App() {
     const nextSettings = {
       ...currentSettings,
       grinderModel: model,
+      grinderPickerSelection:
+        modelOrPicker === CUSTOM_GRINDER_PICKER_ID ? CUSTOM_GRINDER_PICKER_ID : undefined,
+      customGrinderSetupDraft:
+        modelOrPicker === CUSTOM_GRINDER_PICKER_ID ? customGrinderChoice ?? currentSettings.customGrinderSetupDraft : undefined,
       ...customGrinderPatch,
       ...(typeof brewGuideChoice === 'boolean' ? { brewGuideEnabled: brewGuideChoice } : {}),
       ...(typeof flairChoice === 'boolean' ? { flairEnabled: flairChoice } : {}),
@@ -778,14 +785,45 @@ export default function App() {
     });
   };
 
+  const persistCustomGrinderSetupDraft = async (draft) => {
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    const patch = {
+      grinderPickerSelection: CUSTOM_GRINDER_PICKER_ID,
+      customGrinderSetupDraft: draft ?? null,
+    };
+    if (isCustomGrinderFormValid(draft)) {
+      const normalized = normalizeCustomGrinderSettingsPatch(draft);
+      if (normalized) {
+        Object.assign(patch, normalized);
+        setGrinderModel(normalized.grinderModel);
+      }
+    }
+    await db.settings.put({ ...currentSettings, ...patch });
+  };
+
+  const handleSettingsCustomGrinderDraftChange = (draft) => {
+    setSettingsCustomGrinderDraft(draft);
+    void persistCustomGrinderSetupDraft(draft);
+  };
+
   const handleSettingsGrinderPickerChange = async (pickerValue) => {
     setSettingsGrinderPickerValue(pickerValue);
     if (pickerValue === CUSTOM_GRINDER_PICKER_ID) {
-      setSettingsCustomGrinderDraft(
-        settingsCustomGrinderDraft || settingsSetting?.customGrinder || setupCustomGrinderDraft
-      );
+      const draft =
+        settingsCustomGrinderDraft
+        || settingsSetting?.customGrinderSetupDraft
+        || settingsSetting?.customGrinder
+        || setupCustomGrinderDraft;
+      setSettingsCustomGrinderDraft(draft);
+      await persistCustomGrinderSetupDraft(draft);
       return;
     }
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({
+      ...currentSettings,
+      grinderPickerSelection: undefined,
+      customGrinderSetupDraft: undefined,
+    });
     await handleSaveGrinderSetup(pickerValue);
   };
 
@@ -1460,27 +1498,6 @@ export default function App() {
     return baseline !== null ? 'roast-baseline' : 'app-default';
   })();
 
-  const initialGrindHint = (() => {
-    if (!initialGrindHintSource) return null;
-    const isNiche = grinderModel === 'Niche Zero';
-    switch (initialGrindHintSource) {
-      case 'app-default': {
-        const grindLabel = isNiche
-          ? `Starting dial ${initialGrindSetting.nicheZeroSetting ?? '—'}`
-          : `Starting grind ${formatInitialGrindDisplay(grinderModel, initialGrindSetting, appSettings)}`;
-        return `${grindLabel} — common espresso starting point (app default, not manufacturer guidance). Not from your shot history.`;
-      }
-      case 'roast-baseline':
-        return 'Starting grind from your dialled-in shots on other beans of this roast class.';
-      case 'bean-history':
-        return 'Starting grind from your logged shots on this bean (matching recipe).';
-      case 'bean-history-other-recipe':
-        return 'Starting grind from this bean; recipe differs from current targets — verify before brewing.';
-      default:
-        return null;
-    }
-  })();
-
   const currentGrindLabel = formatCurrentGrindLabel(
     grinderModel,
     {
@@ -1492,6 +1509,22 @@ export default function App() {
     },
     appSettings
   );
+
+  const initialGrindHint = (() => {
+    if (!initialGrindHintSource) return null;
+    switch (initialGrindHintSource) {
+      case 'app-default':
+        return buildAppDefaultInitialGrindHint(grinderModel, currentGrindLabel);
+      case 'roast-baseline':
+        return 'Starting grind from your dialled-in shots on other beans of this roast class.';
+      case 'bean-history':
+        return 'Starting grind from your logged shots on this bean (matching recipe).';
+      case 'bean-history-other-recipe':
+        return 'Starting grind from this bean; recipe differs from current targets — verify before brewing.';
+      default:
+        return null;
+    }
+  })();
 
   const timerWindowSeconds =
     (timerUsePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
@@ -3201,7 +3234,7 @@ export default function App() {
                     <div className="space-y-2">
                       <CustomGrinderForm
                         value={settingsCustomGrinderDraft}
-                        onChange={setSettingsCustomGrinderDraft}
+                        onChange={handleSettingsCustomGrinderDraftChange}
                         ui={ui}
                       />
                       <button

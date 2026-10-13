@@ -368,9 +368,9 @@ export function shotsForOutlierContext(learningRecentShots, recipeMatchedShots) 
   return [...learningRecentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
-export function grindNumericFromShotData(shotData, grinderProfile) {
+export function grindNumericFromShotData(shotData, grinderProfile, settings = null) {
   if (isNicheZeroGrinderModel(shotData.grinderModel)) {
-    return parseNicheZeroSetting(shotData.nicheZeroSetting);
+    return parseNicheZeroSetting(shotData.nicheZeroSetting, settings);
   }
   if (shotData.customGrindValue != null && grinderProfile?.controlType === 'custom') {
     return grindNumericFromShot(shotData, grinderProfile);

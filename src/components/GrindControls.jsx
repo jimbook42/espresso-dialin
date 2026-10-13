@@ -21,6 +21,7 @@ import {
   formatNicheZeroSetting,
   NICHE_ZERO_DEFAULT_SETTING,
   NICHE_ZERO_DIAL_MAX,
+  formatNicheZeroDialRangeLabel,
   getNicheZeroDialLimits,
   parseNicheZeroSetting,
 } from '../grinders/nicheZero.js';
@@ -320,11 +321,7 @@ export function NicheZeroGrindControl({ setting, onChange, settings = null, ui }
 
   return (
     <AxisStepper
-      label={
-        getNicheZeroDialLimits(settings).hasCalibration
-          ? `Dial reference (${min}–${max}, stepless)`
-          : nicheUi.dialFieldLabel
-      }
+      label={formatNicheZeroDialRangeLabel(settings)}
       display={display}
       onDec={() => bump(-1)}
       onInc={() => bump(1)}

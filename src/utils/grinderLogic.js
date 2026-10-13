@@ -1199,7 +1199,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       reliableLearnedSensitivity,
     };
 
-    const currentGrindNumeric = grindNumericFromShotData(shotData, grinderProfile);
+    const currentGrindNumeric = grindNumericFromShotData(shotData, grinderProfile, settings);
     const outlierCheck = detectLikelyShotOutlier({
       actualTime,
       grindNumeric: currentGrindNumeric,
