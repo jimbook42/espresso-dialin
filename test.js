@@ -41,6 +41,8 @@ import { runGrindRecommendationDisplayTests } from './src/utils/grindRecommendat
 import { runGrindControlsTests } from './src/components/grindControls.test.js';
 import { runCustomGrinderTests } from './src/grinders/customGrinder.test.js';
 import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
+import { runFirstLaunchRenderGateTests } from './src/settings/firstLaunchRenderGate.test.js';
+import { runAppEntryTests } from './src/appEntry.test.js';
 import { shouldShowFirstLaunchOnboarding } from './src/settings/onboardingGate.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
@@ -559,6 +561,8 @@ async function runTests() {
   runGrindControlsTests();
   runCustomGrinderTests();
   runOnboardingGateTests();
+  runFirstLaunchRenderGateTests();
+  runAppEntryTests();
   runCustomGrinderRecommendationTests(recipe);
   runPressureLabFlagTests();
   runScaleFlagTests();

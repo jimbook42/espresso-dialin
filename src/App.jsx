@@ -59,7 +59,8 @@ import {
 } from './grinders/customGrinder.js';
 import { FirstLaunchWizard } from './components/FirstLaunchWizard.jsx';
 import { CustomGrinderForm } from './components/CustomGrinderForm.jsx';
-import { shouldShowFirstLaunchOnboarding } from './settings/onboardingGate.js';
+import { shouldRenderFirstLaunchWizard } from './settings/firstLaunchRenderGate.js';
+import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
 import {
   isSmartScaleIntegrationActive,
   listSmartScalePickerOptions,
@@ -239,9 +240,9 @@ export default function App() {
   const beans = useLiveQuery(() => db.beans.toArray(), []) || [];
   const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
   const shots = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []) || [];
-  const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), []);
-  const settingsLoaded = settingsQueryResult !== undefined;
-  const settingsSetting = settingsQueryResult ?? null;
+  const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), [], SETTINGS_QUERY_PENDING);
+  const settingsSetting =
+    settingsQueryResult === SETTINGS_QUERY_PENDING ? null : (settingsQueryResult ?? null);
   const brewGuideEnabled = Boolean(settingsSetting?.brewGuideEnabled);
   const brewGuideSetupComplete = Boolean(settingsSetting?.brewGuideSetupComplete);
   const brewGuideAccessories = normalizeBrewAccessories(settingsSetting?.brewGuideAccessories);
@@ -1661,11 +1662,7 @@ export default function App() {
     }, 200);
   };
 
-  if (!settingsLoaded) {
-    return null;
-  }
-
-  if (shouldShowFirstLaunchOnboarding(settingsSetting, {
+  if (shouldRenderFirstLaunchWizard(settingsQueryResult, {
     hasExistingUserData: shots.length > 0 || beans.length > 0,
   })) {
     return (
