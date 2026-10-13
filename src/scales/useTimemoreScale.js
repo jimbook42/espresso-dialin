@@ -31,6 +31,7 @@ export function useTimemoreScale({
   const [transportKind, setTransportKind] = useState('sim');
   const [connectStatus, setConnectStatus] = useState('idle');
   const [liveWeightG, setLiveWeightG] = useState(0);
+  const [shotStartWeightBaselineG, setShotStartWeightBaselineG] = useState(0);
   const [instantFlowGs, setInstantFlowGs] = useState(null);
   const [liveFlowSeries, setLiveFlowSeries] = useState([]);
 
@@ -39,8 +40,8 @@ export function useTimemoreScale({
   const rafRef = useRef(null);
   const recordingExtractionRef = useRef(false);
   const liveWeightRef = useRef(0);
-
   const isConnected = connectStatus === 'connected';
+  const liveRelativeWeightG = Math.max(0, liveWeightG - shotStartWeightBaselineG);
 
   const disposeSession = useCallback(() => {
     sessionRef.current?.dispose();
@@ -106,6 +107,7 @@ export function useTimemoreScale({
       attachSession(transport);
       setConnectStatus('connected');
       liveWeightRef.current = 0;
+      setShotStartWeightBaselineG(0);
       setLiveWeightG(0);
       setInstantFlowGs(null);
     } catch (err) {
@@ -132,6 +134,15 @@ export function useTimemoreScale({
     setLiveFlowSeries([]);
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
+    const weightBeforeTare = liveWeightRef.current;
+    try {
+      await transport.tare();
+      setShotStartWeightBaselineG(0);
+      liveWeightRef.current = 0;
+      setLiveWeightG(0);
+    } catch {
+      setShotStartWeightBaselineG(weightBeforeTare);
+    }
     await transport.startTimer();
     if (!usePreInfusion) {
       sessionRef.current?.beginExtractionTiming();
@@ -159,6 +170,7 @@ export function useTimemoreScale({
     const metrics = sessionRef.current?.getShotMetrics() ?? null;
     const yieldG = Math.max(0, Math.round(liveWeightRef.current * 10) / 10);
     recordingExtractionRef.current = false;
+    setShotStartWeightBaselineG(0);
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
     const shotMetrics =
@@ -177,6 +189,7 @@ export function useTimemoreScale({
     await transport.stopTimer().catch(() => {});
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
+    setShotStartWeightBaselineG(0);
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
   }, [enabled, connectStatus]);
@@ -190,6 +203,7 @@ export function useTimemoreScale({
       connectStatus: 'idle',
       isConnected: false,
       liveWeightG: 0,
+      liveRelativeWeightG: 0,
       instantFlowGs: null,
       liveFlowSeries: [],
       connect: noopAsync,
@@ -210,6 +224,7 @@ export function useTimemoreScale({
     connectStatus,
     isConnected,
     liveWeightG,
+    liveRelativeWeightG,
     instantFlowGs,
     liveFlowSeries,
     connect,

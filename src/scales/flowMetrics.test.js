@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { instantaneousFlowGs, summarizeScaleFlow } from './flowMetrics.js';
+import { flowRateSeriesFromWeightCurve, instantaneousFlowGs, summarizeScaleFlow } from './flowMetrics.js';
 
 export function runScaleFlowMetricsTests() {
   const samples = [
@@ -12,6 +12,10 @@ export function runScaleFlowMetricsTests() {
 
   assert.equal(instantaneousFlowGs(samples[0], samples[1]), 3.6);
   assert.equal(summarizeScaleFlow([]).averageFlowRateGs, null);
+
+  const flowSeries = flowRateSeriesFromWeightCurve(samples);
+  assert.equal(flowSeries.length, 1);
+  assert.ok(flowSeries[0].flowGs > 0);
 
   console.log('Scale flow metrics tests passed.');
 }

@@ -334,13 +334,13 @@ export default function App() {
       return;
     }
     if (!timemoreScale.isConnected || !timerUsePreInfusion) return;
-    const targets = preinfusionAutoEndTargets(activeRecipe?.flairProfile);
+    const targets = preinfusionAutoEndTargets(activeRecipe?.flairProfile, true);
     if (targets.timeS == null && targets.weightG == null) return;
     if (scaleAutoEndPreinfusionRef.current) return;
     if (
       !shouldAutoEndPreinfusion(targets, {
         preInfusionElapsedS: timerSeconds,
-        liveWeightG: timemoreScale.liveWeightG,
+        liveRelativeWeightG: timemoreScale.liveRelativeWeightG,
       })
     ) {
       return;
@@ -355,7 +355,7 @@ export default function App() {
     preInfusionPhase,
     timerSeconds,
     timemoreScale.isConnected,
-    timemoreScale.liveWeightG,
+    timemoreScale.liveRelativeWeightG,
     timerUsePreInfusion,
     activeRecipe?.flairProfile,
     timemoreScale,
@@ -1055,10 +1055,9 @@ export default function App() {
         }
       : ageAdjustedRec;
   const recommendationEvidenceContext =
-    dynamicRec?.evidenceContext ||
     (activeRecipe && beanShotsForGrinder.length > 0
       ? getRecommendationEvidenceContext(beanShotsForGrinder, activeRecipe, flairEnabled)
-      : null);
+      : null) || dynamicRec?.evidenceContext;
   const hasLoggedShotForBean = beanShots.length > 0;
   const decafNoteSource = !beanIsDecaf(activeBean)
     ? null
@@ -1132,6 +1131,12 @@ export default function App() {
       ? Math.max(0, timerSeconds - preInfusionSeconds)
       : timerSeconds;
   const timerProgress = timerRunning ? Math.min(1, timerSeconds / timerWindowSeconds) : 0;
+  const scaleExtractionElapsedS =
+    timerRunning && timerUsePreInfusion && !preInfusionPhase
+      ? Math.max(0, timerSeconds - preInfusionSeconds)
+      : timerRunning
+        ? timerSeconds
+        : 0;
   const scaleShowLiveReadout =
     scaleFeatureEnabled && timemoreScale.isConnected && (timerRunning || timemoreScale.liveWeightG > 0);
   const scaleShowFlow =
@@ -1144,13 +1149,25 @@ export default function App() {
     if (!profile) return [];
     const lines = [];
     if (profile.preinfusionPressure) {
-      lines.push(`Pre-infusion: ${profile.preinfusionPressure} bar · ${profile.preinfusionTime || '—'}s`);
+      const endTrigger = profile.preinfusionEndTrigger || 'time';
+      const endDetail =
+        endTrigger === 'weight'
+          ? `${profile.preinfusionEndWeightG || '—'}g`
+          : endTrigger === 'manual'
+            ? 'manual'
+            : `${profile.preinfusionTime || '—'}s`;
+      lines.push(`Pre-infusion: ${profile.preinfusionPressure} bar · end ${endTrigger} @ ${endDetail}`);
     }
     if (profile.peakPressure) {
       lines.push(`Hold: ${profile.peakPressure} bar → ${profile.peakEndYield || '—'}g`);
     }
     if (profile.taperPressure) {
-      lines.push(`Taper: ${profile.taperPressure} bar`);
+      const taperTrigger = profile.taperStartTrigger || 'weight';
+      const taperAt =
+        taperTrigger === 'time'
+          ? `${profile.taperStartTimeS || '—'}s`
+          : `${profile.peakEndYield || '—'}g`;
+      lines.push(`Taper: ${profile.taperPressure} bar · start ${taperTrigger} @ ${taperAt}`);
     }
     return lines;
   };
@@ -1421,6 +1438,10 @@ export default function App() {
                   compact
                   liveFlowSamples={scaleLiveFlowOnProfile}
                   flowTimeOffsetSec={flowChartTimeOffsetSec}
+                  scaleConnected={timemoreScale.isConnected}
+                  extractionElapsedS={scaleExtractionElapsedS}
+                  liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
+                  targetTimeMaxS={activeRecipe?.targetTimeMaxS}
                 />
               </div>
             )}
@@ -1644,6 +1665,10 @@ export default function App() {
                           profile={activeRecipe.flairProfile}
                           liveFlowSamples={scaleLiveFlowOnProfile}
                           flowTimeOffsetSec={flowChartTimeOffsetSec}
+                          scaleConnected={timemoreScale.isConnected}
+                          extractionElapsedS={scaleExtractionElapsedS}
+                          liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
+                          targetTimeMaxS={activeRecipe?.targetTimeMaxS}
                         />
                       </div>
                     </div>
@@ -2274,6 +2299,29 @@ export default function App() {
                         />
                       </div>
                       <div>
+                        <span className={`text-[10px] ${subTextClass}`}>Pre-infuse end (scale)</span>
+                        <select
+                          value={newRecipe.flairProfile?.preinfusionEndTrigger || 'time'}
+                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionEndTrigger: e.target.value } })}
+                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                        >
+                          <option value="time">Time</option>
+                          <option value="weight">Weight</option>
+                          <option value="manual">Manual only</option>
+                        </select>
+                      </div>
+                      {(newRecipe.flairProfile?.preinfusionEndTrigger || 'time') === 'weight' && (
+                        <div>
+                          <span className={`text-[10px] ${subTextClass}`}>Pre-infuse end at (g)</span>
+                          <input
+                            type="number" step="0.1"
+                            value={newRecipe.flairProfile?.preinfusionEndWeightG || ''}
+                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionEndWeightG: e.target.value } })}
+                            className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                          />
+                        </div>
+                      )}
+                      <div>
                         <span className={`text-[10px] ${subTextClass}`}>Peak/Hold Pressure (bar)</span>
                         <input
                           type="number" step="0.1"
@@ -2300,6 +2348,28 @@ export default function App() {
                           className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
                         />
                       </div>
+                      <div>
+                        <span className={`text-[10px] ${subTextClass}`}>Taper start (scale)</span>
+                        <select
+                          value={newRecipe.flairProfile?.taperStartTrigger || 'weight'}
+                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperStartTrigger: e.target.value } })}
+                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                        >
+                          <option value="weight">Weight (peak ends)</option>
+                          <option value="time">Time</option>
+                        </select>
+                      </div>
+                      {(newRecipe.flairProfile?.taperStartTrigger || 'weight') === 'time' && (
+                        <div>
+                          <span className={`text-[10px] ${subTextClass}`}>Taper start at (s)</span>
+                          <input
+                            type="number" step="0.1"
+                            value={newRecipe.flairProfile?.taperStartTimeS || ''}
+                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperStartTimeS: e.target.value } })}
+                            className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

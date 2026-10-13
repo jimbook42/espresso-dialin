@@ -10,25 +10,25 @@ export function runPreinfusionAutoEndTests() {
   assert.equal(recipeDefinesPreinfusion({ preinfusionPressure: '2' }), true);
   assert.equal(recipeDefinesPreinfusion({}), false);
 
-  const targets = preinfusionAutoEndTargets({ preinfusionTime: '10', peakEndYield: '4' });
-  assert.deepEqual(targets, { timeS: 10, weightG: 4 });
+  const targets = preinfusionAutoEndTargets({ preinfusionTime: '10', peakEndYield: '4' }, true);
+  assert.deepEqual(targets, { trigger: 'time', timeS: 10, weightG: null });
 
   assert.equal(
-    shouldAutoEndPreinfusion(targets, { preInfusionElapsedS: 9, liveWeightG: 1 }),
+    shouldAutoEndPreinfusion(targets, { preInfusionElapsedS: 9, liveRelativeWeightG: 1 }),
     false
   );
   assert.equal(
-    shouldAutoEndPreinfusion(targets, { preInfusionElapsedS: 10, liveWeightG: 1 }),
+    shouldAutoEndPreinfusion(targets, { preInfusionElapsedS: 10, liveRelativeWeightG: 1 }),
     true
   );
   assert.equal(
-    shouldAutoEndPreinfusion(targets, { preInfusionElapsedS: 2, liveWeightG: 4 }),
-    true
+    shouldAutoEndPreinfusion(targets, { preInfusionElapsedS: 2, liveRelativeWeightG: 4 }),
+    false
   );
 
-  const timeOnly = preinfusionAutoEndTargets({ preinfusionTime: '5' });
-  assert.equal(shouldAutoEndPreinfusion(timeOnly, { preInfusionElapsedS: 5, liveWeightG: 0 }), true);
-  assert.equal(shouldAutoEndPreinfusion(timeOnly, { preInfusionElapsedS: 4, liveWeightG: 99 }), false);
+  const timeOnly = preinfusionAutoEndTargets({ preinfusionTime: '5' }, true);
+  assert.equal(shouldAutoEndPreinfusion(timeOnly, { preInfusionElapsedS: 5, liveRelativeWeightG: 0 }), true);
+  assert.equal(shouldAutoEndPreinfusion(timeOnly, { preInfusionElapsedS: 4, liveRelativeWeightG: 99 }), false);
 
   console.log('Preinfusion auto-end tests passed.');
 }

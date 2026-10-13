@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { flairProfileMarkerProgress } from '../scales/flairScaleTriggers.js';
 
 const AMBER = '#c88a4b';
 
@@ -124,6 +125,10 @@ export function PressureProfileChart({
   compact = false,
   liveFlowSamples = null,
   flowTimeOffsetSec = 0,
+  scaleConnected = false,
+  extractionElapsedS = 0,
+  liveRelativeWeightG = 0,
+  targetTimeMaxS,
 }) {
   const gradId = useId().replace(/:/g, '');
   const w = 340;
@@ -137,8 +142,19 @@ export function PressureProfileChart({
   const padB = compact ? 14 : 16;
   const chartH = h - padT - padB;
 
+  const markerProgress =
+    progress != null && hasData
+      ? flairProfileMarkerProgress(built, {
+          timerProgress: progress,
+          scaleConnected,
+          profile,
+          extractionElapsedS,
+          liveRelativeWeightG,
+          targetTimeMaxS,
+        })
+      : null;
   const marker =
-    progress != null && hasData ? markerAtProgress(built, progress) : null;
+    markerProgress != null && hasData ? markerAtProgress(built, markerProgress) : null;
   const flowOverlay =
     liveFlowSamples?.length && hasData
       ? buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec)
