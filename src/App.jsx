@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   db,
   generateId,
@@ -102,6 +102,7 @@ import {
   shouldNavigateToBrewAfterFirstBean,
 } from './brewGuide/guidance';
 import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
+import { brewGuideIntroMachineSettingsLine, brewGuideSettingsToggleDetail } from './brewGuide/copy.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
 import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
@@ -424,6 +425,7 @@ export default function App() {
     || (timemoreScale.isConnected && scaleRecipePreinfusion)
     || flairTimedPreinfusionAuto;
   const scaleAutoEndPreinfusionRef = useRef(false);
+  const brewGuideTimerActiveRef = useRef(false);
   const profilePreinfusionTimeS = Number(activeRecipe?.flairProfile?.preinfusionTime) || 0;
   const flowChartTimeOffsetSec = timerUsePreInfusion ? Math.max(profilePreinfusionTimeS, 4) : 0;
   const scaleLiveFlowOnProfile =
@@ -505,7 +507,21 @@ export default function App() {
     return `0:${String(secs).padStart(2, '0')}.${tenths}`;
   };
 
+  const releaseBrewGuideTimer = () => {
+    if (!brewGuideTimerActiveRef.current) return;
+    brewGuideTimerActiveRef.current = false;
+    scaleAutoEndPreinfusionRef.current = false;
+    setTimerRunning(false);
+    setTimerTicks(0);
+    setPreInfusionSeconds(0);
+    setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyShotCancelled();
+    }
+  };
+
   const handleStartTimer = async () => {
+    brewGuideTimerActiveRef.current = false;
     scaleAutoEndPreinfusionRef.current = false;
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -1583,14 +1599,30 @@ export default function App() {
   };
 
   const handleBrewStartTimer = () => {
+    brewGuideTimerActiveRef.current = true;
     setActualTimeS('');
     handleStartTimer();
   };
 
   const handleBrewResetTimer = () => {
+    brewGuideTimerActiveRef.current = false;
     handleResetTimer();
     setActualTimeS('');
   };
+
+  useLayoutEffect(() => {
+    if (activeTab === 'brew' && brewGuideEnabled) return;
+    if (!brewGuideTimerActiveRef.current) return;
+    brewGuideTimerActiveRef.current = false;
+    scaleAutoEndPreinfusionRef.current = false;
+    setTimerRunning(false);
+    setTimerTicks(0);
+    setPreInfusionSeconds(0);
+    setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyShotCancelled();
+    }
+  }, [activeTab, brewGuideEnabled, timemoreScale.isConnected]);
 
   const handleBrewHandoff = ({ timeS, yieldG } = {}) => {
     if (activeRecipe && activeRecipe.targetDoseG != null && activeRecipe.targetDoseG !== '') {
@@ -1614,6 +1646,7 @@ export default function App() {
         customGrindValue: uiState?.customGrindValue ?? customGrindValue,
       });
     }
+    brewGuideTimerActiveRef.current = false;
     setBrewTimerHost(false);
     setShotFieldHighlights({ ...EMPTY_SHOT_FIELD_HIGHLIGHTS, taste: true });
     setActiveTab('dial');
@@ -1650,7 +1683,7 @@ export default function App() {
     <div className={`min-h-screen ${ui.page} relative`}>
       
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
-      {timerRunning && !brewTimerHost && (
+      {timerRunning && !brewTimerHost && !brewGuideTimerActiveRef.current && (
         <div
           className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           onClick={handleTimerSurfaceTap}
@@ -3033,6 +3066,7 @@ export default function App() {
           open={activeTab === 'brew' && showBrewGuideIntro}
           onContinue={handleDismissBrewGuideIntro}
           ui={ui}
+          machineSettingsLine={brewGuideIntroMachineSettingsLine(grinderModel)}
         />
 
         {isSettingsOpen && (
@@ -3113,7 +3147,7 @@ export default function App() {
                   <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
                     <div>
                       <span className={`font-bold block ${ui.text}`}>Brew Guide</span>
-                      <span className={`text-[10px] ${ui.muted}`}>Shot steps from Dial-In, plus Barista Max guides</span>
+                      <span className={`text-[10px] ${ui.muted}`}>{brewGuideSettingsToggleDetail(grinderModel)}</span>
                     </div>
                     <SettingsToggle checked={brewGuideEnabled} onChange={handleToggleBrewGuide} label="Brew Guide" />
                   </div>

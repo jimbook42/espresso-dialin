@@ -1,6 +1,6 @@
 import { ClipboardList, X } from 'lucide-react';
 
-export function BrewGuideIntroModal({ open, onContinue, ui }) {
+export function BrewGuideIntroModal({ open, onContinue, ui, machineSettingsLine }) {
   if (!open) return null;
 
   return (
@@ -28,7 +28,7 @@ export function BrewGuideIntroModal({ open, onContinue, ui }) {
           </p>
           <ul className={`space-y-2 ${ui.sub} list-disc pl-5`}>
             <li>Step-by-step brew workflow from heat-up to logging your shot</li>
-            <li>Machine settings (brew temperature and pre-infusion) for the Barista Max</li>
+            <li>{machineSettingsLine}</li>
             <li>Optional cleaning and descale programmes</li>
             <li>Optional milk texturing and drink guides</li>
           </ul>

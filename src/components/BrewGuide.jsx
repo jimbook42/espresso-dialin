@@ -299,6 +299,15 @@ export function BrewGuide({
   }, [screen, step?.kind, onTimerHost]);
 
   useEffect(() => {
+    const onTimerStep = screen === 'steps' && step?.kind === 'timer';
+    if (!onTimerStep && extractPhase === 'running') {
+      onResetTimer();
+      setExtractPhase('idle');
+      setCapturedTime(null);
+    }
+  }, [screen, step?.kind, extractPhase, onResetTimer]);
+
+  useEffect(() => {
     if (!accessoriesOpenRequest) return;
     setSetupReturnTo(accessoriesReturnTo);
     setDraft(normalizeBrewAccessories(accessories));

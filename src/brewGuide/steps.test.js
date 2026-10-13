@@ -13,6 +13,7 @@ import {
 import { runSunbeamGuideTests } from './sunbeam.test.js';
 import { runGrinderBrewGuideTests } from './grinderBrewGuide.test.js';
 import { runGenericMachineGuideTests } from './machine/generic.test.js';
+import { runBrewGuideCopyTests } from './copy.test.js';
 
 const DIAL = {
   beanName: 'House Espresso',
@@ -355,6 +356,7 @@ export function runBrewGuideTests() {
   assert.doesNotMatch(setteGrind.instruction, /Sunbeam/i);
 
   runGrinderBrewGuideTests();
+  runBrewGuideCopyTests();
   runGenericMachineGuideTests();
   runSunbeamGuideTests();
   console.log('Brew Guide tests passed!');
