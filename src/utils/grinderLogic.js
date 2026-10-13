@@ -19,9 +19,8 @@ import {
 import { adjustCustomGrind, defaultCustomGrindValue } from '../grinders/customGrinder.js';
 import {
   parseNicheZeroSetting,
+  clampNicheZeroDial,
   NICHE_ZERO_DEFAULT_SETTING,
-  NICHE_ZERO_DIAL_MIN,
-  NICHE_ZERO_DIAL_MAX,
 } from '../grinders/nicheZero.js';
 import {
   recommendNicheZeroFromEvidence,
@@ -113,6 +112,14 @@ export function filterShotsForGrinderLearning(shots, { beanId, grinderModel }) {
   if (!beanId || !grinderModel) return [];
   return shots.filter(
     (s) => s.beanId === beanId && shotEligibleForLearning(s) && shotMatchesGrinderForLearning(s, grinderModel)
+  );
+}
+
+/** All learning-eligible shots on a grinder (any bean) — used for cross-bean step-size carry-over. */
+export function filterShotsForGrinderModelLearning(shots, grinderModel) {
+  if (!grinderModel) return [];
+  return shots.filter(
+    (s) => shotEligibleForLearning(s) && shotMatchesGrinderForLearning(s, grinderModel)
   );
 }
 
@@ -487,7 +494,8 @@ export function recomputeQuantitativeRecommendationFromLastShot(
   recipe,
   grinderBeanShots = [],
   flairEnabled = false,
-  settings = null
+  settings = null,
+  grinderLearningShots = null
 ) {
   if (!lastShot || !recipe) return null;
   if (
@@ -518,11 +526,22 @@ export function recomputeQuantitativeRecommendationFromLastShot(
     recipe,
     history,
     flairEnabled,
-    { eligibilityShots: grinderBeanShots, settings }
+    {
+      eligibilityShots: grinderBeanShots,
+      settings,
+      grinderLearningShots: grinderLearningShots ?? grinderBeanShots,
+    }
   );
 }
 
-export function recomputeNicheRecommendationFromLastShot(lastShot, recipe, grinderBeanShots = [], flairEnabled = false) {
+export function recomputeNicheRecommendationFromLastShot(
+  lastShot,
+  recipe,
+  grinderBeanShots = [],
+  flairEnabled = false,
+  settings = null,
+  grinderLearningShots = null
+) {
   if (!lastShot || !isNicheZeroGrinderModel(lastShot.grinderModel) || !recipe) return null;
   const history = grinderBeanShots.filter((s) => s.id !== lastShot.id);
   return calculateRecommendation(
@@ -545,7 +564,11 @@ export function recomputeNicheRecommendationFromLastShot(lastShot, recipe, grind
     recipe,
     history,
     flairEnabled,
-    { eligibilityShots: grinderBeanShots }
+    {
+      eligibilityShots: grinderBeanShots,
+      settings,
+      grinderLearningShots: grinderLearningShots ?? grinderBeanShots,
+    }
   );
 }
 
@@ -624,8 +647,8 @@ export function getInitialGrindRecommendation(
       if (isNicheZeroGrinderModel(grinderModel)) {
         return {
           nicheZeroSetting:
-            parseNicheZeroSetting(adjustedRec.recommendedSetting.nicheZeroSetting)
-            ?? parseNicheZeroSetting(bestShot.nicheZeroSetting)
+            parseNicheZeroSetting(adjustedRec.recommendedSetting.nicheZeroSetting, settings)
+            ?? parseNicheZeroSetting(bestShot.nicheZeroSetting, settings)
             ?? NICHE_ZERO_DEFAULT_SETTING,
           initialSource: historySource,
         };
@@ -644,7 +667,7 @@ export function getInitialGrindRecommendation(
     }
     if (isNicheZeroGrinderModel(grinderModel)) {
       return {
-        nicheZeroSetting: parseNicheZeroSetting(bestShot.nicheZeroSetting) ?? NICHE_ZERO_DEFAULT_SETTING,
+        nicheZeroSetting: parseNicheZeroSetting(bestShot.nicheZeroSetting, settings) ?? NICHE_ZERO_DEFAULT_SETTING,
         initialSource: historySource,
       };
     }
@@ -680,7 +703,7 @@ export function getInitialGrindRecommendation(
   if (isNicheZeroGrinderModel(grinderModel)) {
     const baseDial = baseline !== null ? baseline : NICHE_ZERO_DEFAULT_SETTING;
     return {
-      nicheZeroSetting: parseNicheZeroSetting(baseDial) ?? NICHE_ZERO_DEFAULT_SETTING,
+      nicheZeroSetting: parseNicheZeroSetting(baseDial, settings) ?? NICHE_ZERO_DEFAULT_SETTING,
       initialSource: baseline !== null ? 'roast-baseline' : 'app-default',
     };
   }
@@ -769,6 +792,10 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   const learningRecentShots = recentShots.filter(
     (s) => shotEligibleForLearning(s) && shotMatchesGrinderForLearning(s, shotData.grinderModel)
   );
+  const grinderWideLearningShots = options.grinderLearningShots ?? learningRecentShots;
+  const grinderWideRecipeMatched = [...grinderWideLearningShots]
+    .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   const {
     grinderModel,
     setteMacro,
@@ -838,7 +865,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   effectiveSensitivity = grinderProfile.sensitivity;
 
   if (!grinderSupportsQuantitativeRecommendations(grinderModel, settings)) {
-    const currentDial = parseNicheZeroSetting(nicheZeroSetting) ?? NICHE_ZERO_DEFAULT_SETTING;
+    const currentDial = parseNicheZeroSetting(nicheZeroSetting, settings) ?? NICHE_ZERO_DEFAULT_SETTING;
 
     const comparableHistory = [...learningRecentShots]
       .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
@@ -849,7 +876,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       grinderModel
     );
 
-    const currentGrindNumeric = parseNicheZeroSetting(nicheZeroSetting) ?? currentDial;
+    const currentGrindNumeric = parseNicheZeroSetting(nicheZeroSetting, settings) ?? currentDial;
     const outlierCheck = detectLikelyShotOutlier({
       actualTime,
       grindNumeric: currentGrindNumeric,
@@ -903,7 +930,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       comparableForLearning,
       grinderModel,
       recipe,
-      settings
+      settings,
+      grinderWideRecipeMatched
     );
     const nicheStepConfidence = nicheSensitivity.confidence;
     const nicheDampingOptions = {
@@ -917,7 +945,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       let rawShift = empirical.shift ?? recommendedDial - currentDial;
       if (!empirical.keepGrind && rawShift !== 0) {
         rawShift = applyGrindShiftDamping(rawShift, nicheDampingOptions);
-        recommendedDial = Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, currentDial + rawShift)) * 10) / 10;
+        recommendedDial = clampNicheZeroDial(currentDial + rawShift, settings);
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
       } else {
         shift = rawShift;
@@ -962,7 +990,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       let usedTimingBounded = false;
       if (timingBounded.ok) {
         shift = applyGrindShiftDamping(timingBounded.shift, nicheDampingOptions);
-        recommendedDial = Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, currentDial + shift)) * 10) / 10;
+        recommendedDial = clampNicheZeroDial(currentDial + shift, settings);
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
         if (shift !== 0) {
           usedTimingBounded = true;
@@ -1104,7 +1132,10 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         yieldDelta,
         targetMid,
         targetYield,
-        sensitivity: empirical.ok ? effectiveSensitivity : null,
+        sensitivity: empirical.ok ? effectiveSensitivity : nicheSensitivity.secondsPerStep,
+        sensitivityConfidence: nicheSensitivity.confidence,
+        sensitivityUsedEmpiricalSlope: nicheSensitivity.usedEmpiricalSlope,
+        sensitivityIsDefault: !nicheSensitivity.reliableLearnedSensitivity || !nicheSensitivity.usedEmpiricalSlope,
         shift,
         shiftUnit: grinderProfile.shiftUnit,
         severeChoke: severeChoke,
@@ -1116,6 +1147,9 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   let shift = 0;
   let reason;
   let outlierGrindHeld = false;
+  let sensitivityConfidence = null;
+  let sensitivityUsedEmpiricalSlope = false;
+  let sensitivityIsDefault = true;
   if (severeChoke) {
     shift = severeChokeCoarseShift(grinderModel, targetMin, targetMax, settings);
     const absShift = Math.abs(shift);
@@ -1145,9 +1179,18 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       comparableHistory,
       grinderModel,
       recipe,
-      settings
+      settings,
+      grinderWideRecipeMatched
     );
-    const { secondsPerStep, confidence, reliableLearnedSensitivity } = sensitivityEstimate;
+    const {
+      secondsPerStep,
+      confidence,
+      reliableLearnedSensitivity,
+      usedEmpiricalSlope,
+    } = sensitivityEstimate;
+    sensitivityConfidence = confidence;
+    sensitivityUsedEmpiricalSlope = usedEmpiricalSlope;
+    sensitivityIsDefault = !reliableLearnedSensitivity || !usedEmpiricalSlope;
     effectiveSensitivity = secondsPerStep || grinderProfile.sensitivity;
     const sensitivity = effectiveSensitivity;
     const dampingOptions = {
@@ -1290,6 +1333,9 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       targetMid,
       targetYield,
       sensitivity: effectiveSensitivity,
+      sensitivityConfidence,
+      sensitivityUsedEmpiricalSlope,
+      sensitivityIsDefault,
       shift,
       shiftUnit,
       severeChoke: severeChoke,
@@ -1312,6 +1358,9 @@ export function getShotEngineStats(shot, recipe = {}) {
   const grinderModel = resolveShotStatsGrinderModel(shot?.grinderModel);
   const statsProfile = getShotStatsGrinderProfile(grinderModel);
   const sensitivity = stored?.sensitivity ?? statsProfile.sensitivity;
+  const sensitivityConfidence = stored?.sensitivityConfidence ?? null;
+  const sensitivityUsedEmpiricalSlope = stored?.sensitivityUsedEmpiricalSlope ?? false;
+  const sensitivityIsDefault = stored?.sensitivityIsDefault ?? stored?.sensitivity == null;
   const timeDelta = stored?.timeDelta ?? actualTime - targetMid;
   const yieldDelta = stored?.yieldDelta ?? actualYield - targetYield;
   const shift = stored?.shift ?? null;
@@ -1345,6 +1394,9 @@ export function getShotEngineStats(shot, recipe = {}) {
     targetMid,
     targetYield,
     sensitivity,
+    sensitivityConfidence,
+    sensitivityUsedEmpiricalSlope,
+    sensitivityIsDefault,
     shift,
     shiftUnit,
     shiftSummary: shiftSummary || 'No recommendation recorded for this shot.',

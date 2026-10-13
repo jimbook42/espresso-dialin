@@ -44,6 +44,7 @@ import { runScaleShotBaselineTests } from './src/scales/scaleShotBaseline.test.j
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
 import { runGrindRecommendationDisplayTests } from './src/utils/grindRecommendationDisplay.test.js';
 import { runIsaacB2SetteRegressionTests } from './src/utils/isaacB2SetteRegression.test.js';
+import { runTicket614NicheLearningTests } from './src/utils/ticket614NicheLearning.test.js';
 import { runGrindControlsTests } from './src/components/grindControls.test.js';
 import { runCustomGrinderTests } from './src/grinders/customGrinder.test.js';
 import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
@@ -573,6 +574,7 @@ async function runTests() {
   runShotCountDisplayTests();
   runGrindRecommendationDisplayTests();
   runIsaacB2SetteRegressionTests();
+  await runTicket614NicheLearningTests();
   runGrindControlsTests();
   runCustomGrinderTests();
   runOnboardingGateTests();

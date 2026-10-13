@@ -15,6 +15,7 @@ import {
   getHistoricalRoastBaseline,
   shotEligibleForLearning,
   filterShotsForGrinderLearning,
+  filterShotsForGrinderModelLearning,
   shotMatchesGrinderForLearning,
   findLatestShotForBeanAndGrinder,
   recomputeNicheRecommendationFromLastShot,
@@ -1265,7 +1266,10 @@ export default function App() {
       activeRecipe,
       recentBeanShots,
       flairEnabled,
-      { settings: appSettings }
+      {
+        settings: appSettings,
+        grinderLearningShots: filterShotsForGrinderModelLearning(shots, logGrinderModel),
+      }
     );
 
     const shotRecord = {
@@ -1340,6 +1344,9 @@ export default function App() {
   const beanShotsForGrinder = activeBean
     ? filterShotsForGrinderLearning(shots, { beanId: activeBean.id, grinderModel })
     : [];
+  const grinderShotsForLearning = grinderModel
+    ? filterShotsForGrinderModelLearning(shots, grinderModel)
+    : [];
   const usePreviousRecipeRecommendation = shouldUsePreviousRecipeRecommendation({
     lastLoggedShot,
     activeRecipe,
@@ -1365,7 +1372,9 @@ export default function App() {
           lastLearningShot,
           activeRecipe,
           beanShotsForGrinder,
-          flairEnabled
+          flairEnabled,
+          appSettings,
+          grinderShotsForLearning
         )
       : null;
   const liveQuantitativeRec =
@@ -1379,7 +1388,8 @@ export default function App() {
           activeRecipe,
           beanShotsForGrinder,
           flairEnabled,
-          appSettings
+          appSettings,
+          grinderShotsForLearning
         )
       : null;
   const dynamicRec = usePreviousRecipeRecommendation && previousRecipeRec
@@ -1633,9 +1643,6 @@ export default function App() {
   const recommendedGrindDisplay = (() => {
     if (lastLearningShot && lastLearningShot.grinderModel === grinderModel && dynamicRec?.recommendedSetting) {
       return formatRecommendedGrindDisplay(grinderModel, dynamicRec.recommendedSetting, appSettings);
-    }
-    if (beanShotsForGrinder.length === 0 && initialGrindSetting) {
-      return formatInitialGrindDisplay(grinderModel, initialGrindSetting, appSettings);
     }
     return currentGrindLabel;
   })();
@@ -3168,6 +3175,28 @@ export default function App() {
                       <option key={option.id} value={option.id}>{option.label}</option>
                     ))}
                   </select>
+                  {isNicheZeroGrinderModel(grinderModel) && (
+                    <div className="space-y-2 border-t border-[rgba(255,255,255,0.06)] pt-3">
+                      <p className={`text-[10px] font-bold uppercase tracking-wide ${ui.muted}`}>Niche Zero dial calibration</p>
+                      <label className={`block ${ui.fieldLabel}`}>Dial zero offset (optional)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={settingsSetting?.nicheZeroDialZeroOffset ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          void patchBrewGuidanceSettings({
+                            nicheZeroDialZeroOffset: raw === '' ? undefined : Number(raw),
+                          });
+                        }}
+                        placeholder="0"
+                        className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                      />
+                      <p className={`text-[10px] ${ui.muted}`}>
+                        Negative values allow dial readings below 0; positive values extend past 50. Leave blank for the default 0–50 range.
+                      </p>
+                    </div>
+                  )}
                   {settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID && (
                     <div className="space-y-2">
                       <CustomGrinderForm

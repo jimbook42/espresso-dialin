@@ -14,6 +14,8 @@ import {
 import {
   calculateRecommendation,
   db,
+  filterShotsForGrinderModelLearning,
+  getRecommendationEvidenceContext,
   knownIssueReasonLabel,
   recomputeQuantitativeRecommendationFromLastShot,
   shotEligibleForLearning,
@@ -92,11 +94,19 @@ export async function runCsvImportTests() {
   const beanHistory = legacyShots.filter(
     (s) => s.beanId === b2.id && shotEligibleForLearning(s) && s.id !== lastLearningShot?.id
   );
+  const grinderShots = legacyShots.filter(
+    (s) => shotEligibleForLearning(s) && shotMatchesGrinderForLearning(s, 'Sette 270Wi')
+  );
+  const evidence = getRecommendationEvidenceContext(grinderShots, activeRecipe, false);
+  assert.match(evidence, /Based on 34 recent shots/);
+
   const dialRec = recomputeQuantitativeRecommendationFromLastShot(
     lastLearningShot,
     activeRecipe,
     beanHistory,
-    false
+    false,
+    { grinderModel: 'Sette 270Wi' },
+    grinderShots
   );
   assert.equal(dialRec.recommendedSetting.macro, 7);
   assert.equal(dialRec.recommendedSetting.micro, 'C');

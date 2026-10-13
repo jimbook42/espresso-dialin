@@ -165,6 +165,12 @@ export function FirstLaunchWizard({
           </div>
         )}
 
+        {(step === 'grinder' || step === 'scale' || step === 'extras') && (
+          <p className="text-[11px] text-[#6b6457] text-center leading-relaxed">
+            You can change these in Settings later.
+          </p>
+        )}
+
         <div className="flex gap-2 pt-2">
           {stepIndex > 0 && (
             <button

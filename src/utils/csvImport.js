@@ -14,6 +14,42 @@ import { normalizeTasteProfile, tasteProfileForSave } from './tasteProfile.js';
 const LEGACY_EXCLUDED_HEADER = 'Excluded From Learning';
 const EXCLUDED_HEADER = 'Excluded';
 
+const TARGET_TIME_MIN_HEADER = 'Target Time Min (s)';
+const TARGET_TIME_MAX_HEADER = 'Target Time Max (s)';
+const TARGET_DOSE_HEADER = 'Target Dose (g)';
+const TARGET_YIELD_HEADER = 'Target Yield (g)';
+
+function csvHasPerShotTargetColumns(header) {
+  return (
+    header.includes(TARGET_TIME_MIN_HEADER)
+    || header.includes(TARGET_TIME_MAX_HEADER)
+    || header.includes(TARGET_DOSE_HEADER)
+    || header.includes(TARGET_YIELD_HEADER)
+  );
+}
+
+/** Legacy 17-column exports: attach inferred recipe targets so recipe matching matches a full round-trip. */
+export function backfillLegacyImportedShotTargets(importedShots, existingShots = []) {
+  if (!importedShots.length) return importedShots;
+  const byBean = new Map();
+  for (const shot of importedShots) {
+    if (!byBean.has(shot.beanId)) byBean.set(shot.beanId, []);
+    byBean.get(shot.beanId).push(shot);
+  }
+
+  for (const [beanId, beanImports] of byBean) {
+    const pool = [...existingShots, ...importedShots].filter((s) => s.beanId === beanId);
+    const targets = inferRecipeTargetsFromShots(pool);
+    for (const shot of beanImports) {
+      if (shot.targetTimeMinS == null) shot.targetTimeMinS = targets.targetTimeMinS;
+      if (shot.targetTimeMaxS == null) shot.targetTimeMaxS = targets.targetTimeMaxS;
+      if (shot.targetDoseG == null) shot.targetDoseG = targets.targetDoseG;
+      if (shot.targetYieldG == null) shot.targetYieldG = targets.targetYieldG;
+    }
+  }
+  return importedShots;
+}
+
 /** @param {string} line */
 export function parseCsvLine(line) {
   const fields = [];
@@ -378,6 +414,10 @@ export async function importShotsFromCsv(database, csvText, options = {}) {
     settings,
     existingShots,
   });
+
+  if (!csvHasPerShotTargetColumns(header) && imported.length > 0) {
+    backfillLegacyImportedShotTargets(imported, existingShots);
+  }
 
   const grinderModel = settings?.grinderModel || 'Sette 270Wi';
   const recipesToAdd = [];

@@ -397,18 +397,43 @@ export function formatPreviousGrindLabel(grinderModel, shot, settings = null) {
 }
 
 export function formatCurrentGrindLabel(grinderModel, grindState, settings = null) {
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return formatNicheZeroSetting(grindState?.nicheZeroSetting, settings)
+      || String(grindState?.nicheZeroSetting ?? '');
+  }
   return getUiGrinderPresentation(grinderModel, settings).formatCurrentGrindLabel(grindState);
 }
 
 export function formatRecommendedGrindDisplay(grinderModel, recommendedSetting, settings = null) {
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return formatNicheZeroSetting(recommendedSetting?.nicheZeroSetting, settings)
+      || String(recommendedSetting?.nicheZeroSetting ?? NICHE_ZERO_DEFAULT_SETTING);
+  }
   return getUiGrinderPresentation(grinderModel, settings).formatRecommendedGrindDisplay(recommendedSetting);
 }
 
 export function formatInitialGrindDisplay(grinderModel, initialSetting, settings = null) {
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return formatNicheZeroSetting(initialSetting?.nicheZeroSetting, settings)
+      || String(initialSetting?.nicheZeroSetting ?? NICHE_ZERO_DEFAULT_SETTING);
+  }
   return getUiGrinderPresentation(grinderModel, settings).formatInitialGrindDisplay(initialSetting);
 }
 
 export function parseGrindForShotSave(grinderModel, grindState, settings = null) {
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    const parsed = parseNicheZeroSetting(grindState?.nicheZeroSetting, settings);
+    if (parsed === null) {
+      return { ok: false, error: nicheZeroDefinition.dialValidationError };
+    }
+    return {
+      ok: true,
+      setteMacro: null,
+      setteMicro: null,
+      sunbeamSetting: null,
+      nicheZeroSetting: parsed,
+    };
+  }
   return getUiGrinderPresentation(grinderModel, settings).parseGrindForShotSave(grindState);
 }
 

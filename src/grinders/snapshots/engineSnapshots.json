@@ -132,6 +132,9 @@
     "calculateRecommendation/legacy_grinder/empty": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -161,6 +164,9 @@
     "calculateRecommendation/legacy_grinder/null": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -190,6 +196,9 @@
     "calculateRecommendation/legacy_grinder/undefined": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -219,6 +228,9 @@
     "calculateRecommendation/legacy_grinder/unknown_string": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -248,6 +260,9 @@
     "calculateRecommendation/sette/edge_max": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 1,
         "shiftUnit": "micro",
@@ -278,6 +293,9 @@
     "calculateRecommendation/sette/edge_min": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -308,6 +326,9 @@
     "calculateRecommendation/sette/fast_far": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -6,
         "shiftUnit": "micro",
@@ -338,6 +359,9 @@
     "calculateRecommendation/sette/fast_near": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -2,
         "shiftUnit": "micro",
@@ -368,6 +392,9 @@
     "calculateRecommendation/sette/flair_mixed_history": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -398,6 +425,9 @@
     "calculateRecommendation/sette/flair_off_still_shows_flair_temp_advice": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -428,6 +458,9 @@
     "calculateRecommendation/sette/flair_three_bitter": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 1,
         "shiftUnit": "micro",
@@ -458,6 +491,9 @@
     "calculateRecommendation/sette/flair_three_sour": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -488,6 +524,9 @@
     "calculateRecommendation/sette/good_with_slow_history": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "micro",
@@ -518,6 +557,9 @@
     "calculateRecommendation/sette/in_range_balanced": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "micro",
@@ -548,6 +590,9 @@
     "calculateRecommendation/sette/in_range_bitter": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 1,
         "shiftUnit": "micro",
@@ -578,6 +623,9 @@
     "calculateRecommendation/sette/in_range_good": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "micro",
@@ -608,6 +656,9 @@
     "calculateRecommendation/sette/in_range_sour": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -638,6 +689,9 @@
     "calculateRecommendation/sette/in_range_very_bitter": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 2,
         "shiftUnit": "micro",
@@ -668,6 +722,9 @@
     "calculateRecommendation/sette/in_range_very_sour": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -2,
         "shiftUnit": "micro",
@@ -698,6 +755,9 @@
     "calculateRecommendation/sette/midpoint": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -728,6 +788,9 @@
     "calculateRecommendation/sette/not_followed_improved": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "micro",
@@ -758,6 +821,9 @@
     "calculateRecommendation/sette/not_followed_worse": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 9,
         "shiftUnit": "micro",
@@ -788,6 +854,9 @@
     "calculateRecommendation/sette/one_step_near_mid_fast": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -818,6 +887,9 @@
     "calculateRecommendation/sette/ratio_advisory_bitter": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 1,
         "shiftUnit": "micro",
@@ -848,6 +920,9 @@
     "calculateRecommendation/sette/rounding_half_step_negative_then_min_step": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -878,6 +953,9 @@
     "calculateRecommendation/sette/rounding_half_step_positive": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -908,6 +986,9 @@
     "calculateRecommendation/sette/rounding_t26_25": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -938,6 +1019,9 @@
     "calculateRecommendation/sette/rounding_t26_75": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -968,6 +1052,9 @@
     "calculateRecommendation/sette/rounding_t28_75": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -998,6 +1085,9 @@
     "calculateRecommendation/sette/severe_choke": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": true,
         "shift": 6,
         "shiftUnit": "micro",
@@ -1028,6 +1118,9 @@
     "calculateRecommendation/sette/slow_far": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 7,
         "shiftUnit": "micro",
@@ -1058,6 +1151,9 @@
     "calculateRecommendation/sette/slow_near": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 2,
         "shiftUnit": "micro",
@@ -1088,6 +1184,9 @@
     "calculateRecommendation/sette/unpurged_warning": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "micro",
@@ -1118,6 +1217,9 @@
     "calculateRecommendation/sette/yield_in_range_over": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "micro",
@@ -1148,6 +1250,9 @@
     "calculateRecommendation/sette/yield_in_range_under": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "micro",
@@ -1178,6 +1283,9 @@
     "calculateRecommendation/sette/yield_out_fast_under": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -5,
         "shiftUnit": "micro",
@@ -1208,6 +1316,9 @@
     "calculateRecommendation/sette/yield_out_slow_under": {
       "engineStats": {
         "sensitivity": 1.25,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 8,
         "shiftUnit": "micro",
@@ -1238,6 +1349,9 @@
     "calculateRecommendation/sunbeam/clamp_max_coarse": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 2,
         "shiftUnit": "macro",
@@ -1267,6 +1381,9 @@
     "calculateRecommendation/sunbeam/clamp_min_fine": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -2,
         "shiftUnit": "macro",
@@ -1296,6 +1413,9 @@
     "calculateRecommendation/sunbeam/edge_max": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 1,
         "shiftUnit": "macro",
@@ -1325,6 +1445,9 @@
     "calculateRecommendation/sunbeam/edge_min": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -1354,6 +1477,9 @@
     "calculateRecommendation/sunbeam/fast_far": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -2,
         "shiftUnit": "macro",
@@ -1383,6 +1509,9 @@
     "calculateRecommendation/sunbeam/fast_near": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -1412,6 +1541,9 @@
     "calculateRecommendation/sunbeam/in_range_balanced": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "macro",
@@ -1441,6 +1573,9 @@
     "calculateRecommendation/sunbeam/in_range_bitter": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 1,
         "shiftUnit": "macro",
@@ -1470,6 +1605,9 @@
     "calculateRecommendation/sunbeam/in_range_good": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "macro",
@@ -1499,6 +1637,9 @@
     "calculateRecommendation/sunbeam/in_range_sour": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -1528,6 +1669,9 @@
     "calculateRecommendation/sunbeam/in_range_very_bitter": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 1,
         "shiftUnit": "macro",
@@ -1557,6 +1701,9 @@
     "calculateRecommendation/sunbeam/in_range_very_sour": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -1586,6 +1733,9 @@
     "calculateRecommendation/sunbeam/midpoint": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -1615,6 +1765,9 @@
     "calculateRecommendation/sunbeam/one_step_near_mid_fast": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -1644,6 +1797,9 @@
     "calculateRecommendation/sunbeam/rounding_half_step_positive": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -1673,6 +1829,9 @@
     "calculateRecommendation/sunbeam/severe_choke": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": true,
         "shift": 2,
         "shiftUnit": "macro",
@@ -1702,6 +1861,9 @@
     "calculateRecommendation/sunbeam/slow_far": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 2,
         "shiftUnit": "macro",
@@ -1731,6 +1893,9 @@
     "calculateRecommendation/sunbeam/slow_near": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 1,
         "shiftUnit": "macro",
@@ -1760,6 +1925,9 @@
     "calculateRecommendation/sunbeam/yield_in_range_over": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "macro",
@@ -1789,6 +1957,9 @@
     "calculateRecommendation/sunbeam/yield_in_range_under": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": null,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 0,
         "shiftUnit": "macro",
@@ -1818,6 +1989,9 @@
     "calculateRecommendation/sunbeam/yield_out_fast_under": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": -1,
         "shiftUnit": "macro",
@@ -1847,6 +2021,9 @@
     "calculateRecommendation/sunbeam/yield_out_slow_under": {
       "engineStats": {
         "sensitivity": 4.5,
+        "sensitivityConfidence": 0,
+        "sensitivityIsDefault": true,
+        "sensitivityUsedEmpiricalSlope": false,
         "severeChoke": false,
         "shift": 2,
         "shiftUnit": "macro",
@@ -2158,6 +2335,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 1.25,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2173,6 +2353,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 1.25,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2188,6 +2371,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 1.25,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2203,6 +2389,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 1.25,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2218,6 +2407,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 4.5,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2233,6 +2425,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 1.25,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2248,6 +2443,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 1.25,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2263,6 +2461,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 1.25,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2278,6 +2479,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 4.5,
+      "sensitivityConfidence": null,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": null,
       "shiftSummary": "No recommendation recorded for this shot.",
@@ -2293,6 +2497,9 @@
       "ageOffsetNote": null,
       "evidenceContext": null,
       "sensitivity": 1.25,
+      "sensitivityConfidence": 0,
+      "sensitivityIsDefault": true,
+      "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": -5,
       "shiftSummary": "-5 micro step(s) finer — GO 5 MICRO STEP(S) FINER — Shot was 7s off target midpoint.",
