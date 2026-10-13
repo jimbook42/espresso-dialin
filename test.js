@@ -33,6 +33,7 @@ import { runTimemoreFramedTests } from './src/scales/protocols/timemoreFramed.te
 import { runScaleFlowMetricsTests } from './src/scales/flowMetrics.test.js';
 import { runPreinfusionAutoEndTests } from './src/scales/preinfusionAutoEnd.test.js';
 import { runFlairScaleTriggerTests } from './src/scales/flairScaleTriggers.test.js';
+import { runSimulatedTransportTests } from './src/scales/transport/simulatedTransport.test.js';
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
@@ -500,6 +501,7 @@ async function runTests() {
   runScaleFlowMetricsTests();
   runPreinfusionAutoEndTests();
   runFlairScaleTriggerTests();
+  await runSimulatedTransportTests();
   runRecommendationIntegrityTests();
   runBrewGuideTests();
   runBrewGuidanceTests();

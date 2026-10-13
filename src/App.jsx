@@ -53,7 +53,12 @@ import {
   formatRecFollowedForCsv,
   resolveRecommendationFollowedForSave,
 } from './utils/recommendationFollowed.js';
-import { buildShotsCsvContent } from './utils/csvExport.js';
+import {
+  buildShotsCsvContent,
+  buildShotsCsvRows,
+  downloadCsvFile,
+  SHOT_CSV_HEADERS,
+} from './utils/csvExport.js';
 import {
   BALANCED_TASTE_PROFILE,
   normalizeTasteProfile,
@@ -88,6 +93,29 @@ import {
   recipeUsesTimedPreinfusionAutoEnd,
   shouldAutoEndPreinfusion,
 } from './scales/preinfusionAutoEnd.js';
+
+function createDefaultFlairProfile() {
+  return {
+    preinfusionPressure: '',
+    preinfusionTime: '',
+    preinfusionEndTrigger: 'manual',
+    peakPressure: '',
+    peakEndYield: '',
+    taperPressure: '',
+    taperStartTrigger: 'weight',
+  };
+}
+
+function createDefaultNewRecipe(grinderModel) {
+  return {
+    targetDoseG: 18,
+    targetYieldG: '',
+    targetTimeMinS: 27,
+    targetTimeMaxS: 32,
+    brewTemperatureC: defaultBrewTemperatureForGrinder(grinderModel),
+    flairProfile: createDefaultFlairProfile(),
+  };
+}
 
 const EXTRACTION_TIME_COLORS = {
   inRange: { bar: 'bg-[#8a9d72]', dot: 'bg-[#8a9d72]', label: 'text-[#9cb088]' },
@@ -201,20 +229,7 @@ export default function App() {
     isDecaf: false
   });
   
-  const [newRecipe, setNewRecipe] = useState({ 
-    targetDoseG: 18, 
-    targetYieldG: '', 
-    targetTimeMinS: 27, 
-    targetTimeMaxS: 32,
-    brewTemperatureC: 93,
-    flairProfile: {
-      preinfusionPressure: '',
-      preinfusionTime: '',
-      peakPressure: '',
-      peakEndYield: '',
-      taperPressure: ''
-    }
-  });
+  const [newRecipe, setNewRecipe] = useState(() => createDefaultNewRecipe(''));
 
   const [grinderModel, setGrinderModel] = useState('');
   const [flairEnabled, setFlairEnabled] = useState(false);
@@ -397,17 +412,17 @@ export default function App() {
     return `0:${String(secs).padStart(2, '0')}.${tenths}`;
   };
 
-  const handleStartTimer = () => {
+  const handleStartTimer = async () => {
     scaleAutoEndPreinfusionRef.current = false;
     setTimerTicks(0);
     setPreInfusionSeconds(0);
+    if (timemoreScale.isConnected) {
+      setScaleShotMetrics(null);
+      await timemoreScale.notifyShotStarted();
+    }
     if (timerUsePreInfusion) setPreInfusionPhase(true);
     else setPreInfusionPhase(false);
     setTimerRunning(true);
-    if (timemoreScale.isConnected) {
-      setScaleShotMetrics(null);
-      void timemoreScale.notifyShotStarted();
-    }
   };
 
   const handleEndPreInfusion = () => {
@@ -743,12 +758,14 @@ export default function App() {
           await patchBrewGuidanceSettings({ brewGuideFirstBeanNavDone: true });
           setIsEditingBean(false);
           setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
+          setNewRecipe(createDefaultNewRecipe(grinderModel));
           setActiveTab('brew');
           return;
         }
       }
 
       setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
+      setNewRecipe(createDefaultNewRecipe(grinderModel));
       setIsEditingBean(false);
       setActiveTab('dial');
     } catch (err) {
@@ -794,14 +811,7 @@ export default function App() {
     pendingFocusFlairProfileRef.current = false;
     setIsEditingBean(false);
     setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
-    setNewRecipe({ 
-      targetDoseG: 18, 
-      targetYieldG: '', 
-      targetTimeMinS: 27, 
-      targetTimeMaxS: 32,
-      brewTemperatureC: defaultBrewTemperatureForGrinder(grinderModel),
-      flairProfile: { preinfusionPressure: '', preinfusionTime: '', peakPressure: '', peakEndYield: '', taperPressure: '' }
-    });
+    setNewRecipe(createDefaultNewRecipe(grinderModel));
   };
 
   const handleUpdateBeanRating = async (beanId, val) => {
@@ -1257,40 +1267,20 @@ export default function App() {
     }
   };
 
-  const exportDataCSV = () => {
-    const headers = ['Timestamp', 'Bean', 'Grinder', 'Grind Setting', 'Purged', 'Dose(g)', 'Yield(g)', 'Ratio', 'Time(s)', 'Taste', 'Rating', 'Bean Age (Days)', 'Storage', 'Rec Followed', 'Excluded From Learning', 'Known Issue Reason', 'Notes'];
-    const rows = shots.map(s => {
-      const bean = beans.find(b => b.id === s.beanId);
-      const grind = formatShotGrindForHistory(s);
-      return [
-        new Date(s.timestamp).toLocaleString(),
-        bean ? bean.name : 'Unknown',
-        s.grinderModel,
-        grind,
-        s.wasPurged ? 'Yes' : 'No',
-        s.actualDoseG,
-        s.actualYieldG,
-        s.brewRatio || '',
-        s.actualTimeS,
-        normalizeTasteProfile(s.tasteProfile),
-        s.shotRating || '',
-        s.beanAgeDays || 0,
-        s.storageType || 'bag',
-        formatRecFollowedForCsv(s),
-        s.excludeFromLearning ? 'Yes' : 'No',
-        s.excludeFromLearning ? knownIssueReasonLabel(s.knownIssueReason) : '',
-        s.notes || '',
-      ];
+  const exportDataCSV = async () => {
+    const [allShots, allBeans] = await Promise.all([
+      db.shots.orderBy('timestamp').reverse().toArray(),
+      db.beans.toArray(),
+    ]);
+    const rows = buildShotsCsvRows(allShots, {
+      beans: allBeans,
+      formatShotGrindForHistory,
+      normalizeTasteProfile,
+      formatRecFollowedForCsv,
+      knownIssueReasonLabel,
     });
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + buildShotsCsvContent(headers, rows);
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `espresso_shots_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const csvText = buildShotsCsvContent(SHOT_CSV_HEADERS, rows);
+    downloadCsvFile(`espresso_shots_${new Date().toISOString().slice(0, 10)}.csv`, csvText);
   };
 
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, mockDate) : null;
@@ -1522,6 +1512,10 @@ export default function App() {
                   extractionElapsedS={scaleExtractionElapsedS}
                   liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
                   targetTimeMaxS={activeRecipe?.targetTimeMaxS}
+                  targetYieldG={activeRecipe?.targetYieldG}
+                  timerRunning={timerRunning}
+                  timerUsePreInfusion={timerUsePreInfusion}
+                  preInfusionPhase={preInfusionPhase}
                 />
               </div>
             )}
@@ -1743,12 +1737,17 @@ export default function App() {
                       <div className={`${ui.cardInset} rounded-xl px-3 py-2`}>
                         <PressureProfileChart
                           profile={activeRecipe.flairProfile}
+                          progress={timerRunning ? timerProgress : null}
                           liveFlowSamples={scaleLiveFlowOnProfile}
                           flowTimeOffsetSec={flowChartTimeOffsetSec}
                           scaleConnected={timemoreScale.isConnected}
                           extractionElapsedS={scaleExtractionElapsedS}
                           liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
                           targetTimeMaxS={activeRecipe?.targetTimeMaxS}
+                          targetYieldG={activeRecipe?.targetYieldG}
+                          timerRunning={timerRunning}
+                          timerUsePreInfusion={timerUsePreInfusion}
+                          preInfusionPhase={preInfusionPhase}
                         />
                       </div>
                     </div>

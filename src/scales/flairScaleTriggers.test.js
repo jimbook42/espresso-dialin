@@ -1,9 +1,11 @@
 import assert from 'assert';
 import {
   flairProfileMarkerProgress,
+  flairProfileTaperStartChartProgress,
   preinfusionAutoEndTargets,
   recipeDefinesPreinfusion,
   recipeUsesTimedPreinfusionAutoEnd,
+  resolveFlairPressurePhase,
   resolvePreinfusionEndTrigger,
   resolveTaperStartTrigger,
   shouldAutoEndPreinfusion,
@@ -100,6 +102,44 @@ export function runFlairScaleTriggerTests() {
 
   assert.equal(recipeDefinesPreinfusion(legacyProfile), true);
   assert.equal(recipeDefinesPreinfusion({}), false);
+
+  const timeTaperProfile = { ...legacyProfile, taperStartTrigger: 'time', taperStartTimeS: '5' };
+  const weightTaperProgress = flairProfileTaperStartChartProgress(built, legacyProfile, { targetYieldG: 36 });
+  const timeTaperProgress = flairProfileTaperStartChartProgress(built, timeTaperProfile, { targetYieldG: 36 });
+  assert.notEqual(weightTaperProgress, timeTaperProgress);
+
+  assert.equal(
+    resolveFlairPressurePhase({
+      profile: legacyProfile,
+      timerRunning: true,
+      timerUsePreInfusion: true,
+      preInfusionPhase: true,
+      scaleConnected: true,
+    }),
+    'pre'
+  );
+  assert.equal(
+    resolveFlairPressurePhase({
+      profile: legacyProfile,
+      timerRunning: true,
+      timerUsePreInfusion: true,
+      preInfusionPhase: false,
+      scaleConnected: true,
+      liveRelativeWeightG: 2,
+    }),
+    'peak'
+  );
+  assert.equal(
+    resolveFlairPressurePhase({
+      profile: legacyProfile,
+      timerRunning: true,
+      timerUsePreInfusion: true,
+      preInfusionPhase: false,
+      scaleConnected: true,
+      liveRelativeWeightG: 4,
+    }),
+    'taper'
+  );
 
   console.log('Flair scale trigger tests passed.');
 }

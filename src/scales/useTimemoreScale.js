@@ -135,13 +135,11 @@ export function useTimemoreScale({
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
     const weightBeforeTare = liveWeightRef.current;
+    setShotStartWeightBaselineG(weightBeforeTare);
     try {
       await transport.tare();
-      setShotStartWeightBaselineG(0);
-      liveWeightRef.current = 0;
-      setLiveWeightG(0);
     } catch {
-      setShotStartWeightBaselineG(weightBeforeTare);
+      /* keep software baseline so relative weight stays at zero */
     }
     await transport.startTimer();
     if (!usePreInfusion) {

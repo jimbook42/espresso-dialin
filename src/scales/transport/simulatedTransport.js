@@ -29,10 +29,13 @@ export function createSimulatedTransport(config = {}) {
     timerHandlers.forEach((h) => h({ timerS, running: runningFlag }));
   };
 
+  const preinfusionDripMaxG = Math.max(5.5, targetYieldG * 0.12);
+
   const computeWeight = (elapsedShotS) => {
     if (!extractionStarted) {
       const preProgress = preinfusionDurationS > 0 ? Math.min(1, elapsedShotS / preinfusionDurationS) : 1;
-      return preProgress * 1.8;
+      const eased = 1 - Math.pow(1 - preProgress, 1.6);
+      return eased * preinfusionDripMaxG;
     }
     const extractT = Math.max(0, elapsedShotS - preinfusionDurationS);
     const rampDuration = 28;
