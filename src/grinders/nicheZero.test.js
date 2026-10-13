@@ -4,6 +4,7 @@ import {
   NICHE_ZERO_DEFAULT_SETTING,
   parseNicheZeroSetting,
   formatNicheZeroSetting,
+  adjustNicheZero,
 } from './nicheZero.js';
 import {
   estimateSecondsPerMark,
@@ -56,6 +57,9 @@ export function runNicheZeroTests() {
   assert.equal(parseNicheZeroSetting('14.5'), 14.5);
   assert.equal(parseNicheZeroSetting(51), null);
   assert.equal(formatNicheZeroSetting(15), '15');
+  assert.equal(adjustNicheZero(15, 1), 15.1);
+  assert.equal(adjustNicheZero(0, -1), 0);
+  assert.equal(adjustNicheZero(50, 1), 50);
 
   const def = getGrinderDefinitionById(NICHE_ZERO_GRINDER_ID);
   assert.ok(def);

@@ -8,6 +8,12 @@ import {
   isSetteGrinderModel,
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
+import {
+  adjustNicheZero,
+  formatNicheZeroSetting,
+  NICHE_ZERO_DEFAULT_SETTING,
+  parseNicheZeroSetting,
+} from '../grinders/nicheZero.js';
 
 const setteUi = getGrinderDefinitionById(SETTE_GRINDER_ID);
 const sunbeamUi = getGrinderDefinitionById(SUNBEAM_GRINDER_ID);
@@ -29,6 +35,12 @@ const DIAL_CONFIG = {
     },
   },
   sunbeam: { valueIndex: (v) => (parseInt(v, 10) || 15) - 1 },
+  niche: {
+    valueIndex: (v) => {
+      const n = parseNicheZeroSetting(v) ?? NICHE_ZERO_DEFAULT_SETTING;
+      return Math.round(n * 10);
+    },
+  },
 };
 
 function SpinningTickScale({
@@ -149,11 +161,15 @@ function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
   return (
     <div className={`${ui.cardInset} rounded-2xl p-3 ring-1 ring-[rgba(200,138,75,0.12)]`}>
       <p className={`text-[9px] uppercase tracking-widest ${ui.muted} mb-2 leading-snug font-semibold`}>{label}</p>
-      <div className="flex items-center justify-between gap-2">
+      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-1">
         <button type="button" onClick={onDec} className={ui.stepperBtn} aria-label="Decrease">
           −
         </button>
-        <span className={`text-3xl font-black font-mono tabular-nums ${ui.text} drop-shadow-sm`}>{display}</span>
+        <span
+          className={`min-w-0 text-center text-[clamp(1.125rem,5.2vw,1.75rem)] leading-none font-black font-mono tabular-nums tracking-tight ${ui.text} drop-shadow-sm`}
+        >
+          {display}
+        </span>
         <button type="button" onClick={onInc} className={ui.stepperBtn} aria-label="Increase">
           +
         </button>
@@ -213,29 +229,23 @@ export function GrinderGrindControls({
 }
 
 export function NicheZeroGrindControl({ setting, onChange, ui }) {
+  const bump = (delta) => {
+    onChange(adjustNicheZero(setting, delta));
+  };
+
+  const display =
+    formatNicheZeroSetting(setting)
+    || formatNicheZeroSetting(NICHE_ZERO_DEFAULT_SETTING);
+
   return (
-    <div className={`${ui.cardInset} rounded-2xl p-3 ring-1 ring-[rgba(200,138,75,0.12)]`}>
-      <p className={`text-[9px] uppercase tracking-widest ${ui.muted} mb-2 leading-snug font-semibold`}>
-        {nicheUi.dialFieldLabel}
-      </p>
-      <label className="block">
-        <span className={`${ui.fieldLabel} block mb-2`}>Reference position on the stepless dial</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          step="0.1"
-          min={nicheUi.dialMin}
-          max={nicheUi.dialMax}
-          value={setting ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-full ${ui.input} border rounded-xl p-3 text-3xl font-black font-mono tabular-nums text-center`}
-          aria-label="Niche Zero dial reference"
-        />
-      </label>
-      <p className={`text-[10px] leading-relaxed mt-2 ${ui.muted}`}>
-        Lower numbers are finer; higher numbers are coarser. Markings are reference positions — the dial is stepless between them.
-      </p>
-    </div>
+    <AxisStepper
+      label={nicheUi.dialFieldLabel}
+      display={display}
+      onDec={() => bump(-1)}
+      onInc={() => bump(1)}
+      ui={ui}
+      dialKind="niche"
+    />
   );
 }
 

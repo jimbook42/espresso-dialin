@@ -28,3 +28,10 @@ export function formatNicheZeroSetting(value) {
   if (parsed === null) return '';
   return parsed % 1 === 0 ? String(parsed) : String(parsed);
 }
+
+/** Step the dial reference by one UI tick (0.1), clamped to the product range. */
+export function adjustNicheZero(currentSetting, stepShift) {
+  const base = parseNicheZeroSetting(currentSetting) ?? NICHE_ZERO_DEFAULT_SETTING;
+  const next = Math.round((base + stepShift * 0.1) * 10) / 10;
+  return Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, next));
+}
