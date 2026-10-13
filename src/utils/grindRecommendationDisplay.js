@@ -55,16 +55,22 @@ export function formatGrindRecommendationSummary(grinderModel, rec, settings = n
   const targetSetting = formatRecommendedGrindDisplay(grinderModel, rec.recommendedSetting, settings);
   const { lead, detail } = splitRecommendationReason(reasonBody);
 
+  const shift = rec.engineStats?.shift ?? 0;
+  const loggedMatchesRecommendation =
+    loggedGrind
+    && grindMatchesStoredRecommendation(
+      grinderModel,
+      loggedGrind,
+      rec.recommendedSetting,
+      settings
+    );
   const holdsGrind =
     rec.grindSettingHeld === true
-    || (loggedGrind
-      && grindMatchesStoredRecommendation(
-        grinderModel,
-        loggedGrind,
-        rec.recommendedSetting,
-        settings
-      ));
-  const holdingOutlier = /LIKELY OUTLIER/i.test(reasonBody) && holdsGrind;
+    || rec.outlierGrindHeld === true
+    || (shift === 0 && loggedMatchesRecommendation);
+  const holdingOutlier =
+    rec.outlierGrindHeld === true
+    || (/LIKELY OUTLIER/i.test(reasonBody) && holdsGrind && shift === 0);
   const direction = holdingOutlier
     ? 'Grind setting held'
     : directionFromLead(lead) || directionFromLead(detail);

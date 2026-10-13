@@ -37,14 +37,14 @@ function baseShot(grinderModel, grind, time, ts) {
   };
 }
 
-function replayQaSeries(grinderModel, initialGrind, applyRecommendation) {
+function replayQaSeries(grinderModel, initialGrind, applyRecommendation, calcOptions = undefined) {
   let grind = { ...initialGrind };
   const history = [];
   const rows = [];
   for (let i = 0; i < QA_TIMES.length; i++) {
     const time = QA_TIMES[i];
     const shot = baseShot(grinderModel, grind, time, i);
-    const rec = calculateRecommendation(shot, QA_RECIPE, history, false);
+    const rec = calculateRecommendation(shot, QA_RECIPE, history, false, calcOptions);
     rows.push({
       timeS: time,
       shift: rec.engineStats?.shift ?? 0,
@@ -73,8 +73,25 @@ function runQaSeriesTests() {
     { nicheZeroSetting: 15 },
     (g, rec) => ({ nicheZeroSetting: rec.nicheZeroSetting ?? g.nicheZeroSetting })
   );
+  const customSettings = {
+    grinderModel: 'DF64',
+    customGrinder: {
+      name: 'DF64',
+      dialType: 'stepped',
+      min: 1,
+      max: 20,
+      step: 1,
+      lowerIsFiner: true,
+    },
+  };
+  const df64 = replayQaSeries(
+    'DF64',
+    { customGrindValue: 11 },
+    (g, rec) => ({ customGrindValue: rec.customGrindValue ?? g.customGrindValue }),
+    { settings: customSettings }
+  );
 
-  for (const rows of [sette, sunbeam, niche]) {
+  for (const rows of [sette, sunbeam, niche, df64]) {
     for (const row of rows) {
       assert.ok(Math.abs(row.shift) <= 3, `shift ${row.shift} too large at ${row.timeS}s`);
     }
@@ -92,6 +109,7 @@ function runQaSeriesTests() {
   assert.deepEqual(sette[sette.length - 1].recommended, { macro: 13, micro: 'E' });
   assert.deepEqual(sunbeam[sunbeam.length - 1].recommended, { setting: 15 });
   assert.deepEqual(niche[niche.length - 1].recommended, { nicheZeroSetting: 15 });
+  assert.deepEqual(df64[df64.length - 1].recommended, { customGrindValue: 11 });
 }
 
 function runKnownIssueExclusionTests() {

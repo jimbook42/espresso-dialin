@@ -998,6 +998,16 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       }
     }
 
+    if (outlierCheck.isOutlier && outlierCheck.holdGrind && shift !== 0) {
+      recommendedDial = currentDial;
+      shift = 0;
+      reason = buildOutlierRecommendationReason({
+        baseReason: 'KEEP GRIND — Balanced and in range.',
+        outlierDetail: outlierCheck.detail,
+        holdGrind: true,
+      });
+    }
+
     if (outlierCheck.isOutlier) {
       warning = warning
         ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
@@ -1181,6 +1191,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       holdOutlier: outlierCheck.holdGrind === true,
       secondsOffMidpoint: Math.abs(timeDelta),
     });
+
+    if (outlierCheck.isOutlier && outlierCheck.holdGrind) {
+      shift = 0;
+      outlierGrindHeld = true;
+    }
 
     const absShift = Math.abs(shift);
     const direction = shift < 0 ? "FINER" : "COARSER";

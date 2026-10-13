@@ -182,5 +182,28 @@ export function runGrindRecommendationDisplayTests() {
     1
   );
 
+  const nicheMoveRec = calculateRecommendation(
+    {
+      grinderModel: 'Niche Zero',
+      nicheZeroSetting: 12,
+      wasPurged: true,
+      actualTime: 8,
+      actualYield: 36,
+      tasteProfile: 'balanced',
+    },
+    recipe,
+    nicheHistory
+  );
+  assert.equal(nicheMoveRec.grindSettingHeld, false);
+  assert.notEqual(nicheMoveRec.engineStats.shift, 0);
+  const nicheMoveAfterApply = formatGrindRecommendationSummary(
+    'Niche Zero',
+    nicheMoveRec,
+    null,
+    { nicheZeroSetting: nicheMoveRec.recommendedSetting.nicheZeroSetting }
+  );
+  assert.doesNotMatch(nicheMoveAfterApply, /Grind setting held/i);
+  assert.match(nicheMoveAfterApply, /Grind finer/i);
+
   console.log('Grind recommendation display tests passed.');
 }
