@@ -60,3 +60,11 @@ export function shotRecipeMismatchReason(shot, recipe, flairEnabled = false) {
 export function shotMatchesRecipeContext(shot, recipe, flairEnabled = false) {
   return shotRecipeMismatchReason(shot, recipe, flairEnabled) === null;
 }
+
+/** Shots are expected newest-first (e.g. Dexie `orderBy('timestamp').reverse()`). */
+export function findLatestShotForBeanAndGrinder(shots, beanId, grinderModel) {
+  if (!beanId || !grinderModel || !Array.isArray(shots)) return null;
+  return shots.find(
+    (s) => s.beanId === beanId && shotMatchesGrinderForLearning(s, grinderModel)
+  ) ?? null;
+}

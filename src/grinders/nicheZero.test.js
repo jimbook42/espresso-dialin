@@ -25,9 +25,11 @@ import {
   shotMatchesGrinderForLearning,
   shotRecipeMismatchReason,
   recomputeNicheRecommendationFromLastShot,
+  findLatestShotForBeanAndGrinder,
 } from '../utils/grinderLogic.js';
 import {
   diagnoseNicheLearningEligibility,
+  buildNicheEligibilityLearningNote,
 } from './nicheEligibility.js';
 import { recommendNicheTimingBounded } from './nicheZeroLearning.js';
 
@@ -391,6 +393,92 @@ export function runNicheZeroTests() {
   assert.ok(
     recipeChangeDiag.shotExclusions.some((e) => e.reasonCode === 'recipe_time_changed')
   );
+
+  const mixedGrinderShots = [
+    nicheShot({ id: 'n1', timestamp: '2026-09-21T12:00:00.000Z', actualTimeS: 33, tasteProfile: 'bitter' }),
+    {
+      beanId: 'b1',
+      grinderModel: 'Sette 270Wi',
+      timestamp: '2026-09-22T12:00:00.000Z',
+      actualTimeS: 30,
+      tasteProfile: 'good',
+    },
+  ];
+  const latestSette = findLatestShotForBeanAndGrinder(mixedGrinderShots, 'b1', 'Sette 270Wi');
+  assert.equal(latestSette.actualTimeS, 30);
+  const latestNiche = findLatestShotForBeanAndGrinder(mixedGrinderShots, 'b1', NICHE_ZERO_GRINDER_ID);
+  assert.equal(latestNiche.actualTimeS, 33);
+
+  const thirdSameDial = nicheShot({
+    id: 'shot-3',
+    timestamp: '2026-09-20T12:00:00.000Z',
+    nicheZeroSetting: 15,
+    actualTimeS: 30,
+    tasteProfile: 'good',
+  });
+  const threeSameDialPool = [
+    nicheShot({ id: 'shot-1', timestamp: '2026-09-18T12:00:00.000Z', nicheZeroSetting: 15, actualTimeS: 29 }),
+    nicheShot({ id: 'shot-2', timestamp: '2026-09-19T12:00:00.000Z', nicheZeroSetting: 15, actualTimeS: 30 }),
+    thirdSameDial,
+  ];
+  const liveThree = recomputeNicheRecommendationFromLastShot(
+    thirdSameDial,
+    BASE_RECIPE,
+    threeSameDialPool,
+    false
+  );
+  assert.ok(liveThree.nicheLearningNote);
+  assert.match(liveThree.nicheLearningNote, /3 Niche shots/);
+  assert.match(liveThree.nicheLearningNote, /3 match recipe/);
+
+  const loggingThird = calculateRecommendation(
+    {
+      beanId: 'b1',
+      grinderModel: NICHE_ZERO_GRINDER_ID,
+      nicheZeroSetting: 15,
+      wasPurged: true,
+      actualTime: 30,
+      actualDose: 18,
+      actualYield: 36,
+      tasteProfile: 'good',
+    },
+    BASE_RECIPE,
+    threeSameDialPool.slice(0, 2)
+  );
+  assert.match(loggingThird.nicheLearningNote, /3 Niche shots/);
+
+  const oldRecipeShots = [
+    nicheShot({
+      id: 'y1',
+      targetDoseG: 18,
+      targetYieldG: 36,
+      targetTimeMinS: 27,
+      targetTimeMaxS: 32,
+    }),
+    nicheShot({
+      id: 'y2',
+      timestamp: '2026-09-19T12:00:00.000Z',
+      targetDoseG: 18,
+      targetYieldG: 36,
+      targetTimeMinS: 27,
+      targetTimeMaxS: 32,
+    }),
+  ];
+  const recipeYield40 = { ...BASE_RECIPE, targetYieldG: 40 };
+  const yieldChangeDiag = diagnoseNicheLearningEligibility({
+    shots: oldRecipeShots,
+    beanId: 'b1',
+    grinderModel: NICHE_ZERO_GRINDER_ID,
+    recipe: recipeYield40,
+    flairEnabled: false,
+    currentObservation: { nicheZeroSetting: 15, actualTimeS: 30 },
+  });
+  const yieldNote = buildNicheEligibilityLearningNote(
+    yieldChangeDiag,
+    'insufficient_observations',
+    { recipeComparableCount: 0, grinderLearningShotCount: 2 }
+  );
+  assert.match(yieldNote, /recipe changed/i);
 
   console.log('Niche Zero tests passed.');
 }

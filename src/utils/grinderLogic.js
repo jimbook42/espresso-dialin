@@ -72,6 +72,7 @@ export {
   shotMatchesGrinderForLearning,
   shotHasSavedRecipeTargetContext,
   shotRecipeMismatchReason,
+  findLatestShotForBeanAndGrinder,
 } from '../grinders/grinderLearningMatch.js';
 import {
   shotMatchesGrinderForLearning,
@@ -414,6 +415,8 @@ export function recomputeNicheRecommendationFromLastShot(lastShot, recipe, grind
   const history = grinderBeanShots.filter((s) => s.id !== lastShot.id);
   return calculateRecommendation(
     {
+      id: lastShot.id,
+      beanId: lastShot.beanId,
       grinderModel: lastShot.grinderModel,
       setteMacro: null,
       setteMicro: null,
@@ -429,8 +432,37 @@ export function recomputeNicheRecommendationFromLastShot(lastShot, recipe, grind
     },
     recipe,
     history,
-    flairEnabled
+    flairEnabled,
+    { eligibilityShots: grinderBeanShots }
   );
+}
+
+/** Shot-shaped row for eligibility counts when the current pull is not in the history pool yet. */
+export function eligibilityShotFromCurrentPull(shotData, recipe, beanId) {
+  if (!beanId || shotData?.actualTime == null) return null;
+  return {
+    id: shotData.id ?? '__current_pull__',
+    beanId,
+    grinderModel: shotData.grinderModel,
+    nicheZeroSetting: shotData.nicheZeroSetting,
+    actualTimeS: shotData.actualTime,
+    actualDoseG: shotData.actualDose,
+    actualYieldG: shotData.actualYield,
+    targetDoseG: recipe?.targetDoseG,
+    targetYieldG: recipe?.targetYieldG,
+    targetTimeMinS: recipe?.targetTimeMinS,
+    targetTimeMaxS: recipe?.targetTimeMaxS,
+    excludeFromLearning: shotData.excludeFromLearning === true,
+  };
+}
+
+function shotsForNicheEligibilityDiagnosis(recentShots, shotData, recipe, options = {}) {
+  const pool = options.eligibilityShots ?? recentShots;
+  const current = eligibilityShotFromCurrentPull(shotData, recipe, shotData.beanId ?? pool[0]?.beanId);
+  if (!current) return pool;
+  const inPool = pool.some((s) => s.id && current.id && s.id === current.id);
+  if (inPool) return pool;
+  return [current, ...pool];
 }
 
 export function getInitialGrindRecommendation(
@@ -560,7 +592,7 @@ function buildNicheZeroQualitativeReason({
   return `Shot was ${secOff}s slow — consider grinding coarser (higher dial number). Timing guidance only; dial steps are not auto-calibrated.`;
 }
 
-export function calculateRecommendation(shotData, recipe, recentShots = [], flairEnabled = false) {
+export function calculateRecommendation(shotData, recipe, recentShots = [], flairEnabled = false, options = {}) {
   const learningRecentShots = recentShots.filter(
     (s) => shotEligibleForLearning(s) && shotMatchesGrinderForLearning(s, shotData.grinderModel)
   );
@@ -652,9 +684,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     };
     const empirical = recommendNicheZeroFromEvidence(empiricalInput);
 
-    const beanIdForEligibility = learningRecentShots[0]?.beanId ?? recentShots[0]?.beanId ?? null;
+    const eligibilityShotPool = shotsForNicheEligibilityDiagnosis(recentShots, shotData, recipe, options);
+    const beanIdForEligibility =
+      shotData.beanId ?? learningRecentShots[0]?.beanId ?? eligibilityShotPool[0]?.beanId ?? null;
     const nicheEligibility = diagnoseNicheLearningEligibility({
-      shots: recentShots,
+      shots: eligibilityShotPool,
       beanId: beanIdForEligibility,
       grinderModel,
       recipe,
@@ -678,8 +712,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         nicheEligibility,
         empirical.reasonCode,
         {
-          recipeComparableCount: comparableHistory.length,
-          grinderLearningShotCount: learningRecentShots.length,
+          recipeComparableCount: nicheEligibility.counts.recipeMatched,
+          grinderLearningShotCount: nicheEligibility.counts.grinderMatched,
         }
       );
     };

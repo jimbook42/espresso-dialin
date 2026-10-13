@@ -10,8 +10,8 @@ Branch: `refactor/device-architecture`. Definition of done: learning eligibility
 | 2 | Reason-coded `nicheLearningNote` + structured `nicheEligibility` on all non-empirical recommendation paths | **Done** |
 | 3 | Evidence-filtering fixes (recipe comparability, grinder filter, missing-field reasons) | **Done** (see defects below) |
 | 4 | Empirical recs fully validated in production | **Not validated** — empirical suggestions remain labelled; timing-bounded / qualitative paths still used when gates fail |
-| 5 | BLE / scale integration for Niche | **Out of scope** |
-| 6 | Manufacturer calibration of seconds-per-mark | **Out of scope** — local estimate from user shots only |
+| 5 | Final regression + browser QA (recommendations, Apply, recipe edits, grinder switching, safe fallbacks) | **In progress** — automated tests green; manual Dial-in QA on preview |
+| 6 | Document completion (validated behaviour, limitations, test results) | **In progress** — this file + unit/snapshot coverage; item 4 empirical still not field-validated |
 
 ## Confirmed defects fixed (5.2b)
 

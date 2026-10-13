@@ -16,6 +16,7 @@ import {
   shotEligibleForLearning,
   filterShotsForGrinderLearning,
   shotMatchesGrinderForLearning,
+  findLatestShotForBeanAndGrinder,
   recomputeNicheRecommendationFromLastShot,
   KNOWN_ISSUE_REASONS,
   knownIssueReasonLabel,
@@ -249,7 +250,7 @@ export default function App() {
   const activeBeansList = beans.filter(b => !b?.isFinished);
   const activeBean = beans.find(b => b.id === selectedBeanId) || activeBeansList[0] || beans[0];
   const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
-  const lastLoggedShot = shots.find(s => s.beanId === activeBean?.id);
+  const lastLoggedShot = findLatestShotForBeanAndGrinder(shots, activeBean?.id, grinderModel);
   const lastLearningShot = activeBean && grinderModel
     ? shots.find(
         (s) =>
@@ -785,6 +786,7 @@ export default function App() {
 
     const rec = calculateRecommendation(
       { 
+        beanId: activeBean.id,
         grinderModel, 
         setteMacro: finalMacro, 
         setteMicro: finalMicro, 
@@ -798,6 +800,7 @@ export default function App() {
         lastShotGrind,
         recommendationFollowed,
         previousShot: lastLearningShot || null,
+        excludeFromLearning,
       },
       activeRecipe,
       recentBeanShots,
@@ -2182,7 +2185,7 @@ export default function App() {
                           className={`text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${s.excludeFromLearning ? 'bg-[rgba(200,138,75,0.15)] text-[#c88a4b]' : `${ui.chip} ${ui.muted}`}`}
                           title={s.excludeFromLearning ? 'Include in grind learning again' : 'Mark as known issue — exclude from learning'}
                         >
-                          {s.excludeFromLearning ? 'Use for learning' : 'Known issue'}
+                          {s.excludeFromLearning ? 'Use for learning' : 'Exclude from learning'}
                         </button>
                         <button type="button" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
                           <Trash2 className="w-3.5 h-3.5" />

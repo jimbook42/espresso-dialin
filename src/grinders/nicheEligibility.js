@@ -17,6 +17,16 @@ import {
 /** When saved recipe targets on a shot match the current recipe, actual yield may differ this much (fast/slow shots). */
 export const NICHE_SAVED_TARGET_ACTUAL_YIELD_TOLERANCE_G = 4;
 
+const RECIPE_CHANGED_EXCLUSION_CODES = new Set([
+  'recipe_time_changed',
+  'recipe_dose_target',
+  'recipe_yield_target',
+]);
+
+export function shotExclusionsIndicateRecipeChange(shotExclusions = []) {
+  return shotExclusions.some((e) => RECIPE_CHANGED_EXCLUSION_CODES.has(e.reasonCode));
+}
+
 const VERDICT_FROM_REASON = {
   insufficient_observations: 'insufficient_observations',
   insufficient_variation: 'insufficient_variation',
@@ -169,6 +179,17 @@ export function diagnoseNicheLearningEligibility({
   };
 }
 
+export function buildRecipeChangedLearningNote(eligibility) {
+  if (
+    eligibility.counts.grinderMatched > 0
+    && eligibility.counts.recipeMatched === 0
+    && shotExclusionsIndicateRecipeChange(eligibility.shotExclusions)
+  ) {
+    return `Your recipe changed, so earlier shots at the old recipe aren't used for dial learning. Log fresh pulls at the new targets. — ${buildNicheEligibilityCompactCounts(eligibility)}`;
+  }
+  return null;
+}
+
 export function buildNicheEligibilityCompactCounts(eligibility) {
   const { counts, dialSpread } = eligibility;
   const grinderLabel = counts.grinderMatched === 1 ? '1 Niche shot' : `${counts.grinderMatched} Niche shots`;
@@ -188,26 +209,33 @@ export function buildNicheEligibilityLearningNote(
 ) {
   if (eligibility.empiricalOk) return null;
 
+  const recipeChangedNote = buildRecipeChangedLearningNote(eligibility);
+  if (recipeChangedNote) return recipeChangedNote;
+
+  const countsForNote = {
+    recipeComparableCount: eligibility.counts.recipeMatched ?? recipeComparableCount,
+    grinderLearningShotCount: eligibility.counts.grinderMatched ?? grinderLearningShotCount,
+  };
+
   const reasonCode = empiricalReasonCode || eligibility.finalReasonCode;
-  const stageNote = buildNicheLearningTransparencyNote(reasonCode, eligibility.diagnostics, {
-    recipeComparableCount,
-    grinderLearningShotCount,
-  });
+  const stageNote = buildNicheLearningTransparencyNote(reasonCode, eligibility.diagnostics, countsForNote);
 
   if (!stageNote) {
     if (eligibility.counts.grinderMatched === 0) {
       return `Why not learning yet: no saved shots for this grinder on this bean. (${buildNicheEligibilityCompactCounts(eligibility)})`;
     }
     if (eligibility.counts.recipeMatched === 0 && eligibility.counts.grinderMatched > 0) {
-      const recipeBlockers = eligibility.shotExclusions
-        .filter((e) => e.reasonCode === 'recipe_time_changed')
-        .length;
-      if (recipeBlockers > 0) {
-        return `Why not learning yet: recipe targets changed since earlier shots — log fresh pulls at the new dose/yield/time. (${buildNicheEligibilityCompactCounts(eligibility)})`;
-      }
       return `Why not learning yet: none of your saved shots match this recipe’s targets. (${buildNicheEligibilityCompactCounts(eligibility)})`;
     }
     return null;
+  }
+
+  if (
+    eligibility.counts.recipeMatched === 0
+    && countsForNote.grinderLearningShotCount > 0
+    && shotExclusionsIndicateRecipeChange(eligibility.shotExclusions)
+  ) {
+    return buildRecipeChangedLearningNote(eligibility);
   }
 
   return `${stageNote} — ${buildNicheEligibilityCompactCounts(eligibility)}`;
