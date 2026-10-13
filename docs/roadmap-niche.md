@@ -53,17 +53,18 @@ Confidence gate constants (`NICHE_LEARNING_MIN_OBSERVATIONS`, `MIN_PAIRS`, `MIN_
 ## Known limitations
 
 - Diagnostics depend on shot records including saved recipe context (post–target-context logging); very old shots without actuals or saved targets cannot enter learning.
-- **Empirical dial recommendations (item 4)** are not field-validated on real Niche Zero hardware; timing-bounded and qualitative fallbacks still apply when gates fail. `nicheLearningNote` explains when numeric learning is inactive; it does not replace production validation of empirical mode.
+- **Empirical dial recommendations (item 4)** are not field-validated on real Niche Zero hardware; timing-bounded and qualitative fallbacks still apply when gates fail. When empirical mode is active, the Dial-in UI shows `nicheEmpiricalValidationNote` (“Personalised estimate from your shots, not yet validated against real-world use.”). `nicheLearningNote` still explains when numeric learning is inactive.
 - **Fresh-bean copy**: when there are no shots on this bean but a starting dial is seeded from roast class + age, the UI can still show **“Based on previous bean history”** even though the seed is roast-baseline logic, not this bean’s shot log.
 - **Pending dial after Apply** is **session-only** (in-memory per bean + grinder); it is not persisted across reloads until the user logs a shot with that grind.
 - Sette/Sunbeam recommendation math unchanged; only shared recipe/grinder matching helpers are shared.
 
-## Test results (5.2e documentation pass)
+## Test results (5.2e + empirical validation label)
 
 | Check | Result |
 |-------|--------|
 | `npm test` | Pass |
-| Engine snapshots (`src/grinders/snapshots/engineSnapshots.json`) | **190** unchanged |
-| ESLint | **31** warnings (baseline; no new Niche regressions required for this docs-only ticket) |
+| `npm run build` | Pass |
+| Engine snapshots (`src/grinders/snapshots/engineSnapshots.json`) | **190** unchanged (no snapshot `reason` fields affected; Niche empirical paths are not in the golden suite) |
+| ESLint | **31** warnings (baseline) |
 
 Browser QA for item 5 remains outstanding before merge.

@@ -360,6 +360,10 @@ export function recommendNicheTimingBounded(params) {
   return { ok: true, recommendedDial, shift: appliedShift };
 }
 
+/** Shown in the Dial-in UI whenever empirical learning produces the active recommendation. */
+export const NICHE_EMPIRICAL_VALIDATION_NOTE =
+  'Personalised estimate from your shots, not yet validated against real-world use.';
+
 export function buildNicheTimingBoundedReason({ recommendedDial, shift, empiricalUnavailable }) {
   const dir = shift < 0 ? 'finer' : 'coarser';
   const detail = empiricalUnavailable

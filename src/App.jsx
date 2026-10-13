@@ -1515,6 +1515,9 @@ export default function App() {
                   {dynamicRec?.nicheLearningNote && (
                     <p className={`text-[10px] ${ui.muted} leading-relaxed`}>{dynamicRec.nicheLearningNote}</p>
                   )}
+                  {dynamicRec?.nicheEmpiricalValidationNote && (
+                    <p className={`text-[10px] ${ui.muted} leading-relaxed`}>{dynamicRec.nicheEmpiricalValidationNote}</p>
+                  )}
                   {decafNote && (
                     <p className={`text-[10px] ${ui.accentText} ${ui.freezeHint} p-2.5 rounded-lg`}>{decafNote}</p>
                   )}

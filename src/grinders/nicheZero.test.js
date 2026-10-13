@@ -9,6 +9,7 @@ import {
   estimateSecondsPerMark,
   recommendNicheZeroFromEvidence,
   buildNicheLearningTransparencyNote,
+  NICHE_EMPIRICAL_VALIDATION_NOTE,
 } from './nicheZeroLearning.js';
 import {
   getGrinderDefinitionById,
@@ -139,6 +140,7 @@ export function runNicheZeroTests() {
   assert.equal(live.nicheEvidenceMode, 'empirical');
   assert.ok(live.recommendedSetting.nicheZeroSetting < 15);
   assert.match(live.reason, /Set dial to/i);
+  assert.equal(live.nicheEmpiricalValidationNote, NICHE_EMPIRICAL_VALIDATION_NOTE);
 
   const history = [
     nicheShot({ timestamp: '2026-09-18T12:00:00.000Z', nicheZeroSetting: 14, actualTimeS: 34 }),
@@ -162,6 +164,7 @@ export function runNicheZeroTests() {
   assert.ok(recEmpirical.recommendedSetting.nicheZeroSetting < 15);
   assert.ok(recEmpirical.engineStats.shift < 0);
   assert.match(recEmpirical.reason, /Set dial to/);
+  assert.equal(recEmpirical.nicheEmpiricalValidationNote, NICHE_EMPIRICAL_VALIDATION_NOTE);
 
   const contaminated = calculateRecommendation(
     {

@@ -25,6 +25,7 @@ import {
   recommendNicheZeroFromEvidence,
   recommendNicheTimingBounded,
   buildNicheEmpiricalReason,
+  NICHE_EMPIRICAL_VALIDATION_NOTE,
   buildNicheFallbackReason,
   buildNicheTimingBoundedReason,
   TIMING_BOUNDED_UNRELIABLE_CODES,
@@ -707,6 +708,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     let nicheEvidenceMode = 'qualitative-fallback';
     let nicheEmpiricalReasonCode = empirical.ok ? null : empirical.reasonCode;
     let nicheLearningNote = null;
+    let nicheEmpiricalValidationNote = null;
 
     const attachLearningNote = () => {
       if (empirical.ok) return;
@@ -724,6 +726,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       recommendedDial = empirical.recommendedDial;
       shift = empirical.shift ?? recommendedDial - currentDial;
       nicheEvidenceMode = 'empirical';
+      nicheEmpiricalValidationNote = NICHE_EMPIRICAL_VALIDATION_NOTE;
       reason = buildNicheEmpiricalReason({
         currentDial,
         recommendedDial,
@@ -841,6 +844,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       nicheEvidenceMode,
       nicheEmpiricalReasonCode,
       nicheLearningNote,
+      nicheEmpiricalValidationNote,
       nicheEligibility,
       engineStats: {
         timeDelta,
