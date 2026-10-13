@@ -334,7 +334,7 @@ export function recommendNicheTimingBounded(params) {
   const timeDelta = actualTime - targetMid;
   const halfWindow = Math.max((targetMax - targetMin) / 2, 1);
 
-  let shift = 0;
+  let shift;
   if (severeChoke) {
     shift = Math.min(NICHE_MAX_SINGLE_ADJUSTMENT, 2);
   } else if (!isTimeInRange && Math.abs(timeDelta) >= 0.25) {

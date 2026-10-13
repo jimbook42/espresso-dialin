@@ -751,11 +751,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   const isBitter = tasteProfile === 'bitter' || tasteProfile === 'very_bitter';
   const isSour = tasteProfile === 'sour' || tasteProfile === 'very_sour';
 
-  // Initial values are overwritten on every quantitative path; niche branch returns before use.
-  let shift = 0;
-  let reason = '';
   let warning = null;
-  let effectiveSensitivity = null;
+  let effectiveSensitivity;
 
   if (
     lastShotGrind
@@ -1058,6 +1055,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     };
   }
 
+  let shift = 0;
+  let reason;
   if (severeChoke) {
     shift = severeChokeCoarseShift(grinderModel, targetMin, targetMax, settings);
     const absShift = Math.abs(shift);
