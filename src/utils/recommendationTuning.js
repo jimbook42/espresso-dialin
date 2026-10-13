@@ -49,10 +49,10 @@ export function knownIssueSoftNoteForShot(actualTime) {
   return KNOWN_ISSUE_OUTLIER_HINT;
 }
 
-export function appendKnownIssueSoftNote(warning, actualTime, { isOutlier = false } = {}) {
+export function appendKnownIssueSoftNote(warning, actualTime) {
   const time = Number(actualTime);
   const extreme = shouldAttachKnownIssueHintForExtremeTime(time);
-  if (!extreme && !isOutlier) return warning;
+  if (!extreme) return warning;
   const note = knownIssueSoftNoteForShot(time);
   if (warning?.includes(note)) return warning;
   const alternate =

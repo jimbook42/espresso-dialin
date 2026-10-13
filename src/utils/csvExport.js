@@ -1,3 +1,5 @@
+import { shotExcludedFromLearning } from './grinderLogic.js';
+
 /** RFC 4180 field: wrap in double quotes; internal quotes doubled. */
 export function escapeCsvField(value) {
   const str = value == null ? '' : String(value);
@@ -27,9 +29,13 @@ export const SHOT_CSV_HEADERS = [
   'Bean Age (Days)',
   'Storage',
   'Rec Followed',
-  'Excluded From Learning',
+  'Excluded',
   'Known Issue Reason',
   'Notes',
+  'Target Time Min (s)',
+  'Target Time Max (s)',
+  'Target Dose (g)',
+  'Target Yield (g)',
 ];
 
 /**
@@ -71,9 +77,13 @@ export function buildShotsCsvRows(shots, helpers) {
       s.beanAgeDays || 0,
       s.storageType || 'bag',
       formatRecFollowedForCsv(s),
-      s.excludeFromLearning ? 'Yes' : 'No',
-      s.excludeFromLearning ? knownIssueReasonLabel(s.knownIssueReason) : '',
+      shotExcludedFromLearning(s) ? 'Yes' : 'No',
+      shotExcludedFromLearning(s) ? knownIssueReasonLabel(s.knownIssueReason) : '',
       s.notes || '',
+      s.targetTimeMinS ?? '',
+      s.targetTimeMaxS ?? '',
+      s.targetDoseG ?? '',
+      s.targetYieldG ?? '',
     ];
   });
 }

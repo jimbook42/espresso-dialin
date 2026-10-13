@@ -59,7 +59,10 @@ import {
 } from './grinders/customGrinder.js';
 import { FirstLaunchWizard } from './components/FirstLaunchWizard.jsx';
 import { CustomGrinderForm } from './components/CustomGrinderForm.jsx';
-import { shouldRenderFirstLaunchWizard } from './settings/firstLaunchRenderGate.js';
+import {
+  shouldDeferMainShellForFirstLaunch,
+  shouldRenderFirstLaunchWizard,
+} from './settings/firstLaunchRenderGate.js';
 import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
 import {
   isSmartScaleIntegrationActive,
@@ -83,6 +86,7 @@ import {
   downloadCsvFile,
   SHOT_CSV_HEADERS,
 } from './utils/csvExport.js';
+import { importShotsFromCsv } from './utils/csvImport.js';
 import {
   BALANCED_TASTE_PROFILE,
   normalizeTasteProfile,
@@ -321,6 +325,8 @@ export default function App() {
   const [validationError, setValidationError] = useState('');
   const [beanFieldErrors, setBeanFieldErrors] = useState({});
   const [applyRecConfirmation, setApplyRecConfirmation] = useState('');
+  const [csvImportSummary, setCsvImportSummary] = useState('');
+  const csvImportInputRef = useRef(null);
   const [highlightGrind, setHighlightGrind] = useState(false);
   const [shotFieldHighlights, setShotFieldHighlights] = useState(EMPTY_SHOT_FIELD_HIGHLIGHTS);
   const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
@@ -1547,6 +1553,32 @@ export default function App() {
     downloadCsvFile(`espresso_shots_${new Date().toISOString().slice(0, 10)}.csv`, csvText);
   };
 
+  const handleImportCsvFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const csvText = await file.text();
+      const result = await importShotsFromCsv(db, csvText, { settings: appSettings });
+      const errorCount = result.errors.length;
+      const parts = [
+        `Imported ${result.imported} shot${result.imported === 1 ? '' : 's'}`,
+        `skipped ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}`,
+      ];
+      if (result.createdBeans > 0) {
+        parts.push(`created ${result.createdBeans} bean${result.createdBeans === 1 ? '' : 's'}`);
+      }
+      if (errorCount > 0) {
+        parts.push(`${errorCount} row${errorCount === 1 ? '' : 's'} with errors`);
+      }
+      setCsvImportSummary(parts.join(', ') + '.');
+      window.setTimeout(() => setCsvImportSummary(''), 8000);
+    } catch (err) {
+      setCsvImportSummary(err?.message || 'Import failed.');
+      window.setTimeout(() => setCsvImportSummary(''), 8000);
+    }
+  };
+
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, mockDate) : null;
   const filteredShots = historyFilterBeanId === 'all' ? shots : shots.filter(s => s.beanId === historyFilterBeanId);
 
@@ -1662,8 +1694,14 @@ export default function App() {
     }, 200);
   };
 
+  const hasExistingUserData = shots.length > 0 || beans.length > 0;
+
+  if (shouldDeferMainShellForFirstLaunch(settingsQueryResult, { hasExistingUserData })) {
+    return null;
+  }
+
   if (shouldRenderFirstLaunchWizard(settingsQueryResult, {
-    hasExistingUserData: shots.length > 0 || beans.length > 0,
+    hasExistingUserData,
   })) {
     return (
       <FirstLaunchWizard
@@ -3229,7 +3267,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className={`pt-2 border-t ${ui.modalDivider}`}>
+                <div className={`pt-2 border-t ${ui.modalDivider} space-y-2`}>
                   <button
                     type="button"
                     onClick={exportDataCSV}
@@ -3237,6 +3275,23 @@ export default function App() {
                   >
                     <Download className="w-4 h-4" /> Export All Shots to CSV
                   </button>
+                  <input
+                    ref={csvImportInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(e) => { void handleImportCsvFile(e); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => csvImportInputRef.current?.click()}
+                    className={`w-full font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 ${ui.secondaryBtn}`}
+                  >
+                    <PlusCircle className="w-4 h-4" /> Import Shots from CSV
+                  </button>
+                  {csvImportSummary && (
+                    <p className={`text-[11px] ${ui.muted} text-center px-2`}>{csvImportSummary}</p>
+                  )}
                 </div>
 
                 <div className="pt-3 border-t border-rose-900/40 space-y-2">

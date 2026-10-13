@@ -24,6 +24,7 @@ import {
   PREVIOUS_RECIPE_REC_DISCLAIMER,
 } from './src/utils/grinderLogic.js';
 import { runCsvExportTests } from './src/utils/csvExport.test.js';
+import { runCsvImportTests } from './src/utils/csvImport.test.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
 import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
@@ -554,6 +555,7 @@ async function runTests() {
   runPendingGrindSessionTests();
   runRecFollowedCsvTests();
   runCsvExportTests();
+  await runCsvImportTests();
   runPreviousRecipeRecommendationTests();
   runBalancedTasteTests(recipe, createShot, runCalc);
   runNicheZeroTests();

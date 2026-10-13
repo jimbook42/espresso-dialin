@@ -1,7 +1,10 @@
 import assert from 'assert';
 import { SETTINGS_QUERY_PENDING } from './settingsLiveQuery.js';
 import { resolveSettingsFromLiveQuery } from './settingsLiveQuery.js';
-import { shouldRenderFirstLaunchWizard } from './firstLaunchRenderGate.js';
+import {
+  shouldDeferMainShellForFirstLaunch,
+  shouldRenderFirstLaunchWizard,
+} from './firstLaunchRenderGate.js';
 
 export function runFirstLaunchRenderGateTests() {
   assert.deepEqual(resolveSettingsFromLiveQuery(SETTINGS_QUERY_PENDING), {
@@ -24,7 +27,17 @@ export function runFirstLaunchRenderGateTests() {
   assert.equal(
     shouldRenderFirstLaunchWizard(SETTINGS_QUERY_PENDING, { hasExistingUserData: false }),
     false,
-    'pending settings must not show wizard (main shell renders instead)'
+    'pending settings must not show wizard yet'
+  );
+  assert.equal(
+    shouldDeferMainShellForFirstLaunch(SETTINGS_QUERY_PENDING, { hasExistingUserData: false }),
+    true,
+    'fresh install should defer empty main shell while settings load'
+  );
+  assert.equal(
+    shouldDeferMainShellForFirstLaunch(SETTINGS_QUERY_PENDING, { hasExistingUserData: true }),
+    false,
+    'returning users keep main shell during settings load'
   );
   assert.equal(
     shouldRenderFirstLaunchWizard(SETTINGS_QUERY_PENDING, { hasExistingUserData: true }),

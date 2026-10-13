@@ -10,3 +10,13 @@ export function shouldRenderFirstLaunchWizard(queryResult, options = {}) {
   if (!settingsLoaded) return false;
   return shouldShowFirstLaunchOnboarding(settings, options);
 }
+
+/**
+ * Fresh installs: avoid flashing the empty main shell while settings are still loading.
+ * Returning users (beans/shots already on device) keep the main shell during the brief load.
+ */
+export function shouldDeferMainShellForFirstLaunch(queryResult, options = {}) {
+  const { settingsLoaded } = resolveSettingsFromLiveQuery(queryResult);
+  const { hasExistingUserData = false } = options;
+  return !settingsLoaded && !hasExistingUserData;
+}

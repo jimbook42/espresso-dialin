@@ -43,7 +43,13 @@ export function runCsvExportTests() {
   assert.equal(exportRows.length, 3);
   assert.equal(exportRows[1][1], 'Unknown');
   assert.equal(exportRows[1][16], 'channel #1');
-  assert.equal(SHOT_CSV_HEADERS.length, 17);
+  assert.equal(exportRows[0][17], '');
+  assert.equal(SHOT_CSV_HEADERS.length, 21);
+  const excludedIdx = SHOT_CSV_HEADERS.indexOf('Excluded');
+  assert.equal(excludedIdx, 14);
+  assert.equal(exportRows[2][excludedIdx], 'Yes');
+  assert.equal(exportRows[2][excludedIdx + 1], 'Puck prep issue');
+  assert.equal(exportRows[0][excludedIdx], 'No');
 
   const customSettings = {
     grinderModel: 'DF64',
