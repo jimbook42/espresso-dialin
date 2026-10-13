@@ -3,6 +3,7 @@
  * Estimates local seconds-per-mark from the user's own data; no fixed global sensitivity.
  */
 
+import { isBalancedTaste } from '../utils/tasteProfile.js';
 import {
   NICHE_ZERO_DIAL_MIN,
   NICHE_ZERO_DIAL_MAX,
@@ -256,7 +257,7 @@ export function recommendNicheZeroFromEvidence(params) {
 
   const recommendedDial = clampDial(rawTarget);
   const shift = Math.round((recommendedDial - currentDial) * 10) / 10;
-  if (shift === 0 && !severeChoke && isTimeInRange && (tasteProfile === 'good' || tasteProfile === 'balanced')) {
+  if (shift === 0 && !severeChoke && isTimeInRange && isBalancedTaste(tasteProfile)) {
     return {
       ok: true,
       recommendedDial: currentDial,

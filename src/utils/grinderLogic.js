@@ -33,6 +33,7 @@ import {
   diagnoseNicheLearningEligibility,
   buildNicheEligibilityLearningNote,
 } from '../grinders/nicheEligibility.js';
+import { isBalancedTaste, normalizeTasteProfile } from './tasteProfile.js';
 
 export { NICHE_ZERO_GRINDER_ID } from '../grinders/grinderRegistry.js';
 
@@ -183,7 +184,7 @@ export function classifyShotOutcome(shot, recipe) {
   const ctx = recipeContextForShot(shot, recipe);
   const time = Number(shot.actualTimeS ?? shot.actualTime ?? 0);
   const yieldG = Number(shot.actualYieldG ?? shot.actualYield ?? 0);
-  const taste = shot.tasteProfile;
+  const taste = normalizeTasteProfile(shot.tasteProfile);
   const targetMin = ctx.targetTimeMinS;
   const targetMax = ctx.targetTimeMaxS;
   const targetYield = ctx.targetYieldG ?? 36;
@@ -192,7 +193,7 @@ export function classifyShotOutcome(shot, recipe) {
   const isSour = taste === 'sour' || taste === 'very_sour';
   const isBitter = taste === 'bitter' || taste === 'very_bitter';
   const isNegativeTaste = isSour || isBitter;
-  const isGoodTaste = taste === 'good' || taste === 'balanced';
+  const isGoodTaste = isBalancedTaste(taste);
   const yieldDelta = yieldG - targetYield;
   const hasYieldIssue = isTimeInRange && Math.abs(yieldDelta) >= MATERIAL_YIELD_DELTA_G;
   const isSevereChoke = shotIsSevereChoke(time, yieldG, targetMin, targetMax, targetYield);
@@ -220,7 +221,7 @@ export function shotResultImproved(previousShot, currentShotData, recipe) {
     {
       actualTimeS: currentShotData.actualTime,
       actualYieldG: currentShotData.actualYield,
-      tasteProfile: currentShotData.tasteProfile,
+      tasteProfile: normalizeTasteProfile(currentShotData.tasteProfile),
       targetTimeMinS: recipe.targetTimeMinS,
       targetTimeMaxS: recipe.targetTimeMaxS,
     },
@@ -605,11 +606,12 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     wasPurged,
     actualTime,
     actualYield,
-    tasteProfile,
+    tasteProfile: rawTasteProfile,
     lastShotGrind,
     recommendationFollowed = true,
     previousShot = null,
   } = shotData;
+  const tasteProfile = normalizeTasteProfile(rawTasteProfile);
 
   const targetMin = recipe.targetTimeMinS || 27;
   const targetMax = recipe.targetTimeMaxS || 32;
@@ -849,7 +851,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         shift,
         shiftUnit: grinderProfile.shiftUnit,
         severeChoke: severeChoke,
-        tasteOverride: isTimeInRange && tasteProfile !== 'good' && tasteProfile !== 'balanced',
+        tasteOverride: isTimeInRange && !isBalancedTaste(tasteProfile),
       },
     };
   }
@@ -977,7 +979,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       shift,
       shiftUnit,
       severeChoke: severeChoke,
-      tasteOverride: isTimeInRange && tasteProfile !== 'good' && tasteProfile !== 'balanced',
+      tasteOverride: isTimeInRange && !isBalancedTaste(tasteProfile),
     },
   };
 }

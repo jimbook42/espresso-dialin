@@ -41,10 +41,16 @@ import {
   isNicheZeroGrinderModel,
   parseGrindForShotSave,
   persistedSettingsPatchFromRecommendation,
-  uiStateFromInitialRecommendation,
-  uiStateFromLastShot,
   uiStateFromRecommendedSetting,
 } from './grinders/grinderRegistry.js';
+import { resolveGrindControlUiState } from './grinders/grindControlUiState.js';
+import {
+  BALANCED_TASTE_PROFILE,
+  normalizeTasteProfile,
+  tasteProfileDisplayLabel,
+  tasteProfileForSave,
+  tasteProfilesMatch,
+} from './utils/tasteProfile.js';
 import { SettingsToggle } from './components/SettingsToggle';
 import { BrewGuide } from './components/BrewGuide';
 import { BrewGuideIntroModal } from './components/BrewGuideIntroModal';
@@ -72,7 +78,7 @@ const EXTRACTION_TIME_COLORS = {
 const TASTE_CHART_COLORS = {
   very_sour: 'bg-[#9a8a4a]',
   sour: 'bg-[#c4a04b]',
-  good: 'bg-[#8a9d72]',
+  balanced: 'bg-[#8a9d72]',
   bitter: 'bg-[#a67c52]',
   very_bitter: 'bg-[#b86b5c]',
 };
@@ -339,49 +345,21 @@ export default function App() {
   }, [activeRecipe?.id]);
 
   useEffect(() => {
-    if (activeBean && grinderModel) {
-      const currentBeanShots = shots.filter(
-        (s) =>
-          s.beanId === activeBean.id
-          && shotEligibleForLearning(s)
-          && shotMatchesGrinderForLearning(s, grinderModel)
-      );
-      
-      if (currentBeanShots.length > 0) {
-        const last = currentBeanShots[0];
-        const adjustedRec = getAgeAdjustedRecommendation(last, activeBean, mockDate);
-        
-        if (adjustedRec && adjustedRec.recommendedSetting) {
-          const uiState = uiStateFromRecommendedSetting(grinderModel, adjustedRec.recommendedSetting);
-          if (uiState?.setteMacro != null) setSetteMacro(uiState.setteMacro);
-          if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
-          if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
-          if (uiState?.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
-        } else {
-          const uiState = uiStateFromLastShot(grinderModel, last);
-          if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
-          if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
-          if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
-          if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
-        }
-      } else {
-        const recParams = getInitialGrindRecommendation(
-          grinderModel,
-          activeBean.roastType,
-          activeBean,
-          recipes,
-          shots,
-          beans,
-          mockDate,
-          flairEnabled
-        );
-        const uiState = uiStateFromInitialRecommendation(grinderModel, recParams);
-        if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
-        if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
-        if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
-        if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
-      }
-    }
+    if (!activeBean || !grinderModel) return;
+    const uiState = resolveGrindControlUiState({
+      grinderModel,
+      shots,
+      activeBean,
+      recipes,
+      beans,
+      mockDate,
+      flairEnabled,
+    });
+    if (!uiState) return;
+    if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
+    if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
+    if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
+    if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
   }, [selectedBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
 
   const handleSaveGrinderSetup = async (model, options = {}) => {
@@ -784,6 +762,8 @@ export default function App() {
       grinderModel,
     });
 
+    const savedTasteProfile = tasteProfileForSave(tasteProfile);
+
     const rec = calculateRecommendation(
       { 
         beanId: activeBean.id,
@@ -796,7 +776,7 @@ export default function App() {
         actualTime: parsedTime, 
         actualDose: parsedDose, 
         actualYield: parsedYield, 
-        tasteProfile, 
+        tasteProfile: savedTasteProfile, 
         lastShotGrind,
         recommendationFollowed,
         previousShot: lastLearningShot || null,
@@ -820,7 +800,7 @@ export default function App() {
       actualDoseG: parsedDose,
       actualYieldG: parsedYield,
       actualTimeS: parsedTime,
-      tasteProfile,
+      tasteProfile: savedTasteProfile,
       shotRating: shotRating !== null ? shotRating : undefined,
       brewRatio: `1:${brewRatio}`,
       beanAgeDays: ageData.daysOld,
@@ -1007,7 +987,7 @@ export default function App() {
         s.actualYieldG,
         s.brewRatio || '',
         s.actualTimeS,
-        s.tasteProfile,
+        normalizeTasteProfile(s.tasteProfile),
         s.shotRating || '',
         s.beanAgeDays || 0,
         s.storageType || 'bag',
@@ -1046,7 +1026,7 @@ export default function App() {
   const tasteCounts = {
     very_sour: shots.filter(s => s.tasteProfile === 'very_sour').length,
     sour: shots.filter(s => s.tasteProfile === 'sour').length,
-    good: shots.filter(s => s.tasteProfile === 'good' || s.tasteProfile === 'balanced').length,
+    balanced: shots.filter((s) => normalizeTasteProfile(s.tasteProfile) === BALANCED_TASTE_PROFILE).length,
     bitter: shots.filter(s => s.tasteProfile === 'bitter').length,
     very_bitter: shots.filter(s => s.tasteProfile === 'very_bitter').length,
   };
@@ -1502,7 +1482,7 @@ export default function App() {
                   <div className={`flex items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
                     <p className={`text-xs ${ui.muted}`}>
                       {lastLoggedShot
-                        ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${lastLoggedShot.tasteProfile?.replace('_', ' ') || '—'})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ` · kept in history, not used for learning${lastLoggedShot.knownIssueReason ? ` (${knownIssueReasonLabel(lastLoggedShot.knownIssueReason)})` : ''}` : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
+                        ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${tasteProfileDisplayLabel(lastLoggedShot.tasteProfile)})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ` · kept in history, not used for learning${lastLoggedShot.knownIssueReason ? ` (${knownIssueReasonLabel(lastLoggedShot.knownIssueReason)})` : ''}` : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
                         : `Logging grind ${currentGrindLabel}`}
                     </p>
                     {lastLearningShot && lastLearningShot.grinderModel === grinderModel && dynamicRec?.recommendedSetting && (
@@ -1671,7 +1651,7 @@ export default function App() {
                       {[
                         { id: 'very_sour', label: 'V.Sour' },
                         { id: 'sour', label: 'Sour' },
-                        { id: 'good', label: 'Balanced' },
+                        { id: BALANCED_TASTE_PROFILE, label: 'Balanced' },
                         { id: 'bitter', label: 'Bitter' },
                         { id: 'very_bitter', label: 'V.Bitter' }
                       ].map(f => (
@@ -1683,7 +1663,7 @@ export default function App() {
                             setShotFieldHighlights((prev) => ({ ...prev, taste: false }));
                           }}
                           className={`py-3 text-[10px] font-bold rounded-xl border transition-all ${
-                            tasteProfile === f.id
+                            tasteProfilesMatch(tasteProfile, f.id)
                               ? 'bg-[#c88a4b] border-[#c88a4b] text-[#121110]'
                               : 'bg-[#211e1a] text-[#a09880] border-[#2e2b26] hover:border-[#3d3830]'
                           }`}
@@ -2198,7 +2178,7 @@ export default function App() {
                         { label: 'Grind', value: grindStr, tone: ui.text },
                         { label: 'Dose/Yield', value: `${s.actualDoseG || 0}/${s.actualYieldG || 0}g`, tone: ui.text },
                         { label: 'Time', value: `${s.actualTimeS || 0}s`, tone: shotTimeTone(s.actualTimeS, minT, maxT) },
-                        { label: 'Taste', value: (s.tasteProfile?.replace('_', ' ') || '—'), tone: `${ui.sub} capitalize` },
+                        { label: 'Taste', value: tasteProfileDisplayLabel(s.tasteProfile), tone: `${ui.sub} capitalize` },
                       ].map((cell) => (
                         <div key={cell.label} className={`${ui.metricCell} text-center`}>
                           <span className={`block text-[8px] uppercase tracking-wider ${ui.muted} mb-1`}>{cell.label}</span>
@@ -2331,7 +2311,7 @@ export default function App() {
                   {[
                     { label: 'Very sour', count: tasteCounts.very_sour, color: TASTE_CHART_COLORS.very_sour },
                     { label: 'Sour', count: tasteCounts.sour, color: TASTE_CHART_COLORS.sour },
-                    { label: 'Balanced', count: tasteCounts.good, color: TASTE_CHART_COLORS.good },
+                    { label: 'Balanced', count: tasteCounts.balanced, color: TASTE_CHART_COLORS.balanced },
                     { label: 'Bitter', count: tasteCounts.bitter, color: TASTE_CHART_COLORS.bitter },
                     { label: 'Very bitter', count: tasteCounts.very_bitter, color: TASTE_CHART_COLORS.very_bitter },
                   ].map(item => {

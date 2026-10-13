@@ -24,6 +24,13 @@ import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
 import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
+import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
+import {
+  BALANCED_TASTE_PROFILE,
+  normalizeTasteProfile,
+  tasteProfileDisplayLabel,
+  tasteProfileForSave,
+} from './src/utils/tasteProfile.js';
 import assert from 'assert';
 
 /** Ignore metadata fields when comparing initial grind outputs. */
@@ -31,6 +38,89 @@ function initialGrindOutput(result) {
   if (!result || typeof result !== 'object') return result;
   const { initialSource, ...grind } = result;
   return grind;
+}
+
+function runGrindSwitchBackTests() {
+  const bean = { id: 'b1', roastType: 'Medium', roastDate: '2026-09-01', storageType: 'bag' };
+  const recipes = [];
+  const beans = [bean];
+  const base = {
+    beanId: 'b1',
+    timestamp: '2026-09-20T12:00:00.000Z',
+    excludeFromLearning: false,
+  };
+
+  const nicheUi = resolveGrindControlUiState({
+    grinderModel: 'Niche Zero',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Niche Zero',
+        nicheZeroSetting: 17,
+        recommendation: { recommendedSetting: { nicheZeroSetting: 18.4 } },
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(nicheUi.nicheZeroSetting, 17);
+
+  const setteUi = resolveGrindControlUiState({
+    grinderModel: 'Sette 270Wi',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Sette 270Wi',
+        setteMacro: 13,
+        setteMicro: 'E',
+        recommendation: { recommendedSetting: { macro: 14, micro: 'F' } },
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(setteUi.setteMacro, 13);
+  assert.equal(setteUi.setteMicro, 'E');
+
+  const sunbeamUi = resolveGrindControlUiState({
+    grinderModel: 'Sunbeam Barista Max',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Sunbeam Barista Max',
+        sunbeamSetting: 15,
+        recommendation: { recommendedSetting: { setting: 18 } },
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(sunbeamUi.sunbeamSetting, 15);
+}
+
+function runBalancedTasteTests(recipe, createShot, runCalc) {
+  assert.equal(normalizeTasteProfile('good'), BALANCED_TASTE_PROFILE);
+  assert.equal(tasteProfileDisplayLabel('good'), 'balanced');
+  assert.equal(tasteProfileForSave(BALANCED_TASTE_PROFILE), BALANCED_TASTE_PROFILE);
+
+  const legacyGood = classifyShotOutcome(createShot(28, 'good'), recipe);
+  const canonicalBalanced = classifyShotOutcome(createShot(28, 'balanced'), recipe);
+  assert.equal(legacyGood.isDialledIn, true);
+  assert.equal(canonicalBalanced.isDialledIn, true);
+
+  const legacyRec = runCalc(createShot(28, 'good'));
+  const balancedRec = runCalc(createShot(28, 'balanced'));
+  assert.equal(legacyRec.reason, balancedRec.reason);
+  assert.deepEqual(legacyRec.recommendedSetting, balancedRec.recommendedSetting);
 }
 
 function runRecommendationIntegrityTests() {
@@ -215,6 +305,8 @@ async function runTests() {
     shotResultImproved(createShot(35, 'sour'), { actualTime: 29, actualYield: 36, tasteProfile: 'good' }, recipe)
   );
 
+  runGrindSwitchBackTests();
+  runBalancedTasteTests(recipe, createShot, runCalc);
   runNicheZeroTests();
   runRecommendationIntegrityTests();
   runBrewGuideTests();
