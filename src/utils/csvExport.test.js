@@ -3,6 +3,7 @@ import {
   buildShotsCsvContent,
   buildShotsCsvRows,
   escapeCsvField,
+  formatCsvRow,
   SHOT_CSV_HEADERS,
 } from './csvExport.js';
 import { formatShotGrindForHistory, parseGrindForShotSave } from '../grinders/grinderRegistry.js';
@@ -11,6 +12,14 @@ export function runCsvExportTests() {
   assert.equal(escapeCsvField('plain'), '"plain"');
   assert.equal(escapeCsvField('say "hi"'), '"say ""hi"""');
   assert.equal(escapeCsvField(null), '""');
+
+  const timestampWithComma = new Date('2026-10-13T14:27:35.000Z').toLocaleString();
+  assert.ok(timestampWithComma.includes(','));
+  const quotedRow = formatCsvRow([timestampWithComma, 'Notes with, comma']);
+  assert.match(quotedRow, /^"/);
+  assert.ok(quotedRow.includes('"Notes with, comma"'));
+  const csvWithTimestamp = buildShotsCsvContent(['Timestamp', 'Notes'], [[timestampWithComma, 'ok']]);
+  assert.ok(csvWithTimestamp.includes(`"${timestampWithComma.replace(/"/g, '""')}"`));
 
   const headers = ['Timestamp', 'Bean', 'Notes'];
   const rows = [

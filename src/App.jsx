@@ -88,6 +88,11 @@ import {
 } from './utils/csvExport.js';
 import { importShotsFromCsv } from './utils/csvImport.js';
 import {
+  inferRecipeTargetsFromShots,
+  persistBeanRecipeForBean,
+  resolveRecipeForBean,
+} from './utils/beanRecipeResolution.js';
+import {
   BALANCED_TASTE_PROFILE,
   normalizeTasteProfile,
   tasteProfileDisplayLabel,
@@ -406,7 +411,9 @@ export default function App() {
     return activeBeansList[0]?.id || beans[0]?.id || '';
   })();
   const activeBean = beans.find(b => b.id === effectiveBeanId) || activeBeansList[0] || beans[0];
-  const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
+  const beanShots = shots.filter(s => s.beanId === activeBean?.id);
+  const storedRecipe = recipes.find(r => r.beanId === activeBean?.id);
+  const activeRecipe = resolveRecipeForBean(activeBean, storedRecipe, beanShots, grinderModel);
   const lastLoggedShot = findLatestShotForBeanAndGrinder(shots, activeBean?.id, grinderModel);
   const lastLearningShot = activeBean && grinderModel
     ? shots.find(
@@ -416,7 +423,6 @@ export default function App() {
           && shotMatchesGrinderForLearning(s, grinderModel)
       )
     : null;
-  const beanShots = shots.filter(s => s.beanId === activeBean?.id);
 
   const scaleRecipePreinfusion =
     flairEnabled && recipeDefinesPreinfusion(activeRecipe?.flairProfile);
@@ -972,9 +978,7 @@ export default function App() {
       if (isEditingBean && newBean.id) {
         await db.beans.update(newBean.id, beanToSave);
         const existingRecipe = recipes.find(r => r.beanId === newBean.id);
-        if (existingRecipe) {
-          await db.recipes.update(existingRecipe.id, { ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36 });
-        }
+        await persistBeanRecipeForBean(db, newBean.id, newRecipe, existingRecipe, grinderModel);
         prefillDoseFromRecipe(newRecipe);
       } else {
         const isFirstBeanAdd = beans.length === 0;
@@ -1007,8 +1011,18 @@ export default function App() {
   const startEditBean = (bean, options = {}) => {
     const { focusFlairProfile = false } = options;
     const recipe = recipes.find(r => r.beanId === bean.id);
+    const beanShotHistory = shots.filter((s) => s.beanId === bean.id);
     setNewBean(bean);
-    if (recipe) setNewRecipe(sanitizeRecipeFormState(recipe, grinderModel));
+    if (recipe) {
+      setNewRecipe(sanitizeRecipeFormState(recipe, grinderModel));
+    } else {
+      setNewRecipe(
+        sanitizeRecipeFormState(
+          { ...createDefaultNewRecipe(grinderModel), ...inferRecipeTargetsFromShots(beanShotHistory) },
+          grinderModel
+        )
+      );
+    }
     setIsEditingBean(true);
     setActiveTab('beans');
     if (focusFlairProfile) {

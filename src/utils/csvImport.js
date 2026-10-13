@@ -1,5 +1,9 @@
 import { generateId, knownIssueReasonKeyFromLabel } from './grinderLogic.js';
-import { parseGrindForShotSave } from '../grinders/grinderRegistry.js';
+import {
+  defaultBrewTemperatureForGrinder,
+  parseGrindForShotSave,
+} from '../grinders/grinderRegistry.js';
+import { inferRecipeTargetsFromShots } from './beanRecipeResolution.js';
 import { normalizeTasteProfile, tasteProfileForSave } from './tasteProfile.js';
 
 const LEGACY_EXCLUDED_HEADER = 'Excluded From Learning';
@@ -49,13 +53,38 @@ function excludedColumnIndex(header) {
 
 /** Merge locale timestamp split across two CSV fields (e.g. "13/10/2026" + "14:27:35"). */
 export function mergeTimestampFields(cols, header) {
-  if (header[0] !== 'Timestamp' || cols.length <= header.length) {
-    return cols;
+  return alignDataRowToHeader(cols, header);
+}
+
+/**
+ * Align a parsed data row with the header when unquoted timestamps (or other fields) added extra commas.
+ */
+export function alignDataRowToHeader(cols, header) {
+  if (!header?.length) return cols;
+  let fields = [...cols];
+  if (fields[0]?.charCodeAt(0) === 0xfeff) {
+    fields[0] = fields[0].slice(1);
   }
-  if (cols.length > header.length) {
-    return [`${cols[0]}, ${cols[1].trim()}`, ...cols.slice(2)];
+  const timestampHeader = normalizeHeaderName(header[0]);
+  if (timestampHeader !== 'Timestamp') {
+    return fields.slice(0, header.length);
   }
-  return cols;
+
+  while (fields.length > header.length) {
+    if (fields.length < 2) break;
+    const merged = `${fields[0]}, ${fields[1].trim()}`;
+    const parsed = parseExportedTimestamp(merged);
+    if (parsed || !parseExportedTimestamp(fields[0])) {
+      fields = [merged, ...fields.slice(2)];
+    } else {
+      fields = [`${fields[0]},${fields[1]}`, ...fields.slice(2)];
+    }
+  }
+
+  if (fields.length < header.length) {
+    while (fields.length < header.length) fields.push('');
+  }
+  return fields.slice(0, header.length);
 }
 
 /**
@@ -148,12 +177,13 @@ function grindFieldsFromCsvRow(grinderModel, grindSetting, settings) {
  * @returns {{ header: string[], rows: string[][] }}
  */
 export function parseShotsCsvText(csvText) {
-  const lines = String(csvText || '').trim().split(/\r?\n/).filter((l) => l.length > 0);
+  const text = String(csvText || '').replace(/^\uFEFF/, '');
+  const lines = text.trim().split(/\r?\n/).filter((l) => l.length > 0);
   if (lines.length === 0) {
     return { header: [], rows: [] };
   }
   const header = parseCsvLine(lines[0]).map(normalizeHeaderName);
-  const rows = lines.slice(1).map((line) => mergeTimestampFields(parseCsvLine(line), header));
+  const rows = lines.slice(1).map((line) => alignDataRowToHeader(parseCsvLine(line), header));
   return { header, rows };
 }
 
@@ -229,12 +259,16 @@ export function buildShotRecordsFromCsvRows(rows, header, options) {
       const targetDoseRaw = col(row, header, 'Target Dose (g)');
       const targetYieldRaw = col(row, header, 'Target Yield (g)');
 
+      const grindFields = { ...grindResult.fields };
+      delete grindFields.ok;
+      delete grindFields.error;
+
       const shot = {
         id: generateId(),
         beanId,
         timestamp,
         grinderModel,
-        ...grindResult.fields,
+        ...grindFields,
         wasPurged: yesNo(col(row, header, 'Purged')),
         actualDoseG,
         actualYieldG,
@@ -307,9 +341,10 @@ export async function importShotsFromCsv(database, csvText, options = {}) {
     }
   }
 
-  const [existingShots, existingBeans] = await Promise.all([
+  const [existingShots, existingBeans, existingRecipes] = await Promise.all([
     database.shots.toArray(),
     database.beans.toArray(),
+    database.recipes.toArray(),
   ]);
 
   const beansByName = new Map(existingBeans.map((b) => [String(b.name).toLowerCase(), b]));
@@ -340,12 +375,32 @@ export async function importShotsFromCsv(database, csvText, options = {}) {
     existingShots,
   });
 
-  await database.transaction('rw', database.beans, database.shots, async () => {
+  const grinderModel = settings?.grinderModel || 'Sette 270Wi';
+  const recipesToAdd = [];
+  const beansTouched = new Set(imported.map((s) => s.beanId));
+
+  for (const beanId of beansTouched) {
+    if (existingRecipes.some((r) => r.beanId === beanId)) continue;
+    const beanShots = [...existingShots, ...imported].filter((s) => s.beanId === beanId);
+    const targets = inferRecipeTargetsFromShots(beanShots);
+    recipesToAdd.push({
+      id: generateId(),
+      beanId,
+      ...targets,
+      brewTemperatureC: defaultBrewTemperatureForGrinder(grinderModel),
+      flairProfile: null,
+    });
+  }
+
+  await database.transaction('rw', database.beans, database.shots, database.recipes, async () => {
     if (pendingBeans.length > 0) {
       await database.beans.bulkAdd(pendingBeans);
     }
     if (imported.length > 0) {
       await database.shots.bulkAdd(imported);
+    }
+    if (recipesToAdd.length > 0) {
+      await database.recipes.bulkAdd(recipesToAdd);
     }
   });
 
@@ -354,7 +409,13 @@ export async function importShotsFromCsv(database, csvText, options = {}) {
     skipped: skipped.length,
     errors,
     createdBeans: pendingBeans.length,
+    recipesCreated: recipesToAdd.length,
   };
+}
+
+/** Same entry point as Settings → Import Shots from CSV in the app. */
+export async function importShotsCsvThroughAppPath(database, csvText, appSettings = null) {
+  return importShotsFromCsv(database, csvText, { settings: appSettings });
 }
 
 const REQUIRED_EXPORT_HEADERS = [

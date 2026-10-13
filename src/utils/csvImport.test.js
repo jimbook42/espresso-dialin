@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import 'fake-indexeddb/auto';
 import { buildShotsCsvRows, SHOT_CSV_HEADERS } from './csvExport.js';
 import {
+  alignDataRowToHeader,
+  importShotsCsvThroughAppPath,
   importShotsFromCsv,
   parseExportedTimestamp,
   parseShotsCsvText,
@@ -13,8 +15,12 @@ import {
   calculateRecommendation,
   db,
   knownIssueReasonLabel,
+  recomputeQuantitativeRecommendationFromLastShot,
+  shotEligibleForLearning,
   shotExcludedFromLearning,
+  shotMatchesGrinderForLearning,
 } from './grinderLogic.js';
+import { resolveRecipeForBean } from './beanRecipeResolution.js';
 import { setteToNumeric } from '../grinders/grinderRegistry.js';
 import { formatRecFollowedForCsv } from './recommendationFollowed.js';
 import { normalizeTasteProfile } from './tasteProfile.js';
@@ -23,6 +29,11 @@ const FIXTURE_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   'fixtures',
   'isaac-b2-sette-shots.csv'
+);
+const LEGACY_FIXTURE_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'isaac-b2-sette-shots-legacy-export.csv'
 );
 
 function parseSetteGrindFromShot(shot) {
@@ -33,13 +44,66 @@ export async function runCsvImportTests() {
   assert.ok(parseExportedTimestamp('13/10/2026, 14:27:35'));
   assert.ok(parseExportedTimestamp('2026-10-13T14:27:35.000Z'));
 
+  const legacyRaw = fs.readFileSync(LEGACY_FIXTURE_PATH, 'utf8');
+  const legacyParsed = parseShotsCsvText(legacyRaw);
+  assert.equal(legacyParsed.header.length, 17);
+  assert.equal(legacyParsed.rows[0].length, 17);
+  assert.equal(legacyParsed.rows[0][legacyParsed.header.indexOf('Bean')], 'B2');
+  assert.equal(legacyParsed.rows[0][legacyParsed.header.indexOf('Grind Setting')], '7-I');
+  const misaligned = alignDataRowToHeader(
+    ['13/10/2026', ' 14:27:35', 'B2', 'Sette 270Wi', '7-I'],
+    ['Timestamp', 'Bean', 'Grinder', 'Grind Setting']
+  );
+  assert.equal(misaligned[0], '13/10/2026, 14:27:35');
+  assert.equal(misaligned[1], 'B2');
+
   const { header, rows } = parseShotsCsvText(fs.readFileSync(FIXTURE_PATH, 'utf8'));
   assert.ok(header.includes('Excluded From Learning') || header.includes('Excluded'));
   assert.equal(rows.length, 35);
 
   await db.open();
-  await db.transaction('rw', db.beans, db.shots, async () => {
+  await db.transaction('rw', db.beans, db.recipes, db.shots, async () => {
     await db.beans.clear();
+    await db.recipes.clear();
+    await db.shots.clear();
+  });
+
+  const legacyImport = await importShotsCsvThroughAppPath(db, legacyRaw, {
+    grinderModel: 'Sette 270Wi',
+  });
+  assert.equal(legacyImport.imported, 35);
+  assert.equal(legacyImport.errors.length, 0);
+  assert.ok(legacyImport.recipesCreated >= 1, 'import should create inferred recipe for B2');
+
+  const legacyBeans = await db.beans.toArray();
+  const b2 = legacyBeans.find((b) => b.name === 'B2');
+  const legacyRecipes = await db.recipes.toArray();
+  const legacyShots = await db.shots.orderBy('timestamp').reverse().toArray();
+  const storedRecipe = legacyRecipes.find((r) => r.beanId === b2.id);
+  const activeRecipe = resolveRecipeForBean(b2, storedRecipe, legacyShots, 'Sette 270Wi');
+  assert.equal(activeRecipe.targetYieldG, 30);
+
+  const lastLearningShot = legacyShots.find(
+    (s) =>
+      s.beanId === b2.id
+      && shotEligibleForLearning(s)
+      && shotMatchesGrinderForLearning(s, 'Sette 270Wi')
+  );
+  const beanHistory = legacyShots.filter(
+    (s) => s.beanId === b2.id && shotEligibleForLearning(s) && s.id !== lastLearningShot?.id
+  );
+  const dialRec = recomputeQuantitativeRecommendationFromLastShot(
+    lastLearningShot,
+    activeRecipe,
+    beanHistory,
+    false
+  );
+  assert.equal(dialRec.recommendedSetting.macro, 7);
+  assert.equal(dialRec.recommendedSetting.micro, 'C');
+
+  await db.transaction('rw', db.beans, db.recipes, db.shots, async () => {
+    await db.beans.clear();
+    await db.recipes.clear();
     await db.shots.clear();
   });
 
