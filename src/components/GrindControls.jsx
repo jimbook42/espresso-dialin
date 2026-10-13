@@ -1,7 +1,20 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { adjustSunbeam } from '../utils/grinderLogic';
+import {
+  SETTE_GRINDER_ID,
+  SUNBEAM_GRINDER_ID,
+  NICHE_ZERO_GRINDER_ID,
+  adjustSunbeam,
+  getGrinderDefinitionById,
+  isSetteGrinderModel,
+  isNicheZeroGrinderModel,
+} from '../grinders/grinderRegistry.js';
 
-const SETTE_MICROS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+const setteUi = getGrinderDefinitionById(SETTE_GRINDER_ID);
+const sunbeamUi = getGrinderDefinitionById(SUNBEAM_GRINDER_ID);
+const nicheUi = getGrinderDefinitionById(NICHE_ZERO_GRINDER_ID);
+const SETTE_MICROS = setteUi.microLetters;
+const SETTE_MACRO_MIN = setteUi.macroMin;
+const SETTE_MACRO_MAX = setteUi.macroMax;
 
 const SWIPE_THRESHOLD_PX = 14;
 const VISIBLE_TICKS = 9;
@@ -158,9 +171,77 @@ function AxisStepper({ label, display, onDec, onInc, ui, dialKind }) {
   );
 }
 
+export function GrinderGrindControls({
+  grinderModel,
+  setteMacro,
+  setteMicro,
+  sunbeamSetting,
+  nicheZeroSetting,
+  onSetteMacroChange,
+  onSetteMicroChange,
+  onSunbeamChange,
+  onNicheZeroChange,
+  ui,
+}) {
+  if (isSetteGrinderModel(grinderModel)) {
+    return (
+      <SetteGrindControls
+        macro={setteMacro}
+        micro={setteMicro}
+        onMacroChange={onSetteMacroChange}
+        onMicroChange={onSetteMicroChange}
+        ui={ui}
+      />
+    );
+  }
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return (
+      <NicheZeroGrindControl
+        setting={nicheZeroSetting}
+        onChange={onNicheZeroChange}
+        ui={ui}
+      />
+    );
+  }
+  return (
+    <SunbeamGrindControl
+      setting={sunbeamSetting}
+      onChange={onSunbeamChange}
+      ui={ui}
+    />
+  );
+}
+
+export function NicheZeroGrindControl({ setting, onChange, ui }) {
+  return (
+    <div className={`${ui.cardInset} rounded-2xl p-3 ring-1 ring-[rgba(200,138,75,0.12)]`}>
+      <p className={`text-[9px] uppercase tracking-widest ${ui.muted} mb-2 leading-snug font-semibold`}>
+        {nicheUi.dialFieldLabel}
+      </p>
+      <label className="block">
+        <span className={`${ui.fieldLabel} block mb-2`}>Reference position on the stepless dial</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          min={nicheUi.dialMin}
+          max={nicheUi.dialMax}
+          value={setting ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full ${ui.input} border rounded-xl p-3 text-3xl font-black font-mono tabular-nums text-center`}
+          aria-label="Niche Zero dial reference"
+        />
+      </label>
+      <p className={`text-[10px] leading-relaxed mt-2 ${ui.muted}`}>
+        Lower numbers are finer; higher numbers are coarser. Markings are reference positions — the dial is stepless between them.
+      </p>
+    </div>
+  );
+}
+
 export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange, ui }) {
   const bumpMacro = (delta) => {
-    const next = Math.min(31, Math.max(1, (parseInt(macro, 10) || 13) + delta));
+    const next = Math.min(SETTE_MACRO_MAX, Math.max(SETTE_MACRO_MIN, (parseInt(macro, 10) || 13) + delta));
     onMacroChange(next);
   };
 
@@ -174,7 +255,7 @@ export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange,
   return (
     <div className="grid grid-cols-2 gap-3">
       <AxisStepper
-        label="Macro 1–31"
+        label={setteUi.macroFieldLabel}
         display={macro}
         onDec={() => bumpMacro(-1)}
         onInc={() => bumpMacro(1)}
@@ -182,7 +263,7 @@ export function SetteGrindControls({ macro, micro, onMacroChange, onMicroChange,
         dialKind="macro"
       />
       <AxisStepper
-        label="Micro A–I"
+        label={setteUi.microFieldLabel}
         display={micro}
         onDec={() => bumpMicro(-1)}
         onInc={() => bumpMicro(1)}
@@ -201,7 +282,7 @@ export function SunbeamGrindControl({ setting, onChange, ui }) {
 
   return (
     <AxisStepper
-      label="Dial setting 1–30"
+      label={sunbeamUi.dialFieldLabel}
       display={setting}
       onDec={() => bump(-1)}
       onInc={() => bump(1)}

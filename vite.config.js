@@ -1,10 +1,31 @@
+import { execSync } from 'node:child_process';
+import process from 'node:process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
-export default defineConfig({
+function pressureLabBuildId() {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+const pressureLabBuild = pressureLabBuildId();
+
+// `npm run dev:flair-lab` uses HTTPS so a phone on the bench can open the front camera.
+export default defineConfig(({ mode }) => ({
+  define: {
+    'import.meta.env.VITE_PRESSURE_LAB_BUILD': JSON.stringify(pressureLabBuild),
+    'import.meta.env.VITE_ENABLE_PRESSURE_LAB': JSON.stringify(
+      process.env.VITE_ENABLE_PRESSURE_LAB === 'true' ? 'true' : 'false'
+    ),
+  },
   plugins: [
     react(),
+    mode === 'flairlab' ? basicSsl() : null,
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
@@ -15,5 +36,5 @@ export default defineConfig({
         display: 'standalone'
       }
     })
-  ]
-});
+  ].filter(Boolean)
+}));

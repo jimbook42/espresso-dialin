@@ -10,6 +10,7 @@ import {
   normalizeBrewAccessories,
 } from './steps.js';
 import { runSunbeamGuideTests } from './sunbeam.test.js';
+import { runGrinderBrewGuideTests } from './grinderBrewGuide.test.js';
 
 const DIAL = {
   beanName: 'House Espresso',
@@ -337,6 +338,7 @@ export function runBrewGuideTests() {
   assert.match(schema, /db\.version\(17\)/);
   assert.equal(/db\.version\(18\)/.test(schema), false);
 
+  runGrinderBrewGuideTests();
   runSunbeamGuideTests();
   console.log('Brew Guide tests passed!');
 }

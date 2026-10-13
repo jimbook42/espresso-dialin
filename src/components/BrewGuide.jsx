@@ -23,8 +23,8 @@ import {
 import { SettingsToggle } from './SettingsToggle';
 import { BrewGuidanceSwitch } from './BrewGuidanceSwitch';
 import { CoffeeBeanIcon } from './CoffeeBeanIcon';
-import { buildSunbeamGuides } from '../brewGuide/sunbeam';
 import { BREW_GUIDANCE_MODES } from '../brewGuide/guidance';
+import { getBrewGuideMachinePackage } from '../brewGuide/grinderBrewGuide';
 import {
   BREW_ACCESSORIES,
   brewDialIsReady,
@@ -33,7 +33,7 @@ import {
   normalizeBrewAccessories,
 } from '../brewGuide/steps';
 
-const SUNBEAM_GUIDES = buildSunbeamGuides();
+const BREW_GUIDE_MACHINE = getBrewGuideMachinePackage();
 
 const ACCESSORY_ICONS = {
   dosingCup: CupSoda,
@@ -430,7 +430,7 @@ export function BrewGuide({
       <SectionMenu
         ui={ui}
         title="Machine settings"
-        detail="Sunbeam Barista Max EM5300 / EM5300K. These change the machine itself."
+        detail={BREW_GUIDE_MACHINE.machineSettingsDetail}
         onBack={() => setScreen('menu')}
       >
         <MenuCard
@@ -485,7 +485,7 @@ export function BrewGuide({
   }
 
   if (screen === 'guide') {
-    const guide = SUNBEAM_GUIDES[guideId];
+    const guide = BREW_GUIDE_MACHINE.guides[guideId];
     return (
       <GuideFlow
         key={guide.id}
@@ -501,9 +501,9 @@ export function BrewGuide({
       <div className="min-h-[calc(100dvh-11rem)] flex flex-col justify-center gap-6 py-2">
         <div className="space-y-2 text-center">
           <p className={ui.pageTitle}>Brew Guide</p>
-          <h2 className={`text-3xl font-black tracking-tight ${ui.text}`}>Sunbeam Barista Max</h2>
+          <h2 className={`text-3xl font-black tracking-tight ${ui.text}`}>{BREW_GUIDE_MACHINE.menuTitle}</h2>
           <p className={`text-sm leading-relaxed ${ui.sub} max-w-md mx-auto`}>
-            EM5300 / EM5300K. Start your espresso workflow, then open supporting guides below.
+            {BREW_GUIDE_MACHINE.menuSubtitle}
           </p>
         </div>
 

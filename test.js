@@ -17,10 +17,359 @@ import {
   shotIsSevereChoke,
   shotMatchesRecipeContext,
   shotResultImproved,
+  filterShotsForGrinderLearning,
+  recomputeNicheRecommendationFromLastShot,
+  shouldUsePreviousRecipeRecommendation,
+  PREVIOUS_RECIPE_REC_DISCLAIMER,
 } from './src/utils/grinderLogic.js';
+import { runCsvExportTests } from './src/utils/csvExport.test.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
+import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
+import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
+import { runPressureLabFlagTests } from './src/config/pressureLabFlag.test.js';
+import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
+import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
+import {
+  capturePendingGrindState,
+  pendingGrindSessionKey,
+  resolveGrindControlUiStateWithPending,
+} from './src/grinders/pendingGrindSession.js';
+import {
+  formatRecFollowedForCsv,
+  resolveRecommendationFollowedForSave,
+} from './src/utils/recommendationFollowed.js';
+import {
+  BALANCED_TASTE_PROFILE,
+  normalizeTasteProfile,
+  tasteProfileDisplayLabel,
+  tasteProfileForSave,
+} from './src/utils/tasteProfile.js';
 import assert from 'assert';
+
+/** Ignore metadata fields when comparing initial grind outputs. */
+function initialGrindOutput(result) {
+  if (!result || typeof result !== 'object') return result;
+  const { initialSource, ...grind } = result;
+  return grind;
+}
+
+function runGrindSwitchBackTests() {
+  const bean = { id: 'b1', roastType: 'Medium', roastDate: '2026-09-01', storageType: 'bag' };
+  const recipes = [];
+  const beans = [bean];
+  const base = {
+    beanId: 'b1',
+    timestamp: '2026-09-20T12:00:00.000Z',
+    excludeFromLearning: false,
+  };
+
+  const nicheUi = resolveGrindControlUiState({
+    grinderModel: 'Niche Zero',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Niche Zero',
+        nicheZeroSetting: 17,
+        recommendation: { recommendedSetting: { nicheZeroSetting: 18.4 } },
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(nicheUi.nicheZeroSetting, 17);
+
+  const setteUi = resolveGrindControlUiState({
+    grinderModel: 'Sette 270Wi',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Sette 270Wi',
+        setteMacro: 13,
+        setteMicro: 'E',
+        recommendation: { recommendedSetting: { macro: 14, micro: 'F' } },
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(setteUi.setteMacro, 13);
+  assert.equal(setteUi.setteMicro, 'E');
+
+  const sunbeamUi = resolveGrindControlUiState({
+    grinderModel: 'Sunbeam Barista Max',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Sunbeam Barista Max',
+        sunbeamSetting: 15,
+        recommendation: { recommendedSetting: { setting: 18 } },
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(sunbeamUi.sunbeamSetting, 15);
+}
+
+function runPendingGrindSessionTests() {
+  const bean = { id: 'b1', roastType: 'Medium', roastDate: '2026-09-01', storageType: 'bag' };
+  const recipes = [];
+  const beans = [bean];
+  const base = {
+    beanId: 'b1',
+    timestamp: '2026-09-20T12:00:00.000Z',
+    excludeFromLearning: false,
+  };
+  const shots = [
+    {
+      ...base,
+      grinderModel: 'Niche Zero',
+      nicheZeroSetting: 17,
+      recommendation: { recommendedSetting: { nicheZeroSetting: 18.4 } },
+    },
+  ];
+  const key = pendingGrindSessionKey('b1', 'Niche Zero');
+  assert.equal(key, 'b1::Niche Zero');
+
+  const pendingSnap = capturePendingGrindState('Niche Zero', {
+    setteMacro: 13,
+    setteMicro: 'E',
+    sunbeamSetting: 15,
+    nicheZeroSetting: 18.4,
+  });
+  assert.deepEqual(pendingSnap, { nicheZeroSetting: 18.4 });
+
+  const withPending = resolveGrindControlUiStateWithPending({
+    pendingGrindByKey: { [key]: pendingSnap },
+    grinderModel: 'Niche Zero',
+    shots,
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(withPending.nicheZeroSetting, 18.4);
+
+  const setteKey = pendingGrindSessionKey('b1', 'Sette 270Wi');
+  const settePending = { setteMacro: 14, setteMicro: 'F' };
+  const setteUi = resolveGrindControlUiStateWithPending({
+    pendingGrindByKey: { [setteKey]: settePending },
+    grinderModel: 'Sette 270Wi',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Sette 270Wi',
+        setteMacro: 13,
+        setteMicro: 'E',
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(setteUi.setteMacro, 14);
+  assert.equal(setteUi.setteMicro, 'F');
+
+  const sunbeamKey = pendingGrindSessionKey('b1', 'Sunbeam Barista Max');
+  const sunbeamUi = resolveGrindControlUiStateWithPending({
+    pendingGrindByKey: { [sunbeamKey]: { sunbeamSetting: 22 } },
+    grinderModel: 'Sunbeam Barista Max',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Sunbeam Barista Max',
+        sunbeamSetting: 15,
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(sunbeamUi.sunbeamSetting, 22);
+}
+
+function runPreviousRecipeRecommendationTests() {
+  const recipe = { targetTimeMinS: 27, targetTimeMaxS: 32, targetDoseG: 18, targetYieldG: 36 };
+  const recipeV2 = { ...recipe, targetYieldG: 40 };
+  const oldShot = {
+    id: 's1',
+    beanId: 'b1',
+    grinderModel: 'Sette 270Wi',
+    targetDoseG: 18,
+    targetYieldG: 36,
+    targetTimeMinS: 27,
+    targetTimeMaxS: 32,
+    recommendation: { recommendedSetting: { macro: 13, micro: 'E' }, reason: 'KEEP GRIND' },
+  };
+  const pool = [oldShot];
+  assert.equal(
+    shouldUsePreviousRecipeRecommendation({
+      lastLoggedShot: oldShot,
+      activeRecipe: recipeV2,
+      beanShotsForGrinder: pool,
+      flairEnabled: false,
+    }),
+    true
+  );
+  const onCurrentRecipe = {
+    ...oldShot,
+    id: 's2',
+    targetYieldG: 40,
+  };
+  assert.equal(
+    shouldUsePreviousRecipeRecommendation({
+      lastLoggedShot: onCurrentRecipe,
+      activeRecipe: recipeV2,
+      beanShotsForGrinder: [onCurrentRecipe],
+      flairEnabled: false,
+    }),
+    false
+  );
+  assert.match(PREVIOUS_RECIPE_REC_DISCLAIMER, /previous recipe/i);
+}
+
+function runRecFollowedCsvTests() {
+  assert.equal(formatRecFollowedForCsv({ recommendationFollowed: true }), 'Yes');
+  assert.equal(formatRecFollowedForCsv({ recommendationFollowed: false }), 'No');
+  assert.equal(formatRecFollowedForCsv({}), 'N/A');
+  assert.equal(formatRecFollowedForCsv({ recommendationFollowed: null }), 'N/A');
+
+  const noRec = resolveRecommendationFollowedForSave({
+    lastLearningShot: { grinderModel: 'Sette 270Wi', recommendation: {} },
+    activeBean: { id: 'b1' },
+    mockDate: null,
+    grinderModel: 'Sette 270Wi',
+    savedGrind: { setteMacro: 13, setteMicro: 'E' },
+  });
+  assert.equal(noRec, null);
+
+  const followed = resolveRecommendationFollowedForSave({
+    lastLearningShot: {
+      grinderModel: 'Sette 270Wi',
+      recommendation: { recommendedSetting: { macro: 13, micro: 'E' } },
+    },
+    activeBean: { id: 'b1' },
+    mockDate: null,
+    grinderModel: 'Sette 270Wi',
+    savedGrind: { setteMacro: 13, setteMicro: 'E' },
+  });
+  assert.equal(followed, true);
+
+  const notFollowed = resolveRecommendationFollowedForSave({
+    lastLearningShot: {
+      grinderModel: 'Sette 270Wi',
+      recommendation: { recommendedSetting: { macro: 14, micro: 'F' } },
+    },
+    activeBean: { id: 'b1' },
+    mockDate: null,
+    grinderModel: 'Sette 270Wi',
+    savedGrind: { setteMacro: 13, setteMicro: 'E' },
+  });
+  assert.equal(notFollowed, false);
+}
+
+function runBalancedTasteTests(recipe, createShot, runCalc) {
+  assert.equal(normalizeTasteProfile('good'), BALANCED_TASTE_PROFILE);
+  assert.equal(tasteProfileDisplayLabel('good'), 'balanced');
+  assert.equal(tasteProfileForSave(BALANCED_TASTE_PROFILE), BALANCED_TASTE_PROFILE);
+
+  const legacyGood = classifyShotOutcome(createShot(28, 'good'), recipe);
+  const canonicalBalanced = classifyShotOutcome(createShot(28, 'balanced'), recipe);
+  assert.equal(legacyGood.isDialledIn, true);
+  assert.equal(canonicalBalanced.isDialledIn, true);
+
+  const legacyRec = runCalc(createShot(28, 'good'));
+  const balancedRec = runCalc(createShot(28, 'balanced'));
+  assert.equal(legacyRec.reason, balancedRec.reason);
+  assert.deepEqual(legacyRec.recommendedSetting, balancedRec.recommendedSetting);
+}
+
+function runRecommendationIntegrityTests() {
+  const recipe = { targetTimeMinS: 27, targetTimeMaxS: 32, targetDoseG: 18, targetYieldG: 36 };
+  const setteHistory = [
+    {
+      beanId: 'b1',
+      grinderModel: 'Sette 270Wi',
+      timestamp: '2026-09-19T12:00:00.000Z',
+      actualDoseG: 18,
+      actualYieldG: 36,
+      actualTimeS: 20,
+      setteMacro: 12,
+      setteMicro: 'D',
+    },
+  ];
+  const nicheOnly = calculateRecommendation(
+    {
+      grinderModel: 'Niche Zero',
+      nicheZeroSetting: 15,
+      wasPurged: true,
+      actualTime: 24,
+      actualDose: 18,
+      actualYield: 36,
+      tasteProfile: 'sour',
+    },
+    recipe,
+    setteHistory
+  );
+  assert.equal(nicheOnly.nicheEvidenceMode, 'timing-bounded');
+  assert.ok(nicheOnly.recommendedSetting.nicheZeroSetting < 15);
+  assert.match(nicheOnly.reason, /Set dial to/i);
+
+  const filtered = filterShotsForGrinderLearning(
+    [...setteHistory, { beanId: 'b1', grinderModel: 'Niche Zero', excludeFromLearning: false }],
+    { beanId: 'b1', grinderModel: 'Niche Zero' }
+  );
+  assert.equal(filtered.length, 1);
+
+  const editedRecipeShot = {
+    actualDoseG: 18,
+    actualYieldG: 36,
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+  };
+  assert.equal(shotMatchesRecipeContext(editedRecipeShot, recipe, false), false);
+
+  const lastNiche = {
+    id: 'n3',
+    grinderModel: 'Niche Zero',
+    beanId: 'b1',
+    nicheZeroSetting: 15,
+    actualTimeS: 24,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'sour',
+    wasPurged: true,
+    timestamp: '2026-09-20T12:00:00.000Z',
+    recommendation: {
+      recommendedSetting: { nicheZeroSetting: 15 },
+      reason: 'Shot was 6s fast — consider grinding finer (lower dial number).',
+    },
+  };
+  const nicheHistory = [
+    { id: 'n1', grinderModel: 'Niche Zero', beanId: 'b1', nicheZeroSetting: 15, actualTimeS: 24, actualYieldG: 36, actualDoseG: 18, timestamp: '2026-09-18T12:00:00.000Z' },
+    { id: 'n2', grinderModel: 'Niche Zero', beanId: 'b1', nicheZeroSetting: 15, actualTimeS: 24, actualYieldG: 36, actualDoseG: 18, timestamp: '2026-09-19T12:00:00.000Z' },
+    lastNiche,
+  ];
+  const live = recomputeNicheRecommendationFromLastShot(lastNiche, recipe, nicheHistory, false);
+  assert.ok(live.recommendedSetting.nicheZeroSetting < 15);
+  assert.match(live.reason, /Set dial to/i);
+  assert.notEqual(live.recommendedSetting.nicheZeroSetting, lastNiche.recommendation.recommendedSetting.nicheZeroSetting);
+}
 
 async function runTests() {
   const recipe = {
@@ -132,8 +481,19 @@ async function runTests() {
     shotResultImproved(createShot(35, 'sour'), { actualTime: 29, actualYield: 36, tasteProfile: 'good' }, recipe)
   );
 
+  runGrindSwitchBackTests();
+  runPendingGrindSessionTests();
+  runRecFollowedCsvTests();
+  runCsvExportTests();
+  runPreviousRecipeRecommendationTests();
+  runBalancedTasteTests(recipe, createShot, runCalc);
+  runNicheZeroTests();
+  runShotCountDisplayTests();
+  runPressureLabFlagTests();
+  runRecommendationIntegrityTests();
   runBrewGuideTests();
   runBrewGuidanceTests();
+  runFlairPressureLabTests();
   runDecafRegressionTests();
   runKnownIssueLearningTests();
   runSevereDeviationTests();
@@ -179,6 +539,21 @@ function runKnownIssueLearningTests() {
   assert.equal(shotEligibleForLearning({ excludeFromLearning: false }), true);
   assert.equal(shotEligibleForLearning({ excludeFromLearning: true }), false);
 
+  const preserveReasonShot = {
+    ...dialledShot(12, 'C', '2026-09-12T10:00:00.000Z'),
+    excludeFromLearning: true,
+    knownIssueReason: 'puck_prep',
+  };
+  const reExcludeReason = preserveReasonShot.excludeFromLearning
+    ? preserveReasonShot.knownIssueReason || 'other'
+    : preserveReasonShot.knownIssueReason;
+  assert.equal(reExcludeReason, 'puck_prep');
+  const afterInclude = { ...preserveReasonShot, excludeFromLearning: false, knownIssueReason: 'puck_prep' };
+  const reExcludeAfterInclude = afterInclude.excludeFromLearning
+    ? afterInclude.knownIssueReason || 'other'
+    : afterInclude.knownIssueReason;
+  assert.equal(reExcludeAfterInclude, 'puck_prep');
+
   const shotA = dialledShot(10, 'A', '2026-09-10T10:00:00.000Z');
   const shotB = dialledShot(15, 'F', '2026-09-11T10:00:00.000Z', {
     excludeFromLearning: true,
@@ -195,7 +570,7 @@ function runKnownIssueLearningTests() {
   const fromValid = getInitialGrindRecommendation(...initArgs, [shotA, shotB], [bean], mockDate);
   assert.deepEqual(fromExcludedOnly, fromNoShots);
   assert.notDeepEqual(fromExcludedOnly, { macro: 15, micro: 'F' });
-  assert.deepEqual(fromValid, { macro: 10, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(fromValid), { macro: 10, micro: 'A' });
 
   const baselineWithExcluded = getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [shotA, shotB], [bean]);
   const baselineValidOnly = getHistoricalRoastBaseline('Sette 270Wi', 'Medium', recipes, [shotA], [bean]);
@@ -289,7 +664,7 @@ function runKnownIssueLearningTests() {
     [bean],
     mockDate
   );
-  assert.deepEqual(reIncluded, { macro: 14, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(reIncluded), { macro: 14, micro: 'A' });
 
   const { recommendation: _dropRec, ...shotBGrindOnly } = shotB;
   const reIncludedGrind = getInitialGrindRecommendation(
@@ -298,7 +673,7 @@ function runKnownIssueLearningTests() {
     [bean],
     mockDate
   );
-  assert.deepEqual(reIncludedGrind, { macro: 15, micro: 'F' });
+  assert.deepEqual(initialGrindOutput(reIncludedGrind), { macro: 15, micro: 'F' });
 }
 
 async function runKnownIssuePersistenceTests() {
@@ -493,7 +868,7 @@ function runDecafRegressionTests() {
     const recipes = beans.map(b => recipeFor(b.id));
     const live = getInitialGrindRecommendation(grinder, bean.roastType, bean, recipes, shots, beans, mockDate);
     const previous = preFeatureInitialGrind(grinder, bean.roastType, bean, recipes, shots, beans, mockDate);
-    assert.deepEqual(live, previous, label);
+    assert.deepEqual(initialGrindOutput(live), previous, label);
   }
 
   // With no learned history, decaf uses the same roast-class default as regular coffee.
@@ -536,7 +911,7 @@ function runDecafRegressionTests() {
   const newDecaf = historyBeans.find(b => b.id === 'new-decaf');
   const liveRegular = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newRegular, historyRecipes, historyShots, historyBeans, mockDate);
   const preRegular = preFeatureInitialGrind('Sette 270Wi', 'Medium', newRegular, historyRecipes, historyShots, historyBeans, mockDate);
-  assert.deepEqual(liveRegular, { macro: 10, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(liveRegular), { macro: 10, micro: 'A' });
   assert.notDeepEqual(liveRegular, preRegular);
 
   const regularOnlyBeans = historyBeans.filter(b => b.id !== 'decaf-shot');
@@ -548,7 +923,7 @@ function runDecafRegressionTests() {
   );
 
   const liveDecafStart = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newDecaf, historyRecipes, historyShots, historyBeans, mockDate);
-  assert.deepEqual(liveDecafStart, { macro: 15, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(liveDecafStart), { macro: 15, micro: 'A' });
   assert.equal(
     getHistoricalRoastBaseline('Sette 270Wi', 'Medium', historyRecipes, historyShots, historyBeans, 'regular'),
     preFeatureHistoricalRoastBaseline('Sette 270Wi', 'Medium', regularOnlyRecipes, regularOnlyShots, regularOnlyBeans)
@@ -580,7 +955,7 @@ function runDecafRegressionTests() {
   const priorRecipes = priorBeans.map(b => recipeFor(b.id));
   const decafPrior = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newDecaf, priorRecipes, regularOnlyMedium, priorBeans, mockDate);
   const regularFromHistory = getInitialGrindRecommendation('Sette 270Wi', 'Medium', newRegular, priorRecipes, regularOnlyMedium, priorBeans, mockDate);
-  assert.deepEqual(regularFromHistory, { macro: 10, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(regularFromHistory), { macro: 10, micro: 'A' });
   assert.notDeepEqual(decafPrior, regularFromHistory);
   assert.deepEqual(decafPrior, decafStart);
 
@@ -634,7 +1009,7 @@ function runDecafRegressionTests() {
     [decafBean, historyBeans.find(b => b.id === 'decaf-shot')],
     mockDate
   );
-  assert.deepEqual(ownAndOther, { macro: 11, micro: 'C' });
+  assert.deepEqual(initialGrindOutput(ownAndOther), { macro: 11, micro: 'C' });
 
   const age = calculateEffectiveBeanAge(decafBean, mockDate).daysOld;
   const followedShot = {
@@ -651,7 +1026,7 @@ function runDecafRegressionTests() {
     [decafBean],
     mockDate
   );
-  assert.deepEqual(afterFirst, { macro: 11, micro: 'C' });
+  assert.deepEqual(initialGrindOutput(afterFirst), { macro: 11, micro: 'C' });
 
   const correctedShot = {
     ...followedShot,
@@ -667,7 +1042,7 @@ function runDecafRegressionTests() {
     [decafBean],
     mockDate
   );
-  assert.deepEqual(afterFeedback, { macro: 14, micro: 'A' });
+  assert.deepEqual(initialGrindOutput(afterFeedback), { macro: 14, micro: 'A' });
   assert.deepEqual(
     afterFeedback,
     getInitialGrindRecommendation(
