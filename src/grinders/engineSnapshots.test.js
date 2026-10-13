@@ -725,7 +725,6 @@ export function runEngineSnapshotTests() {
   }
 }
 
-/* global process */
 const isMain =
   process.argv[1] &&
   path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);

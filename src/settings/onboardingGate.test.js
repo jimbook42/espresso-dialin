@@ -17,4 +17,23 @@ export function runOnboardingGateTests() {
   assert.equal(shouldShowFirstLaunchOnboarding(legacy), false);
   assert.equal(Object.hasOwn(legacy, 'smartScaleDeviceId'), false);
   assert.equal(Object.hasOwn(legacy, 'customGrinder'), false);
+
+  const pre69Settings = {
+    id: 'global',
+    flairEnabled: false,
+    darkMode: true,
+  };
+  assert.equal(shouldShowFirstLaunchOnboarding(pre69Settings), true);
+  assert.equal(
+    shouldShowFirstLaunchOnboarding(pre69Settings, { hasExistingUserData: true }),
+    false
+  );
+  assert.equal(
+    shouldShowFirstLaunchOnboarding(pre69Settings, {
+      hasExistingUserData: true,
+    }),
+    false
+  );
+
+  console.log('Onboarding gate tests passed.');
 }

@@ -26,7 +26,7 @@ import {
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag } from 'lucide-react';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
@@ -1366,8 +1366,10 @@ export default function App() {
           }
         : ageAdjustedRec;
   const grindRecommendationSummary = dynamicRec?.recommendedSetting
-    ? formatGrindRecommendationSummary(grinderModel, dynamicRec)
+    ? formatGrindRecommendationSummary(grinderModel, dynamicRec, appSettings)
     : null;
+  const nicheLearningBlocksEvidence =
+    isNicheZeroGrinderModel(grinderModel) && Boolean(dynamicRec?.nicheLearningNote);
   const recommendationEvidenceContext =
     (activeRecipe && beanShotsForGrinder.length > 0
       ? getRecommendationEvidenceContext(beanShotsForGrinder, activeRecipe, flairEnabled)
@@ -1457,6 +1459,10 @@ export default function App() {
       : timerRunning
         ? timerSeconds
         : 0;
+  const scaleLiveReadoutG =
+    timerRunning && timemoreScale.weightTriggersPrimed
+      ? timemoreScale.liveRelativeWeightG
+      : timemoreScale.liveWeightG;
   const scaleShowLiveReadout =
     scaleFeatureEnabled && timemoreScale.isConnected && (timerRunning || timemoreScale.liveWeightG > 0);
   const scaleShowFlow =
@@ -1635,7 +1641,9 @@ export default function App() {
     }, 200);
   };
 
-  if (shouldShowFirstLaunchOnboarding(settingsSetting)) {
+  if (shouldShowFirstLaunchOnboarding(settingsSetting, {
+    hasExistingUserData: shots.length > 0 || beans.length > 0,
+  })) {
     return (
       <FirstLaunchWizard
         ui={ui}
@@ -1731,7 +1739,7 @@ export default function App() {
             </div>
             {scaleShowLiveReadout && (
               <p className="text-[15px] text-[#c88a4b] font-semibold tabular-nums mt-3 text-center">
-                {timemoreScale.liveWeightG.toFixed(1)}g
+                {scaleLiveReadoutG.toFixed(1)}g
                 {scaleShowFlow && (
                   <span className="text-[#8a9d72] font-medium ml-2">
                     · {timemoreScale.instantFlowGs.toFixed(2)} g/s
@@ -1975,7 +1983,7 @@ export default function App() {
                   {grindRecommendationSummary && (
                     <p className={`text-sm ${ui.sub} leading-relaxed`}>{grindRecommendationSummary}</p>
                   )}
-                  {recommendationEvidenceContext && (
+                  {recommendationEvidenceContext && !nicheLearningBlocksEvidence && (
                     <p className={`text-[10px] ${ui.muted}`}>{recommendationEvidenceContext}</p>
                   )}
                   {dynamicRec?.nicheLearningNote && (
@@ -2087,7 +2095,7 @@ export default function App() {
                         <span className="text-4xl font-black font-mono text-[#f5f2eb] tabular-nums">{formatTime(timerSeconds)}</span>
                         {scaleShowLiveReadout && (
                           <p className={`text-sm font-semibold tabular-nums mt-1 ${ui.accentText}`}>
-                            {timemoreScale.liveWeightG.toFixed(1)}g
+                            {scaleLiveReadoutG.toFixed(1)}g
                             {scaleShowFlow && (
                               <span className={`${ui.muted} font-medium ml-2`}>
                                 {timemoreScale.instantFlowGs.toFixed(2)} g/s
@@ -2814,10 +2822,10 @@ export default function App() {
                           type="button"
                           onClick={() => handleToggleShotLearningExclusion(s)}
                           aria-pressed={s.excludeFromLearning ? 'true' : 'false'}
-                          className={`text-[10px] font-semibold px-2.5 py-1 rounded-md border ${
+                          className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-md border ${
                             s.excludeFromLearning
-                              ? 'bg-[rgba(200,138,75,0.15)] text-[#c88a4b] border-[rgba(200,138,75,0.35)]'
-                              : `${ui.chip} ${ui.muted} border-transparent hover:border-[rgba(255,255,255,0.12)]`
+                              ? 'bg-[rgba(200,138,75,0.12)] text-[#c88a4b] border-[rgba(200,138,75,0.35)]'
+                              : `${ui.chip} ${ui.muted} border-[rgba(255,255,255,0.18)] hover:border-[rgba(255,255,255,0.28)]`
                           }`}
                           title={
                             s.excludeFromLearning
@@ -2825,7 +2833,14 @@ export default function App() {
                               : 'Mark as a known issue (puck prep, channeling, etc.) — exclude from learning'
                           }
                         >
-                          {s.excludeFromLearning ? 'Include in learning' : 'Known issue — exclude'}
+                          {s.excludeFromLearning ? (
+                            <>Include again</>
+                          ) : (
+                            <>
+                              <Flag className="w-3 h-3 shrink-0 opacity-80" aria-hidden />
+                              Mark as known issue
+                            </>
+                          )}
                         </button>
                         <button type="button" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
                           <Trash2 className="w-3.5 h-3.5" />

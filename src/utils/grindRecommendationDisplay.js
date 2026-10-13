@@ -25,24 +25,36 @@ function directionFromLead(lead) {
   return '';
 }
 
+function stripLeadingEstimatedPrefix(raw) {
+  const text = (raw || '').trim();
+  if (!/^ESTIMATED\s*[—–-]/i.test(text)) {
+    return { estimated: false, text };
+  }
+  return {
+    estimated: true,
+    text: text.replace(/^ESTIMATED\s*[—–-]\s*/i, '').trim(),
+  };
+}
+
 /**
  * Plain-language grind recommendation for the Dial-In hero (direction, why, target setting).
  */
-export function formatGrindRecommendationSummary(grinderModel, rec) {
+export function formatGrindRecommendationSummary(grinderModel, rec, settings = null) {
   if (!rec?.recommendedSetting) return null;
 
-  const targetSetting = formatRecommendedGrindDisplay(grinderModel, rec.recommendedSetting);
-  const raw = rec.reason || rec.originalReason || '';
-  const { lead, detail } = splitRecommendationReason(raw);
-  const direction = directionFromLead(lead);
+  const { estimated, text: reasonBody } = stripLeadingEstimatedPrefix(rec.reason || rec.originalReason || '');
+  const targetSetting = formatRecommendedGrindDisplay(grinderModel, rec.recommendedSetting, settings);
+  const { lead, detail } = splitRecommendationReason(reasonBody);
+  const direction = directionFromLead(lead) || directionFromLead(detail);
+
+  const why = detail || (lead && !direction ? lead : '');
+  const estimatedLabel = estimated ? 'Estimated' : '';
 
   if (isNicheZeroGrinderModel(grinderModel)) {
-    const why = detail || raw;
-    const parts = [direction, why, targetSetting ? `Target dial: ${targetSetting}` : ''].filter(Boolean);
+    const parts = [estimatedLabel, direction, why, targetSetting ? `Target dial: ${targetSetting}` : ''].filter(Boolean);
     return parts.join(' · ');
   }
 
-  const why = detail || (lead && !direction ? lead : '');
-  const parts = [direction, why, targetSetting ? `Target setting: ${targetSetting}` : ''].filter(Boolean);
+  const parts = [estimatedLabel, direction, why, targetSetting ? `Target setting: ${targetSetting}` : ''].filter(Boolean);
   return parts.join(' · ');
 }

@@ -16,6 +16,11 @@ export function createSimulatedTransport(config = {}) {
   let shotStartMs = 0;
   let timerStartMs = 0;
   let intervalId = null;
+  let shotAnchorG = 0;
+  let tareSucceededFlag = true;
+  let absoluteYieldTargetG = targetYieldG;
+  let extractionStartElapsedS = 0;
+  let weightAtExtractionStartG = 0;
 
   const weightHandlers = new Set();
   const timerHandlers = new Set();
@@ -31,19 +36,25 @@ export function createSimulatedTransport(config = {}) {
 
   const preinfusionDripMaxG = Math.max(5.5, targetYieldG * 0.12);
 
+  const computePreinfusionWeight = (elapsedShotS) => {
+    const preProgress = preinfusionDurationS > 0 ? Math.min(1, elapsedShotS / preinfusionDurationS) : 1;
+    const eased = 1 - Math.pow(1 - preProgress, 1.6);
+    const base = tareSucceededFlag ? 0 : shotAnchorG;
+    return base + eased * preinfusionDripMaxG;
+  };
+
   const computeWeight = (elapsedShotS) => {
     if (!extractionStarted) {
-      const preProgress = preinfusionDurationS > 0 ? Math.min(1, elapsedShotS / preinfusionDurationS) : 1;
-      const eased = 1 - Math.pow(1 - preProgress, 1.6);
-      return eased * preinfusionDripMaxG;
+      return computePreinfusionWeight(elapsedShotS);
     }
-    const extractT = Math.max(0, elapsedShotS - preinfusionDurationS);
+    const extractT = Math.max(0, elapsedShotS - extractionStartElapsedS);
     const rampDuration = 28;
     const progress = Math.min(1, extractT / rampDuration);
     const ease = 1 - Math.pow(1 - progress, 2.2);
-    const drip = ease * targetYieldG;
     const noise = Math.sin(extractT * 4.1) * 0.08;
-    return Math.min(targetYieldG + 0.4, drip + noise + 0.2);
+    const span = absoluteYieldTargetG - weightAtExtractionStartG;
+    const next = weightAtExtractionStartG + ease * span + noise;
+    return Math.min(absoluteYieldTargetG + 0.4, Math.max(weightAtExtractionStartG, next));
   };
 
   const tick = () => {
@@ -60,10 +71,20 @@ export function createSimulatedTransport(config = {}) {
   return {
     getLabel: () => 'Simulated Timemore Dot',
     isConnected: () => connected,
+    configureShotWeight({ anchorG, tareSucceeded } = {}) {
+      shotAnchorG = Number(anchorG) || 0;
+      tareSucceededFlag = tareSucceeded !== false;
+      absoluteYieldTargetG = tareSucceededFlag ? targetYieldG : shotAnchorG + targetYieldG;
+      if (tareSucceededFlag) emitWeight(0);
+      else emitWeight(shotAnchorG);
+    },
     async connect() {
       connected = true;
       running = false;
       extractionStarted = false;
+      shotAnchorG = 0;
+      tareSucceededFlag = true;
+      absoluteYieldTargetG = targetYieldG;
     },
     async disconnect() {
       connected = false;
@@ -83,7 +104,7 @@ export function createSimulatedTransport(config = {}) {
       return () => timerHandlers.delete(handler);
     },
     async tare() {
-      emitWeight(0);
+      // Weight after tare is applied in configureShotWeight once the outcome is known.
     },
     async startTimer() {
       if (!connected) return;
@@ -91,6 +112,12 @@ export function createSimulatedTransport(config = {}) {
       shotStartMs = Date.now();
       timerStartMs = shotStartMs;
       extractionStarted = preinfusionDurationS <= 0;
+      extractionStartElapsedS = 0;
+      weightAtExtractionStartG = computePreinfusionWeight(0);
+      if (extractionStarted) {
+        extractionStartElapsedS = 0;
+        weightAtExtractionStartG = tareSucceededFlag ? 0 : shotAnchorG;
+      }
       if (!intervalId) {
         intervalId = setInterval(tick, tickMs);
       }
@@ -105,10 +132,14 @@ export function createSimulatedTransport(config = {}) {
     },
     /** End pre-infusion: extraction timer starts here (not at first drip). */
     endPreinfusion() {
-      if (!running) return;
+      if (!running || extractionStarted) return;
+      const elapsedShotS = (Date.now() - shotStartMs) / 1000;
+      extractionStartElapsedS = elapsedShotS;
+      weightAtExtractionStartG = computePreinfusionWeight(elapsedShotS);
       extractionStarted = true;
       timerStartMs = Date.now();
       emitTimer(0, true);
+      tick();
     },
     preinfusionDurationS,
     targetYieldG,

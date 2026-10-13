@@ -1023,7 +1023,7 @@
         "statusLabel": null
       },
       "subRecommendation": null,
-      "warning": null
+      "warning": "If channeling, puck prep, or an early stop caused this, mark the shot as a known issue so it won't affect future recommendations."
     },
     "calculateRecommendation/sette/slow_far": {
       "engineStats": {
@@ -1697,7 +1697,7 @@
         "statusLabel": null
       },
       "subRecommendation": null,
-      "warning": null
+      "warning": "If channeling, puck prep, or an early stop caused this, mark the shot as a known issue so it won't affect future recommendations."
     },
     "calculateRecommendation/sunbeam/slow_far": {
       "engineStats": {

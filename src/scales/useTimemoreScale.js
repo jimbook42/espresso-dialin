@@ -174,6 +174,11 @@ export function useTimemoreScale({
       tareSucceeded = false;
     }
     noteShotTareOutcome(shotWeightTrackingRef.current, tareSucceeded);
+    if (typeof transport.configureShotWeight === 'function') {
+      transport.configureShotWeight({ anchorG: weightAtStart, tareSucceeded });
+    } else if (!tareSucceeded) {
+      liveWeightRef.current = weightAtStart;
+    }
     syncRelativeFromLive(liveWeightRef.current);
 
     await transport.startTimer();

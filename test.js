@@ -1648,6 +1648,13 @@ async function runLegacyShotDataTests() {
   assert.equal(loadedSettings.grinderModel, 'Sette 270Wi');
   assert.equal(loadedSettings.darkMode, true);
   assert.equal(shouldShowFirstLaunchOnboarding(loadedSettings), false);
+  assert.equal(
+    shouldShowFirstLaunchOnboarding(
+      { id: 'global', flairEnabled: false, darkMode: true },
+      { hasExistingUserData: true }
+    ),
+    false
+  );
   assert.equal(Object.hasOwn(loadedSettings, 'smartScaleDeviceId'), false);
   assert.equal(Object.hasOwn(loadedSettings, 'customGrinder'), false);
 

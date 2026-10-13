@@ -28,6 +28,13 @@ export const LOW_CONFIDENCE_SHIFT_MAX = 3;
 export const KNOWN_ISSUE_OUTLIER_HINT =
   "If channeling, puck prep, or an early stop caused this, mark the shot as a known issue so it won't affect future recommendations.";
 
+/** Borderline extreme times that should surface the known-issue hint without blocking grind moves. */
+export function shouldAttachKnownIssueHintForExtremeTime(actualTime) {
+  const time = Number(actualTime);
+  if (!Number.isFinite(time)) return false;
+  return time <= OUTLIER_ABSOLUTE_MIN_S || time >= OUTLIER_ABSOLUTE_MAX_S;
+}
+
 /**
  * @param {object} shot
  * @param {import('../grinders/grinderRegistry.js').GrinderProfile} grinderProfile

@@ -3,6 +3,7 @@ import { createSimulatedTransport } from './transport/simulatedTransport.js';
 import { createScaleSession } from './scaleSession.js';
 import {
   preinfusionAutoEndTargets,
+  resolveFlairPressurePhase,
   shouldAutoEndPreinfusion,
 } from './flairScaleTriggers.js';
 import {
@@ -54,6 +55,9 @@ async function runLeftoverShotScenario(leftoverG, { lateStaleG = null } = {}) {
   assert.equal(tracker.ready(), false);
 
   await transport.tare();
+  if (typeof transport.configureShotWeight === 'function') {
+    transport.configureShotWeight({ anchorG: leftoverG, tareSucceeded: true });
+  }
   noteShotTareOutcome(tracker.state, true);
   ingestShotWeightSample(tracker.state, tracker.live());
 
@@ -142,6 +146,81 @@ export async function runScaleShotBaselineTests() {
   assert.ok(preEnded02, '0.2g leftover should reach weight trigger');
   assert.ok(addedAtEnd >= 2, 'added mass at trigger must be full 2g since post-tare, not ~1.8g');
   await t02.disconnect();
+
+  const taperProfile = {
+    preinfusionEndTrigger: 'weight',
+    preinfusionEndWeightG: '2',
+    taperStartTrigger: 'weight',
+    peakEndYield: '20',
+  };
+  const leftoverG = 6.8;
+  const taperTransport = createSimulatedTransport({
+    targetYieldG: 36,
+    preinfusionDurationS: 12,
+    tickMs: 50,
+  });
+  const taperTracker = makeTracker();
+  taperTracker.setLive(leftoverG);
+  createScaleSession(taperTransport, {
+    onLiveWeight: (g) => taperTracker.setLive(g),
+  });
+  await taperTransport.connect();
+  taperTransport.configureShotWeight({ anchorG: leftoverG, tareSucceeded: false });
+  beginShotWeightTracking(taperTracker.state, leftoverG);
+  noteShotTareOutcome(taperTracker.state, false);
+  await taperTransport.startTimer();
+  const primeDeadline = Date.now() + 2000;
+  while (Date.now() < primeDeadline && !taperTracker.ready()) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  taperTransport.endPreinfusion();
+
+  const taperDeadline = Date.now() + 45_000;
+  let enteredTaper = false;
+  while (Date.now() < taperDeadline) {
+    const added = taperTracker.getAdded();
+    const phase = resolveFlairPressurePhase({
+      profile: taperProfile,
+      timerRunning: true,
+      timerUsePreInfusion: false,
+      preInfusionPhase: false,
+      scaleConnected: true,
+      liveRelativeWeightG: added,
+    });
+    if (taperTracker.ready() && phase === 'taper') {
+      enteredTaper = true;
+      assert.ok(added >= 20, `leftover no-tare: taper should start at >=20g added, got ${added}`);
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  assert.ok(enteredTaper, 'leftover no-tare: peak-end weight taper must use added mass since Start');
+  await taperTransport.disconnect();
+
+  const continuityTransport = createSimulatedTransport({
+    targetYieldG: 36,
+    preinfusionDurationS: 12,
+    tickMs: 50,
+  });
+  const continuityTracker = makeTracker();
+  createScaleSession(continuityTransport, {
+    onLiveWeight: (g) => continuityTracker.setLive(g),
+  });
+  await continuityTransport.connect();
+  continuityTransport.configureShotWeight({ anchorG: 0, tareSucceeded: true });
+  beginShotWeightTracking(continuityTracker.state, 0);
+  noteShotTareOutcome(continuityTracker.state, true);
+  await continuityTransport.startTimer();
+  await new Promise((r) => setTimeout(r, 3100));
+  const addedBeforeEnd = continuityTracker.getAdded();
+  continuityTransport.endPreinfusion();
+  await new Promise((r) => setTimeout(r, 120));
+  const addedAfterEnd = continuityTracker.getAdded();
+  assert.ok(
+    addedAfterEnd >= addedBeforeEnd - 0.5,
+    `preinfusion end must not drop added mass (${addedBeforeEnd} -> ${addedAfterEnd})`
+  );
+  await continuityTransport.disconnect();
 
   console.log('Scale shot baseline / weight trigger tests passed.');
 }

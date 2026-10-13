@@ -288,6 +288,9 @@ export function buildNicheLearningTransparencyNote(
 ) {
   const { dialSpread = 0 } = diagnostics;
   if (reasonCode === 'insufficient_observations') {
+    if (recipeComparableCount >= NICHE_LEARNING_MIN_OBSERVATIONS) {
+      return null;
+    }
     if (recipeComparableCount === 0 && grinderLearningShotCount > 0) {
       return 'Dial learning needs shots logged at this recipe’s dose, yield, and target time (and Flair profile when enabled). None of your saved shots match yet.';
     }

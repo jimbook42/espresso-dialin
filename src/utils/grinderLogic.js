@@ -51,6 +51,7 @@ import {
   sensitivityConfidenceForQuantitativeGrinder,
   shotsForOutlierContext,
   KNOWN_ISSUE_OUTLIER_HINT,
+  shouldAttachKnownIssueHintForExtremeTime,
 } from './recommendationTuning.js';
 
 export { CURRENT_PULL_ELIGIBILITY_ID, isPersistedLearningShot } from './learningShotIdentity.js';
@@ -683,6 +684,13 @@ export function getInitialGrindRecommendation(
   return { setting: Math.min(Math.max(baseSetting + ageData.recommendedOffsetSunbeam, 1), 30) };
 }
 
+function attachExtremeTimeKnownIssueHint(warning, actualTime) {
+  if (!shouldAttachKnownIssueHintForExtremeTime(actualTime)) return warning;
+  return warning
+    ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
+    : KNOWN_ISSUE_OUTLIER_HINT;
+}
+
 function prefixEstimatedGrindReason(reason, grinderProfile) {
   if (!grinderProfile?.recommendationIsEstimated) return reason;
   const text = reason || '';
@@ -987,6 +995,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
         : KNOWN_ISSUE_OUTLIER_HINT;
     }
+    warning = attachExtremeTimeKnownIssueHint(warning, actualTime);
 
     let flairWaterTempAdvice = null;
     const currentTemp = recipe.brewTemperatureC;
@@ -1098,6 +1107,28 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     } else {
       reason = "KEEP GRIND — Balanced and in range.";
     }
+    const comparableHistory = [...learningRecentShots]
+      .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const inRangeOutlier = detectLikelyShotOutlier({
+      actualTime,
+      grindNumeric: grindNumericFromShotData(shotData, grinderProfile),
+      recipe,
+      comparableShots: shotsForOutlierContext(learningRecentShots, comparableHistory),
+      grinderProfile,
+    });
+    if (inRangeOutlier.isOutlier) {
+      if (inRangeOutlier.holdGrind) {
+        shift = 0;
+        reason = buildOutlierRecommendationReason({
+          baseReason: reason,
+          outlierDetail: inRangeOutlier.detail,
+        });
+      }
+      warning = warning
+        ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
+        : KNOWN_ISSUE_OUTLIER_HINT;
+    }
   } else {
     const comparableHistory = [...learningRecentShots]
       .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
@@ -1151,6 +1182,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         : KNOWN_ISSUE_OUTLIER_HINT;
     }
   }
+  warning = attachExtremeTimeKnownIssueHint(warning, actualTime);
 
   let flairWaterTempAdvice = null;
   const currentTemp = recipe.brewTemperatureC;

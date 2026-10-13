@@ -143,6 +143,61 @@ function runKnownIssueExclusionTests() {
   assert.ok(rec.reason);
 }
 
+function runOutlierHintParityTests() {
+  const recipe = QA_RECIPE;
+  const history = [
+    {
+      grinderModel: 'Sette 270Wi',
+      setteMacro: 13,
+      setteMicro: 'E',
+      actualTimeS: 28,
+      actualYieldG: 36,
+      tasteProfile: 'balanced',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      targetTimeMinS: 25,
+      targetTimeMaxS: 30,
+    },
+  ];
+  const hint = 'mark the shot as a known issue';
+  const customSettings = {
+    grinderModel: 'DF64',
+    customGrinder: {
+      name: 'DF64',
+      dialType: 'stepped',
+      min: 1,
+      max: 20,
+      step: 1,
+      lowerIsFiner: true,
+    },
+  };
+  for (const grinderModel of ['Sette 270Wi', 'Sunbeam Barista Max', 'Niche Zero', 'DF64']) {
+    const shot =
+      grinderModel === 'Sette 270Wi'
+        ? { setteMacro: 13, setteMicro: 'E' }
+        : grinderModel === 'Sunbeam Barista Max'
+          ? { sunbeamSetting: 15 }
+          : grinderModel === 'DF64'
+            ? { customGrindValue: 10 }
+            : { nicheZeroSetting: 15 };
+    const rec = calculateRecommendation(
+      {
+        grinderModel,
+        ...shot,
+        wasPurged: true,
+        actualTime: 45,
+        actualYield: 36,
+        tasteProfile: 'bitter',
+      },
+      recipe,
+      history.map((h) => ({ ...h, grinderModel })),
+      false,
+      grinderModel === 'DF64' ? { settings: customSettings } : undefined
+    );
+    const combined = `${rec.warning || ''} ${rec.reason || ''}`.toLowerCase();
+    assert.ok(combined.includes(hint), `${grinderModel} should surface known-issue outlier hint at 45s`);
+  }
+}
+
 function runOutlierDetectionTests() {
   const profile = getRecommendationGrinderProfile('Sette 270Wi');
   const recipe = QA_RECIPE;
@@ -195,6 +250,7 @@ function runSteadyFastSeriesTest() {
 
 runQaSeriesTests();
 runKnownIssueExclusionTests();
+runOutlierHintParityTests();
 runOutlierDetectionTests();
 runSteadyFastSeriesTest();
 console.log('recommendationTuning tests passed');
