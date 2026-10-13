@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   db,
   generateId,
@@ -18,19 +18,22 @@ import {
   shotMatchesGrinderForLearning,
   findLatestShotForBeanAndGrinder,
   recomputeNicheRecommendationFromLastShot,
+  recomputeQuantitativeRecommendationFromLastShot,
+  grinderSupportsQuantitativeRecommendations,
   shouldUsePreviousRecipeRecommendation,
   PREVIOUS_RECIPE_REC_DISCLAIMER,
   KNOWN_ISSUE_REASONS,
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag } from 'lucide-react';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { GrinderGrindControls } from './components/GrindControls';
+import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
 import {
-  GRINDER_SETUP_OPTIONS,
+  CUSTOM_GRINDER_PICKER_ID,
   defaultBrewTemperatureForGrinder,
   formatCurrentGrindLabel,
   formatInitialGrindDisplay,
@@ -38,12 +41,33 @@ import {
   formatRecommendedGrindDisplay,
   formatShotGrindForHistory,
   getUiGrinderPresentation,
+  grinderPickerValueForSettings,
+  resolveActiveGrinderModel,
+  isCustomGrinderModel,
   isSunbeamGrinderModel,
   isNicheZeroGrinderModel,
+  listGrinderPickerOptions,
+  normalizeCustomGrinderSettingsPatch,
   parseGrindForShotSave,
   persistedSettingsPatchFromRecommendation,
   uiStateFromRecommendedSetting,
 } from './grinders/grinderRegistry.js';
+import {
+  defaultCustomGrindValue,
+  isCustomGrinderFormValid,
+  normalizeCustomGrinderProfile,
+} from './grinders/customGrinder.js';
+import { FirstLaunchWizard } from './components/FirstLaunchWizard.jsx';
+import { CustomGrinderForm } from './components/CustomGrinderForm.jsx';
+import { shouldRenderFirstLaunchWizard } from './settings/firstLaunchRenderGate.js';
+import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
+import {
+  isSmartScaleIntegrationActive,
+  listSmartScalePickerOptions,
+  normalizeSmartScaleDeviceId,
+  SMART_SCALE_MANUAL_ID,
+  smartScaleChoiceSummary,
+} from './settings/scalePreference.js';
 import {
   capturePendingGrindState,
   pendingGrindSessionKey,
@@ -53,7 +77,12 @@ import {
   formatRecFollowedForCsv,
   resolveRecommendationFollowedForSave,
 } from './utils/recommendationFollowed.js';
-import { buildShotsCsvContent } from './utils/csvExport.js';
+import {
+  buildShotsCsvContent,
+  buildShotsCsvRows,
+  downloadCsvFile,
+  SHOT_CSV_HEADERS,
+} from './utils/csvExport.js';
 import {
   BALANCED_TASTE_PROFILE,
   normalizeTasteProfile,
@@ -75,9 +104,72 @@ import {
   shouldNavigateToBrewAfterFirstBean,
 } from './brewGuide/guidance';
 import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
+import { brewGuideIntroMachineSettingsLine, brewGuideSettingsToggleDetail } from './brewGuide/copy.js';
+import { APP_VERSION_LABEL } from './config/appVersion.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
+import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
+import { isScaleEnabled } from './config/scaleFlag.js';
+import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
+import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
+import { useTimemoreScale } from './scales/useTimemoreScale.js';
+import {
+  preinfusionAutoEndTargets,
+  recipeDefinesPreinfusion,
+  recipeUsesTimedPreinfusionAutoEnd,
+  shouldAutoEndPreinfusion,
+} from './scales/preinfusionAutoEnd.js';
+
+function createDefaultFlairProfile() {
+  return {
+    preinfusionPressure: '',
+    preinfusionTime: '',
+    preinfusionEndTrigger: 'manual',
+    peakPressure: '',
+    peakEndYield: '',
+    taperPressure: '',
+    taperStartTrigger: 'weight',
+  };
+}
+
+function createDefaultNewRecipe(grinderModel) {
+  return {
+    targetDoseG: 18,
+    targetYieldG: '',
+    targetTimeMinS: 27,
+    targetTimeMaxS: 32,
+    brewTemperatureC: defaultBrewTemperatureForGrinder(grinderModel),
+    flairProfile: createDefaultFlairProfile(),
+  };
+}
+
+function parseRecipeFloatField(raw) {
+  if (raw === '' || raw === null || raw === undefined) return '';
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : '';
+}
+
+function parseRecipeIntField(raw) {
+  if (raw === '' || raw === null || raw === undefined) return '';
+  const n = parseInt(String(raw), 10);
+  return Number.isFinite(n) ? n : '';
+}
+
+function recipeFieldDisplayValue(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  if (typeof value === 'number' && Number.isNaN(value)) return '';
+  return value;
+}
+
+function sanitizeRecipeFormState(recipe, grinderModel) {
+  if (!recipe) return createDefaultNewRecipe(grinderModel);
+  const next = { ...recipe };
+  for (const key of ['targetDoseG', 'targetYieldG', 'targetTimeMinS', 'targetTimeMaxS', 'brewTemperatureC']) {
+    next[key] = recipeFieldDisplayValue(next[key]);
+  }
+  return next;
+}
 
 const EXTRACTION_TIME_COLORS = {
   inRange: { bar: 'bg-[#8a9d72]', dot: 'bg-[#8a9d72]', label: 'text-[#9cb088]' },
@@ -148,7 +240,9 @@ export default function App() {
   const beans = useLiveQuery(() => db.beans.toArray(), []) || [];
   const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
   const shots = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []) || [];
-  const settingsSetting = useLiveQuery(() => db.settings.get('global'), []) || null;
+  const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), [], SETTINGS_QUERY_PENDING);
+  const settingsSetting =
+    settingsQueryResult === SETTINGS_QUERY_PENDING ? null : (settingsQueryResult ?? null);
   const brewGuideEnabled = Boolean(settingsSetting?.brewGuideEnabled);
   const brewGuideSetupComplete = Boolean(settingsSetting?.brewGuideSetupComplete);
   const brewGuideAccessories = normalizeBrewAccessories(settingsSetting?.brewGuideAccessories);
@@ -158,6 +252,10 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
+  const scaleBuildEnabled = isScaleEnabled();
+  const scaleFeatureEnabled = scaleBuildEnabled && isSmartScaleIntegrationActive(settingsSetting);
+  const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
+  const appSettings = settingsSetting;
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
@@ -189,20 +287,7 @@ export default function App() {
     isDecaf: false
   });
   
-  const [newRecipe, setNewRecipe] = useState({ 
-    targetDoseG: 18, 
-    targetYieldG: '', 
-    targetTimeMinS: 27, 
-    targetTimeMaxS: 32,
-    brewTemperatureC: 93,
-    flairProfile: {
-      preinfusionPressure: '',
-      preinfusionTime: '',
-      peakPressure: '',
-      peakEndYield: '',
-      taperPressure: ''
-    }
-  });
+  const [newRecipe, setNewRecipe] = useState(() => createDefaultNewRecipe(''));
 
   const [grinderModel, setGrinderModel] = useState('');
   const [flairEnabled, setFlairEnabled] = useState(false);
@@ -211,6 +296,7 @@ export default function App() {
   const [setteMicro, setSetteMicro] = useState('E');
   const [sunbeamSetting, setSunbeamSetting] = useState(15);
   const [nicheZeroSetting, setNicheZeroSetting] = useState(15);
+  const [customGrindValue, setCustomGrindValue] = useState(15);
   const [wasPurged, setWasPurged] = useState(true);
   const [actualDoseG, setActualDoseG] = useState(18);
   const [actualYieldG, setActualYieldG] = useState('');
@@ -227,22 +313,49 @@ export default function App() {
   const tasteInputRef = useRef(null);
   const recommendationRef = useRef(null);
   const grindSettingsRef = useRef(null);
+  const flairPressureProfileRef = useRef(null);
+  const pendingFocusFlairProfileRef = useRef(false);
   const pendingGrindByKeyRef = useRef({});
   const brewTempDefaultRef = useRef('');
+  const syncedSettingsCustomGrinderRef = useRef('');
   const [validationError, setValidationError] = useState('');
+  const [beanFieldErrors, setBeanFieldErrors] = useState({});
+  const [applyRecConfirmation, setApplyRecConfirmation] = useState('');
   const [highlightGrind, setHighlightGrind] = useState(false);
   const [shotFieldHighlights, setShotFieldHighlights] = useState(EMPTY_SHOT_FIELD_HIGHLIGHTS);
   const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
+  const [setupFlairEnabled, setSetupFlairEnabled] = useState(false);
+  const [setupPreInfusionEnabled, setSetupPreInfusionEnabled] = useState(false);
+  const [setupGrinderPickerValue, setSetupGrinderPickerValue] = useState('');
+  const [setupCustomGrinderDraft, setSetupCustomGrinderDraft] = useState({
+    name: '',
+    dialType: 'stepped',
+    min: 1,
+    max: 40,
+    step: 1,
+    lowerIsFiner: true,
+  });
+  const [setupUseSmartScale, setSetupUseSmartScale] = useState(false);
+  const [setupSmartScaleDeviceId, setSetupSmartScaleDeviceId] = useState(SMART_SCALE_MANUAL_ID);
+  const [settingsGrinderPickerValue, setSettingsGrinderPickerValue] = useState('');
+  const [settingsCustomGrinderDraft, setSettingsCustomGrinderDraft] = useState(null);
   const [brewAccessoriesOpenRequest, setBrewAccessoriesOpenRequest] = useState(0);
   const [brewAccessoriesReturnTo, setBrewAccessoriesReturnTo] = useState('brew');
 
   useEffect(() => {
     if (settingsSetting) {
-      if (settingsSetting.grinderModel) {
-        setGrinderModel(settingsSetting.grinderModel);
-        if (!isEditingBean && brewTempDefaultRef.current !== settingsSetting.grinderModel) {
-          brewTempDefaultRef.current = settingsSetting.grinderModel;
-          const nextTemp = defaultBrewTemperatureForGrinder(settingsSetting.grinderModel);
+      queueMicrotask(() => {
+      setSettingsGrinderPickerValue(grinderPickerValueForSettings(settingsSetting));
+      if (settingsSetting.customGrinder) {
+        setSettingsCustomGrinderDraft(settingsSetting.customGrinder);
+      }
+      const resolvedGrinderModel = resolveActiveGrinderModel(settingsSetting);
+      const grinderModelFromSettings = settingsSetting.grinderModel || resolvedGrinderModel;
+      if (grinderModelFromSettings) {
+        setGrinderModel(grinderModelFromSettings);
+        if (!isEditingBean && brewTempDefaultRef.current !== grinderModelFromSettings) {
+          brewTempDefaultRef.current = grinderModelFromSettings;
+          const nextTemp = defaultBrewTemperatureForGrinder(grinderModelFromSettings);
           setNewRecipe((prev) => {
             const current = prev.brewTemperatureC;
             const isUnset = current === '' || current === null || current === undefined;
@@ -255,6 +368,16 @@ export default function App() {
       if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
       if (settingsSetting.preInfusionEnabled !== undefined) setUsePreInfusion(settingsSetting.preInfusionEnabled);
       if (settingsSetting.darkMode !== undefined) setDarkMode(settingsSetting.darkMode);
+      if (isCustomGrinderModel(grinderModelFromSettings, settingsSetting)) {
+        const profile = normalizeCustomGrinderProfile(settingsSetting.customGrinder);
+        if (profile && syncedSettingsCustomGrinderRef.current !== grinderModelFromSettings) {
+          syncedSettingsCustomGrinderRef.current = grinderModelFromSettings;
+          setCustomGrindValue(
+            settingsSetting.lastCustomGrindValue ?? defaultCustomGrindValue(profile)
+          );
+        }
+      }
+      });
     }
   }, [settingsSetting, isEditingBean]);
 
@@ -265,7 +388,18 @@ export default function App() {
   }, [darkMode]);
 
   const activeBeansList = beans.filter(b => !b?.isFinished);
-  const activeBean = beans.find(b => b.id === selectedBeanId) || activeBeansList[0] || beans[0];
+  const effectiveBeanId = (() => {
+    if (selectedBeanId && beans.some((b) => b.id === selectedBeanId)) return selectedBeanId;
+    const remembered = settingsSetting?.lastSelectedBeanId;
+    if (remembered) {
+      const match =
+        beans.find((b) => b.id === remembered && !b?.isFinished)
+        || beans.find((b) => b.id === remembered);
+      if (match) return match.id;
+    }
+    return activeBeansList[0]?.id || beans[0]?.id || '';
+  })();
+  const activeBean = beans.find(b => b.id === effectiveBeanId) || activeBeansList[0] || beans[0];
   const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
   const lastLoggedShot = findLatestShotForBeanAndGrinder(shots, activeBean?.id, grinderModel);
   const lastLearningShot = activeBean && grinderModel
@@ -277,6 +411,43 @@ export default function App() {
       )
     : null;
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
+
+  const scaleRecipePreinfusion =
+    flairEnabled && recipeDefinesPreinfusion(activeRecipe?.flairProfile);
+  const hookUsePreInfusion = usePreInfusion || (scaleFeatureEnabled && scaleRecipePreinfusion);
+
+  const timemoreScale = useTimemoreScale({
+    enabled: scaleFeatureEnabled,
+    targetYieldG: activeRecipe?.targetYieldG || 36,
+    usePreInfusion: hookUsePreInfusion,
+    preInfusionDurationS: hookUsePreInfusion
+      ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12
+      : 0,
+  });
+
+  const preinfusionScaleCtx = {
+    scaleFeatureEnabled,
+    scaleConnected: timemoreScale.isConnected,
+  };
+  const flairTimedPreinfusionAuto =
+    recipeUsesTimedPreinfusionAutoEnd(activeRecipe?.flairProfile, flairEnabled, preinfusionScaleCtx);
+  const timerUsePreInfusion =
+    usePreInfusion
+    || (timemoreScale.isConnected && scaleRecipePreinfusion)
+    || flairTimedPreinfusionAuto;
+  const scaleAutoEndPreinfusionRef = useRef(false);
+  const [brewGuideTimerActive, setBrewGuideTimerActive] = useState(false);
+  const brewGuideTimerActiveRef = useRef(false);
+  const syncBrewGuideTimerActive = (active) => {
+    brewGuideTimerActiveRef.current = active;
+    setBrewGuideTimerActive(active);
+  };
+  const profilePreinfusionTimeS = Number(activeRecipe?.flairProfile?.preinfusionTime) || 0;
+  const flowChartTimeOffsetSec = timerUsePreInfusion ? Math.max(profilePreinfusionTimeS, 4) : 0;
+  const scaleLiveFlowOnProfile =
+    scaleFeatureEnabled && timemoreScale.isConnected && timerRunning
+      ? timemoreScale.liveFlowSeries
+      : null;
 
   const prefillDoseFromRecipe = (recipe) => {
     if (recipe?.targetDoseG == null || recipe.targetDoseG === '') return;
@@ -293,6 +464,48 @@ export default function App() {
     }, 100);
     return () => clearInterval(interval);
   }, [timerRunning]);
+
+  useEffect(() => {
+    if (!timerRunning || !preInfusionPhase) {
+      if (!timerRunning) scaleAutoEndPreinfusionRef.current = false;
+      return;
+    }
+    if (!timerUsePreInfusion) return;
+    const scaleConnected = timemoreScale.isConnected;
+    const targets = preinfusionAutoEndTargets(activeRecipe?.flairProfile, preinfusionScaleCtx);
+    if (targets.trigger === 'manual') return;
+    if (targets.trigger === 'weight' && !scaleConnected) return;
+    if (targets.trigger === 'weight' && !timemoreScale.weightTriggersPrimed) return;
+    if (targets.timeS == null && targets.weightG == null) return;
+    if (scaleAutoEndPreinfusionRef.current) return;
+    if (
+      !shouldAutoEndPreinfusion(targets, {
+        preInfusionElapsedS: timerSeconds,
+        liveRelativeWeightG: timemoreScale.liveRelativeWeightG,
+      })
+    ) {
+      return;
+    }
+    scaleAutoEndPreinfusionRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto end at recipe time/weight
+    setPreInfusionSeconds(timerSeconds);
+    setPreInfusionPhase(false);
+    if (scaleConnected) {
+      void timemoreScale.notifyPreInfusionEnded();
+    }
+  }, [
+    timerRunning,
+    preInfusionPhase,
+    timerSeconds,
+    timemoreScale.isConnected,
+    timemoreScale.liveRelativeWeightG,
+    timemoreScale.weightTriggersPrimed,
+    timerUsePreInfusion,
+    preinfusionScaleCtx,
+    activeRecipe?.flairProfile,
+    scaleFeatureEnabled,
+    timemoreScale,
+  ]);
 
   const formatTime = (totalSeconds) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -311,58 +524,90 @@ export default function App() {
     return `0:${String(secs).padStart(2, '0')}.${tenths}`;
   };
 
-  const handleStartTimer = () => {
+  const releaseBrewGuideTimer = useCallback(() => {
+    if (!brewGuideTimerActiveRef.current) return;
+    syncBrewGuideTimerActive(false);
+    scaleAutoEndPreinfusionRef.current = false;
+    setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
-    if (usePreInfusion) setPreInfusionPhase(true);
+    setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyShotCancelled();
+    }
+  }, [timemoreScale]);
+
+  const handleStartTimer = async ({ fromBrewGuide = false } = {}) => {
+    if (!fromBrewGuide) syncBrewGuideTimerActive(false);
+    scaleAutoEndPreinfusionRef.current = false;
+    setTimerTicks(0);
+    setPreInfusionSeconds(0);
+    if (timemoreScale.isConnected) {
+      setScaleShotMetrics(null);
+      await timemoreScale.notifyShotStarted();
+    }
+    if (timerUsePreInfusion) setPreInfusionPhase(true);
+    else setPreInfusionPhase(false);
     setTimerRunning(true);
   };
 
   const handleEndPreInfusion = () => {
     setPreInfusionSeconds(timerSeconds);
     setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyPreInfusionEnded();
+    }
   };
 
   const handleStopTimer = () => {
     setTimerRunning(false);
     let finalExtractionTime = timerSeconds;
-    if (usePreInfusion && !preInfusionPhase) {
+    if (timerUsePreInfusion && !preInfusionPhase) {
       finalExtractionTime = Math.max(0, timerSeconds - preInfusionSeconds);
     }
     const rounded = Math.round(finalExtractionTime);
     setActualTimeS(rounded);
+    if (timemoreScale.isConnected) {
+      const { yieldG, metrics } = timemoreScale.notifyShotStopped();
+      if (yieldG != null && yieldG > 0) {
+        setActualYieldG(String(yieldG));
+      }
+      setScaleShotMetrics(metrics);
+    }
     return rounded;
   };
 
   const handleCancelTimer = () => {
+    scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyShotCancelled();
+    }
   };
 
   const handleResetTimer = () => {
+    scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyShotCancelled();
+    }
   };
 
   const handleTimerSurfaceTap = (e) => {
     if (e.target.closest('[data-timer-dismiss]')) return;
-    if (usePreInfusion && preInfusionPhase) handleEndPreInfusion();
+    if (timerUsePreInfusion && preInfusionPhase) handleEndPreInfusion();
     else handleStopTimer();
   };
 
-  useEffect(() => {
-    if (activeRecipe?.targetYieldG && !actualYieldG) {
-      setActualYieldG(activeRecipe.targetYieldG);
-    }
-  }, [activeRecipe?.id]);
-
   const stashPendingGrind = (model, beanId, grindFields) => {
     const key = pendingGrindSessionKey(beanId, model);
-    const snap = capturePendingGrindState(model, grindFields);
+    const snap = capturePendingGrindState(model, grindFields, appSettings);
     if (key && snap) pendingGrindByKeyRef.current[key] = snap;
   };
 
@@ -378,6 +623,7 @@ export default function App() {
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting,
+      customGrindValue,
     });
   };
 
@@ -388,6 +634,7 @@ export default function App() {
       setteMicro: value,
       sunbeamSetting,
       nicheZeroSetting,
+      customGrindValue,
     });
   };
 
@@ -398,6 +645,7 @@ export default function App() {
       setteMicro,
       sunbeamSetting: value,
       nicheZeroSetting,
+      customGrindValue,
     });
   };
 
@@ -408,6 +656,18 @@ export default function App() {
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting: value,
+      customGrindValue,
+    });
+  };
+
+  const handleCustomGrindChange = (value) => {
+    setCustomGrindValue(value);
+    stashPendingGrind(grinderModel, activeBean?.id, {
+      setteMacro,
+      setteMicro,
+      sunbeamSetting,
+      nicheZeroSetting,
+      customGrindValue: value,
     });
   };
 
@@ -422,16 +682,46 @@ export default function App() {
       beans,
       mockDate,
       flairEnabled,
+      settings: appSettings,
     });
     if (!uiState) return;
     if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
     if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
     if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
     if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
-  }, [selectedBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
+    if (uiState.customGrindValue != null) setCustomGrindValue(uiState.customGrindValue);
+  }, [
+    effectiveBeanId,
+    activeBean,
+    grinderModel,
+    beans,
+    mockDate,
+    flairEnabled,
+    recipes,
+    shots,
+    appSettings,
+  ]);
 
-  const handleSaveGrinderSetup = async (model, options = {}) => {
-    const { brewGuideEnabled: brewGuideChoice } = options;
+  const handleSaveGrinderSetup = async (modelOrPicker, options = {}) => {
+    const {
+      brewGuideEnabled: brewGuideChoice,
+      flairEnabled: flairChoice,
+      preInfusionEnabled: preInfusionChoice,
+      customGrinder: customGrinderChoice,
+      smartScaleDeviceId: smartScaleChoice,
+    } = options;
+
+    let model = modelOrPicker;
+    let customGrinderPatch = {};
+    if (modelOrPicker === CUSTOM_GRINDER_PICKER_ID) {
+      const normalized = normalizeCustomGrinderProfile(customGrinderChoice);
+      if (!normalized) return;
+      model = normalized.name;
+      customGrinderPatch = { customGrinder: normalized };
+    } else if (!isCustomGrinderModel(modelOrPicker, { grinderModel: modelOrPicker, customGrinder: customGrinderChoice })) {
+      customGrinderPatch = { customGrinder: undefined };
+    }
+
     setGrinderModel(model);
     if (!isEditingBean) {
       brewTempDefaultRef.current = model;
@@ -445,10 +735,62 @@ export default function App() {
       });
     }
     const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({
+    if (typeof flairChoice === 'boolean') setFlairEnabled(flairChoice);
+    if (typeof preInfusionChoice === 'boolean') setUsePreInfusion(preInfusionChoice);
+    const nextSettings = {
       ...currentSettings,
       grinderModel: model,
+      ...customGrinderPatch,
       ...(typeof brewGuideChoice === 'boolean' ? { brewGuideEnabled: brewGuideChoice } : {}),
+      ...(typeof flairChoice === 'boolean' ? { flairEnabled: flairChoice } : {}),
+      ...(typeof preInfusionChoice === 'boolean' ? { preInfusionEnabled: preInfusionChoice } : {}),
+      ...(smartScaleChoice !== undefined
+        ? { smartScaleDeviceId: normalizeSmartScaleDeviceId(smartScaleChoice) }
+        : {}),
+    };
+    if (nextSettings.customGrinder === undefined) {
+      delete nextSettings.customGrinder;
+    }
+    await db.settings.put(nextSettings);
+  };
+
+  const handleFinishFirstLaunch = async () => {
+    const scaleId = setupUseSmartScale
+      ? normalizeSmartScaleDeviceId(setupSmartScaleDeviceId)
+      : SMART_SCALE_MANUAL_ID;
+    await handleSaveGrinderSetup(setupGrinderPickerValue || CUSTOM_GRINDER_PICKER_ID, {
+      brewGuideEnabled: setupBrewGuideEnabled,
+      flairEnabled: setupFlairEnabled,
+      preInfusionEnabled: setupPreInfusionEnabled,
+      customGrinder: setupCustomGrinderDraft,
+      smartScaleDeviceId: scaleId,
+    });
+  };
+
+  const handleSettingsGrinderPickerChange = async (pickerValue) => {
+    setSettingsGrinderPickerValue(pickerValue);
+    if (pickerValue === CUSTOM_GRINDER_PICKER_ID) {
+      setSettingsCustomGrinderDraft(
+        settingsCustomGrinderDraft || settingsSetting?.customGrinder || setupCustomGrinderDraft
+      );
+      return;
+    }
+    await handleSaveGrinderSetup(pickerValue);
+  };
+
+  const handleSaveCustomGrinderFromSettings = async () => {
+    if (!isCustomGrinderFormValid(settingsCustomGrinderDraft)) return;
+    const patch = normalizeCustomGrinderSettingsPatch(settingsCustomGrinderDraft);
+    if (!patch) return;
+    await handleSaveGrinderSetup(CUSTOM_GRINDER_PICKER_ID, { customGrinder: patch.customGrinder });
+    setSettingsGrinderPickerValue(CUSTOM_GRINDER_PICKER_ID);
+  };
+
+  const handleSmartScaleDeviceChange = async (deviceId) => {
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({
+      ...currentSettings,
+      smartScaleDeviceId: normalizeSmartScaleDeviceId(deviceId),
     });
   };
 
@@ -504,6 +846,17 @@ export default function App() {
   const patchBrewGuidanceSettings = async (patch) => {
     const currentSettings = await db.settings.get('global') || { id: 'global' };
     await db.settings.put({ ...currentSettings, ...patch });
+  };
+
+  const rememberSelectedBeanId = async (beanId) => {
+    if (!beanId) return;
+    await patchBrewGuidanceSettings({ lastSelectedBeanId: beanId });
+  };
+
+  const selectActiveBean = (beanId) => {
+    setSelectedBeanId(beanId);
+    prefillDoseFromRecipe(recipes.find((r) => r.beanId === beanId));
+    void rememberSelectedBeanId(beanId);
   };
 
   const handleDismissBrewGuideIntro = () => {
@@ -600,6 +953,11 @@ export default function App() {
     e.preventDefault();
     if (!newBean.name) return;
     setValidationError('');
+    if (!newBean.roastDate) {
+      setBeanFieldErrors({ roastDate: 'Roast date is required.' });
+      return;
+    }
+    setBeanFieldErrors({});
 
     try {
       const sanitized = sanitizeRating(newBean.rating);
@@ -617,20 +975,21 @@ export default function App() {
         const beanId = generateId();
         await db.beans.add({ ...beanToSave, id: beanId, isFinished: false, thawHistory: [], createdAt: new Date().toISOString() });
         await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: generateId(), beanId });
-        setSelectedBeanId(beanId);
-        prefillDoseFromRecipe(newRecipe);
+        selectActiveBean(beanId);
 
         const currentSettings = await db.settings.get('global') || { id: 'global' };
         if (shouldNavigateToBrewAfterFirstBean(currentSettings, isFirstBeanAdd, Boolean(currentSettings.brewGuideEnabled))) {
           await patchBrewGuidanceSettings({ brewGuideFirstBeanNavDone: true });
           setIsEditingBean(false);
           setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
+          setNewRecipe(createDefaultNewRecipe(grinderModel));
           setActiveTab('brew');
           return;
         }
       }
 
       setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
+      setNewRecipe(createDefaultNewRecipe(grinderModel));
       setIsEditingBean(false);
       setActiveTab('dial');
     } catch (err) {
@@ -639,26 +998,44 @@ export default function App() {
     }
   };
 
-  const startEditBean = (bean) => {
+  const startEditBean = (bean, options = {}) => {
+    const { focusFlairProfile = false } = options;
     const recipe = recipes.find(r => r.beanId === bean.id);
     setNewBean(bean);
-    if (recipe) setNewRecipe(recipe);
+    if (recipe) setNewRecipe(sanitizeRecipeFormState(recipe, grinderModel));
     setIsEditingBean(true);
     setActiveTab('beans');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (focusFlairProfile) {
+      pendingFocusFlairProfileRef.current = true;
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
+  const handleEditOnBeansFromDial = () => {
+    if (activeBean?.id) {
+      startEditBean(activeBean, { focusFlairProfile: true });
+      return;
+    }
+    setActiveTab('beans');
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'beans' || !isEditingBean || !pendingFocusFlairProfileRef.current) return;
+    pendingFocusFlairProfileRef.current = false;
+    const frame = requestAnimationFrame(() => {
+      flairPressureProfileRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const firstField = flairPressureProfileRef.current?.querySelector('input, select');
+      firstField?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab, isEditingBean, newBean.id]);
+
   const cancelEditBean = () => {
+    pendingFocusFlairProfileRef.current = false;
     setIsEditingBean(false);
     setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
-    setNewRecipe({ 
-      targetDoseG: 18, 
-      targetYieldG: '', 
-      targetTimeMinS: 27, 
-      targetTimeMaxS: 32,
-      brewTemperatureC: defaultBrewTemperatureForGrinder(grinderModel),
-      flairProfile: { preinfusionPressure: '', preinfusionTime: '', peakPressure: '', peakEndYield: '', taperPressure: '' }
-    });
+    setNewRecipe(createDefaultNewRecipe(grinderModel));
   };
 
   const handleUpdateBeanRating = async (beanId, val) => {
@@ -668,9 +1045,11 @@ export default function App() {
 
   const handleToggleFinished = async (beanId, currentStatus) => {
     await db.beans.update(beanId, { isFinished: !currentStatus });
-    if (!currentStatus && selectedBeanId === beanId) {
+    if (!currentStatus && effectiveBeanId === beanId) {
       const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
-      setSelectedBeanId(remaining.length > 0 ? remaining[0].id : '');
+      const nextId = remaining.length > 0 ? remaining[0].id : '';
+      setSelectedBeanId(nextId);
+      void rememberSelectedBeanId(nextId);
     }
   };
 
@@ -684,9 +1063,11 @@ export default function App() {
       const associatedShots = await db.shots.where('beanId').equals(beanId).toArray();
       for (const s of associatedShots) await db.shots.delete(s.id);
 
-      if (selectedBeanId === beanId) {
+      if (effectiveBeanId === beanId) {
         const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
-        setSelectedBeanId(remaining.length > 0 ? remaining[0].id : '');
+        const nextId = remaining.length > 0 ? remaining[0].id : '';
+      setSelectedBeanId(nextId);
+      void rememberSelectedBeanId(nextId);
       }
     }
   };
@@ -774,7 +1155,21 @@ export default function App() {
     }
     setShotFieldHighlights(EMPTY_SHOT_FIELD_HIGHLIGHTS);
 
-    const parsedGrind = parseGrindForShotSave(grinderModel, { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting });
+    const logGrinderModel = grinderModel || resolveActiveGrinderModel(appSettings);
+    const pendingGrindKey = pendingGrindSessionKey(activeBean?.id, logGrinderModel);
+    const pendingGrind = pendingGrindKey ? pendingGrindByKeyRef.current[pendingGrindKey] : null;
+    const grindStateForSave = {
+      setteMacro: pendingGrind?.setteMacro ?? setteMacro,
+      setteMicro: pendingGrind?.setteMicro ?? setteMicro,
+      sunbeamSetting: pendingGrind?.sunbeamSetting ?? sunbeamSetting,
+      nicheZeroSetting: pendingGrind?.nicheZeroSetting ?? nicheZeroSetting,
+      customGrindValue: pendingGrind?.customGrindValue ?? customGrindValue,
+    };
+    const parsedGrind = parseGrindForShotSave(
+      logGrinderModel,
+      grindStateForSave,
+      appSettings
+    );
     if (!parsedGrind.ok) {
       setValidationError(parsedGrind.error);
       return;
@@ -784,6 +1179,7 @@ export default function App() {
       setteMicro: finalMicro,
       sunbeamSetting: finalSunbeam,
       nicheZeroSetting: finalNicheZero,
+      customGrindValue: finalCustomGrind,
     } = parsedGrind;
 
     if (!activeBean || !activeRecipe) {
@@ -795,12 +1191,13 @@ export default function App() {
       lastLearningShot,
       activeBean,
       mockDate,
-      grinderModel,
+      settings: appSettings,
       savedGrind: {
         setteMacro: finalMacro,
         setteMicro: finalMicro,
         sunbeamSetting: finalSunbeam,
         nicheZeroSetting: finalNicheZero,
+        customGrindValue: finalCustomGrind,
       },
     });
 
@@ -809,6 +1206,7 @@ export default function App() {
       setteMicro: lastLearningShot.setteMicro,
       sunbeamSetting: lastLearningShot.sunbeamSetting,
       nicheZeroSetting: lastLearningShot.nicheZeroSetting,
+      customGrindValue: lastLearningShot.customGrindValue,
     } : null;
 
     let referenceNow = new Date();
@@ -822,7 +1220,7 @@ export default function App() {
     const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
     const recentBeanShots = filterShotsForGrinderLearning(shots, {
       beanId: activeBean.id,
-      grinderModel,
+      grinderModel: logGrinderModel,
     });
 
     const savedTasteProfile = tasteProfileForSave(tasteProfile);
@@ -830,11 +1228,12 @@ export default function App() {
     const rec = calculateRecommendation(
       { 
         beanId: activeBean.id,
-        grinderModel, 
+        grinderModel: logGrinderModel,
         setteMacro: finalMacro, 
         setteMicro: finalMicro, 
         sunbeamSetting: finalSunbeam,
         nicheZeroSetting: finalNicheZero,
+        customGrindValue: finalCustomGrind,
         wasPurged, 
         actualTime: parsedTime, 
         actualDose: parsedDose, 
@@ -847,18 +1246,20 @@ export default function App() {
       },
       activeRecipe,
       recentBeanShots,
-      flairEnabled
+      flairEnabled,
+      { settings: appSettings }
     );
 
     const shotRecord = {
       id: generateId(),
       beanId: activeBean.id,
       timestamp: referenceNow.toISOString(),
-      grinderModel,
+      grinderModel: logGrinderModel,
       setteMacro: finalMacro,
       setteMicro: finalMicro,
       sunbeamSetting: finalSunbeam,
       nicheZeroSetting: finalNicheZero,
+      customGrindValue: finalCustomGrind,
       wasPurged,
       actualDoseG: parsedDose,
       actualYieldG: parsedYield,
@@ -876,9 +1277,15 @@ export default function App() {
       brewTemperatureC: activeRecipe.brewTemperatureC || null,
       flairProfile: flairEnabled && activeRecipe.flairProfile ? { ...activeRecipe.flairProfile } : null,
       recommendation: rec,
-      notes: usePreInfusion && preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes,
+      notes: preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes,
       ...(excludeFromLearning
         ? { excludeFromLearning: true, knownIssueReason: knownIssueReason || 'other' }
+        : {}),
+      ...(scaleShotMetrics?.scaleFlowCurve?.length
+        ? {
+            scaleFlowRateGs: scaleShotMetrics.scaleFlowRateGs ?? undefined,
+            scaleFlowCurve: scaleShotMetrics.scaleFlowCurve,
+          }
         : {}),
     };
 
@@ -890,12 +1297,13 @@ export default function App() {
       if (activeRecipe?.targetDoseG != null && activeRecipe.targetDoseG !== '') {
         setActualDoseG(activeRecipe.targetDoseG);
       }
-      setActualYieldG(activeRecipe?.targetYieldG || '');
+      setActualYieldG('');
       setShotRating(null);
       setNotes('');
       setTasteProfile('');
       setExcludeFromLearning(false);
       setKnownIssueReason('puck_prep');
+      setScaleShotMetrics(null);
       handleResetTimer();
 
       setTimeout(() => {
@@ -922,13 +1330,13 @@ export default function App() {
   });
   const previousRecipeRec =
     usePreviousRecipeRecommendation && lastLoggedShot
-      ? getAgeAdjustedRecommendation(lastLoggedShot, activeBean, mockDate)
+      ? getAgeAdjustedRecommendation(lastLoggedShot, activeBean, mockDate, appSettings)
       : null;
   const ageAdjustedRec =
     !usePreviousRecipeRecommendation
     && lastLearningShot
     && lastLearningShot.grinderModel === grinderModel
-      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate)
+      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate, appSettings)
       : null;
   const liveNicheRec =
     !usePreviousRecipeRecommendation
@@ -940,6 +1348,20 @@ export default function App() {
           activeRecipe,
           beanShotsForGrinder,
           flairEnabled
+        )
+      : null;
+  const liveQuantitativeRec =
+    !usePreviousRecipeRecommendation
+    && grinderSupportsQuantitativeRecommendations(grinderModel, appSettings)
+    && !isNicheZeroGrinderModel(grinderModel)
+    && lastLearningShot
+    && activeRecipe
+      ? recomputeQuantitativeRecommendationFromLastShot(
+          lastLearningShot,
+          activeRecipe,
+          beanShotsForGrinder,
+          flairEnabled,
+          appSettings
         )
       : null;
   const dynamicRec = usePreviousRecipeRecommendation && previousRecipeRec
@@ -955,12 +1377,24 @@ export default function App() {
           ageWarning: ageAdjustedRec?.ageWarning ?? null,
           originalReason: liveNicheRec.reason,
         }
-      : ageAdjustedRec;
+      : liveQuantitativeRec
+        ? {
+            ...liveQuantitativeRec,
+            ageWarning: ageAdjustedRec?.ageWarning ?? null,
+            originalReason: liveQuantitativeRec.reason,
+          }
+        : ageAdjustedRec;
+  const grindRecommendationSummary = dynamicRec?.recommendedSetting
+    ? formatGrindRecommendationSummary(grinderModel, dynamicRec, appSettings)
+    : null;
+  const nicheLearningBlocksEvidence =
+    isNicheZeroGrinderModel(grinderModel)
+    && Boolean(dynamicRec?.nicheLearningNote)
+    && !dynamicRec?.outlierGrindHeld;
   const recommendationEvidenceContext =
-    dynamicRec?.evidenceContext ||
     (activeRecipe && beanShotsForGrinder.length > 0
       ? getRecommendationEvidenceContext(beanShotsForGrinder, activeRecipe, flairEnabled)
-      : null);
+      : null) || dynamicRec?.evidenceContext;
   const hasLoggedShotForBean = beanShots.length > 0;
   const decafNoteSource = !beanIsDecaf(activeBean)
     ? null
@@ -979,7 +1413,8 @@ export default function App() {
         shots,
         beans,
         mockDate,
-        flairEnabled
+        flairEnabled,
+        appSettings
       )
     : null;
   const initialGrindHintSource = (() => {
@@ -1004,7 +1439,7 @@ export default function App() {
       case 'app-default': {
         const grindLabel = isNiche
           ? `Starting dial ${initialGrindSetting.nicheZeroSetting ?? '—'}`
-          : `Starting grind ${formatInitialGrindDisplay(grinderModel, initialGrindSetting)}`;
+          : `Starting grind ${formatInitialGrindDisplay(grinderModel, initialGrindSetting, appSettings)}`;
         return `${grindLabel} — common espresso starting point (app default, not manufacturer guidance). Not from your shot history.`;
       }
       case 'roast-baseline':
@@ -1018,61 +1453,71 @@ export default function App() {
     }
   })();
 
-  const currentGrindLabel = formatCurrentGrindLabel(grinderModel, {
-    setteMacro,
-    setteMicro,
-    sunbeamSetting,
-    nicheZeroSetting,
-  });
+  const currentGrindLabel = formatCurrentGrindLabel(
+    grinderModel,
+    {
+      setteMacro,
+      setteMicro,
+      sunbeamSetting,
+      nicheZeroSetting,
+      customGrindValue,
+    },
+    appSettings
+  );
 
   const timerWindowSeconds =
-    (usePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
+    (timerUsePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
     (activeRecipe?.targetTimeMaxS || 32) +
     6;
   const timerDisplaySeconds =
-    usePreInfusion && timerRunning && !preInfusionPhase
+    timerUsePreInfusion && timerRunning && !preInfusionPhase
       ? Math.max(0, timerSeconds - preInfusionSeconds)
       : timerSeconds;
   const timerProgress = timerRunning ? Math.min(1, timerSeconds / timerWindowSeconds) : 0;
-
-  const formatFlairRecipeLines = (profile) => {
-    if (!profile) return [];
-    const lines = [];
-    if (profile.preinfusionPressure) {
-      lines.push(`Pre-infusion: ${profile.preinfusionPressure} bar · ${profile.preinfusionTime || '—'}s`);
-    }
-    if (profile.peakPressure) {
-      lines.push(`Hold: ${profile.peakPressure} bar → ${profile.peakEndYield || '—'}g`);
-    }
-    if (profile.taperPressure) {
-      lines.push(`Taper: ${profile.taperPressure} bar`);
-    }
-    return lines;
-  };
+  const scaleExtractionElapsedS =
+    timerRunning && timerUsePreInfusion && !preInfusionPhase
+      ? Math.max(0, timerSeconds - preInfusionSeconds)
+      : timerRunning
+        ? timerSeconds
+        : 0;
+  const scaleLiveReadoutG =
+    timerRunning && timemoreScale.weightTriggersPrimed
+      ? timemoreScale.liveRelativeWeightG
+      : timemoreScale.liveWeightG;
+  const scaleShowLiveReadout =
+    scaleFeatureEnabled && timemoreScale.isConnected && (timerRunning || timemoreScale.liveWeightG > 0);
+  const scaleShowFlow =
+    scaleShowLiveReadout
+    && timerRunning
+    && (!timerUsePreInfusion || !preInfusionPhase)
+    && timemoreScale.instantFlowGs != null;
 
   const applyRecommendation = async () => {
     if (!dynamicRec || !dynamicRec.recommendedSetting) return;
     const recSet = dynamicRec.recommendedSetting;
+    const appliedLabel = formatRecommendedGrindDisplay(grinderModel, recSet, appSettings);
     
     const currentSettings = await db.settings.get('global') || { id: 'global' };
 
     const applyGrinder = grinderModel;
-    const uiState = uiStateFromRecommendedSetting(applyGrinder, recSet);
+    const uiState = uiStateFromRecommendedSetting(applyGrinder, recSet, appSettings);
     if (uiState) {
       setGrinderModel(applyGrinder);
       if (uiState.setteMacro != null) setSetteMacro(uiState.setteMacro);
       if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
       if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
+      if (uiState.customGrindValue != null) setCustomGrindValue(uiState.customGrindValue);
       stashPendingGrind(applyGrinder, activeBean?.id, {
         setteMacro: uiState.setteMacro ?? setteMacro,
         setteMicro: uiState.setteMicro ?? setteMicro,
         sunbeamSetting: uiState.sunbeamSetting ?? sunbeamSetting,
         nicheZeroSetting: uiState.nicheZeroSetting ?? nicheZeroSetting,
+        customGrindValue: uiState.customGrindValue ?? customGrindValue,
       });
       await db.settings.put({
         ...currentSettings,
-        ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet),
+        ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet, appSettings),
       });
     }
 
@@ -1081,49 +1526,29 @@ export default function App() {
       setHighlightGrind(true);
       setTimeout(() => setHighlightGrind(false), 1500);
     }
+
+    setApplyRecConfirmation(`Grind set to ${appliedLabel}.`);
+    window.setTimeout(() => setApplyRecConfirmation(''), 4000);
   };
 
-  const exportDataCSV = () => {
-    const headers = ['Timestamp', 'Bean', 'Grinder', 'Grind Setting', 'Purged', 'Dose(g)', 'Yield(g)', 'Ratio', 'Time(s)', 'Taste', 'Rating', 'Bean Age (Days)', 'Storage', 'Rec Followed', 'Excluded From Learning', 'Known Issue Reason', 'Notes'];
-    const rows = shots.map(s => {
-      const bean = beans.find(b => b.id === s.beanId);
-      const grind = formatShotGrindForHistory(s);
-      return [
-        new Date(s.timestamp).toLocaleString(),
-        bean ? bean.name : 'Unknown',
-        s.grinderModel,
-        grind,
-        s.wasPurged ? 'Yes' : 'No',
-        s.actualDoseG,
-        s.actualYieldG,
-        s.brewRatio || '',
-        s.actualTimeS,
-        normalizeTasteProfile(s.tasteProfile),
-        s.shotRating || '',
-        s.beanAgeDays || 0,
-        s.storageType || 'bag',
-        formatRecFollowedForCsv(s),
-        s.excludeFromLearning ? 'Yes' : 'No',
-        s.excludeFromLearning ? knownIssueReasonLabel(s.knownIssueReason) : '',
-        s.notes || '',
-      ];
+  const exportDataCSV = async () => {
+    const [allShots, allBeans] = await Promise.all([
+      db.shots.orderBy('timestamp').reverse().toArray(),
+      db.beans.toArray(),
+    ]);
+    const rows = buildShotsCsvRows(allShots, {
+      beans: allBeans,
+      formatShotGrindForHistory: (shot) => formatShotGrindForHistory(shot, appSettings),
+      normalizeTasteProfile,
+      formatRecFollowedForCsv,
+      knownIssueReasonLabel,
     });
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + buildShotsCsvContent(headers, rows);
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `espresso_shots_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const csvText = buildShotsCsvContent(SHOT_CSV_HEADERS, rows);
+    downloadCsvFile(`espresso_shots_${new Date().toISOString().slice(0, 10)}.csv`, csvText);
   };
 
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, mockDate) : null;
   const filteredShots = historyFilterBeanId === 'all' ? shots : shots.filter(s => s.beanId === historyFilterBeanId);
-
-  const referenceNow = mockDate ? new Date(mockDate) : new Date();
-  const lastBrewDaysAgo = lastLoggedShot ? Math.max(0, Math.floor((referenceNow - new Date(lastLoggedShot.timestamp)) / (1000 * 60 * 60 * 24))) : 0;
 
   const totalShots = shots.length;
   const compliantShots = shots.filter(s => {
@@ -1156,20 +1581,20 @@ export default function App() {
   const previousGrindLabel = (() => {
     const shot = shots.find((s) => s.grinderModel === grinderModel);
     if (!shot) return '';
-    return formatPreviousGrindLabel(grinderModel, shot);
+    return formatPreviousGrindLabel(grinderModel, shot, appSettings);
   })();
 
   const recommendedGrindDisplay = (() => {
     if (lastLearningShot && lastLearningShot.grinderModel === grinderModel && dynamicRec?.recommendedSetting) {
-      return formatRecommendedGrindDisplay(grinderModel, dynamicRec.recommendedSetting);
+      return formatRecommendedGrindDisplay(grinderModel, dynamicRec.recommendedSetting, appSettings);
     }
     if (beanShotsForGrinder.length === 0 && initialGrindSetting) {
-      return formatInitialGrindDisplay(grinderModel, initialGrindSetting);
+      return formatInitialGrindDisplay(grinderModel, initialGrindSetting, appSettings);
     }
     return currentGrindLabel;
   })();
 
-  const grinderBadgeLabel = getUiGrinderPresentation(grinderModel).shortBadgeLabel;
+  const grinderBadgeLabel = getUiGrinderPresentation(grinderModel, appSettings).shortBadgeLabel;
 
   const formatShotWhen = (timestamp) => {
     const d = new Date(timestamp);
@@ -1189,14 +1614,21 @@ export default function App() {
   };
 
   const handleBrewStartTimer = () => {
+    syncBrewGuideTimerActive(true);
     setActualTimeS('');
-    handleStartTimer();
+    void handleStartTimer({ fromBrewGuide: true });
   };
 
   const handleBrewResetTimer = () => {
+    syncBrewGuideTimerActive(false);
     handleResetTimer();
     setActualTimeS('');
   };
+
+  useLayoutEffect(() => {
+    if (activeTab === 'brew' && brewGuideEnabled) return;
+    releaseBrewGuideTimer();
+  }, [activeTab, brewGuideEnabled, releaseBrewGuideTimer]);
 
   const handleBrewHandoff = ({ timeS, yieldG } = {}) => {
     if (activeRecipe && activeRecipe.targetDoseG != null && activeRecipe.targetDoseG !== '') {
@@ -1206,18 +1638,21 @@ export default function App() {
     if (yieldG != null && yieldG !== '' && Number(yieldG) > 0) setActualYieldG(yieldG);
     setWasPurged(true);
     if (lastLearningShot && dynamicRec?.recommendedSetting && lastLearningShot.grinderModel === grinderModel) {
-      const uiState = uiStateFromRecommendedSetting(grinderModel, dynamicRec.recommendedSetting);
+      const uiState = uiStateFromRecommendedSetting(grinderModel, dynamicRec.recommendedSetting, appSettings);
       if (uiState?.setteMacro != null) setSetteMacro(uiState.setteMacro);
       if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
       if (uiState?.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
+      if (uiState?.customGrindValue != null) setCustomGrindValue(uiState.customGrindValue);
       stashPendingGrind(grinderModel, activeBean?.id, {
         setteMacro: uiState?.setteMacro ?? setteMacro,
         setteMicro: uiState?.setteMicro ?? setteMicro,
         sunbeamSetting: uiState?.sunbeamSetting ?? sunbeamSetting,
         nicheZeroSetting: uiState?.nicheZeroSetting ?? nicheZeroSetting,
+        customGrindValue: uiState?.customGrindValue ?? customGrindValue,
       });
     }
+    syncBrewGuideTimerActive(false);
     setBrewTimerHost(false);
     setShotFieldHighlights({ ...EMPTY_SHOT_FIELD_HIGHLIGHTS, taste: true });
     setActiveTab('dial');
@@ -1227,51 +1662,28 @@ export default function App() {
     }, 200);
   };
 
-  if (!grinderModel) {
+  if (shouldRenderFirstLaunchWizard(settingsQueryResult, {
+    hasExistingUserData: shots.length > 0 || beans.length > 0,
+  })) {
     return (
-      <div className={`min-h-screen ${ui.page} flex items-center justify-center p-6`}>
-        <div className={`${ui.card} p-8 rounded-2xl max-w-sm w-full space-y-8 shadow-2xl`}>
-          <div className="flex flex-col items-center gap-4">
-            <img src="/logo.jpg" alt="Espresso Dial-In" className="w-16 h-16 rounded-full object-cover ring-2 ring-[#2e2b26]" />
-            <div className="text-center">
-              <h1 className="text-xl font-bold text-[#f5f2eb] tracking-tight">Espresso Dial-In</h1>
-              <p className="text-xs text-[#6b6457] mt-1 tracking-wide uppercase">Precision dial-in assistant</p>
-            </div>
-          </div>
-          <div>
-            <p className="text-sm text-[#a09880] text-center mb-6">Select your grinder to configure your calibration baseline.</p>
-            <div className="space-y-4 mb-4">
-              <div className={`bg-[#211e1a] border border-[#2e2b26] rounded-xl p-4 flex items-center justify-between gap-3`}>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-[#f5f2eb]">Would you like to use the Brew Guide?</p>
-                  <p className="text-[11px] text-[#6b6457] mt-1">You can change these settings later in Settings.</p>
-                </div>
-                <SettingsToggle
-                  checked={setupBrewGuideEnabled}
-                  onChange={setSetupBrewGuideEnabled}
-                  label="Brew Guide"
-                />
-              </div>
-            </div>
-            <div className="space-y-3">
-              {GRINDER_SETUP_OPTIONS.map((option, index) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => handleSaveGrinderSetup(option.id, { brewGuideEnabled: setupBrewGuideEnabled })}
-                  className={`w-full font-bold py-4 rounded-xl text-sm transition-colors ${
-                    index === 0
-                      ? 'bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110]'
-                      : 'bg-[#211e1a] hover:bg-[#2e2b26] text-[#f5f2eb] border border-[#2e2b26]'
-                  }`}
-                >
-                  {option.setupCardLabel}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      <FirstLaunchWizard
+        ui={ui}
+        grinderPickerValue={setupGrinderPickerValue}
+        onGrinderPickerChange={setSetupGrinderPickerValue}
+        customGrinderDraft={setupCustomGrinderDraft}
+        onCustomGrinderDraftChange={setSetupCustomGrinderDraft}
+        smartScaleDeviceId={setupSmartScaleDeviceId}
+        onSmartScaleChange={setSetupSmartScaleDeviceId}
+        useSmartScale={setupUseSmartScale}
+        onUseSmartScaleChange={setSetupUseSmartScale}
+        setupFlairEnabled={setupFlairEnabled}
+        onSetupFlairChange={setSetupFlairEnabled}
+        setupPreInfusionEnabled={setupPreInfusionEnabled}
+        onSetupPreInfusionChange={setSetupPreInfusionEnabled}
+        setupBrewGuideEnabled={setupBrewGuideEnabled}
+        onSetupBrewGuideChange={setSetupBrewGuideEnabled}
+        onComplete={() => { void handleFinishFirstLaunch(); }}
+      />
     );
   }
 
@@ -1279,7 +1691,7 @@ export default function App() {
     <div className={`min-h-screen ${ui.page} relative`}>
       
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
-      {timerRunning && !brewTimerHost && (
+      {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
         <div
           className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           onClick={handleTimerSurfaceTap}
@@ -1289,9 +1701,9 @@ export default function App() {
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${timerRunning ? 'bg-[#3dd68c] animate-pulse' : 'bg-[#5a5754]'}`} />
               <span className="text-[11px] tracking-[0.14em] font-semibold text-[#9a9690] uppercase">
-                {usePreInfusion && preInfusionPhase
+                {timerUsePreInfusion && preInfusionPhase
                   ? 'Pre-infusion'
-                  : usePreInfusion
+                  : timerUsePreInfusion
                     ? `Extraction · pre ${preInfusionSeconds.toFixed(1)}s`
                     : 'Extracting'}
               </span>
@@ -1310,11 +1722,25 @@ export default function App() {
           <div className="flex-1 flex flex-col items-center justify-center px-5 min-h-0 pointer-events-none">
             {flairEnabled && activeRecipe?.flairProfile && (
               <div className="w-full max-w-sm mb-6 opacity-35">
-                <PressureProfileChart profile={activeRecipe.flairProfile} progress={timerProgress} compact />
+                <PressureProfileChart
+                  profile={activeRecipe.flairProfile}
+                  progress={timerProgress}
+                  compact
+                  liveFlowSamples={scaleLiveFlowOnProfile}
+                  flowTimeOffsetSec={flowChartTimeOffsetSec}
+                  scaleConnected={timemoreScale.isConnected}
+                  extractionElapsedS={scaleExtractionElapsedS}
+                  liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
+                  targetTimeMaxS={activeRecipe?.targetTimeMaxS}
+                  targetYieldG={activeRecipe?.targetYieldG}
+                  timerRunning={timerRunning}
+                  timerUsePreInfusion={timerUsePreInfusion}
+                  preInfusionPhase={preInfusionPhase}
+                />
               </div>
             )}
 
-            {usePreInfusion && !preInfusionPhase && (
+            {timerUsePreInfusion && !preInfusionPhase && (
               <div className="flex flex-wrap gap-2 justify-center mb-4">
                 <span className="px-3 py-1.5 rounded-full bg-[#1e1e1e] border border-[#262626] text-[11px] text-[#6b6457]">
                   Total <span className="text-[#f5f2eb] font-semibold tabular-nums">{timerSeconds.toFixed(1)}s</span>
@@ -1327,15 +1753,25 @@ export default function App() {
 
             <div
               className={`text-[clamp(3.75rem,20vw,5.25rem)] font-bold tabular-nums tracking-[-0.06em] leading-[0.9] ${
-                usePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#ede9e3]'
+                timerUsePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#ede9e3]'
               }`}
             >
-              {formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
+              {formatTimerLive(timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
             </div>
+            {scaleShowLiveReadout && (
+              <p className="text-[15px] text-[#c88a4b] font-semibold tabular-nums mt-3 text-center">
+                {scaleLiveReadoutG.toFixed(1)}g
+                {scaleShowFlow && (
+                  <span className="text-[#8a9d72] font-medium ml-2">
+                    · {timemoreScale.instantFlowGs.toFixed(2)} g/s
+                  </span>
+                )}
+              </p>
+            )}
             <p className="text-[13px] text-[#6b6457] mt-4 text-center">
-              {usePreInfusion && preInfusionPhase
+              {timerUsePreInfusion && preInfusionPhase
                 ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
-                : usePreInfusion
+                : timerUsePreInfusion
                   ? `Total ${timerSeconds.toFixed(1)}s · extraction`
                   : 'Total extraction time'}
             </p>
@@ -1350,13 +1786,13 @@ export default function App() {
             </div>
 
             <p className="text-center text-[11px] text-[#4a4846] pointer-events-none">
-              {usePreInfusion && preInfusionPhase
+              {timerUsePreInfusion && preInfusionPhase
                 ? 'Tap anywhere to end pre-infusion'
                 : 'Tap anywhere to stop and fill shot time'}
             </p>
 
             <div className="flex flex-col gap-3 pointer-events-auto">
-              {usePreInfusion && preInfusionPhase ? (
+              {timerUsePreInfusion && preInfusionPhase ? (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleEndPreInfusion(); }}
@@ -1438,12 +1874,8 @@ export default function App() {
                   <div className="flex justify-between items-start gap-2 flex-wrap">
                     <div className="flex-1 min-w-0">
                       <select
-                        value={activeBean?.id || ''}
-                        onChange={(e) => {
-                          const beanId = e.target.value;
-                          setSelectedBeanId(beanId);
-                          prefillDoseFromRecipe(recipes.find((r) => r.beanId === beanId));
-                        }}
+                        value={effectiveBeanId}
+                        onChange={(e) => selectActiveBean(e.target.value)}
                         className={`bg-transparent ${ui.text} font-bold text-base focus:outline-none w-full truncate`}
                       >
                         {activeBeansList.map(b => (
@@ -1514,12 +1946,25 @@ export default function App() {
                     <div className={`pt-3 border-t ${ui.headerBorder} space-y-3`}>
                       <div className="flex items-end justify-between gap-2">
                         <p className={`text-[10px] uppercase tracking-wider ${ui.muted}`}>Pressure profile</p>
-                        <button type="button" onClick={() => setActiveTab('beans')} className={`text-[10px] ${ui.accentText} font-semibold`}>
+                        <button type="button" onClick={handleEditOnBeansFromDial} className={`text-[10px] ${ui.accentText} font-semibold`}>
                           Edit on Beans
                         </button>
                       </div>
                       <div className={`${ui.cardInset} rounded-xl px-3 py-2`}>
-                        <PressureProfileChart profile={activeRecipe.flairProfile} />
+                        <PressureProfileChart
+                          profile={activeRecipe.flairProfile}
+                          progress={timerRunning ? timerProgress : null}
+                          liveFlowSamples={scaleLiveFlowOnProfile}
+                          flowTimeOffsetSec={flowChartTimeOffsetSec}
+                          scaleConnected={timemoreScale.isConnected}
+                          extractionElapsedS={scaleExtractionElapsedS}
+                          liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
+                          targetTimeMaxS={activeRecipe?.targetTimeMaxS}
+                          targetYieldG={activeRecipe?.targetYieldG}
+                          timerRunning={timerRunning}
+                          timerUsePreInfusion={timerUsePreInfusion}
+                          preInfusionPhase={preInfusionPhase}
+                        />
                       </div>
                     </div>
                   )}
@@ -1556,21 +2001,13 @@ export default function App() {
                   {dynamicRec?.previousRecipeDisclaimer && (
                     <p className={`text-[10px] ${ui.muted} leading-relaxed`}>{dynamicRec.previousRecipeDisclaimer}</p>
                   )}
-                  {(dynamicRec?.reason || dynamicRec?.originalReason) && (
-                    <p className={`text-sm ${ui.sub} leading-relaxed`}>
-                      {(() => {
-                        const text = dynamicRec.reason || dynamicRec.originalReason;
-                        if (isNicheZeroGrinderModel(grinderModel)) return text;
-                        return text.includes('—')
-                          ? text.split('—').slice(1).join('—').trim() || text
-                          : text;
-                      })()}
-                    </p>
+                  {grindRecommendationSummary && (
+                    <p className={`text-sm ${ui.sub} leading-relaxed`}>{grindRecommendationSummary}</p>
                   )}
-                  {recommendationEvidenceContext && (
+                  {recommendationEvidenceContext && !nicheLearningBlocksEvidence && (
                     <p className={`text-[10px] ${ui.muted}`}>{recommendationEvidenceContext}</p>
                   )}
-                  {dynamicRec?.nicheLearningNote && (
+                  {dynamicRec?.nicheLearningNote && !dynamicRec?.outlierGrindHeld && (
                     <p className={`text-[10px] ${ui.muted} leading-relaxed`}>{dynamicRec.nicheLearningNote}</p>
                   )}
                   {dynamicRec?.nicheEmpiricalValidationNote && (
@@ -1604,6 +2041,12 @@ export default function App() {
                   )}
                   {dynamicRec?.subRecommendation && (
                     <p className={`text-xs ${ui.sub}`}>{dynamicRec.subRecommendation}</p>
+                  )}
+
+                  {applyRecConfirmation && (
+                    <p className={`text-xs font-semibold ${ui.accentText}`} role="status">
+                      {applyRecConfirmation}
+                    </p>
                   )}
 
                   <div className={`flex items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
@@ -1646,7 +2089,7 @@ export default function App() {
                       timeMaxS: activeRecipe?.targetTimeMaxS,
                       brewTemperatureC: activeRecipe?.brewTemperatureC,
                       grinderModel,
-                      grindLabel: recommendedGrindDisplay,
+                      grindLabel: recommendedGrindDisplay || currentGrindLabel,
                       previousGrindLabel,
                     }}
                     onOpenFullGuide={() => setActiveTab('brew')}
@@ -1668,9 +2111,19 @@ export default function App() {
 
                   <div className={`${ui.card} p-5 rounded-2xl space-y-4`}>
                     <div className="flex items-center justify-between gap-4">
-                      <div>
+                      <div className="min-w-0">
                         <p className={`text-[10px] uppercase tracking-widest ${ui.muted} mb-2`}>Live shot timer</p>
                         <span className="text-4xl font-black font-mono text-[#f5f2eb] tabular-nums">{formatTime(timerSeconds)}</span>
+                        {scaleShowLiveReadout && (
+                          <p className={`text-sm font-semibold tabular-nums mt-1 ${ui.accentText}`}>
+                            {scaleLiveReadoutG.toFixed(1)}g
+                            {scaleShowFlow && (
+                              <span className={`${ui.muted} font-medium ml-2`}>
+                                {timemoreScale.instantFlowGs.toFixed(2)} g/s
+                              </span>
+                            )}
+                          </p>
+                        )}
                       </div>
                       <div className="flex gap-2 shrink-0">
                         <button type="button" onClick={handleStartTimer} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
@@ -1681,6 +2134,20 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+                    {scaleFeatureEnabled && (
+                      <ScaleTimerControls
+                        ui={ui}
+                        simAllowed={timemoreScale.simAllowed}
+                        bleAvailable={timemoreScale.bleAvailable}
+                        transportKind={timemoreScale.transportKind}
+                        onTransportKindChange={timemoreScale.setTransportKind}
+                        connectStatus={timemoreScale.connectStatus}
+                        isConnected={timemoreScale.isConnected}
+                        onConnect={timemoreScale.connect}
+                        onDisconnect={timemoreScale.disconnect}
+                        onTare={timemoreScale.tare}
+                      />
+                    )}
                     <p className="text-[10px] text-[#6b6457]">Fullscreen timer: tap anywhere to end pre-infusion, then tap again to stop.</p>
                   </div>
 
@@ -1693,13 +2160,16 @@ export default function App() {
 
                     <GrinderGrindControls
                       grinderModel={grinderModel}
+                      settings={appSettings}
                       setteMacro={setteMacro}
                       setteMicro={setteMicro}
                       sunbeamSetting={sunbeamSetting}
                       nicheZeroSetting={nicheZeroSetting}
+                      customGrindValue={customGrindValue}
                       onSetteMacroChange={handleSetteMacroChange}
                       onSetteMicroChange={handleSetteMicroChange}
                       onSunbeamChange={handleSunbeamChange}
+                      onCustomGrindChange={handleCustomGrindChange}
                       onNicheZeroChange={handleNicheZeroChange}
                       ui={ui}
                     />
@@ -1908,8 +2378,9 @@ export default function App() {
               targetTimeMaxS: activeRecipe?.targetTimeMaxS,
               brewTemperatureC: activeRecipe?.brewTemperatureC,
               grinderModel,
-              grindLabel: recommendedGrindDisplay,
+              grindLabel: recommendedGrindDisplay || currentGrindLabel,
               previousGrindLabel,
+              flairEnabled,
             })}
           />
         )}
@@ -1976,11 +2447,20 @@ export default function App() {
                   <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Roast Date</label>
                   <input
                     type="date"
-                    required
                     value={newBean.roastDate}
-                    onChange={(e) => setNewBean({ ...newBean, roastDate: e.target.value })}
-                    className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
+                    onChange={(e) => {
+                      setNewBean({ ...newBean, roastDate: e.target.value });
+                      if (e.target.value) setBeanFieldErrors((prev) => ({ ...prev, roastDate: '' }));
+                    }}
+                    aria-invalid={Boolean(beanFieldErrors.roastDate)}
+                    aria-describedby={beanFieldErrors.roastDate ? 'roast-date-error' : undefined}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm ${beanFieldErrors.roastDate ? 'border-[rgba(180,60,60,0.55)]' : ''}`}
                   />
+                  {beanFieldErrors.roastDate && (
+                    <p id="roast-date-error" className="text-[11px] text-[#d08080] mt-1 font-semibold">
+                      {beanFieldErrors.roastDate}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Storage Method</label>
@@ -2053,15 +2533,15 @@ export default function App() {
                 <h3 className={`${ui.sectionTitle} mb-3`}>Target recipe profile</h3>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   {[
-                    { label: 'Target dose', key: 'targetDoseG', value: newRecipe.targetDoseG, suffix: 'g', parse: (v) => parseFloat(v) },
-                    { label: 'Yield', key: 'targetYieldG', value: newRecipe.targetYieldG, suffix: 'g', parse: (v) => v },
+                    { label: 'Target dose', key: 'targetDoseG', value: newRecipe.targetDoseG, suffix: 'g', parse: parseRecipeFloatField },
+                    { label: 'Yield', key: 'targetYieldG', value: newRecipe.targetYieldG, suffix: 'g', parse: parseRecipeFloatField },
                   ].map((field) => (
                     <div key={field.key} className={ui.metricCell}>
                       <span className={`${ui.fieldLabel} block mb-1`}>{field.label}</span>
                       <input
                         type="number"
                         step="0.1"
-                        value={field.value}
+                        value={recipeFieldDisplayValue(field.value)}
                         onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: field.parse(e.target.value) })}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                       />
@@ -2078,8 +2558,8 @@ export default function App() {
                       <span className={`${ui.fieldLabel} block mb-1`}>{field.label}</span>
                       <input
                         type="number"
-                        value={field.value}
-                        onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: parseInt(e.target.value, 10) })}
+                        value={recipeFieldDisplayValue(field.value)}
+                        onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: parseRecipeIntField(e.target.value) })}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                       />
                       <span className={`text-[9px] ${ui.muted} text-center block`}>s</span>
@@ -2091,8 +2571,8 @@ export default function App() {
                     <span className={`${ui.fieldLabel} block mb-1`}>Brew temp</span>
                     <input
                       type="number"
-                      value={newRecipe.brewTemperatureC || ''}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, brewTemperatureC: parseInt(e.target.value, 10) })}
+                      value={recipeFieldDisplayValue(newRecipe.brewTemperatureC)}
+                      onChange={(e) => setNewRecipe({ ...newRecipe, brewTemperatureC: parseRecipeIntField(e.target.value) })}
                       className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                     />
                     <span className={`text-[9px] ${ui.muted} text-center block`}>°C</span>
@@ -2102,58 +2582,131 @@ export default function App() {
                   </div>
                 </div>
 
-                {flairEnabled && (
-                  <div className={`pt-4 mt-2 border-t ${ui.modalDivider}`}>
-                    <h3 className={`${ui.sectionTitle} mb-3`}>Flair pressure profile</h3>
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <div>
-                        <span className={`text-[10px] ${subTextClass}`}>Pre-infuse Pressure (bar)</span>
-                        <input
-                          type="number" step="0.1"
-                          value={newRecipe.flairProfile?.preinfusionPressure || ''}
-                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionPressure: e.target.value } })}
-                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                        />
+                {flairEnabled && (() => {
+                  const preEndTrigger = newRecipe.flairProfile?.preinfusionEndTrigger || 'manual';
+                  const taperStartTrig = newRecipe.flairProfile?.taperStartTrigger || 'weight';
+                  const showPeakEndYield =
+                    !scaleFeatureEnabled || taperStartTrig === 'weight';
+                  return (
+                  <div ref={flairPressureProfileRef} className={`pt-4 mt-2 border-t ${ui.modalDivider} space-y-3`}>
+                    <h3 className={`${ui.sectionTitle}`}>Flair pressure profile</h3>
+
+                    <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-wide ${ui.accentText}`}>Pre-infusion</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="min-w-0">
+                          <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Pressure (bar)</span>
+                          <input
+                            type="number" step="0.1"
+                            value={newRecipe.flairProfile?.preinfusionPressure || ''}
+                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionPressure: e.target.value } })}
+                            className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>End trigger</span>
+                          <select
+                            value={preEndTrigger}
+                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionEndTrigger: e.target.value } })}
+                            className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                          >
+                            <option value="manual">Manual</option>
+                            <option value="time">Time</option>
+                            {scaleFeatureEnabled && <option value="weight">Weight</option>}
+                          </select>
+                        </div>
+                        {preEndTrigger === 'time' && (
+                          <div className="min-w-0 col-span-2 sm:col-span-1">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Time (s)</span>
+                            <input
+                              type="number" step="0.1"
+                              value={newRecipe.flairProfile?.preinfusionTime || ''}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionTime: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            />
+                          </div>
+                        )}
+                        {preEndTrigger === 'weight' && scaleFeatureEnabled && (
+                          <div className="min-w-0 col-span-2 sm:col-span-1">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>End at (g)</span>
+                            <input
+                              type="number" step="0.1"
+                              value={newRecipe.flairProfile?.preinfusionEndWeightG || ''}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionEndWeightG: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            />
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <span className={`text-[10px] ${subTextClass}`}>Pre-infuse Time (s)</span>
-                        <input
-                          type="number" step="0.1"
-                          value={newRecipe.flairProfile?.preinfusionTime || ''}
-                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionTime: e.target.value } })}
-                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                        />
+                    </div>
+
+                    <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-wide ${ui.accentText}`}>Peak / hold</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="min-w-0">
+                          <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Pressure (bar)</span>
+                          <input
+                            type="number" step="0.1"
+                            value={newRecipe.flairProfile?.peakPressure || ''}
+                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, peakPressure: e.target.value } })}
+                            className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                          />
+                        </div>
+                        {showPeakEndYield && (
+                          <div className="min-w-0">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Peak ends at (g)</span>
+                            <input
+                              type="number" step="0.1"
+                              value={newRecipe.flairProfile?.peakEndYield || ''}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, peakEndYield: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            />
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <span className={`text-[10px] ${subTextClass}`}>Peak/Hold Pressure (bar)</span>
-                        <input
-                          type="number" step="0.1"
-                          value={newRecipe.flairProfile?.peakPressure || ''}
-                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, peakPressure: e.target.value } })}
-                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                        />
-                      </div>
-                      <div>
-                        <span className={`text-[10px] ${subTextClass}`}>Peak Ends at Yield (g)</span>
-                        <input
-                          type="number" step="0.1"
-                          value={newRecipe.flairProfile?.peakEndYield || ''}
-                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, peakEndYield: e.target.value } })}
-                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                        />
-                      </div>
-                      <div>
-                        <span className={`text-[10px] ${subTextClass}`}>Taper Pressure (bar)</span>
-                        <input
-                          type="number" step="0.1"
-                          value={newRecipe.flairProfile?.taperPressure || ''}
-                          onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperPressure: e.target.value } })}
-                          className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                        />
+                    </div>
+
+                    <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-wide ${ui.accentText}`}>Taper</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="min-w-0">
+                          <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Pressure (bar)</span>
+                          <input
+                            type="number" step="0.1"
+                            value={newRecipe.flairProfile?.taperPressure || ''}
+                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperPressure: e.target.value } })}
+                            className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                          />
+                        </div>
+                        {scaleFeatureEnabled && (
+                          <div className="min-w-0">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Start trigger</span>
+                            <select
+                              value={taperStartTrig}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperStartTrigger: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            >
+                              <option value="weight">Yield (g)</option>
+                              <option value="time">Time (s)</option>
+                            </select>
+                          </div>
+                        )}
+                        {scaleFeatureEnabled && taperStartTrig === 'time' && (
+                          <div className="min-w-0 col-span-2 sm:col-span-1">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Start at (s)</span>
+                            <input
+                              type="number" step="0.1"
+                              value={newRecipe.flairProfile?.taperStartTimeS || ''}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperStartTimeS: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
 
               <button
@@ -2248,7 +2801,7 @@ export default function App() {
             ) : (
               filteredShots.map(s => {
                 const bean = beans.find(b => b.id === s.beanId);
-                const grindStr = formatShotGrindForHistory(s);
+                const grindStr = formatShotGrindForHistory(s, appSettings);
                 const recipeForShot = recipes.find(r => r.beanId === s.beanId);
                 const minT = recipeForShot?.targetTimeMinS || 27;
                 const maxT = recipeForShot?.targetTimeMaxS || 32;
@@ -2289,10 +2842,26 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => handleToggleShotLearningExclusion(s)}
-                          className={`text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${s.excludeFromLearning ? 'bg-[rgba(200,138,75,0.15)] text-[#c88a4b]' : `${ui.chip} ${ui.muted}`}`}
-                          title={s.excludeFromLearning ? 'Include in grind learning again' : 'Mark as known issue — exclude from learning'}
+                          aria-pressed={s.excludeFromLearning ? 'true' : 'false'}
+                          className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-md border ${
+                            s.excludeFromLearning
+                              ? 'bg-[rgba(200,138,75,0.12)] text-[#c88a4b] border-[rgba(200,138,75,0.35)]'
+                              : `${ui.chip} ${ui.muted} border-[rgba(255,255,255,0.18)] hover:border-[rgba(255,255,255,0.28)]`
+                          }`}
+                          title={
+                            s.excludeFromLearning
+                              ? 'Turn learning back on for this shot'
+                              : 'Mark as a known issue (puck prep, channeling, etc.) — exclude from learning'
+                          }
                         >
-                          {s.excludeFromLearning ? 'Use for learning' : 'Exclude from learning'}
+                          {s.excludeFromLearning ? (
+                            <>Include again</>
+                          ) : (
+                            <>
+                              <Flag className="w-3 h-3 shrink-0 opacity-80" aria-hidden />
+                              Mark as known issue
+                            </>
+                          )}
                         </button>
                         <button type="button" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
                           <Trash2 className="w-3.5 h-3.5" />
@@ -2314,8 +2883,23 @@ export default function App() {
                       ))}
                     </div>
 
+                    {s.scaleFlowCurve?.length > 0 && (
+                      <ScaleFlowChart
+                        flowCurve={s.scaleFlowCurve}
+                        averageFlowRateGs={s.scaleFlowRateGs}
+                        compact
+                      />
+                    )}
+
                     <div className={`flex flex-wrap items-center gap-2 text-[10px] ${ui.muted}`}>
                       {preSec && <span className="italic">Pre-infusion: {preSec}s.</span>}
+                      {s.scaleFlowCurve?.length > 0
+                        && s.scaleFlowRateGs != null
+                        && Number.isFinite(s.scaleFlowRateGs) && (
+                        <span className={`${ui.accentText} font-semibold`}>
+                          Scale flow {s.scaleFlowRateGs.toFixed(2)} g/s
+                        </span>
+                      )}
                       {(s.brewTemperatureC || recipeForShot?.brewTemperatureC) && (
                         <span className={`${ui.tempPill} px-2 py-0.5 rounded-full font-semibold`}>
                           {s.brewTemperatureC || recipeForShot?.brewTemperatureC}°C
@@ -2362,7 +2946,7 @@ export default function App() {
 
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: 'Total shots', value: totalShots },
+                { label: 'Total', value: formatShotCount(totalShots) },
                 { label: 'Target compliance', value: `${complianceRate}%` },
                 { label: 'Avg extraction', value: `${avgExtractionTime}s` },
                 { label: 'Active profiles', value: activeBeansList.length },
@@ -2447,7 +3031,7 @@ export default function App() {
                       <div key={item.label} className="space-y-1">
                         <div className="flex justify-between font-semibold">
                           <span className={subTextClass}>{item.label}</span>
-                          <span>{item.count} shots ({pct}%)</span>
+                          <span>{formatShotCount(item.count)} ({pct}%)</span>
                         </div>
                         <div className={`h-2 w-full ${ui.progressTrack} rounded-full overflow-hidden`}>
                           <div style={{ width: `${pct}%` }} className={`h-full ${item.color} transition-all duration-500`} />
@@ -2506,6 +3090,7 @@ export default function App() {
           open={activeTab === 'brew' && showBrewGuideIntro}
           onContinue={handleDismissBrewGuideIntro}
           ui={ui}
+          machineSettingsLine={brewGuideIntroMachineSettingsLine(grinderModel)}
         />
 
         {isSettingsOpen && (
@@ -2521,17 +3106,52 @@ export default function App() {
 
               <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
-                  <label className={`block ${ui.fieldLabel}`}>Primary grinder setup</label>
+                  <label className={`block ${ui.fieldLabel}`}>Primary grinder</label>
                   <select
-                    value={grinderModel}
-                    onChange={(e) => handleSaveGrinderSetup(e.target.value)}
+                    value={settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting)}
+                    onChange={(e) => { void handleSettingsGrinderPickerChange(e.target.value); }}
                     className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
                   >
-                    {GRINDER_SETUP_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>{option.settingsSelectLabel}</option>
+                    {listGrinderPickerOptions().map((option) => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
                     ))}
                   </select>
+                  {settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID && (
+                    <div className="space-y-2">
+                      <CustomGrinderForm
+                        value={settingsCustomGrinderDraft}
+                        onChange={setSettingsCustomGrinderDraft}
+                        ui={ui}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { void handleSaveCustomGrinderFromSettings(); }}
+                        disabled={!isCustomGrinderFormValid(settingsCustomGrinderDraft)}
+                        className={`w-full font-bold py-2.5 rounded-xl ${ui.secondaryBtn} disabled:opacity-40`}
+                      >
+                        Save custom grinder
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {scaleBuildEnabled && (
+                  <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
+                    <label className={`block ${ui.fieldLabel}`}>Smart scale</label>
+                    <select
+                      value={normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId)}
+                      onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
+                      className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                    >
+                      {listSmartScalePickerOptions().map((opt) => (
+                        <option key={opt.id} value={opt.id}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <p className={`text-[10px] ${ui.muted}`}>
+                      Active: {smartScaleChoiceSummary(settingsSetting)}. Manual shot logging always works.
+                    </p>
+                  </div>
+                )}
 
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <div className="flex items-center justify-between gap-3">
@@ -2551,7 +3171,7 @@ export default function App() {
                   <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
                     <div>
                       <span className={`font-bold block ${ui.text}`}>Brew Guide</span>
-                      <span className={`text-[10px] ${ui.muted}`}>Shot steps from Dial-In, plus Barista Max guides</span>
+                      <span className={`text-[10px] ${ui.muted}`}>{brewGuideSettingsToggleDetail(grinderModel)}</span>
                     </div>
                     <SettingsToggle checked={brewGuideEnabled} onChange={handleToggleBrewGuide} label="Brew Guide" />
                   </div>
@@ -2702,7 +3322,7 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v4.3
+            Espresso Dial-In • {APP_VERSION_LABEL}
           </span>
         </footer>
 

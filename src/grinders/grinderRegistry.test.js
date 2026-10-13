@@ -9,6 +9,7 @@ import {
   formatPreviousGrindLabel,
   formatRecommendedGrindDisplay,
   formatShotGrindForHistory,
+  grinderPickerValueForSettings,
   getGrinderDefinitionById,
   getRecommendationGrinderProfile,
   getShotStatsGrinderProfile,
@@ -16,6 +17,7 @@ import {
   isSetteGrinderModel,
   isSunbeamGrinderModel,
   parseGrindForShotSave,
+  resolveActiveGrinderModel,
   resolveShotStatsGrinderModel,
   setteToNumeric,
 } from './grinderRegistry.js';
@@ -71,6 +73,17 @@ function testCompatibility() {
   assert.equal(getShotStatsGrinderProfile(resolveShotStatsGrinderModel(null)).sensitivity, 1.25);
   assert.equal(getShotStatsGrinderProfile(resolveShotStatsGrinderModel('')).sensitivity, 1.25);
   assert.equal(getShotStatsGrinderProfile('Mystery').sensitivity, 4.5);
+
+  assert.equal(resolveActiveGrinderModel({}), SETTE_GRINDER_ID);
+  assert.equal(resolveActiveGrinderModel({ lastSunbeamSetting: 12 }), SUNBEAM_GRINDER_ID);
+  assert.equal(
+    resolveActiveGrinderModel({ lastSetteMacro: 13, lastSunbeamSetting: 12 }),
+    SETTE_GRINDER_ID
+  );
+  assert.equal(
+    grinderPickerValueForSettings({ lastSunbeamSetting: 12 }),
+    SUNBEAM_GRINDER_ID
+  );
 }
 
 function testPresentation() {
@@ -80,6 +93,21 @@ function testPresentation() {
   assert.equal(sunbeamDef.shortBadgeLabel, 'Sunbeam');
   assert.equal(formatShotGrindForHistory({ grinderModel: SETTE_GRINDER_ID, setteMacro: 11, setteMicro: 'B' }), '11-B');
   assert.equal(formatShotGrindForHistory({ grinderModel: SUNBEAM_GRINDER_ID, sunbeamSetting: 14 }), '14');
+
+  const customSettings = {
+    grinderModel: 'DF64',
+    customGrinder: {
+      name: 'DF64',
+      dialType: 'stepped',
+      min: 1,
+      max: 20,
+      step: 1,
+      lowerIsFiner: true,
+    },
+  };
+  const customShot = { grinderModel: 'DF64', customGrindValue: 12, sunbeamSetting: 15 };
+  assert.equal(formatShotGrindForHistory(customShot, customSettings), '12');
+  assert.equal(formatShotGrindForHistory(customShot), '12', 'legacy custom shots without settings must not fall back to Sunbeam 15');
   assert.equal(formatCurrentGrindLabel(SETTE_GRINDER_ID, { setteMacro: 13, setteMicro: 'E' }), '13-E');
   assert.equal(formatPreviousGrindLabel(SETTE_GRINDER_ID, { setteMacro: '', setteMicro: 'E' }), '');
   assert.equal(formatRecommendedGrindDisplay(SUNBEAM_GRINDER_ID, { setting: 12 }), '12');

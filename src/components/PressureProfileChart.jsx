@@ -1,4 +1,9 @@
 import { useId } from 'react';
+import {
+  flairProfileMarkerProgress,
+  flairProfileTaperStartChartProgress,
+  resolveFlairPressurePhase,
+} from '../scales/flairScaleTriggers.js';
 
 const AMBER = '#c88a4b';
 
@@ -95,8 +100,46 @@ function markerAtProgress(built, progress) {
   return { x, y, tSec };
 }
 
+const FLOW_GREEN = '#8a9d72';
+
+/**
+ * @param {{ tS: number, flowGs: number }[]} liveFlowSamples
+ * @param {ReturnType<typeof buildSmoothProfilePath>} built
+ * @param {number} flowTimeOffsetSec
+ */
+function buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec) {
+  if (!liveFlowSamples?.length || !built) return null;
+  const maxFlow = Math.max(...liveFlowSamples.map((p) => p.flowGs), 0.5);
+  const { padL, padT, chartH, chartW, totalSec } = built;
+  const xFor = (tSec) => padL + (Math.min(tSec, totalSec) / totalSec) * chartW;
+  const yForFlow = (flow) => padT + chartH - (flow / maxFlow) * chartH * 0.85;
+  const path = liveFlowSamples
+    .map((p, i) => {
+      const tSec = flowTimeOffsetSec + p.tS;
+      return `${i === 0 ? 'M' : 'L'} ${xFor(tSec).toFixed(1)} ${yForFlow(p.flowGs).toFixed(1)}`;
+    })
+    .join(' ');
+  return { path, maxFlow };
+}
+
 /** Smooth Flair-style pressure curve (display only). */
-export function PressureProfileChart({ profile, progress = null, compact = false }) {
+const PHASE_LABELS = { pre: 'PRE', peak: 'Peak', taper: 'Taper' };
+
+export function PressureProfileChart({
+  profile,
+  progress = null,
+  compact = false,
+  liveFlowSamples = null,
+  flowTimeOffsetSec = 0,
+  scaleConnected = false,
+  extractionElapsedS = 0,
+  liveRelativeWeightG = 0,
+  targetTimeMaxS,
+  targetYieldG,
+  timerRunning = false,
+  timerUsePreInfusion = false,
+  preInfusionPhase = false,
+}) {
   const gradId = useId().replace(/:/g, '');
   const w = 340;
   const h = compact ? 88 : 100;
@@ -107,11 +150,49 @@ export function PressureProfileChart({ profile, progress = null, compact = false
   const padR = 6;
   const padT = compact ? 14 : 16;
   const padB = compact ? 14 : 16;
-  const chartW = w - padL - padR;
   const chartH = h - padT - padB;
 
+  const livePhase =
+    hasData && timerRunning
+      ? resolveFlairPressurePhase({
+          profile,
+          timerRunning,
+          timerUsePreInfusion,
+          preInfusionPhase,
+          extractionElapsedS,
+          liveRelativeWeightG,
+          scaleConnected,
+          targetTimeMaxS,
+          targetYieldG,
+        })
+      : null;
+  const phaseLabel = livePhase ? PHASE_LABELS[livePhase] : null;
+
+  const taperStartProgress =
+    hasData ? flairProfileTaperStartChartProgress(built, profile, { targetYieldG }) : null;
+
+  const markerProgress =
+    progress != null && hasData
+      ? flairProfileMarkerProgress(built, {
+          timerProgress: progress,
+          scaleConnected,
+          profile,
+          extractionElapsedS,
+          liveRelativeWeightG,
+          targetTimeMaxS,
+          targetYieldG,
+        })
+      : null;
   const marker =
-    progress != null && hasData ? markerAtProgress(built, progress) : null;
+    markerProgress != null && hasData ? markerAtProgress(built, markerProgress) : null;
+  const taperMarker =
+    taperStartProgress != null && hasData
+      ? markerAtProgress(built, taperStartProgress)
+      : null;
+  const flowOverlay =
+    liveFlowSamples?.length && hasData
+      ? buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec)
+      : null;
 
   return (
     <div className={`relative w-full ${compact ? 'h-[5.5rem]' : 'h-[6.25rem]'}`}>
@@ -147,6 +228,41 @@ export function PressureProfileChart({ profile, progress = null, compact = false
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
+              {flowOverlay && (
+                <>
+                  <path
+                    d={flowOverlay.path}
+                    fill="none"
+                    stroke={FLOW_GREEN}
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity="0.9"
+                  />
+                  <text
+                    x={w - padR - 2}
+                    y={padT + (phaseLabel ? 22 : 10)}
+                    fill={FLOW_GREEN}
+                    fontSize="9"
+                    textAnchor="end"
+                    fontFamily="system-ui, sans-serif"
+                  >
+                    {flowOverlay.maxFlow.toFixed(1)} g/s
+                  </text>
+                </>
+              )}
+              {taperMarker != null && (
+                <line
+                  x1={taperMarker.x}
+                  x2={taperMarker.x}
+                  y1={padT}
+                  y2={padT + chartH}
+                  stroke={AMBER}
+                  strokeWidth="1"
+                  strokeDasharray="3 3"
+                  opacity="0.45"
+                />
+              )}
               {marker != null && (
                 <>
                   <line
@@ -160,6 +276,19 @@ export function PressureProfileChart({ profile, progress = null, compact = false
                   />
                   <circle cx={marker.x} cy={marker.y} r="3.5" fill={AMBER} stroke="#121110" strokeWidth="1" />
                 </>
+              )}
+              {phaseLabel && (
+                <text
+                  x={w - padR - 2}
+                  y={padT + 10}
+                  fill="#f5f2eb"
+                  fontSize="9"
+                  fontWeight="600"
+                  textAnchor="end"
+                  fontFamily="system-ui, sans-serif"
+                >
+                  {phaseLabel}
+                </text>
               )}
               <text x={padL + 2} y={padT + 2} fill="#5a5754" fontSize="9" fontFamily="system-ui, sans-serif">
                 {built.maxP} bar

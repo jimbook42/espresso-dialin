@@ -10,16 +10,18 @@ export function resolveRecommendationFollowedForSave({
   activeBean,
   mockDate,
   savedGrind,
+  settings = null,
 }) {
   if (!lastLearningShot?.recommendation?.recommendedSetting) {
     return null;
   }
-  const adjustedRec = getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate);
+  const adjustedRec = getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate, settings);
   const rec = adjustedRec?.recommendedSetting || lastLearningShot.recommendation.recommendedSetting;
   const matches = grindMatchesStoredRecommendation(
     lastLearningShot.grinderModel,
     savedGrind,
-    rec
+    rec,
+    settings
   );
   return matches ? true : false;
 }

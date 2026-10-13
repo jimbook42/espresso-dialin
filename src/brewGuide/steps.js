@@ -72,7 +72,24 @@ export function formatBrewAmount(value) {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
 }
 
+/** Recipe targets for Brew Guide when stored values are missing (no dial-in yield prefill). */
+export function resolveBrewGuideRecipeTargets(recipe = {}) {
+  const doseG = formatBrewAmount(recipe.targetDoseG) ?? formatBrewAmount(18);
+  const yieldG = formatBrewAmount(recipe.targetYieldG) ?? formatBrewAmount(36);
+  const timeMinS = Number.isFinite(Number(recipe.targetTimeMinS)) ? Number(recipe.targetTimeMinS) : 27;
+  const timeMaxS = Number.isFinite(Number(recipe.targetTimeMaxS)) ? Number(recipe.targetTimeMaxS) : 32;
+  const temp = formatBrewAmount(recipe.brewTemperatureC);
+  return {
+    doseG,
+    yieldG,
+    timeMinS,
+    timeMaxS,
+    brewTemperatureC: temp != null ? Number(temp) : recipe.brewTemperatureC,
+  };
+}
+
 import { getBrewGuideGrindConfig } from './grinderBrewGuide.js';
+import { isSunbeamGrinderModel } from '../grinders/grinderRegistry.js';
 
 export function brewDialIsReady(dial) {
   if (!dial?.beanName || !dial?.grinderModel || !dial?.grindLabel) return false;
@@ -166,6 +183,8 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
   const grindLabel = summary.grindLabel ?? '—';
   const grinder = summary.grinder || 'your grinder';
   const bean = summary.bean || 'your coffee';
+  const flairEnabled = Boolean(dial.flairEnabled);
+  const grinderIsSunbeamMachine = isSunbeamGrinderModel(grinder);
   const { grindSettingLabel, changedGrindPurgeExtraLine } = getBrewGuideGrindConfig(grinder);
   const changed = grindSettingChanged(dial);
   const previous = dial.previousGrindLabel ? String(dial.previousGrindLabel) : '';
@@ -176,7 +195,9 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
   const usesShaker = accessories.blindShaker;
   const groundsLeaveTheBasket = usesCup || usesShaker;
 
-  const grindLines = [`Set the ${grinder} to this.`];
+  const grindLines = [grinderIsSunbeamMachine
+    ? 'Set your grinder dial to this.'
+    : `Set your grinder to this.`];
   if (changed) {
     grindLines.push(previous
       ? `The setting changed from ${previous}. Purge a small amount of fresh beans through the grinder, then discard those grounds.`
@@ -313,37 +334,54 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     metrics: summary.metrics,
   }));
 
-  steps.push(step({
-    id: 'warmup',
-    icon: 'power',
-    title: 'Heat up',
-    lines: [
-      'Turn the machine on and let it heat.',
-      'Check there is enough water.',
-    ],
-  }));
+  if (flairEnabled) {
+    steps.push(step({
+      id: 'warmup',
+      icon: 'power',
+      title: 'Heat water',
+      lines: [
+        'Heat brew water to the temperature on your Dial-In recipe.',
+        'Preheat the Flair brew chamber and portafilter with hot water, then dry them.',
+      ],
+    }));
+  } else {
+    steps.push(step({
+      id: 'warmup',
+      icon: 'power',
+      title: 'Heat up',
+      lines: [
+        'Turn your espresso machine on and let it heat until it is ready.',
+        'Check there is enough water in the tank.',
+      ],
+    }));
 
-  steps.push(step({
-    id: 'preheat',
-    icon: 'rinse',
-    title: 'Preheat the group',
-    lines: [
-      'Lock the empty portafilter and filter basket into the group head.',
-      'Run hot water through the group head to warm the group, portafilter, and basket.',
-      'Discard the water, remove the portafilter, and dry the basket and portafilter thoroughly before adding coffee.',
-    ],
-    note: 'This is a preheat rinse with water — not an espresso shot.',
-  }));
+    steps.push(step({
+      id: 'preheat',
+      icon: 'rinse',
+      title: 'Preheat the group',
+      lines: [
+        'Lock the empty portafilter and basket into the group head.',
+        'Run hot water through the group to warm the head, portafilter, and basket.',
+        'Discard the water, remove the portafilter, and dry everything before adding coffee.',
+      ],
+      note: 'This is a preheat rinse with water — not an espresso shot.',
+    }));
 
-  steps.push(step({
-    id: 'cup',
-    icon: 'cup',
-    title: 'Warm the cup',
-    lines: [
-      'Fill the cup with hot water from the machine.',
-      'Empty it and dry it.',
-    ],
-  }));
+    steps.push(step({
+      id: 'cup',
+      icon: 'cup',
+      title: 'Warm the cup',
+      lines: grinderIsSunbeamMachine
+        ? [
+            'Fill the cup with hot water from the machine.',
+            'Empty it and dry it.',
+          ]
+        : [
+            'Warm your cup with hot water from the machine or a kettle.',
+            'Empty it and dry it.',
+          ],
+    }));
+  }
 
   steps.push(step({
     id: 'grindSetting',
@@ -402,15 +440,19 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     id: 'extract',
     kind: 'timer',
     icon: 'timer',
-    title: 'Pull the shot',
+    title: flairEnabled ? 'Pull on the Flair' : 'Pull the shot',
     highlightLabel: 'Target yield',
     highlight: `${yieldG}g`,
     stopAt,
     timeLabel: `${timeMin}–${timeMax}s`,
-    instruction: stopAt
-      ? `Lock in, cup on the scale. Stop the machine around ${stopAt}g.`
-      : `Lock in, cup on the scale. Brew toward ${yieldG}g.`,
-    note: 'The timer does not read the scale.',
+    instruction: flairEnabled
+      ? `Follow the pressure profile on Dial-In while you pull the lever. Aim for about ${yieldG}g in the cup (${timeMin}–${timeMax}s is your time window).`
+      : stopAt
+        ? `Lock in, cup on the scale. Stop brewing around ${stopAt}g.`
+        : `Lock in, cup on the scale. Brew toward ${yieldG}g.`,
+    note: flairEnabled
+      ? 'Flair is a manual lever — you control pressure and flow, not a pump timer.'
+      : 'The timer does not read the scale.',
   }));
 
   steps.push(step({
@@ -429,12 +471,17 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     id: 'clean',
     icon: 'rinse',
     title: 'Clean up',
-    lines: [
-      'Knock the puck out.',
-      'Rinse the basket and portafilter.',
-      'Rinse the group head.',
-      'Leave the machine ready for next time.',
-    ],
+    lines: flairEnabled
+      ? [
+          'Knock the puck out and rinse the basket and portafilter.',
+          'Wipe the Flair and leave it ready for next time.',
+        ]
+      : [
+          'Knock the puck out.',
+          'Rinse the basket and portafilter.',
+          'Rinse the group head.',
+          'Leave the machine ready for next time.',
+        ],
   }));
 
   steps.push(step({

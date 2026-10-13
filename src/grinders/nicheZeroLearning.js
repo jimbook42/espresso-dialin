@@ -288,6 +288,9 @@ export function buildNicheLearningTransparencyNote(
 ) {
   const { dialSpread = 0 } = diagnostics;
   if (reasonCode === 'insufficient_observations') {
+    if (recipeComparableCount >= NICHE_LEARNING_MIN_OBSERVATIONS) {
+      return null;
+    }
     if (recipeComparableCount === 0 && grinderLearningShotCount > 0) {
       return 'Dial learning needs shots logged at this recipe’s dose, yield, and target time (and Flair profile when enabled). None of your saved shots match yet.';
     }
@@ -334,7 +337,7 @@ export function recommendNicheTimingBounded(params) {
   const timeDelta = actualTime - targetMid;
   const halfWindow = Math.max((targetMax - targetMin) / 2, 1);
 
-  let shift = 0;
+  let shift;
   if (severeChoke) {
     shift = Math.min(NICHE_MAX_SINGLE_ADJUSTMENT, 2);
   } else if (!isTimeInRange && Math.abs(timeDelta) >= 0.25) {
@@ -372,7 +375,7 @@ export function buildNicheTimingBoundedReason({ recommendedDial, shift, empirica
   return `Set dial to ${recommendedDial} (${Math.abs(shift)} mark${Math.abs(shift) === 1 ? '' : 's'} ${dir}) — ${detail}.`;
 }
 
-export function buildNicheEmpiricalReason({ currentDial, recommendedDial, shift, secondsPerMark, keepGrind }) {
+export function buildNicheEmpiricalReason({ recommendedDial, shift, secondsPerMark, keepGrind }) {
   if (keepGrind) return 'KEEP GRIND — Balanced and in range.';
   const dir = shift < 0 ? 'finer (lower number)' : 'coarser (higher number)';
   const absShift = Math.abs(shift);
@@ -408,9 +411,15 @@ export function buildNicheFallbackReason({
     return `Shot was ${secOff}s slow — consider grinding coarser (higher dial number). Log more comparable shots at different dial positions to unlock numeric suggestions.`;
   }
   if (reasonCode === 'contradictory_response' || reasonCode === 'noisy_response') {
+    if (isTimeInRange && isBalancedTaste(tasteProfile) && !severeChoke) {
+      return 'KEEP GRIND — Balanced and in range.';
+    }
     return 'Comparable Niche shots disagree on how the dial affects time — keeping your current dial until the pattern is clearer.';
   }
   if (reasonCode === 'excessive_adjustment' || reasonCode === 'implausible_slope') {
+    if (isTimeInRange && isBalancedTaste(tasteProfile) && !severeChoke) {
+      return 'KEEP GRIND — Balanced and in range.';
+    }
     return 'Learned dial response looks unreliable for this recipe — keeping your current dial. Try a smaller manual change and log the result.';
   }
   if (reasonCode === 'boundary') {

@@ -2,18 +2,20 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { isPressureLabEnabled } from './config/pressureLabFlag.js'
+import { resolveAppEntry } from './appEntry.js'
 
 const root = createRoot(document.getElementById('root'))
 const pressureLabEnabled = isPressureLabEnabled()
-const isFlairPressureLabRoute =
-  window.location.hash === '#/flair-pressure-lab' ||
-  window.location.hash.startsWith('#/flair-pressure-lab?')
+const entry = resolveAppEntry({
+  hash: window.location.hash,
+  pressureLabEnabled,
+})
 
-if (isFlairPressureLabRoute && !pressureLabEnabled) {
+if (entry.clearHash) {
   window.location.hash = ''
 }
 
-if (isFlairPressureLabRoute && pressureLabEnabled) {
+if (entry.entry === 'flair-pressure-lab') {
   import('./flairPressureLab/FlairPressureLab.jsx').then(({ FlairPressureLab }) => {
     root.render(
       <StrictMode>

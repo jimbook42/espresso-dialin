@@ -45,7 +45,6 @@ export function runBrewGuidanceTests() {
   );
 
   const nine = shots(9);
-  const ten = shots(10);
   assert.equal(countLoggedShots(nine), 9);
   assert.equal(shouldShowGraduationPrompt({}, 9), false);
   assert.equal(shouldShowGraduationPrompt({}, 10), true);

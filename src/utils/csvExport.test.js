@@ -1,5 +1,11 @@
 import assert from 'assert';
-import { buildShotsCsvContent, escapeCsvField } from './csvExport.js';
+import {
+  buildShotsCsvContent,
+  buildShotsCsvRows,
+  escapeCsvField,
+  SHOT_CSV_HEADERS,
+} from './csvExport.js';
+import { formatShotGrindForHistory, parseGrindForShotSave } from '../grinders/grinderRegistry.js';
 
 export function runCsvExportTests() {
   assert.equal(escapeCsvField('plain'), '"plain"');
@@ -20,6 +26,72 @@ export function runCsvExportTests() {
       '"Oct 14, 2026, 10:00:00 AM","Brazil",""',
     ].join('\n')
   );
+
+  const shots = [
+    { id: '1', timestamp: '2026-10-01T12:00:00.000Z', beanId: 'b1', grinderModel: 'G', wasPurged: false, actualDoseG: 18, actualYieldG: 36, actualTimeS: 30, tasteProfile: 'balanced' },
+    { id: '2', timestamp: '2026-10-02T12:00:00.000Z', beanId: 'missing', grinderModel: 'G', wasPurged: true, actualDoseG: 18, actualYieldG: 34, actualTimeS: 28, tasteProfile: 'sour', notes: 'channel #1' },
+    { id: '3', timestamp: '2026-10-03T12:00:00.000Z', beanId: 'b2', grinderModel: 'G', wasPurged: false, actualDoseG: 18, actualYieldG: 35, actualTimeS: 29, tasteProfile: 'balanced', excludeFromLearning: true, knownIssueReason: 'puck_prep' },
+  ];
+  const beans = [{ id: 'b1', name: 'Ethiopia' }, { id: 'b2', name: 'Finished', isFinished: true }];
+  const exportRows = buildShotsCsvRows(shots, {
+    beans,
+    formatShotGrindForHistory: () => '15-A',
+    normalizeTasteProfile: (t) => t,
+    formatRecFollowedForCsv: () => 'Yes',
+    knownIssueReasonLabel: () => 'Puck prep issue',
+  });
+  assert.equal(exportRows.length, 3);
+  assert.equal(exportRows[1][1], 'Unknown');
+  assert.equal(exportRows[1][16], 'channel #1');
+  assert.equal(SHOT_CSV_HEADERS.length, 17);
+
+  const customSettings = {
+    grinderModel: 'DF64',
+    customGrinder: {
+      name: 'DF64',
+      dialType: 'stepped',
+      min: 1,
+      max: 20,
+      step: 1,
+      lowerIsFiner: true,
+    },
+  };
+  const customValues = [10, 12, 9, 11, 13, 10, 7, 7];
+  const customShots = customValues.map((value, index) => {
+    const parsed = parseGrindForShotSave(
+      'DF64',
+      { customGrindValue: value },
+      customSettings
+    );
+    assert.equal(parsed.ok, true);
+    return {
+      id: `c${index}`,
+      timestamp: `2026-10-${String(index + 1).padStart(2, '0')}T12:00:00.000Z`,
+      beanId: 'b1',
+      grinderModel: 'DF64',
+      customGrindValue: parsed.customGrindValue,
+      wasPurged: true,
+      actualDoseG: 18,
+      actualYieldG: 36,
+      actualTimeS: 28,
+      tasteProfile: 'balanced',
+    };
+  });
+  for (const shot of customShots) {
+    assert.equal(
+      formatShotGrindForHistory(shot, customSettings),
+      String(shot.customGrindValue),
+      'history label must use stored customGrindValue'
+    );
+  }
+  const customRows = buildShotsCsvRows(customShots, {
+    beans: [{ id: 'b1', name: 'Test' }],
+    formatShotGrindForHistory: (s) => formatShotGrindForHistory(s, customSettings),
+    normalizeTasteProfile: (t) => t,
+    formatRecFollowedForCsv: () => 'Yes',
+    knownIssueReasonLabel: () => '',
+  });
+  assert.deepEqual(customRows.map((row) => row[3]), customValues.map(String));
 
   console.log('CSV export tests passed.');
 }

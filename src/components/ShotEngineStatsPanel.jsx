@@ -1,4 +1,3 @@
-import React from 'react';
 import { getShotEngineStats, knownIssueReasonLabel } from '../utils/grinderLogic';
 
 function formatSigned(value, unit = '', digits = 1) {

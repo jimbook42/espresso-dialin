@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
   Brush,
@@ -25,6 +25,7 @@ import { BrewGuidanceSwitch } from './BrewGuidanceSwitch';
 import { CoffeeBeanIcon } from './CoffeeBeanIcon';
 import { BREW_GUIDANCE_MODES } from '../brewGuide/guidance';
 import { getBrewGuideMachinePackage } from '../brewGuide/grinderBrewGuide';
+import { isSunbeamGrinderModel } from '../grinders/grinderRegistry.js';
 import {
   BREW_ACCESSORIES,
   brewDialIsReady,
@@ -32,8 +33,6 @@ import {
   buildBrewSteps,
   normalizeBrewAccessories,
 } from '../brewGuide/steps';
-
-const BREW_GUIDE_MACHINE = getBrewGuideMachinePackage();
 
 const ACCESSORY_ICONS = {
   dosingCup: CupSoda,
@@ -278,6 +277,11 @@ export function BrewGuide({
   const [capturedTime, setCapturedTime] = useState(null);
   const [yieldInput, setYieldInput] = useState('');
 
+  const brewGuideMachine = useMemo(
+    () => getBrewGuideMachinePackage(dial?.grinderModel),
+    [dial?.grinderModel]
+  );
+  const showSunbeamMachineGuides = isSunbeamGrinderModel(dial?.grinderModel);
   const steps = buildBrewSteps(workflowAccessories, dial);
   const index = Math.min(stepIndex, Math.max(steps.length - 1, 0));
   const step = steps[index];
@@ -294,13 +298,22 @@ export function BrewGuide({
     return () => onTimerHost(false);
   }, [screen, step?.kind, onTimerHost]);
 
+  const abortRunningExtract = () => {
+    if (extractPhase !== 'running') return;
+    onResetTimer();
+    setExtractPhase('idle');
+    setCapturedTime(null);
+  };
+
   useEffect(() => {
     if (!accessoriesOpenRequest) return;
-    setSetupReturnTo(accessoriesReturnTo);
-    setDraft(normalizeBrewAccessories(accessories));
-    setScreen('setup');
-    onAccessoriesOpenHandled();
-  }, [accessoriesOpenRequest, accessoriesReturnTo, onAccessoriesOpenHandled]);
+    queueMicrotask(() => {
+      setSetupReturnTo(accessoriesReturnTo);
+      setDraft(normalizeBrewAccessories(accessories));
+      setScreen('setup');
+      onAccessoriesOpenHandled();
+    });
+  }, [accessoriesOpenRequest, accessoriesReturnTo, accessories, onAccessoriesOpenHandled]);
 
   const exitAccessorySetup = () => {
     if (setupReturnTo === 'dial') {
@@ -430,21 +443,25 @@ export function BrewGuide({
       <SectionMenu
         ui={ui}
         title="Machine settings"
-        detail={BREW_GUIDE_MACHINE.machineSettingsDetail}
+        detail={brewGuideMachine.machineSettingsDetail}
         onBack={() => setScreen('menu')}
       >
         <MenuCard
           ui={ui}
           icon={Thermometer}
           title="Brew temperature"
-          detail="88, 90, 92, 94 or 96°C. 92°C is the default."
+          detail={showSunbeamMachineGuides
+            ? '88, 90, 92, 94 or 96°C. 92°C is the default.'
+            : 'Use your machine’s menu. Many machines default around 90–93°C.'}
           onClick={() => openGuide('temperature', 'machine')}
         />
         <MenuCard
           ui={ui}
           icon={Droplets}
           title="Pre-infusion"
-          detail="Gentle, Distinct or Constant. Gentle is the default."
+          detail={showSunbeamMachineGuides
+            ? 'Gentle, Distinct or Constant. Gentle is the default.'
+            : 'Soak the puck gently before full pressure, if your machine supports it.'}
           onClick={() => openGuide('preinfusion', 'machine')}
         />
       </SectionMenu>
@@ -485,7 +502,7 @@ export function BrewGuide({
   }
 
   if (screen === 'guide') {
-    const guide = BREW_GUIDE_MACHINE.guides[guideId];
+    const guide = brewGuideMachine.guides[guideId];
     return (
       <GuideFlow
         key={guide.id}
@@ -501,9 +518,9 @@ export function BrewGuide({
       <div className="min-h-[calc(100dvh-11rem)] flex flex-col justify-center gap-6 py-2">
         <div className="space-y-2 text-center">
           <p className={ui.pageTitle}>Brew Guide</p>
-          <h2 className={`text-3xl font-black tracking-tight ${ui.text}`}>{BREW_GUIDE_MACHINE.menuTitle}</h2>
+          <h2 className={`text-3xl font-black tracking-tight ${ui.text}`}>{brewGuideMachine.menuTitle}</h2>
           <p className={`text-sm leading-relaxed ${ui.sub} max-w-md mx-auto`}>
-            {BREW_GUIDE_MACHINE.menuSubtitle}
+            {brewGuideMachine.menuSubtitle}
           </p>
         </div>
 
@@ -594,6 +611,7 @@ export function BrewGuide({
 
   const goBack = () => {
     if (step.kind === 'timer' && timerLive) resetExtract();
+    else abortRunningExtract();
     if (index === 0) setScreen('menu');
     else setStepIndex(index - 1);
   };
@@ -610,6 +628,9 @@ export function BrewGuide({
       setScreen('menu');
       onHandoff({ timeS, yieldG });
       return;
+    }
+    if (step.kind === 'timer' && extractPhase === 'running') {
+      abortRunningExtract();
     }
     if (index >= steps.length - 1) {
       setStepIndex(0);

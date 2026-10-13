@@ -309,7 +309,7 @@
       "engineStats": {
         "sensitivity": 1.25,
         "severeChoke": false,
-        "shift": -8,
+        "shift": -6,
         "shiftUnit": "micro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -319,10 +319,10 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 8 MICRO STEP(S) FINER — Shot was 9s off target midpoint.",
+      "reason": "GO 6 MICRO STEP(S) FINER — Shot was 9s off target midpoint.",
       "recommendedSetting": {
         "macro": 12,
-        "micro": "F"
+        "micro": "H"
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -339,7 +339,7 @@
       "engineStats": {
         "sensitivity": 1.25,
         "severeChoke": false,
-        "shift": -3,
+        "shift": -2,
         "shiftUnit": "micro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -349,10 +349,10 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 3 MICRO STEP(S) FINER — Shot was 3s off target midpoint.",
+      "reason": "GO 2 MICRO STEP(S) FINER — Shot was 3s off target midpoint.",
       "recommendedSetting": {
         "macro": 13,
-        "micro": "B"
+        "micro": "C"
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -497,7 +497,7 @@
         "timeDelta": 1.5,
         "yieldDelta": 0
       },
-      "evidenceContext": "Based on recent shots with this recipe",
+      "evidenceContext": "Based on 1 recent shot with this recipe",
       "flairWaterTempAdvice": null,
       "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
@@ -737,7 +737,7 @@
         "timeDelta": 0.5,
         "yieldDelta": 0
       },
-      "evidenceContext": "Based on recent shots with this recipe",
+      "evidenceContext": "Based on 1 recent shot with this recipe",
       "flairWaterTempAdvice": null,
       "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
@@ -759,7 +759,7 @@
       "engineStats": {
         "sensitivity": 1.25,
         "severeChoke": false,
-        "shift": 11,
+        "shift": 9,
         "shiftUnit": "micro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -767,12 +767,12 @@
         "timeDelta": 13.5,
         "yieldDelta": 0
       },
-      "evidenceContext": "Based on recent shots with this recipe",
+      "evidenceContext": "Based on 1 recent shot with this recipe",
       "flairWaterTempAdvice": null,
-      "reason": "GO 11 MICRO STEP(S) COARSER — Shot was 14s off target midpoint.",
+      "reason": "GO 9 MICRO STEP(S) COARSER — Shot was 14s off target midpoint.",
       "recommendedSetting": {
         "macro": 14,
-        "micro": "G"
+        "micro": "E"
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -1023,13 +1023,13 @@
         "statusLabel": null
       },
       "subRecommendation": null,
-      "warning": null
+      "warning": "A choke is usually grind; marking a known issue in History is still an option."
     },
     "calculateRecommendation/sette/slow_far": {
       "engineStats": {
         "sensitivity": 1.25,
         "severeChoke": false,
-        "shift": 8,
+        "shift": 7,
         "shiftUnit": "micro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -1039,10 +1039,10 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 8 MICRO STEP(S) COARSER — Shot was 11s off target midpoint.",
+      "reason": "GO 7 MICRO STEP(S) COARSER — Shot was 11s off target midpoint.",
       "recommendedSetting": {
         "macro": 14,
-        "micro": "D"
+        "micro": "C"
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -1059,7 +1059,7 @@
       "engineStats": {
         "sensitivity": 1.25,
         "severeChoke": false,
-        "shift": 3,
+        "shift": 2,
         "shiftUnit": "micro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -1069,10 +1069,10 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 3 MICRO STEP(S) COARSER — Shot was 4s off target midpoint.",
+      "reason": "GO 2 MICRO STEP(S) COARSER — Shot was 4s off target midpoint.",
       "recommendedSetting": {
         "macro": 13,
-        "micro": "H"
+        "micro": "G"
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -1179,7 +1179,7 @@
       "engineStats": {
         "sensitivity": 1.25,
         "severeChoke": false,
-        "shift": -6,
+        "shift": -5,
         "shiftUnit": "micro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -1189,10 +1189,10 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 6 MICRO STEP(S) FINER — Shot was 7s off target midpoint.",
+      "reason": "GO 5 MICRO STEP(S) FINER — Shot was 7s off target midpoint.",
       "recommendedSetting": {
         "macro": 12,
-        "micro": "H"
+        "micro": "I"
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -1209,7 +1209,7 @@
       "engineStats": {
         "sensitivity": 1.25,
         "severeChoke": false,
-        "shift": 10,
+        "shift": 8,
         "shiftUnit": "micro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -1219,10 +1219,10 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 10 MICRO STEP(S) COARSER — Shot was 13s off target midpoint.",
+      "reason": "GO 8 MICRO STEP(S) COARSER — Shot was 13s off target midpoint.",
       "recommendedSetting": {
         "macro": 14,
-        "micro": "F"
+        "micro": "D"
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -1697,7 +1697,7 @@
         "statusLabel": null
       },
       "subRecommendation": null,
-      "warning": null
+      "warning": "A choke is usually grind; marking a known issue in History is still an option."
     },
     "calculateRecommendation/sunbeam/slow_far": {
       "engineStats": {
@@ -1819,7 +1819,7 @@
       "engineStats": {
         "sensitivity": 4.5,
         "severeChoke": false,
-        "shift": -2,
+        "shift": -1,
         "shiftUnit": "macro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -1829,9 +1829,9 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 2 SETTING(S) FINER — Shot was 7s off target midpoint.",
+      "reason": "GO 1 SETTING(S) FINER — Shot was 7s off target midpoint.",
       "recommendedSetting": {
-        "setting": 13
+        "setting": 14
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -1848,7 +1848,7 @@
       "engineStats": {
         "sensitivity": 4.5,
         "severeChoke": false,
-        "shift": 3,
+        "shift": 2,
         "shiftUnit": "macro",
         "targetMid": 27.5,
         "targetYield": 36,
@@ -1858,9 +1858,9 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 3 SETTING(S) COARSER — Shot was 13s off target midpoint.",
+      "reason": "GO 2 SETTING(S) COARSER — Shot was 13s off target midpoint.",
       "recommendedSetting": {
-        "setting": 18
+        "setting": 17
       },
       "shotOutcome": {
         "hasYieldIssue": false,
@@ -2150,9 +2150,9 @@
       "initialSource": "bean-history",
       "setting": 15
     },
-    "getRecommendationEvidenceContext/excluded_ignored": "Based on recent shots with this recipe",
+    "getRecommendationEvidenceContext/excluded_ignored": "Based on 1 recent shot with this recipe",
     "getRecommendationEvidenceContext/none": null,
-    "getRecommendationEvidenceContext/one": "Based on recent shots with this recipe",
+    "getRecommendationEvidenceContext/one": "Based on 1 recent shot with this recipe",
     "getRecommendationEvidenceContext/three": "Based on 3 recent shots with this recipe",
     "getShotEngineStats/legacy_empty_grinder": {
       "ageOffsetNote": null,
@@ -2294,8 +2294,8 @@
       "evidenceContext": null,
       "sensitivity": 1.25,
       "severeChoke": false,
-      "shift": -6,
-      "shiftSummary": "-6 micro step(s) finer — GO 6 MICRO STEP(S) FINER — Shot was 7s off target midpoint.",
+      "shift": -5,
+      "shiftSummary": "-5 micro step(s) finer — GO 5 MICRO STEP(S) FINER — Shot was 7s off target midpoint.",
       "shiftUnit": "micro",
       "targetMid": 27.5,
       "targetYield": 36,

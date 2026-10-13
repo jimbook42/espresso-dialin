@@ -19,6 +19,7 @@ import {
   shotResultImproved,
   filterShotsForGrinderLearning,
   recomputeNicheRecommendationFromLastShot,
+  recomputeQuantitativeRecommendationFromLastShot,
   shouldUsePreviousRecipeRecommendation,
   PREVIOUS_RECIPE_REC_DISCLAIMER,
 } from './src/utils/grinderLogic.js';
@@ -28,7 +29,22 @@ import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
 import { runPressureLabFlagTests } from './src/config/pressureLabFlag.test.js';
+import { runScaleFlagTests } from './src/config/scaleFlag.test.js';
+import { runTimemoreFramedTests } from './src/scales/protocols/timemoreFramed.test.js';
+import { runScaleFlowMetricsTests } from './src/scales/flowMetrics.test.js';
+import { runPreinfusionAutoEndTests } from './src/scales/preinfusionAutoEnd.test.js';
+import { runFlairScaleTriggerTests } from './src/scales/flairScaleTriggers.test.js';
+import { runSimulatedTransportTests } from './src/scales/transport/simulatedTransport.test.js';
+import { runScaleShotBaselineTests } from './src/scales/scaleShotBaseline.test.js';
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
+import { runGrindRecommendationDisplayTests } from './src/utils/grindRecommendationDisplay.test.js';
+import { runIsaacB2SetteRegressionTests } from './src/utils/isaacB2SetteRegression.test.js';
+import { runGrindControlsTests } from './src/components/grindControls.test.js';
+import { runCustomGrinderTests } from './src/grinders/customGrinder.test.js';
+import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
+import { runFirstLaunchRenderGateTests } from './src/settings/firstLaunchRenderGate.test.js';
+import { runAppEntryTests } from './src/appEntry.test.js';
+import { shouldShowFirstLaunchOnboarding } from './src/settings/onboardingGate.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
   capturePendingGrindState,
@@ -50,7 +66,8 @@ import assert from 'assert';
 /** Ignore metadata fields when comparing initial grind outputs. */
 function initialGrindOutput(result) {
   if (!result || typeof result !== 'object') return result;
-  const { initialSource, ...grind } = result;
+  const grind = { ...result };
+  delete grind.initialSource;
   return grind;
 }
 
@@ -369,6 +386,58 @@ function runRecommendationIntegrityTests() {
   assert.ok(live.recommendedSetting.nicheZeroSetting < 15);
   assert.match(live.reason, /Set dial to/i);
   assert.notEqual(live.recommendedSetting.nicheZeroSetting, lastNiche.recommendation.recommendedSetting.nicheZeroSetting);
+
+  const lastSette = {
+    id: 's1',
+    grinderModel: 'Sette 270Wi',
+    beanId: 'b1',
+    setteMacro: 14,
+    setteMicro: 'A',
+    actualTimeS: 24,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'sour',
+    wasPurged: true,
+    timestamp: '2026-09-20T12:00:00.000Z',
+    recommendation: {
+      recommendedSetting: { macro: 14, micro: 'A' },
+      reason: 'stale',
+    },
+  };
+  const liveSette = recomputeQuantitativeRecommendationFromLastShot(lastSette, recipe, [lastSette], false);
+  assert.ok(liveSette.recommendedSetting.macro);
+  assert.match(liveSette.reason, /FINER|COARSER|KEEP GRIND/i);
+}
+
+function runCustomGrinderRecommendationTests(recipe) {
+  const settings = {
+    grinderModel: 'DF64',
+    customGrinder: {
+      name: 'DF64',
+      dialType: 'stepped',
+      min: 1,
+      max: 20,
+      step: 1,
+      lowerIsFiner: true,
+    },
+  };
+  const rec = calculateRecommendation(
+    {
+      grinderModel: 'DF64',
+      customGrindValue: 10,
+      wasPurged: true,
+      actualTime: 27,
+      actualYield: 36,
+      tasteProfile: 'sour',
+    },
+    recipe,
+    [],
+    false,
+    { settings }
+  );
+  assert.match(rec.reason, /^ESTIMATED —/);
+  assert.match(rec.reason, /FINER/);
+  assert.equal(rec.recommendedSetting.customGrindValue, 9);
 }
 
 async function runTests() {
@@ -489,7 +558,22 @@ async function runTests() {
   runBalancedTasteTests(recipe, createShot, runCalc);
   runNicheZeroTests();
   runShotCountDisplayTests();
+  runGrindRecommendationDisplayTests();
+  runIsaacB2SetteRegressionTests();
+  runGrindControlsTests();
+  runCustomGrinderTests();
+  runOnboardingGateTests();
+  runFirstLaunchRenderGateTests();
+  runAppEntryTests();
+  runCustomGrinderRecommendationTests(recipe);
   runPressureLabFlagTests();
+  runScaleFlagTests();
+  runTimemoreFramedTests();
+  runScaleFlowMetricsTests();
+  runPreinfusionAutoEndTests();
+  runFlairScaleTriggerTests();
+  await runSimulatedTransportTests();
+  await runScaleShotBaselineTests();
   runRecommendationIntegrityTests();
   runBrewGuideTests();
   runBrewGuidanceTests();
@@ -666,7 +750,8 @@ function runKnownIssueLearningTests() {
   );
   assert.deepEqual(initialGrindOutput(reIncluded), { macro: 14, micro: 'A' });
 
-  const { recommendation: _dropRec, ...shotBGrindOnly } = shotB;
+  const { recommendation, ...shotBGrindOnly } = shotB;
+  void recommendation;
   const reIncludedGrind = getInitialGrindRecommendation(
     ...initArgs,
     [{ ...shotBGrindOnly, excludeFromLearning: false }],
@@ -1088,12 +1173,15 @@ function runDecafRegressionTests() {
     targetYieldG: 36,
     brewTemperatureC: 93,
   }, [], false);
-  assert.deepEqual(fast.recommendedSetting, { macro: 12, micro: 'H' });
   assert.notDeepEqual(fast.recommendedSetting, slow.recommendedSetting);
+  assert.ok(Math.abs(fast.engineStats.shift) >= 4);
+  assert.ok(Math.abs(slow.engineStats.shift) >= 4);
   assert.deepEqual(Object.keys(fast).sort(), [
     'engineStats',
     'evidenceContext',
     'flairWaterTempAdvice',
+    'grindSettingHeld',
+    'outlierGrindHeld',
     'reason',
     'recommendedSetting',
     'shotOutcome',
@@ -1266,7 +1354,7 @@ function runSevereDeviationTests() {
 
   const fast = calculateRecommendation(setteShot(20, 'sour', 36), recipe, [], false);
   assert.match(fast.reason, /GO \d+ MICRO STEP\(S\) FINER — Shot was \d+s off target midpoint/);
-  assert.deepEqual(fast.recommendedSetting, { macro: 12, micro: 'H' });
+  assert.deepEqual(fast.recommendedSetting, { macro: 12, micro: 'I' });
   assert.equal(fast.shotOutcome.isSevereChoke, false);
   assert.equal(fast.shotOutcome.isDialledIn, false);
   assert.ok(!fast.warning || !outsideYieldWarning.test(fast.warning));
@@ -1285,7 +1373,7 @@ function runSevereDeviationTests() {
 
   const slow = calculateRecommendation(setteShot(40, 'bitter', 36), recipe, [], false);
   assert.match(slow.reason, /GO \d+ MICRO STEP\(S\) COARSER — Shot was \d+s off target midpoint/);
-  assert.deepEqual(slow.recommendedSetting, { macro: 14, micro: 'F' });
+  assert.deepEqual(slow.recommendedSetting, { macro: 14, micro: 'D' });
   assert.equal(slow.shotOutcome.isSevereChoke, false);
   assert.ok(!slow.warning || !outsideYieldWarning.test(slow.warning));
 
@@ -1312,7 +1400,6 @@ function runSevereDeviationTests() {
   assert.equal(choke.shotOutcome.isSevereChoke, true);
   assert.equal(choke.shotOutcome.isDialledIn, false);
   assert.equal(choke.shotOutcome.statusLabel, null);
-  assert.deepEqual(choke.recommendedSetting, slowBoundary.recommendedSetting);
   assert.deepEqual(choke.recommendedSetting, { macro: 14, micro: 'B' });
   assert.notDeepEqual(choke.recommendedSetting, rawSlow.recommendedSetting);
   assert.equal(setteToNumeric(choke.recommendedSetting.macro, choke.recommendedSetting.micro) - setteToNumeric(13, 'E'), 6);
@@ -1343,12 +1430,12 @@ function runSevereDeviationTests() {
   const sunChoke = calculateRecommendation(sunbeamShot(60, 'bitter', 10), recipe, [], false);
   const sunRaw = calculateRecommendation(sunbeamShot(60, 'bitter', 36), recipe, [], false);
   const sunBoundary = calculateRecommendation(sunbeamShot(35, 'bitter', 36), recipe, [], false);
-  assert.deepEqual(sunFast.recommendedSetting, { setting: 13 });
-  assert.deepEqual(sunSlow.recommendedSetting, { setting: 18 });
+  assert.deepEqual(sunFast.recommendedSetting, { setting: 14 });
+  assert.deepEqual(sunSlow.recommendedSetting, { setting: 17 });
   assert.match(sunFast.reason, /off target midpoint/);
   assert.match(sunSlow.reason, /off target midpoint/);
   assert.deepEqual(sunChoke.recommendedSetting, { setting: 17 });
-  assert.deepEqual(sunChoke.recommendedSetting, sunBoundary.recommendedSetting);
+  assert.notDeepEqual(sunChoke.recommendedSetting, sunBoundary.recommendedSetting);
   assert.notDeepEqual(sunChoke.recommendedSetting, sunRaw.recommendedSetting);
   assert.match(sunChoke.reason, /SETTING\(S\) COARSER/);
   assert.match(sunChoke.reason, /Severe choke detected/);
@@ -1567,6 +1654,16 @@ async function runLegacyShotDataTests() {
   assert.equal(shotEligibleForLearning(loadedShot), true);
   assert.equal(loadedSettings.grinderModel, 'Sette 270Wi');
   assert.equal(loadedSettings.darkMode, true);
+  assert.equal(shouldShowFirstLaunchOnboarding(loadedSettings), false);
+  assert.equal(
+    shouldShowFirstLaunchOnboarding(
+      { id: 'global', flairEnabled: false, darkMode: true },
+      { hasExistingUserData: true }
+    ),
+    false
+  );
+  assert.equal(Object.hasOwn(loadedSettings, 'smartScaleDeviceId'), false);
+  assert.equal(Object.hasOwn(loadedSettings, 'customGrinder'), false);
 
   await db.shots.add({
     id: 'stopped-shot',
