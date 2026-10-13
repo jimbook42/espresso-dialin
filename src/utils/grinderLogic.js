@@ -45,7 +45,8 @@ import {
 } from './learningShotIdentity.js';
 import {
   buildOutlierRecommendationReason,
-  dampQuantitativeShift,
+  applyGrindShiftDamping,
+  proportionalGrindShiftFromTimeDelta,
   detectLikelyShotOutlier,
   filterComparableShotsForNicheLearning,
   grindNumericFromShotData,
@@ -883,21 +884,24 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     let nicheLearningNote = null;
     let nicheEmpiricalValidationNote = null;
 
-    const { confidence: nicheStepConfidence } = sensitivityConfidenceForQuantitativeGrinder(
+    const nicheSensitivity = sensitivityConfidenceForQuantitativeGrinder(
       comparableForLearning,
       grinderModel,
       recipe,
       settings
     );
+    const nicheStepConfidence = nicheSensitivity.confidence;
+    const nicheDampingOptions = {
+      isOutlier: outlierCheck.isOutlier,
+      confidence: nicheStepConfidence,
+      reliableLearnedSensitivity: nicheSensitivity.reliableLearnedSensitivity,
+    };
 
     if (empirical.ok) {
       recommendedDial = empirical.recommendedDial;
       let rawShift = empirical.shift ?? recommendedDial - currentDial;
       if (!empirical.keepGrind && rawShift !== 0) {
-        rawShift = dampQuantitativeShift(rawShift, nicheStepConfidence, {
-          isOutlier: outlierCheck.isOutlier,
-          secondsOffMidpoint: Math.abs(timeDelta),
-        });
+        rawShift = applyGrindShiftDamping(rawShift, nicheDampingOptions);
         recommendedDial = Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, currentDial + rawShift)) * 10) / 10;
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
       } else {
@@ -912,7 +916,10 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         secondsPerMark: empirical.secondsPerMark,
         keepGrind: empirical.keepGrind || shift === 0,
       });
-      if (outlierCheck.isOutlier) {
+      if (
+        outlierCheck.isOutlier
+        && !(isTimeInRange && isBalancedTaste(tasteProfile) && shift === 0)
+      ) {
         reason = buildOutlierRecommendationReason({
           baseReason: shift === 0 ? 'KEEP GRIND — Balanced and in range.' : reason,
           outlierDetail: outlierCheck.detail,
@@ -939,10 +946,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
       let usedTimingBounded = false;
       if (timingBounded.ok) {
-        shift = dampQuantitativeShift(timingBounded.shift, nicheStepConfidence, {
-          isOutlier: outlierCheck.isOutlier,
-          secondsOffMidpoint: Math.abs(timeDelta),
-        });
+        shift = applyGrindShiftDamping(timingBounded.shift, nicheDampingOptions);
         recommendedDial = Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, currentDial + shift)) * 10) / 10;
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
         if (shift !== 0) {
@@ -954,7 +958,10 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
             shift,
             empiricalUnavailable: true,
           });
-          if (outlierCheck.isOutlier) {
+          if (
+            outlierCheck.isOutlier
+            && !(isTimeInRange && isBalancedTaste(tasteProfile) && shift === 0)
+          ) {
             reason = buildOutlierRecommendationReason({
               baseReason: reason,
               outlierDetail: outlierCheck.detail,
@@ -979,7 +986,10 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
           });
         }
         nicheLearningNote = nicheSupplementalLearningNote(empirical, nicheEligibility);
-        if (outlierCheck.isOutlier) {
+        if (
+          outlierCheck.isOutlier
+          && !(isTimeInRange && isBalancedTaste(tasteProfile) && shift === 0)
+        ) {
           reason = buildOutlierRecommendationReason({
             baseReason: reason || 'KEEP GRIND — Balanced and in range.',
             outlierDetail: outlierCheck.detail,
@@ -1132,16 +1142,20 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     const comparableHistory = [...learningRecentShots]
       .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const { secondsPerStep, confidence } = sensitivityConfidenceForQuantitativeGrinder(
+    const sensitivityEstimate = sensitivityConfidenceForQuantitativeGrinder(
       comparableHistory,
       grinderModel,
       recipe,
       settings
     );
+    const { secondsPerStep, confidence, reliableLearnedSensitivity } = sensitivityEstimate;
     effectiveSensitivity = secondsPerStep || grinderProfile.sensitivity;
     const sensitivity = effectiveSensitivity;
-    const rawShift = Math.round(timeDelta / sensitivity);
-    const signedRaw = rawShift === 0 ? (timeDelta < 0 ? -1 : 1) : rawShift;
+    const dampingOptions = {
+      isOutlier: false,
+      confidence,
+      reliableLearnedSensitivity,
+    };
 
     const currentGrindNumeric = grindNumericFromShotData(shotData, grinderProfile);
     const outlierCheck = detectLikelyShotOutlier({
@@ -1152,10 +1166,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       grinderProfile,
     });
 
-    shift = dampQuantitativeShift(signedRaw, confidence, {
-      isOutlier: outlierCheck.isOutlier,
-      secondsOffMidpoint: Math.abs(timeDelta),
-    });
+    dampingOptions.isOutlier = outlierCheck.isOutlier;
+    shift = proportionalGrindShiftFromTimeDelta(timeDelta, sensitivity, dampingOptions);
 
     const absShift = Math.abs(shift);
     const direction = shift < 0 ? "FINER" : "COARSER";

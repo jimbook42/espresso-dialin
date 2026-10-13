@@ -25,6 +25,16 @@ export function runGrindRecommendationDisplayTests() {
     reason: 'KEEP GRIND — Balanced and in range.',
   });
   assert.match(nicheKeep, /Keep the same grind/i);
+  assert.doesNotMatch(nicheKeep, /far off that pattern/i);
+  assert.doesNotMatch(nicheKeep, /keeping your current dial/i);
+
+  const nicheInRangeContradictory = formatGrindRecommendationSummary('Niche Zero', {
+    recommendedSetting: { nicheZeroSetting: 15 },
+    reason: 'KEEP GRIND — Balanced and in range.',
+    nicheLearningNote: null,
+  });
+  assert.match(nicheInRangeContradictory, /Keep the same grind/i);
+  assert.doesNotMatch(nicheInRangeContradictory, /pattern is clearer/i);
 
   const customSettings = {
     grinderModel: 'DF64',
@@ -116,6 +126,44 @@ export function runGrindRecommendationDisplayTests() {
     (fastRec.warning || '').includes(KNOWN_ISSUE_OUTLIER_HINT),
     'known-issue hint stays on the card warning, not in place of direction'
   );
+
+  const nicheInRangeRec = calculateRecommendation(
+    {
+      grinderModel: 'Niche Zero',
+      nicheZeroSetting: 15,
+      wasPurged: true,
+      actualTime: 28,
+      actualYield: 36,
+      tasteProfile: 'balanced',
+    },
+    recipe,
+    [
+      {
+        grinderModel: 'Niche Zero',
+        nicheZeroSetting: 14.5,
+        actualTimeS: 35,
+        actualYieldG: 36,
+        tasteProfile: 'balanced',
+        targetTimeMinS: 25,
+        targetTimeMaxS: 30,
+        timestamp: '2026-01-03T00:00:00.000Z',
+      },
+      {
+        grinderModel: 'Niche Zero',
+        nicheZeroSetting: 15.5,
+        actualTimeS: 22,
+        actualYieldG: 36,
+        tasteProfile: 'balanced',
+        targetTimeMinS: 25,
+        targetTimeMaxS: 30,
+        timestamp: '2026-01-02T00:00:00.000Z',
+      },
+    ]
+  );
+  const nicheInRangeSummary = formatGrindRecommendationSummary('Niche Zero', nicheInRangeRec);
+  assert.match(nicheInRangeSummary, /Keep the same grind/i);
+  assert.doesNotMatch(nicheInRangeSummary, /far off that pattern/i);
+  assert.doesNotMatch(nicheInRangeSummary, /pattern is clearer/i);
 
   const nicheHistory = [
     {

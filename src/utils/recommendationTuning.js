@@ -1,6 +1,7 @@
 import { getRecommendationGrinderProfile, isNicheZeroGrinderModel } from '../grinders/grinderRegistry.js';
 import { parseNicheZeroSetting } from '../grinders/nicheZero.js';
 import { isBalancedTaste } from './tasteProfile.js';
+import { applyGrindShiftDamping } from './grindShiftDamping.js';
 
 function shotEligibleForLearning(shot) {
   return shot?.excludeFromLearning !== true;
@@ -21,9 +22,10 @@ const NEAR_GRIND_NUMERIC_TOLERANCE = {
 };
 
 const MIN_OBS_FOR_FULL_CONFIDENCE = 5;
-export const SECONDS_PER_UNIT_LOW_CONFIDENCE = 7.5;
-export const LOW_CONFIDENCE_SHIFT_MIN = 1;
-export const LOW_CONFIDENCE_SHIFT_MAX = 3;
+/** Below this, learned seconds-per-step is not trusted — use default grinder sensitivity (uncapped). */
+export const LEARNED_SENSITIVITY_MIN_CONFIDENCE = 0.45;
+export { GRIND_SHIFT_DAMPING, HIGH_LEARNED_CONFIDENCE_THRESHOLD } from './grindShiftDamping.js';
+export { proportionalGrindShiftFromTimeDelta, applyGrindShiftDamping } from './grindShiftDamping.js';
 
 export const KNOWN_ISSUE_OUTLIER_HINT =
   'If this was puck prep or another one-off, mark it as a known issue in History to leave it out.';
@@ -232,45 +234,35 @@ function estimateSecondsPerStepFromPairs(points) {
   };
 }
 
-function shiftMagnitudeFromMiss(secondsOffMidpoint) {
-  const secOff = Math.max(0, Number(secondsOffMidpoint) || 0);
-  if (secOff <= 0) return LOW_CONFIDENCE_SHIFT_MIN;
-  let units = Math.round(secOff / SECONDS_PER_UNIT_LOW_CONFIDENCE);
-  if (units < LOW_CONFIDENCE_SHIFT_MIN) units = LOW_CONFIDENCE_SHIFT_MIN;
-  if (secOff >= 8 && secOff < 15 && units < 2) units = 2;
-  return Math.min(LOW_CONFIDENCE_SHIFT_MAX, units);
+export function hasReliableLearnedSensitivity(estimate) {
+  if (!estimate || estimate.secondsPerStep === null || !Number.isFinite(estimate.secondsPerStep)) {
+    return false;
+  }
+  if (estimate.contradictory) return false;
+  return (estimate.confidence ?? 0) >= LEARNED_SENSITIVITY_MIN_CONFIDENCE;
 }
 
-/**
- * Confidence-weighted step from timing miss (~1 unit per 7–8s when confidence is low).
- */
+export function signedShiftFromTimeDelta(timeDelta, secondsPerStep) {
+  const raw = Math.round(timeDelta / secondsPerStep);
+  if (raw === 0) {
+    return timeDelta < 0 ? -1 : 1;
+  }
+  return raw;
+}
+
+/** @deprecated Use applyGrindShiftDamping */
 export function dampQuantitativeShift(
   rawShift,
   confidence,
-  { isOutlier = false, holdOutlier = false, secondsOffMidpoint = null } = {}
+  { isOutlier = false, holdOutlier = false, reliableLearnedSensitivity = false } = {}
 ) {
   if (!rawShift) return 0;
   if (isOutlier && holdOutlier) return 0;
-
-  const sign = rawShift < 0 ? -1 : 1;
-  const absRaw = Math.abs(rawShift);
-  const conf = Math.max(0, Math.min(1, confidence ?? 0));
-  const fromMiss = shiftMagnitudeFromMiss(secondsOffMidpoint);
-
-  if (isOutlier) {
-    return sign * Math.min(absRaw, fromMiss, LOW_CONFIDENCE_SHIFT_MAX);
-  }
-
-  let magnitude;
-  if (conf >= 0.75) {
-    magnitude = Math.max(LOW_CONFIDENCE_SHIFT_MIN, Math.min(absRaw, Math.max(fromMiss, LOW_CONFIDENCE_SHIFT_MAX)));
-  } else if (conf >= 0.45) {
-    magnitude = Math.max(LOW_CONFIDENCE_SHIFT_MIN, Math.min(LOW_CONFIDENCE_SHIFT_MAX, fromMiss, absRaw));
-  } else {
-    magnitude = Math.max(LOW_CONFIDENCE_SHIFT_MIN, Math.min(LOW_CONFIDENCE_SHIFT_MAX, fromMiss));
-  }
-
-  return sign * magnitude;
+  return applyGrindShiftDamping(rawShift, {
+    isOutlier,
+    confidence,
+    reliableLearnedSensitivity,
+  });
 }
 
 export function buildOutlierRecommendationReason({ baseReason, outlierDetail }) {
@@ -300,8 +292,9 @@ export function sensitivityConfidenceForQuantitativeGrinder(comparableShots, gri
 
   const estimate = estimateSecondsPerStepFromPairs(points);
   const fallbackSensitivity = grinderProfile.sensitivity;
+  const reliableLearnedSensitivity = hasReliableLearnedSensitivity(estimate);
   const secondsPerStep =
-    estimate.secondsPerStep !== null && Number.isFinite(estimate.secondsPerStep)
+    reliableLearnedSensitivity && estimate.secondsPerStep !== null
       ? Math.abs(estimate.secondsPerStep)
       : fallbackSensitivity;
 
@@ -310,6 +303,8 @@ export function sensitivityConfidenceForQuantitativeGrinder(comparableShots, gri
     confidence: estimate.confidence ?? 0,
     observationCount: points.length,
     usedEmpiricalSlope: estimate.secondsPerStep !== null,
+    reliableLearnedSensitivity,
+    defaultSensitivity: fallbackSensitivity,
   };
 }
 

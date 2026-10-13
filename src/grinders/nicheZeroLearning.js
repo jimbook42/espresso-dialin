@@ -411,9 +411,15 @@ export function buildNicheFallbackReason({
     return `Shot was ${secOff}s slow — consider grinding coarser (higher dial number). Log more comparable shots at different dial positions to unlock numeric suggestions.`;
   }
   if (reasonCode === 'contradictory_response' || reasonCode === 'noisy_response') {
+    if (isTimeInRange && isBalancedTaste(tasteProfile) && !severeChoke) {
+      return 'KEEP GRIND — Balanced and in range.';
+    }
     return 'Comparable Niche shots disagree on how the dial affects time — keeping your current dial until the pattern is clearer.';
   }
   if (reasonCode === 'excessive_adjustment' || reasonCode === 'implausible_slope') {
+    if (isTimeInRange && isBalancedTaste(tasteProfile) && !severeChoke) {
+      return 'KEEP GRIND — Balanced and in range.';
+    }
     return 'Learned dial response looks unreliable for this recipe — keeping your current dial. Try a smaller manual change and log the result.';
   }
   if (reasonCode === 'boundary') {

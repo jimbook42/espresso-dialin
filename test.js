@@ -38,6 +38,7 @@ import { runSimulatedTransportTests } from './src/scales/transport/simulatedTran
 import { runScaleShotBaselineTests } from './src/scales/scaleShotBaseline.test.js';
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
 import { runGrindRecommendationDisplayTests } from './src/utils/grindRecommendationDisplay.test.js';
+import { runIsaacB2SetteRegressionTests } from './src/utils/isaacB2SetteRegression.test.js';
 import { runGrindControlsTests } from './src/components/grindControls.test.js';
 import { runCustomGrinderTests } from './src/grinders/customGrinder.test.js';
 import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
@@ -558,6 +559,7 @@ async function runTests() {
   runNicheZeroTests();
   runShotCountDisplayTests();
   runGrindRecommendationDisplayTests();
+  runIsaacB2SetteRegressionTests();
   runGrindControlsTests();
   runCustomGrinderTests();
   runOnboardingGateTests();
@@ -1171,10 +1173,9 @@ function runDecafRegressionTests() {
     targetYieldG: 36,
     brewTemperatureC: 93,
   }, [], false);
-  assert.deepEqual(fast.recommendedSetting, { macro: 13, micro: 'D' });
   assert.notDeepEqual(fast.recommendedSetting, slow.recommendedSetting);
-  assert.ok(Math.abs(fast.engineStats.shift) <= 2);
-  assert.ok(Math.abs(slow.engineStats.shift) <= 2);
+  assert.ok(Math.abs(fast.engineStats.shift) >= 4);
+  assert.ok(Math.abs(slow.engineStats.shift) >= 4);
   assert.deepEqual(Object.keys(fast).sort(), [
     'engineStats',
     'evidenceContext',
@@ -1353,7 +1354,7 @@ function runSevereDeviationTests() {
 
   const fast = calculateRecommendation(setteShot(20, 'sour', 36), recipe, [], false);
   assert.match(fast.reason, /GO \d+ MICRO STEP\(S\) FINER — Shot was \d+s off target midpoint/);
-  assert.deepEqual(fast.recommendedSetting, { macro: 13, micro: 'D' });
+  assert.deepEqual(fast.recommendedSetting, { macro: 12, micro: 'I' });
   assert.equal(fast.shotOutcome.isSevereChoke, false);
   assert.equal(fast.shotOutcome.isDialledIn, false);
   assert.ok(!fast.warning || !outsideYieldWarning.test(fast.warning));
@@ -1372,7 +1373,7 @@ function runSevereDeviationTests() {
 
   const slow = calculateRecommendation(setteShot(40, 'bitter', 36), recipe, [], false);
   assert.match(slow.reason, /GO \d+ MICRO STEP\(S\) COARSER — Shot was \d+s off target midpoint/);
-  assert.deepEqual(slow.recommendedSetting, { macro: 13, micro: 'G' });
+  assert.deepEqual(slow.recommendedSetting, { macro: 14, micro: 'D' });
   assert.equal(slow.shotOutcome.isSevereChoke, false);
   assert.ok(!slow.warning || !outsideYieldWarning.test(slow.warning));
 

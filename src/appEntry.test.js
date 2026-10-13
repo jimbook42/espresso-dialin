@@ -14,5 +14,11 @@ export function runAppEntryTests() {
     entry: 'flair-pressure-lab',
   });
 
+  assert.equal(
+    resolveAppEntry({ hash: '#/flair-pressure-lab', pressureLabEnabled: true }).entry,
+    'flair-pressure-lab',
+    'lab hash must mount FlairPressureLab when the build flag is on'
+  );
+
   console.log('App entry routing tests passed.');
 }
