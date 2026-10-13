@@ -5,15 +5,28 @@ function parsePositiveNumber(raw) {
 }
 
 /**
+ * @typedef {{ scaleFeatureEnabled?: boolean, scaleConnected?: boolean }} PreinfusionScaleContext
+ */
+
+/**
  * @param {{ preinfusionEndTrigger?: string } | null | undefined} flairProfile
- * @param {boolean} scaleConnected
+ * @param {boolean | PreinfusionScaleContext} scaleContext
  * @returns {'manual' | 'time' | 'weight'}
  */
-export function resolvePreinfusionEndTrigger(flairProfile, scaleConnected) {
-  if (!scaleConnected) return 'manual';
+export function resolvePreinfusionEndTrigger(flairProfile, scaleContext = {}) {
+  const ctx =
+    typeof scaleContext === 'boolean'
+      ? { scaleFeatureEnabled: scaleContext, scaleConnected: scaleContext }
+      : scaleContext;
+  const { scaleFeatureEnabled = false, scaleConnected = false } = ctx;
+
   const raw = flairProfile?.preinfusionEndTrigger;
-  if (raw === 'manual' || raw === 'time' || raw === 'weight') return raw;
-  return 'time';
+  let trigger = raw === 'manual' || raw === 'time' || raw === 'weight' ? raw : 'manual';
+
+  if (trigger === 'weight' && (!scaleFeatureEnabled || !scaleConnected)) {
+    return 'manual';
+  }
+  return trigger;
 }
 
 /**
@@ -27,17 +40,15 @@ export function resolveTaperStartTrigger(flairProfile) {
 }
 
 /**
- * Scale-driven pre-infusion auto-end targets (relative grams when weight mode).
- *
  * @param {{
  *   preinfusionEndTrigger?: string,
  *   preinfusionTime?: string | number,
  *   preinfusionEndWeightG?: string | number,
  * } | null | undefined} flairProfile
- * @param {boolean} scaleConnected
+ * @param {boolean | PreinfusionScaleContext} scaleContext
  */
-export function preinfusionAutoEndTargets(flairProfile, scaleConnected = true) {
-  const trigger = resolvePreinfusionEndTrigger(flairProfile, scaleConnected);
+export function preinfusionAutoEndTargets(flairProfile, scaleContext = {}) {
+  const trigger = resolvePreinfusionEndTrigger(flairProfile, scaleContext);
   if (trigger === 'manual') {
     return { trigger, timeS: null, weightG: null };
   }
@@ -68,6 +79,17 @@ export function shouldAutoEndPreinfusion(targets, state) {
     return targets.weightG != null && state.liveRelativeWeightG >= targets.weightG;
   }
   return false;
+}
+
+/**
+ * Flair recipe with time-based pre-infusion auto-end (works with or without scale).
+ *
+ * @param {PreinfusionScaleContext} ctx
+ */
+export function recipeUsesTimedPreinfusionAutoEnd(flairProfile, flairEnabled, ctx = {}) {
+  if (!flairEnabled || !recipeDefinesPreinfusion(flairProfile)) return false;
+  const trigger = resolvePreinfusionEndTrigger(flairProfile, ctx);
+  return trigger === 'time' && parsePositiveNumber(flairProfile?.preinfusionTime) != null;
 }
 
 /**

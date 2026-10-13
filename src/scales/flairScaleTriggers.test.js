@@ -3,6 +3,7 @@ import {
   flairProfileMarkerProgress,
   preinfusionAutoEndTargets,
   recipeDefinesPreinfusion,
+  recipeUsesTimedPreinfusionAutoEnd,
   resolvePreinfusionEndTrigger,
   resolveTaperStartTrigger,
   shouldAutoEndPreinfusion,
@@ -17,33 +18,53 @@ export function runFlairScaleTriggerTests() {
     taperPressure: '6',
   };
 
-  assert.equal(resolvePreinfusionEndTrigger(legacyProfile, false), 'manual');
-  assert.equal(resolvePreinfusionEndTrigger(legacyProfile, true), 'time');
+  const scaleOn = { scaleFeatureEnabled: true, scaleConnected: true };
+  const scaleOff = { scaleFeatureEnabled: true, scaleConnected: false };
+  const noScaleFlag = { scaleFeatureEnabled: false, scaleConnected: false };
+
+  assert.equal(resolvePreinfusionEndTrigger(legacyProfile, scaleOn), 'manual');
+  assert.equal(resolvePreinfusionEndTrigger(legacyProfile, scaleOff), 'manual');
   assert.equal(resolveTaperStartTrigger(legacyProfile), 'weight');
 
-  const legacyTargets = preinfusionAutoEndTargets(legacyProfile, true);
-  assert.deepEqual(legacyTargets, { trigger: 'time', timeS: 10, weightG: null });
+  const legacyTargets = preinfusionAutoEndTargets(legacyProfile, scaleOn);
+  assert.deepEqual(legacyTargets, { trigger: 'manual', timeS: null, weightG: null });
   assert.equal(
     shouldAutoEndPreinfusion(legacyTargets, { preInfusionElapsedS: 10, liveRelativeWeightG: 99 }),
+    false
+  );
+
+  const timeProfile = { ...legacyProfile, preinfusionEndTrigger: 'time' };
+  assert.equal(resolvePreinfusionEndTrigger(timeProfile, scaleOff), 'time');
+  assert.equal(resolvePreinfusionEndTrigger(timeProfile, noScaleFlag), 'time');
+
+  const timeTargets = preinfusionAutoEndTargets(timeProfile, scaleOff);
+  assert.deepEqual(timeTargets, { trigger: 'time', timeS: 10, weightG: null });
+  assert.equal(
+    shouldAutoEndPreinfusion(timeTargets, { preInfusionElapsedS: 9, liveRelativeWeightG: 0 }),
+    false
+  );
+  assert.equal(
+    shouldAutoEndPreinfusion(timeTargets, { preInfusionElapsedS: 10, liveRelativeWeightG: 0 }),
     true
   );
-  assert.equal(
-    shouldAutoEndPreinfusion(legacyTargets, { preInfusionElapsedS: 9, liveRelativeWeightG: 99 }),
-    false
-  );
-  assert.equal(
-    shouldAutoEndPreinfusion(legacyTargets, { preInfusionElapsedS: 2, liveRelativeWeightG: 4 }),
-    false
-  );
+
+  assert.equal(recipeUsesTimedPreinfusionAutoEnd(timeProfile, true, scaleOff), true);
+  assert.equal(recipeUsesTimedPreinfusionAutoEnd(legacyProfile, true, scaleOn), false);
 
   const weightEnd = preinfusionAutoEndTargets(
     { ...legacyProfile, preinfusionEndTrigger: 'weight', preinfusionEndWeightG: '3' },
-    true
+    scaleOn
   );
   assert.equal(shouldAutoEndPreinfusion(weightEnd, { preInfusionElapsedS: 1, liveRelativeWeightG: 2.9 }), false);
   assert.equal(shouldAutoEndPreinfusion(weightEnd, { preInfusionElapsedS: 1, liveRelativeWeightG: 3 }), true);
 
-  const manual = preinfusionAutoEndTargets({ ...legacyProfile, preinfusionEndTrigger: 'manual' }, true);
+  const weightStoredNoScale = preinfusionAutoEndTargets(
+    { ...legacyProfile, preinfusionEndTrigger: 'weight', preinfusionEndWeightG: '3' },
+    scaleOff
+  );
+  assert.deepEqual(weightStoredNoScale, { trigger: 'manual', timeS: null, weightG: null });
+
+  const manual = preinfusionAutoEndTargets({ ...legacyProfile, preinfusionEndTrigger: 'manual' }, scaleOn);
   assert.equal(shouldAutoEndPreinfusion(manual, { preInfusionElapsedS: 99, liveRelativeWeightG: 99 }), false);
 
   const built = { preDur: 10, rampDur: 4, taperDur: 8, totalSec: 44 };

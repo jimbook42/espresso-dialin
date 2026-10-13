@@ -85,6 +85,7 @@ import { useTimemoreScale } from './scales/useTimemoreScale.js';
 import {
   preinfusionAutoEndTargets,
   recipeDefinesPreinfusion,
+  recipeUsesTimedPreinfusionAutoEnd,
   shouldAutoEndPreinfusion,
 } from './scales/preinfusionAutoEnd.js';
 
@@ -304,8 +305,16 @@ export default function App() {
       : 0,
   });
 
+  const preinfusionScaleCtx = {
+    scaleFeatureEnabled,
+    scaleConnected: timemoreScale.isConnected,
+  };
+  const flairTimedPreinfusionAuto =
+    recipeUsesTimedPreinfusionAutoEnd(activeRecipe?.flairProfile, flairEnabled, preinfusionScaleCtx);
   const timerUsePreInfusion =
-    usePreInfusion || (timemoreScale.isConnected && scaleRecipePreinfusion);
+    usePreInfusion
+    || (timemoreScale.isConnected && scaleRecipePreinfusion)
+    || flairTimedPreinfusionAuto;
   const scaleAutoEndPreinfusionRef = useRef(false);
   const profilePreinfusionTimeS = Number(activeRecipe?.flairProfile?.preinfusionTime) || 0;
   const flowChartTimeOffsetSec = timerUsePreInfusion ? Math.max(profilePreinfusionTimeS, 4) : 0;
@@ -335,8 +344,11 @@ export default function App() {
       if (!timerRunning) scaleAutoEndPreinfusionRef.current = false;
       return;
     }
-    if (!timemoreScale.isConnected || !timerUsePreInfusion) return;
-    const targets = preinfusionAutoEndTargets(activeRecipe?.flairProfile, true);
+    if (!timerUsePreInfusion) return;
+    const scaleConnected = timemoreScale.isConnected;
+    const targets = preinfusionAutoEndTargets(activeRecipe?.flairProfile, preinfusionScaleCtx);
+    if (targets.trigger === 'manual') return;
+    if (targets.trigger === 'weight' && !scaleConnected) return;
     if (targets.timeS == null && targets.weightG == null) return;
     if (scaleAutoEndPreinfusionRef.current) return;
     if (
@@ -348,10 +360,12 @@ export default function App() {
       return;
     }
     scaleAutoEndPreinfusionRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- scale-only auto end at recipe time/weight
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto end at recipe time/weight
     setPreInfusionSeconds(timerSeconds);
     setPreInfusionPhase(false);
-    void timemoreScale.notifyPreInfusionEnded();
+    if (scaleConnected) {
+      void timemoreScale.notifyPreInfusionEnded();
+    }
   }, [
     timerRunning,
     preInfusionPhase,
@@ -360,6 +374,7 @@ export default function App() {
     timemoreScale.liveRelativeWeightG,
     timerUsePreInfusion,
     activeRecipe?.flairProfile,
+    scaleFeatureEnabled,
     timemoreScale,
   ]);
 
@@ -1159,7 +1174,7 @@ export default function App() {
     if (!profile) return [];
     const lines = [];
     if (profile.preinfusionPressure) {
-      const endTrigger = profile.preinfusionEndTrigger || 'time';
+      const endTrigger = profile.preinfusionEndTrigger || 'manual';
       const endDetail =
         endTrigger === 'weight'
           ? `${profile.preinfusionEndWeightG || '—'}g`
@@ -2314,7 +2329,12 @@ export default function App() {
                   </div>
                 </div>
 
-                {flairEnabled && (
+                {flairEnabled && (() => {
+                  const preEndTrigger = newRecipe.flairProfile?.preinfusionEndTrigger || 'manual';
+                  const taperStartTrig = newRecipe.flairProfile?.taperStartTrigger || 'weight';
+                  const showPeakEndYield =
+                    !scaleFeatureEnabled || taperStartTrig === 'weight';
+                  return (
                   <div className={`pt-4 mt-2 border-t ${ui.modalDivider} space-y-3`}>
                     <h3 className={`${ui.sectionTitle}`}>Flair pressure profile</h3>
 
@@ -2331,40 +2351,38 @@ export default function App() {
                           />
                         </div>
                         <div className="min-w-0">
-                          <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Time (s)</span>
-                          <input
-                            type="number" step="0.1"
-                            value={newRecipe.flairProfile?.preinfusionTime || ''}
-                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionTime: e.target.value } })}
+                          <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>End trigger</span>
+                          <select
+                            value={preEndTrigger}
+                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionEndTrigger: e.target.value } })}
                             className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                          />
+                          >
+                            <option value="manual">Manual</option>
+                            <option value="time">Time</option>
+                            {scaleFeatureEnabled && <option value="weight">Weight</option>}
+                          </select>
                         </div>
-                        {scaleFeatureEnabled && (
-                          <>
-                            <div className="min-w-0">
-                              <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>End trigger</span>
-                              <select
-                                value={newRecipe.flairProfile?.preinfusionEndTrigger || 'time'}
-                                onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionEndTrigger: e.target.value } })}
-                                className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                              >
-                                <option value="time">Time</option>
-                                <option value="weight">Weight</option>
-                                <option value="manual">Manual</option>
-                              </select>
-                            </div>
-                            {(newRecipe.flairProfile?.preinfusionEndTrigger || 'time') === 'weight' && (
-                              <div className="min-w-0">
-                                <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>End at (g)</span>
-                                <input
-                                  type="number" step="0.1"
-                                  value={newRecipe.flairProfile?.preinfusionEndWeightG || ''}
-                                  onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionEndWeightG: e.target.value } })}
-                                  className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                                />
-                              </div>
-                            )}
-                          </>
+                        {preEndTrigger === 'time' && (
+                          <div className="min-w-0 col-span-2 sm:col-span-1">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Time (s)</span>
+                            <input
+                              type="number" step="0.1"
+                              value={newRecipe.flairProfile?.preinfusionTime || ''}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionTime: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            />
+                          </div>
+                        )}
+                        {preEndTrigger === 'weight' && scaleFeatureEnabled && (
+                          <div className="min-w-0 col-span-2 sm:col-span-1">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>End at (g)</span>
+                            <input
+                              type="number" step="0.1"
+                              value={newRecipe.flairProfile?.preinfusionEndWeightG || ''}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, preinfusionEndWeightG: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            />
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2381,15 +2399,17 @@ export default function App() {
                             className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
                           />
                         </div>
-                        <div className="min-w-0">
-                          <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Peak ends at (g)</span>
-                          <input
-                            type="number" step="0.1"
-                            value={newRecipe.flairProfile?.peakEndYield || ''}
-                            onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, peakEndYield: e.target.value } })}
-                            className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                          />
-                        </div>
+                        {showPeakEndYield && (
+                          <div className="min-w-0">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Peak ends at (g)</span>
+                            <input
+                              type="number" step="0.1"
+                              value={newRecipe.flairProfile?.peakEndYield || ''}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, peakEndYield: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2406,35 +2426,34 @@ export default function App() {
                           />
                         </div>
                         {scaleFeatureEnabled && (
-                          <>
-                            <div className="min-w-0">
-                              <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Start trigger</span>
-                              <select
-                                value={newRecipe.flairProfile?.taperStartTrigger || 'weight'}
-                                onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperStartTrigger: e.target.value } })}
-                                className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                              >
-                                <option value="weight">Yield (g)</option>
-                                <option value="time">Time (s)</option>
-                              </select>
-                            </div>
-                            {(newRecipe.flairProfile?.taperStartTrigger || 'weight') === 'time' && (
-                              <div className="min-w-0 col-span-2 sm:col-span-1">
-                                <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Start at (s)</span>
-                                <input
-                                  type="number" step="0.1"
-                                  value={newRecipe.flairProfile?.taperStartTimeS || ''}
-                                  onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperStartTimeS: e.target.value } })}
-                                  className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
-                                />
-                              </div>
-                            )}
-                          </>
+                          <div className="min-w-0">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Start trigger</span>
+                            <select
+                              value={taperStartTrig}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperStartTrigger: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            >
+                              <option value="weight">Yield (g)</option>
+                              <option value="time">Time (s)</option>
+                            </select>
+                          </div>
+                        )}
+                        {scaleFeatureEnabled && taperStartTrig === 'time' && (
+                          <div className="min-w-0 col-span-2 sm:col-span-1">
+                            <span className={`text-[11px] leading-snug ${subTextClass} block mb-1`}>Start at (s)</span>
+                            <input
+                              type="number" step="0.1"
+                              value={newRecipe.flairProfile?.taperStartTimeS || ''}
+                              onChange={(e) => setNewRecipe({ ...newRecipe, flairProfile: { ...newRecipe.flairProfile, taperStartTimeS: e.target.value } })}
+                              className={`w-full ${inputClass} border rounded-lg p-2 text-sm`}
+                            />
+                          </div>
                         )}
                       </div>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
 
               <button
@@ -2605,7 +2624,9 @@ export default function App() {
 
                     <div className={`flex flex-wrap items-center gap-2 text-[10px] ${ui.muted}`}>
                       {preSec && <span className="italic">Pre-infusion: {preSec}s.</span>}
-                      {s.scaleFlowRateGs != null && Number.isFinite(s.scaleFlowRateGs) && (
+                      {s.scaleFlowCurve?.length > 0
+                        && s.scaleFlowRateGs != null
+                        && Number.isFinite(s.scaleFlowRateGs) && (
                         <span className={`${ui.accentText} font-semibold`}>
                           Scale flow {s.scaleFlowRateGs.toFixed(2)} g/s
                         </span>

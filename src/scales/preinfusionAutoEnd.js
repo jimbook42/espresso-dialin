@@ -2,6 +2,7 @@ export {
   flairProfileMarkerProgress,
   preinfusionAutoEndTargets,
   recipeDefinesPreinfusion,
+  recipeUsesTimedPreinfusionAutoEnd,
   resolvePreinfusionEndTrigger,
   resolveTaperStartTrigger,
   shouldAutoEndPreinfusion,
