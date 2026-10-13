@@ -79,8 +79,9 @@ import { normalizeBrewAccessories } from './brewGuide/steps';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
 import { isScaleEnabled } from './config/scaleFlag.js';
-import { ScalePanel } from './components/ScalePanel.jsx';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
+import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
+import { useTimemoreScale } from './scales/useTimemoreScale.js';
 
 const EXTRACTION_TIME_COLORS = {
   inRange: { bar: 'bg-[#8a9d72]', dot: 'bg-[#8a9d72]', label: 'text-[#9cb088]' },
@@ -283,6 +284,15 @@ export default function App() {
     : null;
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
 
+  const timemoreScale = useTimemoreScale({
+    enabled: scaleFeatureEnabled,
+    targetYieldG: activeRecipe?.targetYieldG || 36,
+    usePreInfusion,
+    preInfusionDurationS: usePreInfusion
+      ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12
+      : 0,
+  });
+
   const prefillDoseFromRecipe = (recipe) => {
     if (recipe?.targetDoseG == null || recipe.targetDoseG === '') return;
     setActualDoseG(recipe.targetDoseG);
@@ -321,11 +331,18 @@ export default function App() {
     setPreInfusionSeconds(0);
     if (usePreInfusion) setPreInfusionPhase(true);
     setTimerRunning(true);
+    if (timemoreScale.isConnected) {
+      setScaleShotMetrics(null);
+      void timemoreScale.notifyShotStarted();
+    }
   };
 
   const handleEndPreInfusion = () => {
     setPreInfusionSeconds(timerSeconds);
     setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyPreInfusionEnded();
+    }
   };
 
   const handleStopTimer = () => {
@@ -336,6 +353,13 @@ export default function App() {
     }
     const rounded = Math.round(finalExtractionTime);
     setActualTimeS(rounded);
+    if (timemoreScale.isConnected) {
+      const { yieldG, metrics } = timemoreScale.notifyShotStopped();
+      if (yieldG != null && yieldG > 0) {
+        setActualYieldG(String(yieldG));
+      }
+      setScaleShotMetrics(metrics);
+    }
     return rounded;
   };
 
@@ -344,6 +368,9 @@ export default function App() {
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyShotCancelled();
+    }
   };
 
   const handleResetTimer = () => {
@@ -351,6 +378,9 @@ export default function App() {
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     setPreInfusionPhase(false);
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyShotCancelled();
+    }
   };
 
   const handleTimerSurfaceTap = (e) => {
@@ -1046,6 +1076,13 @@ export default function App() {
       ? Math.max(0, timerSeconds - preInfusionSeconds)
       : timerSeconds;
   const timerProgress = timerRunning ? Math.min(1, timerSeconds / timerWindowSeconds) : 0;
+  const scaleShowLiveReadout =
+    scaleFeatureEnabled && timemoreScale.isConnected && (timerRunning || timemoreScale.liveWeightG > 0);
+  const scaleShowFlow =
+    scaleShowLiveReadout
+    && timerRunning
+    && (!usePreInfusion || !preInfusionPhase)
+    && timemoreScale.instantFlowGs != null;
 
   const formatFlairRecipeLines = (profile) => {
     if (!profile) return [];
@@ -1344,6 +1381,16 @@ export default function App() {
             >
               {formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
             </div>
+            {scaleShowLiveReadout && (
+              <p className="text-[15px] text-[#c88a4b] font-semibold tabular-nums mt-3 text-center">
+                {timemoreScale.liveWeightG.toFixed(1)}g
+                {scaleShowFlow && (
+                  <span className="text-[#8a9d72] font-medium ml-2">
+                    · {timemoreScale.instantFlowGs.toFixed(2)} g/s
+                  </span>
+                )}
+              </p>
+            )}
             <p className="text-[13px] text-[#6b6457] mt-4 text-center">
               {usePreInfusion && preInfusionPhase
                 ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
@@ -1680,9 +1727,19 @@ export default function App() {
 
                   <div className={`${ui.card} p-5 rounded-2xl space-y-4`}>
                     <div className="flex items-center justify-between gap-4">
-                      <div>
+                      <div className="min-w-0">
                         <p className={`text-[10px] uppercase tracking-widest ${ui.muted} mb-2`}>Live shot timer</p>
                         <span className="text-4xl font-black font-mono text-[#f5f2eb] tabular-nums">{formatTime(timerSeconds)}</span>
+                        {scaleShowLiveReadout && (
+                          <p className={`text-sm font-semibold tabular-nums mt-1 ${ui.accentText}`}>
+                            {timemoreScale.liveWeightG.toFixed(1)}g
+                            {scaleShowFlow && (
+                              <span className={`${ui.muted} font-medium ml-2`}>
+                                {timemoreScale.instantFlowGs.toFixed(2)} g/s
+                              </span>
+                            )}
+                          </p>
+                        )}
                       </div>
                       <div className="flex gap-2 shrink-0">
                         <button type="button" onClick={handleStartTimer} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
@@ -1693,6 +1750,20 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+                    {scaleFeatureEnabled && (
+                      <ScaleTimerControls
+                        ui={ui}
+                        simAllowed={timemoreScale.simAllowed}
+                        bleAvailable={timemoreScale.bleAvailable}
+                        transportKind={timemoreScale.transportKind}
+                        onTransportKindChange={timemoreScale.setTransportKind}
+                        connectStatus={timemoreScale.connectStatus}
+                        isConnected={timemoreScale.isConnected}
+                        onConnect={timemoreScale.connect}
+                        onDisconnect={timemoreScale.disconnect}
+                        onTare={timemoreScale.tare}
+                      />
+                    )}
                     <p className="text-[10px] text-[#6b6457]">Fullscreen timer: tap anywhere to end pre-infusion, then tap again to stop.</p>
                   </div>
 
@@ -1727,20 +1798,6 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-
-                  {scaleFeatureEnabled && (
-                    <ScalePanel
-                      ui={ui}
-                      targetYieldG={activeRecipe?.targetYieldG || 36}
-                      usePreInfusion={usePreInfusion}
-                      preInfusionDurationS={
-                        usePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0
-                      }
-                      onYieldChange={setActualYieldG}
-                      onTimeChange={setActualTimeS}
-                      onMetricsReady={setScaleShotMetrics}
-                    />
-                  )}
 
                   {/* Dose / Yield / Time */}
                   <div className="grid grid-cols-3 gap-2">
