@@ -6,14 +6,24 @@ Branch: `refactor/device-architecture`. Definition of done: learning eligibility
 
 | # | Item | Status |
 |---|------|--------|
-| 1 | Fresh Niche espresso start at dial **15** labelled **app default** (not from shot history); no cross-grinder bleed | **Verified** (unit tests) |
-| 2 | Reason-coded `nicheLearningNote` + structured `nicheEligibility` on all non-empirical recommendation paths | **Done** |
-| 3 | Evidence-filtering fixes (recipe comparability, grinder filter, missing-field reasons) | **Done** (see defects below) |
-| 4 | Empirical recs fully validated in production | **Not validated** — empirical suggestions remain labelled; timing-bounded / qualitative paths still used when gates fail |
-| 5 | Final regression + browser QA (recommendations, Apply, recipe edits, grinder switching, safe fallbacks) | **In progress** — automated tests green; manual Dial-in QA on preview |
-| 6 | Document completion (validated behaviour, limitations, test results) | **In progress** — this file + unit/snapshot coverage; item 4 empirical still not field-validated |
+| 1 | Fresh Niche espresso start at dial **15** labelled **app default** (not from shot history); no cross-grinder bleed | **Done** (`a997d26`) |
+| 2 | Reason-coded `nicheLearningNote` + structured `nicheEligibility` on all non-empirical recommendation paths | **Done** (`c278d74`) |
+| 3 | Evidence-filtering fixes (recipe comparability, grinder filter, missing-field reasons) | **Done** (`1c8b756`) — QA **5.2b: 9/9 pass** |
+| 4 | Empirical recs fully validated in production | **DEFERRED** — owner has no Niche Zero hardware to test against; empirical dial suggestions are implemented but **not yet validated against real use**. Confidence gate constants unchanged. |
+| 5 | Final regression + browser QA (recommendations, Apply, recipe edits, grinder switching, safe fallbacks) | **Pending** — full regression + browser QA before merge |
+| 6 | Document completion (validated behaviour, limitations, test results) | **Done** (this document, ticket **5.2e**) |
+
+## Follow-ups completed (post–5.2b)
+
+| Ticket | Commit | Summary |
+|--------|--------|---------|
+| **5.2c** | `7b7e0cc` | Grinder switch-back restores correct dial state; taste label **Balanced** end-to-end; legacy `good` taste values still read as balanced (no data migration). |
+| **5.2d** | `7ef3ee3` | **Apply** recommendation persists pending dial for the **session** (per bean + grinder until a shot is logged); CSV **Rec Followed** exports **N/A** when no prior recommendation (no history rewrite). |
+| Lockfile | `9697322` | Revert unrelated `package-lock.json` libc churn. |
 
 ## Confirmed defects fixed (5.2b)
+
+QA tier **5.2b**: **9/9 pass**.
 
 | ID | Issue | Resolution |
 |----|--------|------------|
@@ -43,5 +53,17 @@ Confidence gate constants (`NICHE_LEARNING_MIN_OBSERVATIONS`, `MIN_PAIRS`, `MIN_
 ## Known limitations
 
 - Diagnostics depend on shot records including saved recipe context (post–target-context logging); very old shots without actuals or saved targets cannot enter learning.
-- Empirical mode (item 4) is not field-validated; notes still explain when numeric learning is inactive.
+- **Empirical dial recommendations (item 4)** are not field-validated on real Niche Zero hardware; timing-bounded and qualitative fallbacks still apply when gates fail. `nicheLearningNote` explains when numeric learning is inactive; it does not replace production validation of empirical mode.
+- **Fresh-bean copy**: when there are no shots on this bean but a starting dial is seeded from roast class + age, the UI can still show **“Based on previous bean history”** even though the seed is roast-baseline logic, not this bean’s shot log.
+- **Pending dial after Apply** is **session-only** (in-memory per bean + grinder); it is not persisted across reloads until the user logs a shot with that grind.
 - Sette/Sunbeam recommendation math unchanged; only shared recipe/grinder matching helpers are shared.
+
+## Test results (5.2e documentation pass)
+
+| Check | Result |
+|-------|--------|
+| `npm test` | Pass |
+| Engine snapshots (`src/grinders/snapshots/engineSnapshots.json`) | **190** unchanged |
+| ESLint | **31** warnings (baseline; no new Niche regressions required for this docs-only ticket) |
+
+Browser QA for item 5 remains outstanding before merge.
