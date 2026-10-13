@@ -19,6 +19,7 @@ import {
   shotResultImproved,
   filterShotsForGrinderLearning,
   recomputeNicheRecommendationFromLastShot,
+  recomputeQuantitativeRecommendationFromLastShot,
   shouldUsePreviousRecipeRecommendation,
   PREVIOUS_RECIPE_REC_DISCLAIMER,
 } from './src/utils/grinderLogic.js';
@@ -36,6 +37,7 @@ import { runFlairScaleTriggerTests } from './src/scales/flairScaleTriggers.test.
 import { runSimulatedTransportTests } from './src/scales/transport/simulatedTransport.test.js';
 import { runScaleShotBaselineTests } from './src/scales/scaleShotBaseline.test.js';
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
+import { runGrindRecommendationDisplayTests } from './src/utils/grindRecommendationDisplay.test.js';
 import { runGrindControlsTests } from './src/components/grindControls.test.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
@@ -377,6 +379,27 @@ function runRecommendationIntegrityTests() {
   assert.ok(live.recommendedSetting.nicheZeroSetting < 15);
   assert.match(live.reason, /Set dial to/i);
   assert.notEqual(live.recommendedSetting.nicheZeroSetting, lastNiche.recommendation.recommendedSetting.nicheZeroSetting);
+
+  const lastSette = {
+    id: 's1',
+    grinderModel: 'Sette 270Wi',
+    beanId: 'b1',
+    setteMacro: 14,
+    setteMicro: 'A',
+    actualTimeS: 24,
+    actualYieldG: 36,
+    actualDoseG: 18,
+    tasteProfile: 'sour',
+    wasPurged: true,
+    timestamp: '2026-09-20T12:00:00.000Z',
+    recommendation: {
+      recommendedSetting: { macro: 14, micro: 'A' },
+      reason: 'stale',
+    },
+  };
+  const liveSette = recomputeQuantitativeRecommendationFromLastShot(lastSette, recipe, [lastSette], false);
+  assert.ok(liveSette.recommendedSetting.macro);
+  assert.match(liveSette.reason, /FINER|COARSER|KEEP GRIND/i);
 }
 
 async function runTests() {
@@ -497,6 +520,7 @@ async function runTests() {
   runBalancedTasteTests(recipe, createShot, runCalc);
   runNicheZeroTests();
   runShotCountDisplayTests();
+  runGrindRecommendationDisplayTests();
   runGrindControlsTests();
   runPressureLabFlagTests();
   runScaleFlagTests();

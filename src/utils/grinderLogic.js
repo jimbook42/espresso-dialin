@@ -45,7 +45,13 @@ export { CURRENT_PULL_ELIGIBILITY_ID, isPersistedLearningShot } from './learning
 
 export { NICHE_ZERO_GRINDER_ID } from '../grinders/grinderRegistry.js';
 
-export { setteToNumeric, numericToSette, adjustSette, adjustSunbeam } from '../grinders/grinderRegistry.js';
+export {
+  setteToNumeric,
+  numericToSette,
+  adjustSette,
+  adjustSunbeam,
+  grinderSupportsQuantitativeRecommendations,
+} from '../grinders/grinderRegistry.js';
 
 export const db = new Dexie('EspressoDialDB');
 
@@ -449,6 +455,44 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
 /**
  * Re-run Niche recommendation for display using full saved shot history (excluding the evaluated shot from learning pool).
  */
+export function recomputeQuantitativeRecommendationFromLastShot(
+  lastShot,
+  recipe,
+  grinderBeanShots = [],
+  flairEnabled = false
+) {
+  if (!lastShot || !recipe) return null;
+  if (
+    !grinderSupportsQuantitativeRecommendations(lastShot.grinderModel)
+    || isNicheZeroGrinderModel(lastShot.grinderModel)
+  ) {
+    return null;
+  }
+  const history = grinderBeanShots.filter((s) => s.id !== lastShot.id);
+  return calculateRecommendation(
+    {
+      id: lastShot.id,
+      beanId: lastShot.beanId,
+      grinderModel: lastShot.grinderModel,
+      setteMacro: lastShot.setteMacro,
+      setteMicro: lastShot.setteMicro,
+      sunbeamSetting: lastShot.sunbeamSetting,
+      nicheZeroSetting: null,
+      wasPurged: lastShot.wasPurged !== false,
+      actualTime: lastShot.actualTimeS,
+      actualYield: lastShot.actualYieldG,
+      tasteProfile: lastShot.tasteProfile,
+      lastShotGrind: null,
+      recommendationFollowed: true,
+      previousShot: null,
+    },
+    recipe,
+    history,
+    flairEnabled,
+    { eligibilityShots: grinderBeanShots }
+  );
+}
+
 export function recomputeNicheRecommendationFromLastShot(lastShot, recipe, grinderBeanShots = [], flairEnabled = false) {
   if (!lastShot || !isNicheZeroGrinderModel(lastShot.grinderModel) || !recipe) return null;
   const history = grinderBeanShots.filter((s) => s.id !== lastShot.id);

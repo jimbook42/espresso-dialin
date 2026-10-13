@@ -12,6 +12,7 @@ import {
 } from './steps.js';
 import { runSunbeamGuideTests } from './sunbeam.test.js';
 import { runGrinderBrewGuideTests } from './grinderBrewGuide.test.js';
+import { runGenericMachineGuideTests } from './machine/generic.test.js';
 
 const DIAL = {
   beanName: 'House Espresso',
@@ -342,7 +343,19 @@ export function runBrewGuideTests() {
   assert.match(schema, /db\.version\(17\)/);
   assert.equal(/db\.version\(18\)/.test(schema), false);
 
+  const flairIds = ids(none(), { ...DIAL, flairEnabled: true, grinderModel: 'Sette 270Wi' });
+  assert.deepEqual(flairIds, ['recipe', 'warmup', 'grindSetting', 'dose', 'grind', 'extract', 'yield', 'clean', 'taste']);
+  const flairExtract = buildBrewSteps(none(), { ...DIAL, flairEnabled: true, grinderModel: 'Sette 270Wi' })
+    .find((step) => step.id === 'extract');
+  assert.match(flairExtract.instruction, /pressure profile/i);
+
+  const setteGrind = buildBrewSteps(none(), { ...DIAL, grinderModel: 'Sette 270Wi' })
+    .find((step) => step.id === 'grindSetting');
+  assert.match(setteGrind.instruction, /your grinder/i);
+  assert.doesNotMatch(setteGrind.instruction, /Sunbeam/i);
+
   runGrinderBrewGuideTests();
+  runGenericMachineGuideTests();
   runSunbeamGuideTests();
   console.log('Brew Guide tests passed!');
 }

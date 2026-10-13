@@ -18,6 +18,8 @@ import {
   shotMatchesGrinderForLearning,
   findLatestShotForBeanAndGrinder,
   recomputeNicheRecommendationFromLastShot,
+  recomputeQuantitativeRecommendationFromLastShot,
+  grinderSupportsQuantitativeRecommendations,
   shouldUsePreviousRecipeRecommendation,
   PREVIOUS_RECIPE_REC_DISCLAIMER,
   KNOWN_ISSUE_REASONS,
@@ -29,6 +31,7 @@ import { HowItWorksModal } from './components/HowItWorksModal';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { GrinderGrindControls } from './components/GrindControls';
+import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
 import {
   GRINDER_SETUP_OPTIONS,
   defaultBrewTemperatureForGrinder,
@@ -287,6 +290,8 @@ export default function App() {
   const pendingGrindByKeyRef = useRef({});
   const brewTempDefaultRef = useRef('');
   const [validationError, setValidationError] = useState('');
+  const [beanFieldErrors, setBeanFieldErrors] = useState({});
+  const [applyRecConfirmation, setApplyRecConfirmation] = useState('');
   const [highlightGrind, setHighlightGrind] = useState(false);
   const [shotFieldHighlights, setShotFieldHighlights] = useState(EMPTY_SHOT_FIELD_HIGHLIGHTS);
   const [setupBrewGuideEnabled, setSetupBrewGuideEnabled] = useState(true);
@@ -777,6 +782,11 @@ export default function App() {
     e.preventDefault();
     if (!newBean.name) return;
     setValidationError('');
+    if (!newBean.roastDate) {
+      setBeanFieldErrors({ roastDate: 'Roast date is required.' });
+      return;
+    }
+    setBeanFieldErrors({});
 
     try {
       const sanitized = sanitizeRating(newBean.rating);
@@ -1149,6 +1159,19 @@ export default function App() {
           flairEnabled
         )
       : null;
+  const liveQuantitativeRec =
+    !usePreviousRecipeRecommendation
+    && grinderSupportsQuantitativeRecommendations(grinderModel)
+    && !isNicheZeroGrinderModel(grinderModel)
+    && lastLearningShot
+    && activeRecipe
+      ? recomputeQuantitativeRecommendationFromLastShot(
+          lastLearningShot,
+          activeRecipe,
+          beanShotsForGrinder,
+          flairEnabled
+        )
+      : null;
   const dynamicRec = usePreviousRecipeRecommendation && previousRecipeRec
     ? {
         ...previousRecipeRec,
@@ -1162,7 +1185,16 @@ export default function App() {
           ageWarning: ageAdjustedRec?.ageWarning ?? null,
           originalReason: liveNicheRec.reason,
         }
-      : ageAdjustedRec;
+      : liveQuantitativeRec
+        ? {
+            ...liveQuantitativeRec,
+            ageWarning: ageAdjustedRec?.ageWarning ?? null,
+            originalReason: liveQuantitativeRec.reason,
+          }
+        : ageAdjustedRec;
+  const grindRecommendationSummary = dynamicRec?.recommendedSetting
+    ? formatGrindRecommendationSummary(grinderModel, dynamicRec)
+    : null;
   const recommendationEvidenceContext =
     (activeRecipe && beanShotsForGrinder.length > 0
       ? getRecommendationEvidenceContext(beanShotsForGrinder, activeRecipe, flairEnabled)
@@ -1284,6 +1316,7 @@ export default function App() {
   const applyRecommendation = async () => {
     if (!dynamicRec || !dynamicRec.recommendedSetting) return;
     const recSet = dynamicRec.recommendedSetting;
+    const appliedLabel = formatRecommendedGrindDisplay(grinderModel, recSet);
     
     const currentSettings = await db.settings.get('global') || { id: 'global' };
 
@@ -1312,6 +1345,9 @@ export default function App() {
       setHighlightGrind(true);
       setTimeout(() => setHighlightGrind(false), 1500);
     }
+
+    setApplyRecConfirmation(`Grind set to ${appliedLabel}.`);
+    window.setTimeout(() => setApplyRecConfirmation(''), 4000);
   };
 
   const exportDataCSV = async () => {
@@ -1450,12 +1486,15 @@ export default function App() {
             </div>
           </div>
           <div>
-            <p className="text-sm text-[#a09880] text-center mb-6">Select your grinder to configure your calibration baseline.</p>
+            <p className="text-sm text-[#c4bcaa] text-center leading-relaxed mb-4">
+              Espresso Dial-In helps you log shots, tune grind settings from taste and time, and optionally walk through brewing step by step.
+            </p>
+            <p className="text-sm text-[#a09880] text-center mb-6">Choose your grinder to set a starting calibration. You can change these options later in Settings.</p>
             <div className="space-y-3 mb-4">
               <div className={`bg-[#211e1a] border border-[#2e2b26] rounded-xl p-4 flex items-center justify-between gap-3`}>
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-[#f5f2eb]">Enable Flair manual profile</p>
-                  <p className="text-[11px] text-[#6b6457] mt-1">Pressure chart &amp; water temp on Dial</p>
+                  <p className="text-[11px] text-[#6b6457] mt-1">For Flair lever machines: pressure chart and water temperature on Dial-In.</p>
                 </div>
                 <SettingsToggle
                   checked={setupFlairEnabled}
@@ -1466,7 +1505,7 @@ export default function App() {
               <div className={`bg-[#211e1a] border border-[#2e2b26] rounded-xl p-4 flex items-center justify-between gap-3`}>
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-[#f5f2eb]">Track pre-infusion time</p>
-                  <p className="text-[11px] text-[#6b6457] mt-1">Two-phase timer: pre → shot</p>
+                  <p className="text-[11px] text-[#6b6457] mt-1">Adds a pre-soak phase to the shot timer before extraction time.</p>
                 </div>
                 <SettingsToggle
                   checked={setupPreInfusionEnabled}
@@ -1477,7 +1516,7 @@ export default function App() {
               <div className={`bg-[#211e1a] border border-[#2e2b26] rounded-xl p-4 flex items-center justify-between gap-3`}>
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-[#f5f2eb]">Would you like to use the Brew Guide?</p>
-                  <p className="text-[11px] text-[#6b6457] mt-1">You can change these settings later in Settings.</p>
+                  <p className="text-[11px] text-[#6b6457] mt-1">Optional checklists and full-screen brew steps tied to your recipe.</p>
                 </div>
                 <SettingsToggle
                   checked={setupBrewGuideEnabled}
@@ -1498,13 +1537,18 @@ export default function App() {
                       preInfusionEnabled: setupPreInfusionEnabled,
                     })
                   }
-                  className={`w-full font-bold py-4 rounded-xl text-sm transition-colors ${
+                  className={`w-full text-left font-bold py-4 px-4 rounded-xl text-sm transition-colors ${
                     index === 0
                       ? 'bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110]'
                       : 'bg-[#211e1a] hover:bg-[#2e2b26] text-[#f5f2eb] border border-[#2e2b26]'
                   }`}
                 >
-                  {option.setupCardLabel}
+                  <span className="block">{option.setupCardLabel}</span>
+                  {option.setupCardHint && (
+                    <span className={`block text-[11px] font-normal mt-1 ${index === 0 ? 'text-[#3d3428]' : 'text-[#6b6457]'}`}>
+                      {option.setupCardHint}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -1828,16 +1872,8 @@ export default function App() {
                   {dynamicRec?.previousRecipeDisclaimer && (
                     <p className={`text-[10px] ${ui.muted} leading-relaxed`}>{dynamicRec.previousRecipeDisclaimer}</p>
                   )}
-                  {(dynamicRec?.reason || dynamicRec?.originalReason) && (
-                    <p className={`text-sm ${ui.sub} leading-relaxed`}>
-                      {(() => {
-                        const text = dynamicRec.reason || dynamicRec.originalReason;
-                        if (isNicheZeroGrinderModel(grinderModel)) return text;
-                        return text.includes('—')
-                          ? text.split('—').slice(1).join('—').trim() || text
-                          : text;
-                      })()}
-                    </p>
+                  {grindRecommendationSummary && (
+                    <p className={`text-sm ${ui.sub} leading-relaxed`}>{grindRecommendationSummary}</p>
                   )}
                   {recommendationEvidenceContext && (
                     <p className={`text-[10px] ${ui.muted}`}>{recommendationEvidenceContext}</p>
@@ -1876,6 +1912,12 @@ export default function App() {
                   )}
                   {dynamicRec?.subRecommendation && (
                     <p className={`text-xs ${ui.sub}`}>{dynamicRec.subRecommendation}</p>
+                  )}
+
+                  {applyRecConfirmation && (
+                    <p className={`text-xs font-semibold ${ui.accentText}`} role="status">
+                      {applyRecConfirmation}
+                    </p>
                   )}
 
                   <div className={`flex items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
@@ -2206,6 +2248,7 @@ export default function App() {
               grinderModel,
               grindLabel: recommendedGrindDisplay || currentGrindLabel,
               previousGrindLabel,
+              flairEnabled,
             })}
           />
         )}
@@ -2272,11 +2315,20 @@ export default function App() {
                   <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Roast Date</label>
                   <input
                     type="date"
-                    required
                     value={newBean.roastDate}
-                    onChange={(e) => setNewBean({ ...newBean, roastDate: e.target.value })}
-                    className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
+                    onChange={(e) => {
+                      setNewBean({ ...newBean, roastDate: e.target.value });
+                      if (e.target.value) setBeanFieldErrors((prev) => ({ ...prev, roastDate: '' }));
+                    }}
+                    aria-invalid={Boolean(beanFieldErrors.roastDate)}
+                    aria-describedby={beanFieldErrors.roastDate ? 'roast-date-error' : undefined}
+                    className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm ${beanFieldErrors.roastDate ? 'border-[rgba(180,60,60,0.55)]' : ''}`}
                   />
+                  {beanFieldErrors.roastDate && (
+                    <p id="roast-date-error" className="text-[11px] text-[#d08080] mt-1 font-semibold">
+                      {beanFieldErrors.roastDate}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Storage Method</label>

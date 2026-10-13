@@ -6,11 +6,16 @@ import {
   SETTE_GRINDER_ID,
   SUNBEAM_GRINDER_ID,
 } from '../grinders/grinderRegistry.js';
-import { GENERIC_BREW_GUIDE_MENU, SUNBEAM_MACHINE_BREW_GUIDE } from './machine/index.js';
+import {
+  GENERIC_BREW_GUIDE_MENU,
+  GENERIC_MACHINE_BREW_GUIDE,
+  SUNBEAM_MACHINE_BREW_GUIDE,
+} from './machine/index.js';
 import { resolveBrewGuideRecipeTargets } from './steps.js';
 
 const MACHINE_PACKAGES = Object.freeze({
   [SUNBEAM_MACHINE_BREW_GUIDE.key]: SUNBEAM_MACHINE_BREW_GUIDE,
+  [GENERIC_MACHINE_BREW_GUIDE.key]: GENERIC_MACHINE_BREW_GUIDE,
 });
 
 /**
@@ -31,19 +36,22 @@ export function getBrewGuideMachinePackageForGrinder(grinderModel) {
   return MACHINE_PACKAGES[key] ?? null;
 }
 
-/**
- * Machine reference UI shown in Brew Guide today (Sunbeam EM5300 content for all grinders).
- * Workflow grind behaviour still follows the active grinder via getBrewGuideGrindConfig.
- */
+/** Menu framing shared by all Brew Guide machine packages. */
 export function getBrewGuideMenuShell() {
   return GENERIC_BREW_GUIDE_MENU;
 }
 
-export function getBrewGuideMachinePackage() {
+/**
+ * Machine reference content for the active grinder.
+ * Sunbeam-specific guides only when the Sunbeam Barista Max is the selected grinder.
+ */
+export function getBrewGuideMachinePackage(grinderModel) {
+  const machine = getBrewGuideMachinePackageForGrinder(grinderModel) ?? GENERIC_MACHINE_BREW_GUIDE;
   return {
     ...GENERIC_BREW_GUIDE_MENU,
-    machineSettingsDetail: SUNBEAM_MACHINE_BREW_GUIDE.machineSettingsDetail,
-    guides: SUNBEAM_MACHINE_BREW_GUIDE.guides,
+    machineSettingsDetail: machine.machineSettingsDetail,
+    guides: machine.guides,
+    machineKey: machine.key,
   };
 }
 
@@ -57,6 +65,7 @@ export function buildBrewGuideDialPayload({
   grinderModel,
   grindLabel,
   previousGrindLabel,
+  flairEnabled = false,
 }) {
   const targets = resolveBrewGuideRecipeTargets({
     targetDoseG,
@@ -75,6 +84,7 @@ export function buildBrewGuideDialPayload({
     grinderModel,
     grindLabel,
     previousGrindLabel,
+    flairEnabled: Boolean(flairEnabled),
   };
 }
 

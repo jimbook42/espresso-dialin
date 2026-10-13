@@ -1,6 +1,6 @@
 /** Generic Brew Guide menu framing (not tied to a single machine brand). */
 export const GENERIC_BREW_GUIDE_MENU = Object.freeze({
-  menuTitle: 'Machine & Grinder Guide',
+  menuTitle: 'Brew & machine guides',
   menuSubtitle:
-    'Get the most from your setup with machine-specific guidance and supporting espresso guides.',
+    'Step-by-step brewing for your recipe, plus optional machine care and milk guides.',
 });
