@@ -24,6 +24,8 @@ import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
 import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
+import { runPressureLabFlagTests } from './src/config/pressureLabFlag.test.js';
+import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
   capturePendingGrindState,
@@ -441,6 +443,8 @@ async function runTests() {
   runRecFollowedCsvTests();
   runBalancedTasteTests(recipe, createShot, runCalc);
   runNicheZeroTests();
+  runShotCountDisplayTests();
+  runPressureLabFlagTests();
   runRecommendationIntegrityTests();
   runBrewGuideTests();
   runBrewGuidanceTests();
@@ -489,6 +493,21 @@ function runKnownIssueLearningTests() {
   assert.equal(shotEligibleForLearning({}), true);
   assert.equal(shotEligibleForLearning({ excludeFromLearning: false }), true);
   assert.equal(shotEligibleForLearning({ excludeFromLearning: true }), false);
+
+  const preserveReasonShot = {
+    ...dialledShot(12, 'C', '2026-09-12T10:00:00.000Z'),
+    excludeFromLearning: true,
+    knownIssueReason: 'puck_prep',
+  };
+  const reExcludeReason = preserveReasonShot.excludeFromLearning
+    ? preserveReasonShot.knownIssueReason || 'other'
+    : preserveReasonShot.knownIssueReason;
+  assert.equal(reExcludeReason, 'puck_prep');
+  const afterInclude = { ...preserveReasonShot, excludeFromLearning: false, knownIssueReason: 'puck_prep' };
+  const reExcludeAfterInclude = afterInclude.excludeFromLearning
+    ? afterInclude.knownIssueReason || 'other'
+    : afterInclude.knownIssueReason;
+  assert.equal(reExcludeAfterInclude, 'puck_prep');
 
   const shotA = dialledShot(10, 'A', '2026-09-10T10:00:00.000Z');
   const shotB = dialledShot(15, 'F', '2026-09-11T10:00:00.000Z', {

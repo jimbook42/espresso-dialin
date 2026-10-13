@@ -35,6 +35,12 @@ import {
   buildNicheEligibilityLearningNote,
 } from '../grinders/nicheEligibility.js';
 import { isBalancedTaste, normalizeTasteProfile } from './tasteProfile.js';
+import {
+  CURRENT_PULL_ELIGIBILITY_ID,
+  isPersistedLearningShot,
+} from './learningShotIdentity.js';
+
+export { CURRENT_PULL_ELIGIBILITY_ID, isPersistedLearningShot } from './learningShotIdentity.js';
 
 export { NICHE_ZERO_GRINDER_ID } from '../grinders/grinderRegistry.js';
 
@@ -244,15 +250,25 @@ export function shotResultImproved(previousShot, currentShotData, recipe) {
   return false;
 }
 
-export function getRecommendationEvidenceContext(recentShots, recipe, flairEnabled = false) {
-  const sorted = [...recentShots]
+function loggedRecipeComparableShots(shots, recipe, flairEnabled) {
+  return [...shots]
+    .filter(isPersistedLearningShot)
     .filter(shotEligibleForLearning)
+    .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  const comparable = sorted.filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled));
+}
+
+export function getRecommendationEvidenceContext(recentShots, recipe, flairEnabled = false) {
+  const comparable = loggedRecipeComparableShots(recentShots, recipe, flairEnabled);
   if (comparable.length === 0) return null;
-  const count = Math.min(comparable.length, 3);
+  const count = comparable.length;
   if (count >= 2) return `Based on ${count} recent shots with this recipe`;
   return 'Based on recent shots with this recipe';
+}
+
+function evidenceContextForRecommendation(recentShots, shotData, recipe, flairEnabled, options) {
+  const pool = shotsForNicheEligibilityDiagnosis(recentShots, shotData, recipe, options);
+  return getRecommendationEvidenceContext(pool, recipe, flairEnabled);
 }
 
 function freshnessOffsetsForEffectiveDays(effectiveDays) {
@@ -443,7 +459,7 @@ export function recomputeNicheRecommendationFromLastShot(lastShot, recipe, grind
 export function eligibilityShotFromCurrentPull(shotData, recipe, beanId) {
   if (!beanId || shotData?.actualTime == null) return null;
   return {
-    id: shotData.id ?? '__current_pull__',
+    id: shotData.id ?? CURRENT_PULL_ELIGIBILITY_ID,
     beanId,
     grinderModel: shotData.grinderModel,
     nicheZeroSetting: shotData.nicheZeroSetting,
@@ -826,8 +842,13 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       }
     }
 
-    const sortedRecent = [...learningRecentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const evidenceContext = getRecommendationEvidenceContext(sortedRecent, recipe, flairEnabled);
+    const evidenceContext = evidenceContextForRecommendation(
+      recentShots,
+      shotData,
+      recipe,
+      flairEnabled,
+      options
+    );
     const shotOutcome = classifyShotOutcome(
       { actualTimeS: actualTime, actualYieldG: actualYield, tasteProfile, targetTimeMinS: targetMin, targetTimeMaxS: targetMax },
       recipe
@@ -956,8 +977,13 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     sunbeamSetting,
   });
 
-  const sortedRecent = [...learningRecentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  const evidenceContext = getRecommendationEvidenceContext(sortedRecent, recipe, flairEnabled);
+  const evidenceContext = evidenceContextForRecommendation(
+    recentShots,
+    shotData,
+    recipe,
+    flairEnabled,
+    options
+  );
   const shotOutcome = classifyShotOutcome(
     { actualTimeS: actualTime, actualYieldG: actualYield, tasteProfile, targetTimeMinS: targetMin, targetTimeMaxS: targetMax },
     recipe

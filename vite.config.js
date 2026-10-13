@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import process from 'node:process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -18,6 +19,9 @@ const pressureLabBuild = pressureLabBuildId();
 export default defineConfig(({ mode }) => ({
   define: {
     'import.meta.env.VITE_PRESSURE_LAB_BUILD': JSON.stringify(pressureLabBuild),
+    'import.meta.env.VITE_ENABLE_PRESSURE_LAB': JSON.stringify(
+      process.env.VITE_ENABLE_PRESSURE_LAB === 'true' ? 'true' : 'false'
+    ),
   },
   plugins: [
     react(),

@@ -1,5 +1,8 @@
-/** Temporary branch entry. Not part of production navigation. */
+import { isPressureLabEnabled } from '../config/pressureLabFlag.js';
+
+/** Temporary branch entry. Gated by VITE_ENABLE_PRESSURE_LAB (off by default). */
 export function PressureLabEntry() {
+  if (!isPressureLabEnabled()) return null;
   return (
     <button
       type="button"

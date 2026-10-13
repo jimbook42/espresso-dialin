@@ -20,6 +20,7 @@ Branch: `refactor/device-architecture`. Definition of done: learning eligibility
 | **5.2c** | `7b7e0cc` | Grinder switch-back restores correct dial state; taste label **Balanced** end-to-end; legacy `good` taste values still read as balanced (no data migration). |
 | **5.2d** | `7ef3ee3` | **Apply** recommendation persists pending dial for the **session** (per bean + grinder until a shot is logged); CSV **Rec Followed** exports **N/A** when no prior recommendation (no history rewrite). |
 | Lockfile | `9697322` | Revert unrelated `package-lock.json` libc churn. |
+| **5.2f** | (this ticket) | User-facing shot counts use **logged** bean+grinder+recipe totals (5.2b funnel rules); in-progress pull still included in compact eligibility suffix only. Flair **Pressure lab** gated by `VITE_ENABLE_PRESSURE_LAB` (default off). Re-excluding a shot keeps prior `knownIssueReason`. |
 
 ## Confirmed defects fixed (5.2b)
 
@@ -57,6 +58,7 @@ Confidence gate constants (`NICHE_LEARNING_MIN_OBSERVATIONS`, `MIN_PAIRS`, `MIN_
 - **Fresh-bean copy**: when there are no shots on this bean but a starting dial is seeded from roast class + age, the UI can still show **“Based on previous bean history”** even though the seed is roast-baseline logic, not this bean’s shot log.
 - **Pending dial after Apply** is **session-only** (in-memory per bean + grinder); it is not persisted across reloads until the user logs a shot with that grind.
 - Sette/Sunbeam recommendation math unchanged; only shared recipe/grinder matching helpers are shared.
+- **Pressure lab** (WIP): off in production builds unless preview sets `VITE_ENABLE_PRESSURE_LAB=true` in Vercel env for that environment; deep links to `#/flair-pressure-lab` are ignored when the flag is off.
 
 ## Test results (5.2e + empirical validation label)
 

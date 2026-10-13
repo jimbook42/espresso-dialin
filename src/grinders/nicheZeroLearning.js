@@ -286,12 +286,12 @@ export function buildNicheLearningTransparencyNote(
   diagnostics = {},
   { recipeComparableCount = 0, grinderLearningShotCount = 0 } = {}
 ) {
-  const { observationCount = 0, dialSpread = 0 } = diagnostics;
+  const { dialSpread = 0 } = diagnostics;
   if (reasonCode === 'insufficient_observations') {
     if (recipeComparableCount === 0 && grinderLearningShotCount > 0) {
       return 'Dial learning needs shots logged at this recipe’s dose, yield, and target time (and Flair profile when enabled). None of your saved shots match yet.';
     }
-    return `Need at least ${NICHE_LEARNING_MIN_OBSERVATIONS} comparable dial/time observations for this recipe — you have ${observationCount}.`;
+    return `Need at least ${NICHE_LEARNING_MIN_OBSERVATIONS} comparable dial/time observations for this recipe — you have ${recipeComparableCount}.`;
   }
   if (reasonCode === 'insufficient_variation') {
     return `Comparable shots use nearly the same dial (spread ${dialSpread} marks; need about ${NICHE_MIN_SETTING_SPREAD}+). Try a few settings further apart and log the times.`;

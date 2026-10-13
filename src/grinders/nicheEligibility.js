@@ -13,6 +13,7 @@ import {
   shotMatchesGrinderForLearning,
   shotRecipeMismatchReason,
 } from './grinderLearningMatch.js';
+import { isPersistedLearningShot } from '../utils/learningShotIdentity.js';
 
 /** When saved recipe targets on a shot match the current recipe, actual yield may differ this much (fast/slow shots). */
 export const NICHE_SAVED_TARGET_ACTUAL_YIELD_TOLERANCE_G = 4;
@@ -76,7 +77,9 @@ export function diagnoseNicheLearningEligibility({
   const shotExclusions = [];
   let excludedFromLearning = 0;
   let grinderMatched = 0;
+  let loggedGrinderMatched = 0;
   let recipeMatched = 0;
+  let loggedRecipeMatched = 0;
   let validDialTime = 0;
 
   const grinderPool = [];
@@ -91,6 +94,7 @@ export function diagnoseNicheLearningEligibility({
       continue;
     }
     grinderMatched += 1;
+    if (isPersistedLearningShot(shot)) loggedGrinderMatched += 1;
     grinderPool.push(shot);
 
     const recipeReason = shotRecipeMismatchReason(shot, recipe, flairEnabled);
@@ -99,6 +103,7 @@ export function diagnoseNicheLearningEligibility({
       continue;
     }
     recipeMatched += 1;
+    if (isPersistedLearningShot(shot)) loggedRecipeMatched += 1;
 
     const fieldReason = learningFieldReason(shot);
     if (fieldReason) {
@@ -164,8 +169,10 @@ export function diagnoseNicheLearningEligibility({
     counts: {
       beanShots: beanShots.length,
       grinderMatched,
+      loggedGrinderMatched,
       excludedFromLearning,
       recipeMatched,
+      loggedRecipeMatched,
       validDialTime,
     },
     shotExclusions,
@@ -213,8 +220,10 @@ export function buildNicheEligibilityLearningNote(
   if (recipeChangedNote) return recipeChangedNote;
 
   const countsForNote = {
-    recipeComparableCount: eligibility.counts.recipeMatched ?? recipeComparableCount,
-    grinderLearningShotCount: eligibility.counts.grinderMatched ?? grinderLearningShotCount,
+    recipeComparableCount:
+      eligibility.counts.loggedRecipeMatched ?? eligibility.counts.recipeMatched ?? recipeComparableCount,
+    grinderLearningShotCount:
+      eligibility.counts.loggedGrinderMatched ?? eligibility.counts.grinderMatched ?? grinderLearningShotCount,
   };
 
   const reasonCode = empiricalReasonCode || eligibility.finalReasonCode;

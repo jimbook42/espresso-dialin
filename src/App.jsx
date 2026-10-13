@@ -714,7 +714,7 @@ export default function App() {
     const nextExcluded = !shot.excludeFromLearning;
     await db.shots.update(shot.id, {
       excludeFromLearning: nextExcluded,
-      knownIssueReason: nextExcluded ? (shot.knownIssueReason || 'other') : undefined,
+      ...(nextExcluded ? { knownIssueReason: shot.knownIssueReason || 'other' } : {}),
     });
   };
 
