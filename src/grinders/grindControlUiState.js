@@ -4,7 +4,7 @@ import { uiStateFromInitialRecommendation, uiStateFromLastShot } from './grinder
 
 /**
  * Grind control UI state when bean/grinder context changes.
- * Reflects the last logged shot's grind only — never a pending recommendation.
+ * Reflects the last logged shot's grind when no session pending dial exists (see pendingGrindSession.js).
  * @param {object} params
  * @param {string} params.grinderModel
  * @param {object[]} params.shots Newest-first shot list

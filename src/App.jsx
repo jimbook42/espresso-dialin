@@ -36,14 +36,21 @@ import {
   formatRecommendedGrindDisplay,
   formatShotGrindForHistory,
   getUiGrinderPresentation,
-  grindMatchesStoredRecommendation,
   isSunbeamGrinderModel,
   isNicheZeroGrinderModel,
   parseGrindForShotSave,
   persistedSettingsPatchFromRecommendation,
   uiStateFromRecommendedSetting,
 } from './grinders/grinderRegistry.js';
-import { resolveGrindControlUiState } from './grinders/grindControlUiState.js';
+import {
+  capturePendingGrindState,
+  pendingGrindSessionKey,
+  resolveGrindControlUiStateWithPending,
+} from './grinders/pendingGrindSession.js';
+import {
+  formatRecFollowedForCsv,
+  resolveRecommendationFollowedForSave,
+} from './utils/recommendationFollowed.js';
 import {
   BALANCED_TASTE_PROFILE,
   normalizeTasteProfile,
@@ -217,6 +224,7 @@ export default function App() {
   const tasteInputRef = useRef(null);
   const recommendationRef = useRef(null);
   const grindSettingsRef = useRef(null);
+  const pendingGrindByKeyRef = useRef({});
   const brewTempDefaultRef = useRef('');
   const [validationError, setValidationError] = useState('');
   const [highlightGrind, setHighlightGrind] = useState(false);
@@ -344,9 +352,61 @@ export default function App() {
     }
   }, [activeRecipe?.id]);
 
+  const stashPendingGrind = (model, beanId, grindFields) => {
+    const key = pendingGrindSessionKey(beanId, model);
+    const snap = capturePendingGrindState(model, grindFields);
+    if (key && snap) pendingGrindByKeyRef.current[key] = snap;
+  };
+
+  const clearPendingGrind = (beanId, model) => {
+    const key = pendingGrindSessionKey(beanId, model);
+    if (key) delete pendingGrindByKeyRef.current[key];
+  };
+
+  const handleSetteMacroChange = (value) => {
+    setSetteMacro(value);
+    stashPendingGrind(grinderModel, activeBean?.id, {
+      setteMacro: value,
+      setteMicro,
+      sunbeamSetting,
+      nicheZeroSetting,
+    });
+  };
+
+  const handleSetteMicroChange = (value) => {
+    setSetteMicro(value);
+    stashPendingGrind(grinderModel, activeBean?.id, {
+      setteMacro,
+      setteMicro: value,
+      sunbeamSetting,
+      nicheZeroSetting,
+    });
+  };
+
+  const handleSunbeamChange = (value) => {
+    setSunbeamSetting(value);
+    stashPendingGrind(grinderModel, activeBean?.id, {
+      setteMacro,
+      setteMicro,
+      sunbeamSetting: value,
+      nicheZeroSetting,
+    });
+  };
+
+  const handleNicheZeroChange = (value) => {
+    setNicheZeroSetting(value);
+    stashPendingGrind(grinderModel, activeBean?.id, {
+      setteMacro,
+      setteMicro,
+      sunbeamSetting,
+      nicheZeroSetting: value,
+    });
+  };
+
   useEffect(() => {
     if (!activeBean || !grinderModel) return;
-    const uiState = resolveGrindControlUiState({
+    const uiState = resolveGrindControlUiStateWithPending({
+      pendingGrindByKey: pendingGrindByKeyRef.current,
       grinderModel,
       shots,
       activeBean,
@@ -721,25 +781,18 @@ export default function App() {
       return;
     }
 
-    let recommendationFollowed = true;
-    if (lastLearningShot && lastLearningShot.recommendation?.recommendedSetting) {
-      // Use age-adjusted recommendation for comparison so thaw/freshness shifts don't cause false flags
-      const adjustedRec = getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate);
-      const rec = adjustedRec?.recommendedSetting || lastLearningShot.recommendation.recommendedSetting;
-
-      if (!grindMatchesStoredRecommendation(
-        lastLearningShot.grinderModel,
-        {
-          setteMacro: finalMacro,
-          setteMicro: finalMicro,
-          sunbeamSetting: finalSunbeam,
-          nicheZeroSetting: finalNicheZero,
-        },
-        rec
-      )) {
-        recommendationFollowed = false;
-      }
-    }
+    const recommendationFollowed = resolveRecommendationFollowedForSave({
+      lastLearningShot,
+      activeBean,
+      mockDate,
+      grinderModel,
+      savedGrind: {
+        setteMacro: finalMacro,
+        setteMicro: finalMicro,
+        sunbeamSetting: finalSunbeam,
+        nicheZeroSetting: finalNicheZero,
+      },
+    });
 
     const lastShotGrind = lastLearningShot ? {
       setteMacro: lastLearningShot.setteMacro,
@@ -821,7 +874,8 @@ export default function App() {
 
     try {
       await db.shots.add(shotRecord);
-      
+      clearPendingGrind(activeBean.id, grinderModel);
+
       setActualTimeS('');
       setActualYieldG(activeRecipe?.targetYieldG || '');
       setShotRating(null);
@@ -959,6 +1013,12 @@ export default function App() {
       if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
       if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
+      stashPendingGrind(applyGrinder, activeBean?.id, {
+        setteMacro: uiState.setteMacro ?? setteMacro,
+        setteMicro: uiState.setteMicro ?? setteMicro,
+        sunbeamSetting: uiState.sunbeamSetting ?? sunbeamSetting,
+        nicheZeroSetting: uiState.nicheZeroSetting ?? nicheZeroSetting,
+      });
       await db.settings.put({
         ...currentSettings,
         ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet),
@@ -991,7 +1051,7 @@ export default function App() {
         s.shotRating || '',
         s.beanAgeDays || 0,
         s.storageType || 'bag',
-        s.recommendationFollowed !== false ? 'Yes' : 'No',
+        formatRecFollowedForCsv(s),
         s.excludeFromLearning ? 'Yes' : 'No',
         s.excludeFromLearning ? knownIssueReasonLabel(s.knownIssueReason) : '',
         `"${s.notes || ''}"`
@@ -1100,6 +1160,12 @@ export default function App() {
       if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
       if (uiState?.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
+      stashPendingGrind(grinderModel, activeBean?.id, {
+        setteMacro: uiState?.setteMacro ?? setteMacro,
+        setteMicro: uiState?.setteMicro ?? setteMicro,
+        sunbeamSetting: uiState?.sunbeamSetting ?? sunbeamSetting,
+        nicheZeroSetting: uiState?.nicheZeroSetting ?? nicheZeroSetting,
+      });
     }
     setBrewTimerHost(false);
     setShotFieldHighlights({ ...EMPTY_SHOT_FIELD_HIGHLIGHTS, taste: true });
@@ -1570,10 +1636,10 @@ export default function App() {
                       setteMicro={setteMicro}
                       sunbeamSetting={sunbeamSetting}
                       nicheZeroSetting={nicheZeroSetting}
-                      onSetteMacroChange={setSetteMacro}
-                      onSetteMicroChange={setSetteMicro}
-                      onSunbeamChange={setSunbeamSetting}
-                      onNicheZeroChange={setNicheZeroSetting}
+                      onSetteMacroChange={handleSetteMacroChange}
+                      onSetteMicroChange={handleSetteMicroChange}
+                      onSunbeamChange={handleSunbeamChange}
+                      onNicheZeroChange={handleNicheZeroChange}
                       ui={ui}
                     />
 

@@ -608,7 +608,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     actualYield,
     tasteProfile: rawTasteProfile,
     lastShotGrind,
-    recommendationFollowed = true,
+    recommendationFollowed = null,
     previousShot = null,
   } = shotData;
   const tasteProfile = normalizeTasteProfile(rawTasteProfile);
@@ -635,7 +635,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     warning = "⚠️ Unpurged setting change detected. Retention may have skewed flow.";
   }
 
-  if (!recommendationFollowed) {
+  if (recommendationFollowed === false) {
     const improved = shotResultImproved(previousShot, shotData, recipe);
     if (!improved) {
       warning = warning

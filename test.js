@@ -26,6 +26,15 @@ import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
+  capturePendingGrindState,
+  pendingGrindSessionKey,
+  resolveGrindControlUiStateWithPending,
+} from './src/grinders/pendingGrindSession.js';
+import {
+  formatRecFollowedForCsv,
+  resolveRecommendationFollowedForSave,
+} from './src/utils/recommendationFollowed.js';
+import {
   BALANCED_TASTE_PROFILE,
   normalizeTasteProfile,
   tasteProfileDisplayLabel,
@@ -105,6 +114,128 @@ function runGrindSwitchBackTests() {
     flairEnabled: false,
   });
   assert.equal(sunbeamUi.sunbeamSetting, 15);
+}
+
+function runPendingGrindSessionTests() {
+  const bean = { id: 'b1', roastType: 'Medium', roastDate: '2026-09-01', storageType: 'bag' };
+  const recipes = [];
+  const beans = [bean];
+  const base = {
+    beanId: 'b1',
+    timestamp: '2026-09-20T12:00:00.000Z',
+    excludeFromLearning: false,
+  };
+  const shots = [
+    {
+      ...base,
+      grinderModel: 'Niche Zero',
+      nicheZeroSetting: 17,
+      recommendation: { recommendedSetting: { nicheZeroSetting: 18.4 } },
+    },
+  ];
+  const key = pendingGrindSessionKey('b1', 'Niche Zero');
+  assert.equal(key, 'b1::Niche Zero');
+
+  const pendingSnap = capturePendingGrindState('Niche Zero', {
+    setteMacro: 13,
+    setteMicro: 'E',
+    sunbeamSetting: 15,
+    nicheZeroSetting: 18.4,
+  });
+  assert.deepEqual(pendingSnap, { nicheZeroSetting: 18.4 });
+
+  const withPending = resolveGrindControlUiStateWithPending({
+    pendingGrindByKey: { [key]: pendingSnap },
+    grinderModel: 'Niche Zero',
+    shots,
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(withPending.nicheZeroSetting, 18.4);
+
+  const setteKey = pendingGrindSessionKey('b1', 'Sette 270Wi');
+  const settePending = { setteMacro: 14, setteMicro: 'F' };
+  const setteUi = resolveGrindControlUiStateWithPending({
+    pendingGrindByKey: { [setteKey]: settePending },
+    grinderModel: 'Sette 270Wi',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Sette 270Wi',
+        setteMacro: 13,
+        setteMicro: 'E',
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(setteUi.setteMacro, 14);
+  assert.equal(setteUi.setteMicro, 'F');
+
+  const sunbeamKey = pendingGrindSessionKey('b1', 'Sunbeam Barista Max');
+  const sunbeamUi = resolveGrindControlUiStateWithPending({
+    pendingGrindByKey: { [sunbeamKey]: { sunbeamSetting: 22 } },
+    grinderModel: 'Sunbeam Barista Max',
+    shots: [
+      {
+        ...base,
+        grinderModel: 'Sunbeam Barista Max',
+        sunbeamSetting: 15,
+      },
+    ],
+    activeBean: bean,
+    recipes,
+    beans,
+    mockDate: null,
+    flairEnabled: false,
+  });
+  assert.equal(sunbeamUi.sunbeamSetting, 22);
+}
+
+function runRecFollowedCsvTests() {
+  assert.equal(formatRecFollowedForCsv({ recommendationFollowed: true }), 'Yes');
+  assert.equal(formatRecFollowedForCsv({ recommendationFollowed: false }), 'No');
+  assert.equal(formatRecFollowedForCsv({}), 'N/A');
+  assert.equal(formatRecFollowedForCsv({ recommendationFollowed: null }), 'N/A');
+
+  const noRec = resolveRecommendationFollowedForSave({
+    lastLearningShot: { grinderModel: 'Sette 270Wi', recommendation: {} },
+    activeBean: { id: 'b1' },
+    mockDate: null,
+    grinderModel: 'Sette 270Wi',
+    savedGrind: { setteMacro: 13, setteMicro: 'E' },
+  });
+  assert.equal(noRec, null);
+
+  const followed = resolveRecommendationFollowedForSave({
+    lastLearningShot: {
+      grinderModel: 'Sette 270Wi',
+      recommendation: { recommendedSetting: { macro: 13, micro: 'E' } },
+    },
+    activeBean: { id: 'b1' },
+    mockDate: null,
+    grinderModel: 'Sette 270Wi',
+    savedGrind: { setteMacro: 13, setteMicro: 'E' },
+  });
+  assert.equal(followed, true);
+
+  const notFollowed = resolveRecommendationFollowedForSave({
+    lastLearningShot: {
+      grinderModel: 'Sette 270Wi',
+      recommendation: { recommendedSetting: { macro: 14, micro: 'F' } },
+    },
+    activeBean: { id: 'b1' },
+    mockDate: null,
+    grinderModel: 'Sette 270Wi',
+    savedGrind: { setteMacro: 13, setteMicro: 'E' },
+  });
+  assert.equal(notFollowed, false);
 }
 
 function runBalancedTasteTests(recipe, createShot, runCalc) {
@@ -306,6 +437,8 @@ async function runTests() {
   );
 
   runGrindSwitchBackTests();
+  runPendingGrindSessionTests();
+  runRecFollowedCsvTests();
   runBalancedTasteTests(recipe, createShot, runCalc);
   runNicheZeroTests();
   runRecommendationIntegrityTests();
