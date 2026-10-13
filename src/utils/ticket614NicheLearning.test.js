@@ -30,7 +30,8 @@ import {
   shotEligibleForLearning,
   shotMatchesGrinderForLearning,
 } from './grinderLogic.js';
-import { importShotsCsvThroughAppPath } from './csvImport.js';
+import { importShotsCsvThroughAppPath, importShotsFromCsv } from './csvImport.js';
+import { NICHE_ZERO_GRINDER_ID } from '../grinders/nicheZero.js';
 import { resolveRecipeForBean } from './beanRecipeResolution.js';
 import {
   formatCurrentGrindLabel,
@@ -285,6 +286,42 @@ function runLegacyRecordCompatibilityTests() {
   assert.ok(stats.sensitivity);
 }
 
+async function runNicheExtendedCsvImportTests() {
+  const header =
+    'Timestamp,Bean,Grinder,Grind Setting,Purged,Dose(g),Yield(g),Ratio,Time(s),Taste,Rating,Bean Age (Days),Storage,Rec Followed,Excluded,Known Issue Reason,Notes';
+  const rows = [
+    ['2026-01-01, 10:00:00', 'N1', NICHE_ZERO_GRINDER_ID, '-5', 'Yes', '18', '36', '1:2', '28', 'balanced', '', '', 'bag', 'N/A', 'No', '', ''],
+    ['2026-01-02, 10:00:00', 'N1', NICHE_ZERO_GRINDER_ID, '-4', 'Yes', '18', '36', '1:2', '28', 'balanced', '', '', 'bag', 'N/A', 'No', '', ''],
+    ['2026-01-03, 10:00:00', 'N1', NICHE_ZERO_GRINDER_ID, '54', 'Yes', '18', '36', '1:2', '28', 'balanced', '', '', 'bag', 'N/A', 'No', '', ''],
+    ['2026-01-04, 10:00:00', 'N1', NICHE_ZERO_GRINDER_ID, '55', 'Yes', '18', '36', '1:2', '28', 'balanced', '', '', 'bag', 'N/A', 'No', '', ''],
+  ];
+  const csv = [header, ...rows.map((r) => r.join(','))].join('\n');
+
+  await db.open();
+  await db.transaction('rw', db.beans, db.recipes, db.shots, db.settings, async () => {
+    await db.beans.clear();
+    await db.recipes.clear();
+    await db.shots.clear();
+    await db.settings.clear();
+    await db.settings.put({ id: 'global', grinderModel: 'Sette 270Wi' });
+  });
+
+  const result = await importShotsFromCsv(db, csv, {
+    settings: { id: 'global', grinderModel: 'Sette 270Wi' },
+  });
+  assert.equal(result.imported, 4);
+  assert.equal(result.errors.length, 0);
+
+  const shots = await db.shots.orderBy('timestamp').toArray();
+  assert.equal(shots.length, 4);
+  const values = shots.map((s) => s.nicheZeroSetting).sort((a, b) => a - b);
+  assert.deepEqual(values, [-5, -4, 54, 55]);
+
+  const globalSettings = await db.settings.get('global');
+  assert.equal(globalSettings.nicheZeroDialZeroOffset, -5);
+  assert.equal(result.nicheCalibrationApplied, -5);
+}
+
 async function runLegacyCsvImportEvidenceTests() {
   const legacyRaw = fs.readFileSync(LEGACY_FIXTURE, 'utf8');
   await db.open();
@@ -332,6 +369,7 @@ export async function runTicket614NicheLearningTests() {
   runInitialGrindHintLiveTrackingTests();
   runCustomGrinderPickerPersistenceTests();
   runLegacyRecordCompatibilityTests();
+  await runNicheExtendedCsvImportTests();
   await runLegacyCsvImportEvidenceTests();
   console.log('Ticket 6.14 niche learning tests passed.');
 }

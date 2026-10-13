@@ -14,6 +14,9 @@ export const NICHE_ZERO_ESPRESSO_TYPICAL_MIN = 10;
 export const NICHE_ZERO_ESPRESSO_TYPICAL_MAX = 20;
 /** App default espresso starting reference when no eligible history exists (not a manufacturer optimum). */
 export const NICHE_ZERO_DEFAULT_SETTING = 15;
+/** CSV import / restore: accept recorded dial values outside the default product range. */
+export const NICHE_ZERO_IMPORT_ABS_MIN = -99;
+export const NICHE_ZERO_IMPORT_ABS_MAX = 150;
 
 function finiteOptionalNumber(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -55,6 +58,47 @@ export function getNicheZeroDialLimits(settings = null) {
   }
 
   return { min, max, hasCalibration: true };
+}
+
+export function parseNicheZeroSettingForImport(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : parseFloat(String(value).trim());
+  if (!Number.isFinite(n)) return null;
+  if (n < NICHE_ZERO_IMPORT_ABS_MIN || n > NICHE_ZERO_IMPORT_ABS_MAX) return null;
+  return Math.round(n * 10) / 10;
+}
+
+export function settingsHasNicheDialCalibration(settings = null) {
+  return (
+    finiteOptionalNumber(settings?.nicheZeroDialZeroOffset) !== null
+    || finiteOptionalNumber(settings?.nicheZeroDialMin) !== null
+    || finiteOptionalNumber(settings?.nicheZeroDialMax) !== null
+  );
+}
+
+/**
+ * Infer zero offset from imported shot dial values (e.g. -5..55 → offset -5).
+ * @param {number[]} values
+ * @returns {number|null}
+ */
+export function inferNicheZeroDialZeroOffsetFromValues(values) {
+  const nums = (values || []).map((v) => Number(v)).filter((n) => Number.isFinite(n));
+  if (!nums.length) return null;
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const below = min < NICHE_ZERO_DIAL_MIN;
+  const above = max > NICHE_ZERO_DIAL_MAX;
+  if (!below && !above) return null;
+  if (below && above) {
+    const negExtent = NICHE_ZERO_DIAL_MIN - min;
+    const posExtent = max - NICHE_ZERO_DIAL_MAX;
+    if (Math.abs(negExtent - posExtent) <= 0.15) {
+      return Math.round(min * 10) / 10;
+    }
+    return min < 0 ? Math.round(min * 10) / 10 : Math.round((max - NICHE_ZERO_DIAL_MAX) * 10) / 10;
+  }
+  if (below) return Math.round(min * 10) / 10;
+  return Math.round((max - NICHE_ZERO_DIAL_MAX) * 10) / 10;
 }
 
 export function parseNicheZeroSetting(value, settings = null) {

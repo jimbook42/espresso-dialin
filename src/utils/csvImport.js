@@ -10,6 +10,12 @@ import {
 } from './csvTimestamp.js';
 import { parseRecFollowedFromCsv } from './recommendationFollowed.js';
 import { normalizeTasteProfile, tasteProfileForSave } from './tasteProfile.js';
+import {
+  inferNicheZeroDialZeroOffsetFromValues,
+  NICHE_ZERO_GRINDER_ID,
+  parseNicheZeroSettingForImport,
+  settingsHasNicheDialCalibration,
+} from '../grinders/nicheZero.js';
 
 const LEGACY_EXCLUDED_HEADER = 'Excluded From Learning';
 const EXCLUDED_HEADER = 'Excluded';
@@ -183,9 +189,22 @@ function grindFieldsFromCsvRow(grinderModel, grindSetting, settings) {
       const parsed = parseGrindForShotSave(grinderModel, { sunbeamSetting: numeric }, settings);
       return parsed.ok ? { ok: true, fields: parsed } : { ok: false, error: 'Invalid Sunbeam grind' };
     }
-    if (grinderModel === 'Niche Zero') {
-      const parsed = parseGrindForShotSave(grinderModel, { nicheZeroSetting: numeric }, settings);
-      return parsed.ok ? { ok: true, fields: parsed } : { ok: false, error: 'Invalid Niche grind' };
+    if (grinderModel === NICHE_ZERO_GRINDER_ID) {
+      const nicheZeroSetting = parseNicheZeroSettingForImport(numeric);
+      if (nicheZeroSetting === null) {
+        return { ok: false, error: 'Invalid Niche grind' };
+      }
+      return {
+        ok: true,
+        fields: {
+          ok: true,
+          setteMacro: null,
+          setteMicro: null,
+          sunbeamSetting: null,
+          nicheZeroSetting,
+          customGrindValue: null,
+        },
+      };
     }
     const parsed = parseGrindForShotSave(
       grinderModel,
@@ -436,17 +455,49 @@ export async function importShotsFromCsv(database, csvText, options = {}) {
     });
   }
 
-  await database.transaction('rw', database.beans, database.shots, database.recipes, async () => {
-    if (pendingBeans.length > 0) {
-      await database.beans.bulkAdd(pendingBeans);
+  let nicheCalibrationNotice = null;
+  let nicheCalibrationApplied = null;
+  const nicheImportedValues = imported
+    .filter((s) => s.grinderModel === NICHE_ZERO_GRINDER_ID && s.nicheZeroSetting != null)
+    .map((s) => s.nicheZeroSetting);
+  const needsNicheCalibHint = nicheImportedValues.some(
+    (v) => v < 0 || v > 50
+  );
+  let settingsPatch = null;
+  if (needsNicheCalibHint && !settingsHasNicheDialCalibration(settings)) {
+    const inferred = inferNicheZeroDialZeroOffsetFromValues(nicheImportedValues);
+    if (inferred !== null) {
+      settingsPatch = { nicheZeroDialZeroOffset: inferred };
+      nicheCalibrationApplied = inferred;
+      nicheCalibrationNotice = `Applied Niche dial zero offset ${inferred} from imported shots so dial values display correctly.`;
+    } else {
+      nicheCalibrationNotice =
+        'Imported Niche shots include dial values outside 0–50. Set Niche calibration in Settings if needed.';
     }
-    if (imported.length > 0) {
-      await database.shots.bulkAdd(imported);
+  }
+
+  await database.transaction(
+    'rw',
+    database.beans,
+    database.shots,
+    database.recipes,
+    database.settings,
+    async () => {
+      if (pendingBeans.length > 0) {
+        await database.beans.bulkAdd(pendingBeans);
+      }
+      if (imported.length > 0) {
+        await database.shots.bulkAdd(imported);
+      }
+      if (recipesToAdd.length > 0) {
+        await database.recipes.bulkAdd(recipesToAdd);
+      }
+      if (settingsPatch) {
+        const currentSettings = await database.settings.get('global') || { id: 'global' };
+        await database.settings.put({ ...currentSettings, ...settingsPatch });
+      }
     }
-    if (recipesToAdd.length > 0) {
-      await database.recipes.bulkAdd(recipesToAdd);
-    }
-  });
+  );
 
   return {
     imported: imported.length,
@@ -454,6 +505,8 @@ export async function importShotsFromCsv(database, csvText, options = {}) {
     errors,
     createdBeans: pendingBeans.length,
     recipesCreated: recipesToAdd.length,
+    nicheCalibrationNotice,
+    nicheCalibrationApplied,
   };
 }
 

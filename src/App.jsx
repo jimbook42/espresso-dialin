@@ -48,6 +48,7 @@ import {
   isCustomGrinderModel,
   isSunbeamGrinderModel,
   isNicheZeroGrinderModel,
+  NICHE_ZERO_GRINDER_ID,
   listGrinderPickerOptions,
   normalizeCustomGrinderSettingsPatch,
   parseGrindForShotSave,
@@ -1627,6 +1628,9 @@ export default function App() {
       }
       if (errorCount > 0) {
         parts.push(`${errorCount} row${errorCount === 1 ? '' : 's'} with errors`);
+      }
+      if (result.nicheCalibrationNotice) {
+        parts.push(result.nicheCalibrationNotice);
       }
       setCsvImportSummary(parts.join(', ') + '.');
       window.setTimeout(() => setCsvImportSummary(''), 8000);
@@ -3208,7 +3212,8 @@ export default function App() {
                       <option key={option.id} value={option.id}>{option.label}</option>
                     ))}
                   </select>
-                  {isNicheZeroGrinderModel(grinderModel) && (
+                  {(settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting))
+                    === NICHE_ZERO_GRINDER_ID && (
                     <div className="space-y-2 border-t border-[rgba(255,255,255,0.06)] pt-3">
                       <p className={`text-[10px] font-bold uppercase tracking-wide ${ui.muted}`}>Niche Zero dial calibration</p>
                       <label className={`block ${ui.fieldLabel}`}>Dial zero offset (optional)</label>
