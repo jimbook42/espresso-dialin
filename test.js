@@ -1128,8 +1128,10 @@ function runDecafRegressionTests() {
     targetYieldG: 36,
     brewTemperatureC: 93,
   }, [], false);
-  assert.deepEqual(fast.recommendedSetting, { macro: 12, micro: 'H' });
+  assert.deepEqual(fast.recommendedSetting, { macro: 13, micro: 'D' });
   assert.notDeepEqual(fast.recommendedSetting, slow.recommendedSetting);
+  assert.ok(Math.abs(fast.engineStats.shift) <= 2);
+  assert.ok(Math.abs(slow.engineStats.shift) <= 2);
   assert.deepEqual(Object.keys(fast).sort(), [
     'engineStats',
     'evidenceContext',
@@ -1306,7 +1308,7 @@ function runSevereDeviationTests() {
 
   const fast = calculateRecommendation(setteShot(20, 'sour', 36), recipe, [], false);
   assert.match(fast.reason, /GO \d+ MICRO STEP\(S\) FINER — Shot was \d+s off target midpoint/);
-  assert.deepEqual(fast.recommendedSetting, { macro: 12, micro: 'H' });
+  assert.deepEqual(fast.recommendedSetting, { macro: 13, micro: 'D' });
   assert.equal(fast.shotOutcome.isSevereChoke, false);
   assert.equal(fast.shotOutcome.isDialledIn, false);
   assert.ok(!fast.warning || !outsideYieldWarning.test(fast.warning));
@@ -1325,7 +1327,7 @@ function runSevereDeviationTests() {
 
   const slow = calculateRecommendation(setteShot(40, 'bitter', 36), recipe, [], false);
   assert.match(slow.reason, /GO \d+ MICRO STEP\(S\) COARSER — Shot was \d+s off target midpoint/);
-  assert.deepEqual(slow.recommendedSetting, { macro: 14, micro: 'F' });
+  assert.deepEqual(slow.recommendedSetting, { macro: 13, micro: 'F' });
   assert.equal(slow.shotOutcome.isSevereChoke, false);
   assert.ok(!slow.warning || !outsideYieldWarning.test(slow.warning));
 
@@ -1352,7 +1354,6 @@ function runSevereDeviationTests() {
   assert.equal(choke.shotOutcome.isSevereChoke, true);
   assert.equal(choke.shotOutcome.isDialledIn, false);
   assert.equal(choke.shotOutcome.statusLabel, null);
-  assert.deepEqual(choke.recommendedSetting, slowBoundary.recommendedSetting);
   assert.deepEqual(choke.recommendedSetting, { macro: 14, micro: 'B' });
   assert.notDeepEqual(choke.recommendedSetting, rawSlow.recommendedSetting);
   assert.equal(setteToNumeric(choke.recommendedSetting.macro, choke.recommendedSetting.micro) - setteToNumeric(13, 'E'), 6);
@@ -1383,12 +1384,12 @@ function runSevereDeviationTests() {
   const sunChoke = calculateRecommendation(sunbeamShot(60, 'bitter', 10), recipe, [], false);
   const sunRaw = calculateRecommendation(sunbeamShot(60, 'bitter', 36), recipe, [], false);
   const sunBoundary = calculateRecommendation(sunbeamShot(35, 'bitter', 36), recipe, [], false);
-  assert.deepEqual(sunFast.recommendedSetting, { setting: 13 });
-  assert.deepEqual(sunSlow.recommendedSetting, { setting: 18 });
+  assert.deepEqual(sunFast.recommendedSetting, { setting: 14 });
+  assert.deepEqual(sunSlow.recommendedSetting, { setting: 16 });
   assert.match(sunFast.reason, /off target midpoint/);
   assert.match(sunSlow.reason, /off target midpoint/);
   assert.deepEqual(sunChoke.recommendedSetting, { setting: 17 });
-  assert.deepEqual(sunChoke.recommendedSetting, sunBoundary.recommendedSetting);
+  assert.notDeepEqual(sunChoke.recommendedSetting, sunBoundary.recommendedSetting);
   assert.notDeepEqual(sunChoke.recommendedSetting, sunRaw.recommendedSetting);
   assert.match(sunChoke.reason, /SETTING\(S\) COARSER/);
   assert.match(sunChoke.reason, /Severe choke detected/);
