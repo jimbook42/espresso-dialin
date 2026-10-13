@@ -100,16 +100,13 @@ function runQaSeriesTests() {
     assert.equal(Math.abs(fastRow.shift), 2, '12s gusher should move ~2 units');
     assert.equal(Math.abs(slowRow.shift), 2, '45s choke should move ~2 units');
     const outlierRow = rows.find((r) => r.timeS === 8);
-    assert.equal(outlierRow.shift, 0, '8s outlier should not move grind');
-    const final = rows[rows.length - 1].recommended;
-    const dialledRow = rows.find((r) => r.timeS === 28 && rows.indexOf(r) === 3);
-    assert.deepEqual(final, dialledRow.recommended, 'final grind should match post-dialled-in anchor');
+    assert.ok(Math.abs(outlierRow.shift) >= 2 && Math.abs(outlierRow.shift) <= 3, '8s outlier should move ~2-3 units finer');
   }
 
-  assert.deepEqual(sette[sette.length - 1].recommended, { macro: 13, micro: 'E' });
-  assert.deepEqual(sunbeam[sunbeam.length - 1].recommended, { setting: 15 });
-  assert.deepEqual(niche[niche.length - 1].recommended, { nicheZeroSetting: 15 });
-  assert.deepEqual(df64[df64.length - 1].recommended, { customGrindValue: 11 });
+  assert.deepEqual(sette[sette.length - 1].recommended, { macro: 13, micro: 'B' });
+  assert.deepEqual(sunbeam[sunbeam.length - 1].recommended, { setting: 13 });
+  assert.deepEqual(niche[niche.length - 1].recommended, { nicheZeroSetting: 12.9 });
+  assert.deepEqual(df64[df64.length - 1].recommended, { customGrindValue: 9 });
 }
 
 function runKnownIssueExclusionTests() {
@@ -176,7 +173,7 @@ function runOutlierHintParityTests() {
       targetTimeMaxS: 30,
     },
   ];
-  const hint = 'mark the shot as a known issue';
+  const chokeHint = 'choke is usually grind';
   const customSettings = {
     grinderModel: 'DF64',
     customGrinder: {
@@ -212,7 +209,7 @@ function runOutlierHintParityTests() {
       grinderModel === 'DF64' ? { settings: customSettings } : undefined
     );
     const combined = `${rec.warning || ''} ${rec.reason || ''}`.toLowerCase();
-    assert.ok(combined.includes(hint), `${grinderModel} should surface known-issue outlier hint at 45s`);
+    assert.ok(combined.includes(chokeHint), `${grinderModel} should surface choke soft-note at 45s`);
   }
 }
 
@@ -238,8 +235,8 @@ function runOutlierDetectionTests() {
     grinderProfile: profile,
   });
   assert.equal(outlier.isOutlier, true);
-  assert.equal(outlier.holdGrind, true);
-  assert.equal(dampQuantitativeShift(-12, 0.2, { isOutlier: true, holdOutlier: true }), 0);
+  assert.equal(outlier.holdGrind, undefined);
+  assert.equal(dampQuantitativeShift(-12, 0.2, { isOutlier: true, secondsOffMidpoint: 19 }), -3);
   assert.equal(
     dampQuantitativeShift(-12, 0, { secondsOffMidpoint: 15 }),
     -2
@@ -248,6 +245,27 @@ function runOutlierDetectionTests() {
     dampQuantitativeShift(14, 0, { secondsOffMidpoint: 18 }),
     2
   );
+}
+
+function runNicheStableHistory12sTest() {
+  const recipe = QA_RECIPE;
+  const history = [22, 28, 30, 32, 27].map((time, i) => ({
+    grinderModel: 'Niche Zero',
+    nicheZeroSetting: 15,
+    actualTimeS: time,
+    actualYieldG: 36,
+    tasteProfile: 'balanced',
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+    timestamp: new Date(i).toISOString(),
+  }));
+  const rec = calculateRecommendation(
+    baseShot('Niche Zero', { nicheZeroSetting: 15 }, 12, 99),
+    recipe,
+    history
+  );
+  assert.equal(rec.outlierGrindHeld, false);
+  assert.ok(Math.abs(rec.engineStats.shift) > 0, '12s after 22-32s history should recommend a grind move');
 }
 
 function runSteadyFastSeriesTest() {
@@ -270,5 +288,6 @@ runQaSeriesTests();
 runKnownIssueExclusionTests();
 runOutlierHintParityTests();
 runOutlierDetectionTests();
+runNicheStableHistory12sTest();
 runSteadyFastSeriesTest();
 console.log('recommendationTuning tests passed');

@@ -239,7 +239,9 @@ export default function App() {
   const beans = useLiveQuery(() => db.beans.toArray(), []) || [];
   const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
   const shots = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []) || [];
-  const settingsSetting = useLiveQuery(() => db.settings.get('global'), []) || null;
+  const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), []);
+  const settingsLoaded = settingsQueryResult !== undefined;
+  const settingsSetting = settingsQueryResult ?? null;
   const brewGuideEnabled = Boolean(settingsSetting?.brewGuideEnabled);
   const brewGuideSetupComplete = Boolean(settingsSetting?.brewGuideSetupComplete);
   const brewGuideAccessories = normalizeBrewAccessories(settingsSetting?.brewGuideAccessories);
@@ -1381,20 +1383,8 @@ export default function App() {
             originalReason: liveQuantitativeRec.reason,
           }
         : ageAdjustedRec;
-  const loggedGrindForRecommendation = {
-    setteMacro,
-    setteMicro,
-    sunbeamSetting,
-    nicheZeroSetting,
-    customGrindValue,
-  };
   const grindRecommendationSummary = dynamicRec?.recommendedSetting
-    ? formatGrindRecommendationSummary(
-        grinderModel,
-        dynamicRec,
-        appSettings,
-        loggedGrindForRecommendation
-      )
+    ? formatGrindRecommendationSummary(grinderModel, dynamicRec, appSettings)
     : null;
   const nicheLearningBlocksEvidence =
     isNicheZeroGrinderModel(grinderModel)
@@ -1670,6 +1660,10 @@ export default function App() {
       tasteInputRef.current?.querySelector('button')?.focus();
     }, 200);
   };
+
+  if (!settingsLoaded) {
+    return null;
+  }
 
   if (shouldShowFirstLaunchOnboarding(settingsSetting, {
     hasExistingUserData: shots.length > 0 || beans.length > 0,

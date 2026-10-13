@@ -26,13 +26,40 @@ export const LOW_CONFIDENCE_SHIFT_MIN = 1;
 export const LOW_CONFIDENCE_SHIFT_MAX = 3;
 
 export const KNOWN_ISSUE_OUTLIER_HINT =
-  "If channeling, puck prep, or an early stop caused this, mark the shot as a known issue so it won't affect future recommendations.";
+  'If this was puck prep or another one-off, mark it as a known issue in History to leave it out.';
+
+export const KNOWN_ISSUE_CHOKE_HINT =
+  'A choke is usually grind; marking a known issue in History is still an option.';
 
 /** Borderline extreme times that should surface the known-issue hint without blocking grind moves. */
 export function shouldAttachKnownIssueHintForExtremeTime(actualTime) {
   const time = Number(actualTime);
   if (!Number.isFinite(time)) return false;
   return time <= OUTLIER_ABSOLUTE_MIN_S || time >= OUTLIER_ABSOLUTE_MAX_S;
+}
+
+/** Soft known-issue note for the dial card (does not replace grind direction). */
+export function knownIssueSoftNoteForShot(actualTime) {
+  const time = Number(actualTime);
+  if (Number.isFinite(time) && time >= OUTLIER_ABSOLUTE_MAX_S) {
+    return KNOWN_ISSUE_CHOKE_HINT;
+  }
+  return KNOWN_ISSUE_OUTLIER_HINT;
+}
+
+export function appendKnownIssueSoftNote(warning, actualTime, { isOutlier = false } = {}) {
+  const time = Number(actualTime);
+  const extreme = shouldAttachKnownIssueHintForExtremeTime(time);
+  if (!extreme && !isOutlier) return warning;
+  const note = knownIssueSoftNoteForShot(time);
+  if (warning?.includes(note)) return warning;
+  const alternate =
+    note === KNOWN_ISSUE_CHOKE_HINT ? KNOWN_ISSUE_OUTLIER_HINT : KNOWN_ISSUE_CHOKE_HINT;
+  let merged = warning;
+  if (merged?.includes(alternate)) {
+    merged = merged.replace(alternate, '').replace(/\s{2,}/g, ' ').trim();
+  }
+  return merged ? `${merged} ${note}` : note;
 }
 
 /**
@@ -102,19 +129,8 @@ export function detectLikelyShotOutlier({
   if (!Number.isFinite(time)) return { isOutlier: false };
 
   if (time < OUTLIER_ABSOLUTE_MIN_S || time > OUTLIER_ABSOLUTE_MAX_S) {
-    const anchor = lastDialledInShot(comparableShots, recipe);
-    const anchorGrind = anchor ? grindNumericFromShot(anchor, grinderProfile) : null;
-    const anchorTime = anchor ? Number(anchor.actualTimeS ?? anchor.actualTime) : null;
-    const nearDialledInAnchor =
-      anchorGrind !== null
-      && grindNumeric !== null
-      && shotWasDialledIn(anchor, recipe)
-      && Math.abs(grindNumeric - anchorGrind) <= nearGrindTolerance(grinderProfile) * 2;
-    const farFromDialledInTime =
-      Number.isFinite(anchorTime) && Math.abs(time - anchorTime) >= 15;
     return {
       isOutlier: true,
-      holdGrind: nearDialledInAnchor && (time < 10 || farFromDialledInTime),
       reasonCode: 'absolute_time',
       detail: time < OUTLIER_ABSOLUTE_MIN_S
         ? `Shot time (${time}s) is unusually fast for a completed extraction.`
@@ -145,13 +161,8 @@ export function detectLikelyShotOutlier({
     && anchorTime <= (recipe.targetTimeMaxS ?? 32);
 
   if (anchorWasInRange || deviation >= OUTLIER_NEAR_SETTING_DEVIATION_S + 4) {
-    const anchorTime = anchor ? Number(anchor.actualTimeS ?? anchor.actualTime) : null;
-    const muchFasterThanAnchor =
-      anchorWasInRange && Number.isFinite(anchorTime) && time < anchorTime - 12;
-    const muchFasterThanCluster = time < expected - 12;
     return {
       isOutlier: true,
-      holdGrind: muchFasterThanAnchor || (muchFasterThanCluster && anchorWasInRange),
       reasonCode: 'contextual_time',
       detail: `At a similar grind, recent shots ran about ${Math.round(expected)}s — this ${time}s pull is far off that pattern.`,
     };
@@ -262,11 +273,8 @@ export function dampQuantitativeShift(
   return sign * magnitude;
 }
 
-export function buildOutlierRecommendationReason({ baseReason, outlierDetail, holdGrind = false }) {
+export function buildOutlierRecommendationReason({ baseReason, outlierDetail }) {
   const trimmed = baseReason?.trim() || 'Adjust grind cautiously.';
-  if (holdGrind) {
-    return `LIKELY OUTLIER — ${outlierDetail} Holding grind unchanged. ${trimmed}`;
-  }
   return `LIKELY OUTLIER — ${outlierDetail} ${trimmed}`;
 }
 

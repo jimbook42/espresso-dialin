@@ -51,8 +51,7 @@ import {
   grindNumericFromShotData,
   sensitivityConfidenceForQuantitativeGrinder,
   shotsForOutlierContext,
-  KNOWN_ISSUE_OUTLIER_HINT,
-  shouldAttachKnownIssueHintForExtremeTime,
+  appendKnownIssueSoftNote,
 } from './recommendationTuning.js';
 
 export { CURRENT_PULL_ELIGIBILITY_ID, isPersistedLearningShot } from './learningShotIdentity.js';
@@ -686,11 +685,7 @@ export function getInitialGrindRecommendation(
 }
 
 function attachExtremeTimeKnownIssueHint(warning, actualTime) {
-  if (!shouldAttachKnownIssueHintForExtremeTime(actualTime)) return warning;
-  if (warning?.includes(KNOWN_ISSUE_OUTLIER_HINT)) return warning;
-  return warning
-    ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
-    : KNOWN_ISSUE_OUTLIER_HINT;
+  return appendKnownIssueSoftNote(warning, actualTime);
 }
 
 function prefixEstimatedGrindReason(reason, grinderProfile) {
@@ -901,7 +896,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       if (!empirical.keepGrind && rawShift !== 0) {
         rawShift = dampQuantitativeShift(rawShift, nicheStepConfidence, {
           isOutlier: outlierCheck.isOutlier,
-          holdOutlier: outlierCheck.holdGrind === true,
           secondsOffMidpoint: Math.abs(timeDelta),
         });
         recommendedDial = Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, currentDial + rawShift)) * 10) / 10;
@@ -922,7 +916,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         reason = buildOutlierRecommendationReason({
           baseReason: shift === 0 ? 'KEEP GRIND — Balanced and in range.' : reason,
           outlierDetail: outlierCheck.detail,
-          holdGrind: shift === 0 && outlierCheck.holdGrind === true,
         });
         if (shift === 0) {
           recommendedDial = currentDial;
@@ -948,7 +941,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       if (timingBounded.ok) {
         shift = dampQuantitativeShift(timingBounded.shift, nicheStepConfidence, {
           isOutlier: outlierCheck.isOutlier,
-          holdOutlier: outlierCheck.holdGrind === true,
           secondsOffMidpoint: Math.abs(timeDelta),
         });
         recommendedDial = Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, currentDial + shift)) * 10) / 10;
@@ -966,7 +958,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
             reason = buildOutlierRecommendationReason({
               baseReason: reason,
               outlierDetail: outlierCheck.detail,
-              holdGrind: shift === 0 && outlierCheck.holdGrind === true,
             });
           }
         }
@@ -992,26 +983,13 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
           reason = buildOutlierRecommendationReason({
             baseReason: reason || 'KEEP GRIND — Balanced and in range.',
             outlierDetail: outlierCheck.detail,
-            holdGrind: shift === 0 && outlierCheck.holdGrind === true,
           });
         }
       }
     }
 
-    if (outlierCheck.isOutlier && outlierCheck.holdGrind && shift !== 0) {
-      recommendedDial = currentDial;
-      shift = 0;
-      reason = buildOutlierRecommendationReason({
-        baseReason: 'KEEP GRIND — Balanced and in range.',
-        outlierDetail: outlierCheck.detail,
-        holdGrind: true,
-      });
-    }
-
     if (outlierCheck.isOutlier) {
-      warning = warning
-        ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
-        : KNOWN_ISSUE_OUTLIER_HINT;
+      warning = appendKnownIssueSoftNote(warning, actualTime, { isOutlier: true });
     }
     warning = attachExtremeTimeKnownIssueHint(warning, actualTime);
 
@@ -1082,8 +1060,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       nicheRecommendedSetting,
       settings
     );
-    const outlierGrindHeld =
-      outlierCheck.isOutlier && outlierCheck.holdGrind === true && grindSettingHeld;
+    const outlierGrindHeld = false;
 
     return {
       recommendedSetting: nicheRecommendedSetting,
@@ -1149,18 +1126,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       grinderProfile,
     });
     if (inRangeOutlier.isOutlier) {
-      if (inRangeOutlier.holdGrind) {
-        shift = 0;
-        outlierGrindHeld = true;
-        reason = buildOutlierRecommendationReason({
-          baseReason: reason,
-          outlierDetail: inRangeOutlier.detail,
-          holdGrind: true,
-        });
-      }
-      warning = warning
-        ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
-        : KNOWN_ISSUE_OUTLIER_HINT;
+      warning = appendKnownIssueSoftNote(warning, actualTime, { isOutlier: true });
     }
   } else {
     const comparableHistory = [...learningRecentShots]
@@ -1188,25 +1154,17 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
     shift = dampQuantitativeShift(signedRaw, confidence, {
       isOutlier: outlierCheck.isOutlier,
-      holdOutlier: outlierCheck.holdGrind === true,
       secondsOffMidpoint: Math.abs(timeDelta),
     });
-
-    if (outlierCheck.isOutlier && outlierCheck.holdGrind) {
-      shift = 0;
-      outlierGrindHeld = true;
-    }
 
     const absShift = Math.abs(shift);
     const direction = shift < 0 ? "FINER" : "COARSER";
     const secOff = Math.abs(Math.round(timeDelta));
 
     if (shift === 0 && outlierCheck.isOutlier) {
-      outlierGrindHeld = outlierCheck.holdGrind === true;
       reason = buildOutlierRecommendationReason({
         baseReason: 'KEEP GRIND — Balanced and in range.',
         outlierDetail: outlierCheck.detail,
-        holdGrind: outlierGrindHeld,
       });
     } else if (shift === 0) {
       reason = 'KEEP GRIND — Shot time was off target but grind step is capped until more comparable shots are logged.';
@@ -1216,14 +1174,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         reason = buildOutlierRecommendationReason({
           baseReason: reason,
           outlierDetail: outlierCheck.detail,
-          holdGrind: false,
         });
       }
     }
     if (outlierCheck.isOutlier) {
-      warning = warning
-        ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
-        : KNOWN_ISSUE_OUTLIER_HINT;
+      warning = appendKnownIssueSoftNote(warning, actualTime, { isOutlier: true });
     }
   }
   warning = attachExtremeTimeKnownIssueHint(warning, actualTime);

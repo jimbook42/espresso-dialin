@@ -1,9 +1,8 @@
 import {
   formatRecommendedGrindDisplay,
-  grindMatchesStoredRecommendation,
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
-import { KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
+import { KNOWN_ISSUE_CHOKE_HINT, KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
 
 const REASON_SPLIT = /—|–/;
 
@@ -30,8 +29,12 @@ function directionFromLead(lead) {
 function stripKnownIssueHint(text) {
   const trimmed = (text || '').trim();
   if (!trimmed) return '';
-  if (!trimmed.includes(KNOWN_ISSUE_OUTLIER_HINT)) return trimmed;
-  return trimmed.replace(KNOWN_ISSUE_OUTLIER_HINT, '').replace(/\s{2,}/g, ' ').trim();
+  for (const hint of [KNOWN_ISSUE_OUTLIER_HINT, KNOWN_ISSUE_CHOKE_HINT]) {
+    if (trimmed.includes(hint)) {
+      return trimmed.replace(hint, '').replace(/\s{2,}/g, ' ').trim();
+    }
+  }
+  return trimmed;
 }
 
 function stripLeadingEstimatedPrefix(raw) {
@@ -48,44 +51,19 @@ function stripLeadingEstimatedPrefix(raw) {
 /**
  * Plain-language grind recommendation for the Dial-In hero (direction, why, target setting).
  */
-export function formatGrindRecommendationSummary(grinderModel, rec, settings = null, loggedGrind = null) {
+export function formatGrindRecommendationSummary(grinderModel, rec, settings = null) {
   if (!rec?.recommendedSetting) return null;
 
   const { estimated, text: reasonBody } = stripLeadingEstimatedPrefix(rec.reason || rec.originalReason || '');
   const targetSetting = formatRecommendedGrindDisplay(grinderModel, rec.recommendedSetting, settings);
   const { lead, detail } = splitRecommendationReason(reasonBody);
+  const direction = directionFromLead(lead) || directionFromLead(detail);
 
-  const shift = rec.engineStats?.shift ?? 0;
-  const loggedMatchesRecommendation =
-    loggedGrind
-    && grindMatchesStoredRecommendation(
-      grinderModel,
-      loggedGrind,
-      rec.recommendedSetting,
-      settings
-    );
-  const holdsGrind =
-    rec.grindSettingHeld === true
-    || rec.outlierGrindHeld === true
-    || (shift === 0 && loggedMatchesRecommendation);
-  const holdingOutlier =
-    rec.outlierGrindHeld === true
-    || (/LIKELY OUTLIER/i.test(reasonBody) && holdsGrind && shift === 0);
-  const direction = holdingOutlier
-    ? 'Grind setting held'
-    : directionFromLead(lead) || directionFromLead(detail);
-
-  const channelingInWarning = (rec.warning || '').toLowerCase().includes('channeling');
   let why = detail || (lead && !direction ? lead : '');
-  if (holdingOutlier) {
-    why = channelingInWarning
-      ? 'Recommendation held on your current grind setting.'
-      : 'If puck prep, channeling, or an early stop caused this, mark the shot as a known issue.';
+  if (/^LIKELY OUTLIER/i.test(lead) && direction) {
+    why = detail || '';
   }
   why = stripKnownIssueHint(why);
-  if (channelingInWarning) {
-    why = why.replace(/channeling/gi, '').replace(/\s{2,}/g, ' ').trim();
-  }
   const estimatedLabel = estimated ? 'Estimated' : '';
 
   if (isNicheZeroGrinderModel(grinderModel)) {

@@ -1,7 +1,7 @@
 import assert from 'assert';
 import { calculateRecommendation } from './grinderLogic.js';
 import { formatGrindRecommendationSummary } from './grindRecommendationDisplay.js';
-import { countChannelingMentions, KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
+import { KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
 
 export function runGrindRecommendationDisplayTests() {
   const rec = {
@@ -19,6 +19,12 @@ export function runGrindRecommendationDisplayTests() {
   });
   assert.match(keep, /Keep the same grind/i);
   assert.match(keep, /13-E/);
+
+  const nicheKeep = formatGrindRecommendationSummary('Niche Zero', {
+    recommendedSetting: { nicheZeroSetting: 15 },
+    reason: 'KEEP GRIND — Balanced and in range.',
+  });
+  assert.match(nicheKeep, /Keep the same grind/i);
 
   const customSettings = {
     grinderModel: 'DF64',
@@ -49,23 +55,6 @@ export function runGrindRecommendationDisplayTests() {
   assert.match(customSummary, /Estimated/i);
   assert.match(customSummary, /Target setting: 9/);
   assert.doesNotMatch(customSummary, /Target setting: 15/);
-
-  const outlierHold = formatGrindRecommendationSummary(
-    'Sette 270Wi',
-    {
-      recommendedSetting: { macro: 13, micro: 'E' },
-      reason:
-        'LIKELY OUTLIER — Shot time (45s) is unusually slow. Holding grind unchanged. KEEP GRIND — Balanced and in range.',
-      warning: KNOWN_ISSUE_OUTLIER_HINT,
-      grindSettingHeld: true,
-    },
-    null,
-    { setteMacro: 13, setteMicro: 'E' }
-  );
-  assert.match(outlierHold, /Grind setting held/i);
-  assert.match(outlierHold, /current grind setting/i);
-  assert.doesNotMatch(outlierHold, /Grind finer/i);
-  assert.doesNotMatch(outlierHold, /channeling/i);
 
   const recipe = {
     targetTimeMinS: 25,
@@ -101,15 +90,11 @@ export function runGrindRecommendationDisplayTests() {
   );
   assert.equal(moveRec.grindSettingHeld, false);
   assert.ok(Math.abs(moveRec.engineStats.shift) > 0, '45s outlier should still move grind');
-  const moveSummary = formatGrindRecommendationSummary(
-    'Sette 270Wi',
-    moveRec,
-    null,
-    { setteMacro: 13, setteMicro: 'E' }
-  );
+  const moveSummary = formatGrindRecommendationSummary('Sette 270Wi', moveRec);
   assert.doesNotMatch(moveSummary, /Grind setting held/i);
+  assert.match(moveSummary, /Grind coarser/i);
 
-  const holdRec = calculateRecommendation(
+  const fastRec = calculateRecommendation(
     {
       grinderModel: 'Sette 270Wi',
       setteMacro: 13,
@@ -122,17 +107,14 @@ export function runGrindRecommendationDisplayTests() {
     recipe,
     setteHistory
   );
-  assert.equal(holdRec.grindSettingHeld, true);
-  const holdSummary = formatGrindRecommendationSummary(
-    'Sette 270Wi',
-    holdRec,
-    null,
-    { setteMacro: 13, setteMicro: 'E' }
-  );
-  assert.match(holdSummary, /Grind setting held/i);
-  assert.equal(
-    countChannelingMentions(holdSummary, holdRec.warning, holdRec.nicheLearningNote),
-    1
+  assert.equal(fastRec.outlierGrindHeld, false);
+  assert.ok(Math.abs(fastRec.engineStats.shift) >= 2, '8s outlier should move grind ~2-3 units');
+  const fastSummary = formatGrindRecommendationSummary('Sette 270Wi', fastRec);
+  assert.doesNotMatch(fastSummary, /Grind setting held/i);
+  assert.match(fastSummary, /Grind finer/i);
+  assert.ok(
+    (fastRec.warning || '').includes(KNOWN_ISSUE_OUTLIER_HINT),
+    'known-issue hint stays on the card warning, not in place of direction'
   );
 
   const nicheHistory = [
@@ -157,32 +139,22 @@ export function runGrindRecommendationDisplayTests() {
       timestamp: '2026-01-01T00:00:00.000Z',
     },
   ];
-  const nicheHoldRec = calculateRecommendation(
+  const nicheMoveRec = calculateRecommendation(
     {
       grinderModel: 'Niche Zero',
       nicheZeroSetting: 15,
       wasPurged: true,
-      actualTime: 8,
+      actualTime: 12,
       actualYield: 36,
       tasteProfile: 'balanced',
     },
     recipe,
     nicheHistory
   );
-  assert.equal(nicheHoldRec.outlierGrindHeld, true);
-  assert.equal(nicheHoldRec.nicheLearningNote, null);
-  const nicheHoldSummary = formatGrindRecommendationSummary(
-    'Niche Zero',
-    nicheHoldRec,
-    null,
-    { nicheZeroSetting: 15 }
-  );
-  assert.equal(
-    countChannelingMentions(nicheHoldSummary, nicheHoldRec.warning, nicheHoldRec.nicheLearningNote),
-    1
-  );
+  assert.equal(nicheMoveRec.outlierGrindHeld, false);
+  assert.ok(Math.abs(nicheMoveRec.engineStats.shift) > 0, 'Niche 12s after stable history should move grind');
 
-  const nicheMoveRec = calculateRecommendation(
+  const nicheMoveRecDial = calculateRecommendation(
     {
       grinderModel: 'Niche Zero',
       nicheZeroSetting: 12,
@@ -194,14 +166,9 @@ export function runGrindRecommendationDisplayTests() {
     recipe,
     nicheHistory
   );
-  assert.equal(nicheMoveRec.grindSettingHeld, false);
-  assert.notEqual(nicheMoveRec.engineStats.shift, 0);
-  const nicheMoveAfterApply = formatGrindRecommendationSummary(
-    'Niche Zero',
-    nicheMoveRec,
-    null,
-    { nicheZeroSetting: nicheMoveRec.recommendedSetting.nicheZeroSetting }
-  );
+  assert.equal(nicheMoveRecDial.grindSettingHeld, false);
+  assert.notEqual(nicheMoveRecDial.engineStats.shift, 0);
+  const nicheMoveAfterApply = formatGrindRecommendationSummary('Niche Zero', nicheMoveRecDial);
   assert.doesNotMatch(nicheMoveAfterApply, /Grind setting held/i);
   assert.match(nicheMoveAfterApply, /Grind finer/i);
 
