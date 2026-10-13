@@ -42,6 +42,7 @@ import {
   formatShotGrindForHistory,
   getUiGrinderPresentation,
   grinderPickerValueForSettings,
+  resolveActiveGrinderModel,
   isCustomGrinderModel,
   isSunbeamGrinderModel,
   isNicheZeroGrinderModel,
@@ -312,6 +313,7 @@ export default function App() {
   const pendingFocusFlairProfileRef = useRef(false);
   const pendingGrindByKeyRef = useRef({});
   const brewTempDefaultRef = useRef('');
+  const syncedSettingsCustomGrinderRef = useRef('');
   const [validationError, setValidationError] = useState('');
   const [beanFieldErrors, setBeanFieldErrors] = useState({});
   const [applyRecConfirmation, setApplyRecConfirmation] = useState('');
@@ -343,11 +345,13 @@ export default function App() {
       if (settingsSetting.customGrinder) {
         setSettingsCustomGrinderDraft(settingsSetting.customGrinder);
       }
-      if (settingsSetting.grinderModel) {
-        setGrinderModel(settingsSetting.grinderModel);
-        if (!isEditingBean && brewTempDefaultRef.current !== settingsSetting.grinderModel) {
-          brewTempDefaultRef.current = settingsSetting.grinderModel;
-          const nextTemp = defaultBrewTemperatureForGrinder(settingsSetting.grinderModel);
+      const resolvedGrinderModel = resolveActiveGrinderModel(settingsSetting);
+      const grinderModelFromSettings = settingsSetting.grinderModel || resolvedGrinderModel;
+      if (grinderModelFromSettings) {
+        setGrinderModel(grinderModelFromSettings);
+        if (!isEditingBean && brewTempDefaultRef.current !== grinderModelFromSettings) {
+          brewTempDefaultRef.current = grinderModelFromSettings;
+          const nextTemp = defaultBrewTemperatureForGrinder(grinderModelFromSettings);
           setNewRecipe((prev) => {
             const current = prev.brewTemperatureC;
             const isUnset = current === '' || current === null || current === undefined;
@@ -360,9 +364,10 @@ export default function App() {
       if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
       if (settingsSetting.preInfusionEnabled !== undefined) setUsePreInfusion(settingsSetting.preInfusionEnabled);
       if (settingsSetting.darkMode !== undefined) setDarkMode(settingsSetting.darkMode);
-      if (isCustomGrinderModel(settingsSetting.grinderModel, settingsSetting)) {
+      if (isCustomGrinderModel(grinderModelFromSettings, settingsSetting)) {
         const profile = normalizeCustomGrinderProfile(settingsSetting.customGrinder);
-        if (profile) {
+        if (profile && syncedSettingsCustomGrinderRef.current !== grinderModelFromSettings) {
+          syncedSettingsCustomGrinderRef.current = grinderModelFromSettings;
           setCustomGrindValue(
             settingsSetting.lastCustomGrindValue ?? defaultCustomGrindValue(profile)
           );
@@ -1146,9 +1151,19 @@ export default function App() {
     }
     setShotFieldHighlights(EMPTY_SHOT_FIELD_HIGHLIGHTS);
 
+    const logGrinderModel = grinderModel || resolveActiveGrinderModel(appSettings);
+    const pendingGrindKey = pendingGrindSessionKey(activeBean?.id, logGrinderModel);
+    const pendingGrind = pendingGrindKey ? pendingGrindByKeyRef.current[pendingGrindKey] : null;
+    const grindStateForSave = {
+      setteMacro: pendingGrind?.setteMacro ?? setteMacro,
+      setteMicro: pendingGrind?.setteMicro ?? setteMicro,
+      sunbeamSetting: pendingGrind?.sunbeamSetting ?? sunbeamSetting,
+      nicheZeroSetting: pendingGrind?.nicheZeroSetting ?? nicheZeroSetting,
+      customGrindValue: pendingGrind?.customGrindValue ?? customGrindValue,
+    };
     const parsedGrind = parseGrindForShotSave(
-      grinderModel,
-      { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting, customGrindValue },
+      logGrinderModel,
+      grindStateForSave,
       appSettings
     );
     if (!parsedGrind.ok) {
@@ -1201,7 +1216,7 @@ export default function App() {
     const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
     const recentBeanShots = filterShotsForGrinderLearning(shots, {
       beanId: activeBean.id,
-      grinderModel,
+      grinderModel: logGrinderModel,
     });
 
     const savedTasteProfile = tasteProfileForSave(tasteProfile);
@@ -1209,7 +1224,7 @@ export default function App() {
     const rec = calculateRecommendation(
       { 
         beanId: activeBean.id,
-        grinderModel, 
+        grinderModel: logGrinderModel,
         setteMacro: finalMacro, 
         setteMicro: finalMicro, 
         sunbeamSetting: finalSunbeam,
@@ -1235,7 +1250,7 @@ export default function App() {
       id: generateId(),
       beanId: activeBean.id,
       timestamp: referenceNow.toISOString(),
-      grinderModel,
+      grinderModel: logGrinderModel,
       setteMacro: finalMacro,
       setteMicro: finalMicro,
       sunbeamSetting: finalSunbeam,

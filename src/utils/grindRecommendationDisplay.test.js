@@ -1,6 +1,7 @@
 import assert from 'assert';
 import { calculateRecommendation } from './grinderLogic.js';
 import { formatGrindRecommendationSummary } from './grindRecommendationDisplay.js';
+import { KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
 
 export function runGrindRecommendationDisplayTests() {
   const rec = {
@@ -48,6 +49,17 @@ export function runGrindRecommendationDisplayTests() {
   assert.match(customSummary, /Estimated/i);
   assert.match(customSummary, /Target setting: 9/);
   assert.doesNotMatch(customSummary, /Target setting: 15/);
+
+  const outlierHold = formatGrindRecommendationSummary('Sette 270Wi', {
+    recommendedSetting: { macro: 13, micro: 'E' },
+    reason:
+      'LIKELY OUTLIER — Shot time (45s) is unusually slow. Holding to a small grind change. GO 2 MICRO STEP(S) FINER — Shot was 15s off target midpoint.',
+    warning: KNOWN_ISSUE_OUTLIER_HINT,
+  });
+  assert.match(outlierHold, /Grind setting held/i);
+  assert.match(outlierHold, /known issue/i);
+  assert.doesNotMatch(outlierHold, /Grind finer/i);
+  assert.doesNotMatch(outlierHold, /If channeling, puck prep/i);
 
   console.log('Grind recommendation display tests passed.');
 }

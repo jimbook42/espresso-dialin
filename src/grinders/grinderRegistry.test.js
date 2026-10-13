@@ -9,6 +9,7 @@ import {
   formatPreviousGrindLabel,
   formatRecommendedGrindDisplay,
   formatShotGrindForHistory,
+  grinderPickerValueForSettings,
   getGrinderDefinitionById,
   getRecommendationGrinderProfile,
   getShotStatsGrinderProfile,
@@ -16,6 +17,7 @@ import {
   isSetteGrinderModel,
   isSunbeamGrinderModel,
   parseGrindForShotSave,
+  resolveActiveGrinderModel,
   resolveShotStatsGrinderModel,
   setteToNumeric,
 } from './grinderRegistry.js';
@@ -71,6 +73,17 @@ function testCompatibility() {
   assert.equal(getShotStatsGrinderProfile(resolveShotStatsGrinderModel(null)).sensitivity, 1.25);
   assert.equal(getShotStatsGrinderProfile(resolveShotStatsGrinderModel('')).sensitivity, 1.25);
   assert.equal(getShotStatsGrinderProfile('Mystery').sensitivity, 4.5);
+
+  assert.equal(resolveActiveGrinderModel({}), SETTE_GRINDER_ID);
+  assert.equal(resolveActiveGrinderModel({ lastSunbeamSetting: 12 }), SUNBEAM_GRINDER_ID);
+  assert.equal(
+    resolveActiveGrinderModel({ lastSetteMacro: 13, lastSunbeamSetting: 12 }),
+    SETTE_GRINDER_ID
+  );
+  assert.equal(
+    grinderPickerValueForSettings({ lastSunbeamSetting: 12 }),
+    SUNBEAM_GRINDER_ID
+  );
 }
 
 function testPresentation() {

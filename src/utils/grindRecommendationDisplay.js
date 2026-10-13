@@ -2,6 +2,7 @@ import {
   formatRecommendedGrindDisplay,
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
+import { KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
 
 const REASON_SPLIT = /—|–/;
 
@@ -25,6 +26,13 @@ function directionFromLead(lead) {
   return '';
 }
 
+function stripKnownIssueHint(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return '';
+  if (!trimmed.includes(KNOWN_ISSUE_OUTLIER_HINT)) return trimmed;
+  return trimmed.replace(KNOWN_ISSUE_OUTLIER_HINT, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 function stripLeadingEstimatedPrefix(raw) {
   const text = (raw || '').trim();
   if (!/^ESTIMATED\s*[—–-]/i.test(text)) {
@@ -45,9 +53,18 @@ export function formatGrindRecommendationSummary(grinderModel, rec, settings = n
   const { estimated, text: reasonBody } = stripLeadingEstimatedPrefix(rec.reason || rec.originalReason || '');
   const targetSetting = formatRecommendedGrindDisplay(grinderModel, rec.recommendedSetting, settings);
   const { lead, detail } = splitRecommendationReason(reasonBody);
-  const direction = directionFromLead(lead) || directionFromLead(detail);
 
-  const why = detail || (lead && !direction ? lead : '');
+  const holdingOutlier =
+    /LIKELY OUTLIER/i.test(reasonBody) && /Holding to a small grind change/i.test(reasonBody);
+  const direction = holdingOutlier
+    ? 'Grind setting held'
+    : directionFromLead(lead) || directionFromLead(detail);
+
+  let why = detail || (lead && !direction ? lead : '');
+  if (holdingOutlier) {
+    why = 'If puck prep, channeling, or an early stop caused this, mark the shot as a known issue.';
+  }
+  why = stripKnownIssueHint(why);
   const estimatedLabel = estimated ? 'Estimated' : '';
 
   if (isNicheZeroGrinderModel(grinderModel)) {

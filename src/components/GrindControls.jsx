@@ -284,6 +284,17 @@ export function GrinderGrindControls({
       />
     );
   }
+  if (!grinderModel || isSetteGrinderModel(grinderModel)) {
+    return (
+      <SetteGrindControls
+        macro={setteMacro}
+        micro={setteMicro}
+        onMacroChange={onSetteMacroChange}
+        onMicroChange={onSetteMicroChange}
+        ui={ui}
+      />
+    );
+  }
   return (
     <SunbeamGrindControl
       setting={sunbeamSetting}

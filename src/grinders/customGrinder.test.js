@@ -9,6 +9,8 @@ import {
   normalizeCustomGrinderProfile,
   parseCustomGrindValue,
 } from './customGrinder.js';
+import { capturePendingGrindState, pendingGrindSessionKey } from './pendingGrindSession.js';
+import { parseGrindForShotSave } from './grinderRegistry.js';
 
 function runCustomGrinderDialMathTests() {
   const profile = normalizeCustomGrinderProfile({
@@ -49,6 +51,31 @@ function runCustomGrinderDialMathTests() {
   assert.equal(rec.customGrindValue, 4);
 }
 
+function runCustomGrinderShotSaveTests() {
+  const settings = {
+    grinderModel: 'DF64',
+    customGrinder: {
+      name: 'DF64',
+      dialType: 'stepped',
+      min: 1,
+      max: 20,
+      step: 1,
+      lowerIsFiner: true,
+    },
+  };
+  const pending = capturePendingGrindState('DF64', { customGrindValue: 9 }, settings);
+  assert.ok(pending);
+  assert.equal(pendingGrindSessionKey('bean-1', 'DF64'), 'bean-1::DF64');
+  const parsed = parseGrindForShotSave(
+    'DF64',
+    { customGrindValue: 15, ...pending },
+    settings
+  );
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.customGrindValue, 9);
+}
+
 export function runCustomGrinderTests() {
   runCustomGrinderDialMathTests();
+  runCustomGrinderShotSaveTests();
 }

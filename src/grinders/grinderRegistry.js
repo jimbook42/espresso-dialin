@@ -327,6 +327,26 @@ export function resolveShotStatsGrinderModel(grinderModel) {
   return grinderModel || SETTE_GRINDER_ID;
 }
 
+/**
+ * Read-side grinder identity when persisted grinderModel is missing (legacy rows).
+ * Keeps Settings, dial controls, and learning defaults aligned without writing settings.
+ */
+export function resolveActiveGrinderModel(settings) {
+  const stored = settings?.grinderModel;
+  if (stored !== null && stored !== undefined && stored !== '') {
+    return stored;
+  }
+  const customProfile = normalizeCustomGrinderProfile(settings?.customGrinder);
+  if (customProfile?.name) return customProfile.name;
+
+  const hasSette =
+    settings?.lastSetteMacro != null && settings?.lastSetteMacro !== '';
+  const hasSunbeam =
+    settings?.lastSunbeamSetting != null && settings?.lastSunbeamSetting !== '';
+  if (hasSunbeam && !hasSette) return SUNBEAM_GRINDER_ID;
+  return SETTE_GRINDER_ID;
+}
+
 export function getShotStatsGrinderProfile(resolvedGrinderModel) {
   const def = getGrinderDefinitionById(resolvedGrinderModel);
   if (def) return def;
@@ -442,7 +462,11 @@ export function grinderPickerValueForSettings(settings) {
   if (isCustomGrinderProfileActive(settings?.grinderModel, settings)) {
     return CUSTOM_GRINDER_PICKER_ID;
   }
-  return settings?.grinderModel || '';
+  const customProfile = normalizeCustomGrinderProfile(settings?.customGrinder);
+  if (customProfile?.name && !settings?.grinderModel) {
+    return CUSTOM_GRINDER_PICKER_ID;
+  }
+  return resolveActiveGrinderModel(settings);
 }
 
 export function normalizeCustomGrinderSettingsPatch(partialProfile) {

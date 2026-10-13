@@ -85,6 +85,21 @@ export async function runScaleShotBaselineTests() {
   t0.setLive(2);
   assert.equal(t0.getAdded(), 2);
 
+  const t34 = makeTracker();
+  beginShotWeightTracking(t34.state, 3.4);
+  t34.setLive(3.4);
+  noteShotTareOutcome(t34.state, true);
+  t34.setLive(0);
+  let maxAdded34 = 0;
+  for (let g = 0; g <= 8; g += 0.2) {
+    t34.setLive(g);
+    maxAdded34 = Math.max(maxAdded34, t34.getAdded());
+  }
+  assert.ok(
+    maxAdded34 >= 5,
+    `3.4g cup: added mass must keep updating through pre end (max ${maxAdded34})`
+  );
+
   const tSmall = makeTracker();
   beginShotWeightTracking(tSmall.state, 0.2);
   tSmall.setLive(0.2);

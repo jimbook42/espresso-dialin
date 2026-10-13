@@ -11,7 +11,6 @@ export const SHOT_WEIGHT_PRIME_SETTLE_MS = 400;
  *   tareSucceeded: boolean,
  *   primed: boolean,
  *   primeStartedAtMs: number,
- *   stalePreTareRejectAboveG: number | null,
  * }}
  */
 export function createShotWeightTracking() {
@@ -21,7 +20,6 @@ export function createShotWeightTracking() {
     tareSucceeded: false,
     primed: false,
     primeStartedAtMs: 0,
-    stalePreTareRejectAboveG: null,
     lastAcceptedLiveG: 0,
   };
 }
@@ -38,8 +36,6 @@ export function beginShotWeightTracking(state, weightAtStartG, nowMs = Date.now(
   state.tareSucceeded = false;
   state.primed = false;
   state.primeStartedAtMs = nowMs;
-  state.stalePreTareRejectAboveG =
-    state.startBaselineG > TARE_STABLE_MAX_G ? state.startBaselineG - 0.5 : null;
   state.lastAcceptedLiveG = state.startBaselineG;
 }
 
@@ -58,9 +54,9 @@ export function ingestShotWeightSample(state, liveG, nowMs = Date.now()) {
   if (!Number.isFinite(live)) return false;
 
   if (
-    state.stalePreTareRejectAboveG != null
-    && live >= state.stalePreTareRejectAboveG
+    state.startBaselineG > TARE_STABLE_MAX_G
     && (state.tareSucceeded || state.postTareAnchorG != null)
+    && Math.abs(live - state.startBaselineG) <= 0.5
   ) {
     return false;
   }
