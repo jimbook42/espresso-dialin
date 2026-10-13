@@ -32,6 +32,7 @@ export function useTimemoreScale({
   const [connectStatus, setConnectStatus] = useState('idle');
   const [liveWeightG, setLiveWeightG] = useState(0);
   const [instantFlowGs, setInstantFlowGs] = useState(null);
+  const [liveFlowSeries, setLiveFlowSeries] = useState([]);
 
   const transportRef = useRef(null);
   const sessionRef = useRef(null);
@@ -75,6 +76,12 @@ export function useTimemoreScale({
       },
       onInstantFlowGs: (f) => setInstantFlowGs(f),
       onLiveTimerS: () => {},
+      onFlowSample: (sample) => {
+        setLiveFlowSeries((prev) => {
+          if (prev.length && prev[prev.length - 1].tS === sample.tS) return prev;
+          return [...prev, sample];
+        });
+      },
     });
   }, [disposeSession]);
 
@@ -122,6 +129,7 @@ export function useTimemoreScale({
     const transport = transportRef.current;
     if (!enabled || !transport || connectStatus !== 'connected') return;
     setInstantFlowGs(null);
+    setLiveFlowSeries([]);
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
     await transport.startTimer();
@@ -138,8 +146,6 @@ export function useTimemoreScale({
     recordingExtractionRef.current = true;
     if (transportKind === 'sim' && typeof transport.endPreinfusion === 'function') {
       transport.endPreinfusion();
-    } else {
-      await transport.startTimer();
     }
   }, [enabled, connectStatus, transportKind]);
 
@@ -154,6 +160,7 @@ export function useTimemoreScale({
     const yieldG = Math.max(0, Math.round(liveWeightRef.current * 10) / 10);
     recordingExtractionRef.current = false;
     setInstantFlowGs(null);
+    setLiveFlowSeries([]);
     const shotMetrics =
       metrics?.scaleFlowCurve?.length
         ? {
@@ -171,6 +178,7 @@ export function useTimemoreScale({
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
     setInstantFlowGs(null);
+    setLiveFlowSeries([]);
   }, [enabled, connectStatus]);
 
   if (!enabled) {
@@ -183,6 +191,7 @@ export function useTimemoreScale({
       isConnected: false,
       liveWeightG: 0,
       instantFlowGs: null,
+      liveFlowSeries: [],
       connect: noopAsync,
       disconnect: noopAsync,
       tare: noopAsync,
@@ -202,6 +211,7 @@ export function useTimemoreScale({
     isConnected,
     liveWeightG,
     instantFlowGs,
+    liveFlowSeries,
     connect,
     disconnect,
     tare,

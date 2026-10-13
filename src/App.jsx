@@ -82,6 +82,11 @@ import { isScaleEnabled } from './config/scaleFlag.js';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
+import {
+  preinfusionAutoEndTargets,
+  recipeDefinesPreinfusion,
+  shouldAutoEndPreinfusion,
+} from './scales/preinfusionAutoEnd.js';
 
 const EXTRACTION_TIME_COLORS = {
   inRange: { bar: 'bg-[#8a9d72]', dot: 'bg-[#8a9d72]', label: 'text-[#9cb088]' },
@@ -284,14 +289,28 @@ export default function App() {
     : null;
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
 
+  const scaleRecipePreinfusion =
+    flairEnabled && recipeDefinesPreinfusion(activeRecipe?.flairProfile);
+  const hookUsePreInfusion = usePreInfusion || (scaleFeatureEnabled && scaleRecipePreinfusion);
+
   const timemoreScale = useTimemoreScale({
     enabled: scaleFeatureEnabled,
     targetYieldG: activeRecipe?.targetYieldG || 36,
-    usePreInfusion,
-    preInfusionDurationS: usePreInfusion
+    usePreInfusion: hookUsePreInfusion,
+    preInfusionDurationS: hookUsePreInfusion
       ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12
       : 0,
   });
+
+  const timerUsePreInfusion =
+    usePreInfusion || (timemoreScale.isConnected && scaleRecipePreinfusion);
+  const scaleAutoEndPreinfusionRef = useRef(false);
+  const profilePreinfusionTimeS = Number(activeRecipe?.flairProfile?.preinfusionTime) || 0;
+  const flowChartTimeOffsetSec = timerUsePreInfusion ? Math.max(profilePreinfusionTimeS, 4) : 0;
+  const scaleLiveFlowOnProfile =
+    scaleFeatureEnabled && timemoreScale.isConnected && timerRunning
+      ? timemoreScale.liveFlowSeries
+      : null;
 
   const prefillDoseFromRecipe = (recipe) => {
     if (recipe?.targetDoseG == null || recipe.targetDoseG === '') return;
@@ -308,6 +327,39 @@ export default function App() {
     }, 100);
     return () => clearInterval(interval);
   }, [timerRunning]);
+
+  useEffect(() => {
+    if (!timerRunning || !preInfusionPhase) {
+      if (!timerRunning) scaleAutoEndPreinfusionRef.current = false;
+      return;
+    }
+    if (!timemoreScale.isConnected || !timerUsePreInfusion) return;
+    const targets = preinfusionAutoEndTargets(activeRecipe?.flairProfile);
+    if (targets.timeS == null && targets.weightG == null) return;
+    if (scaleAutoEndPreinfusionRef.current) return;
+    if (
+      !shouldAutoEndPreinfusion(targets, {
+        preInfusionElapsedS: timerSeconds,
+        liveWeightG: timemoreScale.liveWeightG,
+      })
+    ) {
+      return;
+    }
+    scaleAutoEndPreinfusionRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- scale-only auto end at recipe time/weight
+    setPreInfusionSeconds(timerSeconds);
+    setPreInfusionPhase(false);
+    void timemoreScale.notifyPreInfusionEnded();
+  }, [
+    timerRunning,
+    preInfusionPhase,
+    timerSeconds,
+    timemoreScale.isConnected,
+    timemoreScale.liveWeightG,
+    timerUsePreInfusion,
+    activeRecipe?.flairProfile,
+    timemoreScale,
+  ]);
 
   const formatTime = (totalSeconds) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -327,9 +379,11 @@ export default function App() {
   };
 
   const handleStartTimer = () => {
+    scaleAutoEndPreinfusionRef.current = false;
     setTimerTicks(0);
     setPreInfusionSeconds(0);
-    if (usePreInfusion) setPreInfusionPhase(true);
+    if (timerUsePreInfusion) setPreInfusionPhase(true);
+    else setPreInfusionPhase(false);
     setTimerRunning(true);
     if (timemoreScale.isConnected) {
       setScaleShotMetrics(null);
@@ -348,7 +402,7 @@ export default function App() {
   const handleStopTimer = () => {
     setTimerRunning(false);
     let finalExtractionTime = timerSeconds;
-    if (usePreInfusion && !preInfusionPhase) {
+    if (timerUsePreInfusion && !preInfusionPhase) {
       finalExtractionTime = Math.max(0, timerSeconds - preInfusionSeconds);
     }
     const rounded = Math.round(finalExtractionTime);
@@ -364,6 +418,7 @@ export default function App() {
   };
 
   const handleCancelTimer = () => {
+    scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -374,6 +429,7 @@ export default function App() {
   };
 
   const handleResetTimer = () => {
+    scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -385,7 +441,7 @@ export default function App() {
 
   const handleTimerSurfaceTap = (e) => {
     if (e.target.closest('[data-timer-dismiss]')) return;
-    if (usePreInfusion && preInfusionPhase) handleEndPreInfusion();
+    if (timerUsePreInfusion && preInfusionPhase) handleEndPreInfusion();
     else handleStopTimer();
   };
 
@@ -911,7 +967,7 @@ export default function App() {
       brewTemperatureC: activeRecipe.brewTemperatureC || null,
       flairProfile: flairEnabled && activeRecipe.flairProfile ? { ...activeRecipe.flairProfile } : null,
       recommendation: rec,
-      notes: usePreInfusion && preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes,
+      notes: preInfusionSeconds > 0 ? `Pre-infusion: ${preInfusionSeconds}s. ${notes}` : notes,
       ...(excludeFromLearning
         ? { excludeFromLearning: true, knownIssueReason: knownIssueReason || 'other' }
         : {}),
@@ -1068,11 +1124,11 @@ export default function App() {
   });
 
   const timerWindowSeconds =
-    (usePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
+    (timerUsePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0) +
     (activeRecipe?.targetTimeMaxS || 32) +
     6;
   const timerDisplaySeconds =
-    usePreInfusion && timerRunning && !preInfusionPhase
+    timerUsePreInfusion && timerRunning && !preInfusionPhase
       ? Math.max(0, timerSeconds - preInfusionSeconds)
       : timerSeconds;
   const timerProgress = timerRunning ? Math.min(1, timerSeconds / timerWindowSeconds) : 0;
@@ -1081,7 +1137,7 @@ export default function App() {
   const scaleShowFlow =
     scaleShowLiveReadout
     && timerRunning
-    && (!usePreInfusion || !preInfusionPhase)
+    && (!timerUsePreInfusion || !preInfusionPhase)
     && timemoreScale.instantFlowGs != null;
 
   const formatFlairRecipeLines = (profile) => {
@@ -1338,9 +1394,9 @@ export default function App() {
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${timerRunning ? 'bg-[#3dd68c] animate-pulse' : 'bg-[#5a5754]'}`} />
               <span className="text-[11px] tracking-[0.14em] font-semibold text-[#9a9690] uppercase">
-                {usePreInfusion && preInfusionPhase
+                {timerUsePreInfusion && preInfusionPhase
                   ? 'Pre-infusion'
-                  : usePreInfusion
+                  : timerUsePreInfusion
                     ? `Extraction · pre ${preInfusionSeconds.toFixed(1)}s`
                     : 'Extracting'}
               </span>
@@ -1359,11 +1415,17 @@ export default function App() {
           <div className="flex-1 flex flex-col items-center justify-center px-5 min-h-0 pointer-events-none">
             {flairEnabled && activeRecipe?.flairProfile && (
               <div className="w-full max-w-sm mb-6 opacity-35">
-                <PressureProfileChart profile={activeRecipe.flairProfile} progress={timerProgress} compact />
+                <PressureProfileChart
+                  profile={activeRecipe.flairProfile}
+                  progress={timerProgress}
+                  compact
+                  liveFlowSamples={scaleLiveFlowOnProfile}
+                  flowTimeOffsetSec={flowChartTimeOffsetSec}
+                />
               </div>
             )}
 
-            {usePreInfusion && !preInfusionPhase && (
+            {timerUsePreInfusion && !preInfusionPhase && (
               <div className="flex flex-wrap gap-2 justify-center mb-4">
                 <span className="px-3 py-1.5 rounded-full bg-[#1e1e1e] border border-[#262626] text-[11px] text-[#6b6457]">
                   Total <span className="text-[#f5f2eb] font-semibold tabular-nums">{timerSeconds.toFixed(1)}s</span>
@@ -1376,10 +1438,10 @@ export default function App() {
 
             <div
               className={`text-[clamp(3.75rem,20vw,5.25rem)] font-bold tabular-nums tracking-[-0.06em] leading-[0.9] ${
-                usePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#ede9e3]'
+                timerUsePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#ede9e3]'
               }`}
             >
-              {formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
+              {formatTimerLive(timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
             </div>
             {scaleShowLiveReadout && (
               <p className="text-[15px] text-[#c88a4b] font-semibold tabular-nums mt-3 text-center">
@@ -1392,9 +1454,9 @@ export default function App() {
               </p>
             )}
             <p className="text-[13px] text-[#6b6457] mt-4 text-center">
-              {usePreInfusion && preInfusionPhase
+              {timerUsePreInfusion && preInfusionPhase
                 ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
-                : usePreInfusion
+                : timerUsePreInfusion
                   ? `Total ${timerSeconds.toFixed(1)}s · extraction`
                   : 'Total extraction time'}
             </p>
@@ -1409,13 +1471,13 @@ export default function App() {
             </div>
 
             <p className="text-center text-[11px] text-[#4a4846] pointer-events-none">
-              {usePreInfusion && preInfusionPhase
+              {timerUsePreInfusion && preInfusionPhase
                 ? 'Tap anywhere to end pre-infusion'
                 : 'Tap anywhere to stop and fill shot time'}
             </p>
 
             <div className="flex flex-col gap-3 pointer-events-auto">
-              {usePreInfusion && preInfusionPhase ? (
+              {timerUsePreInfusion && preInfusionPhase ? (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleEndPreInfusion(); }}
@@ -1578,7 +1640,11 @@ export default function App() {
                         </button>
                       </div>
                       <div className={`${ui.cardInset} rounded-xl px-3 py-2`}>
-                        <PressureProfileChart profile={activeRecipe.flairProfile} />
+                        <PressureProfileChart
+                          profile={activeRecipe.flairProfile}
+                          liveFlowSamples={scaleLiveFlowOnProfile}
+                          flowTimeOffsetSec={flowChartTimeOffsetSec}
+                        />
                       </div>
                     </div>
                   )}

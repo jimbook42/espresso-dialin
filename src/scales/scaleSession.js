@@ -4,7 +4,12 @@ import { instantaneousFlowGs, summarizeScaleFlow } from './flowMetrics.js';
  * Glue transport events into shot logging metrics (weight stream, timer, flow curve).
  *
  * @param {import('./transport/scaleTransport.js').ScaleTransport} transport
- * @param {{ onLiveWeight?: (g: number) => void, onLiveTimerS?: (s: number) => void, onInstantFlowGs?: (g: number | null) => void }} handlers
+ * @param {{
+ *   onLiveWeight?: (g: number) => void,
+ *   onLiveTimerS?: (s: number) => void,
+ *   onInstantFlowGs?: (g: number | null) => void,
+ *   onFlowSample?: (sample: { tS: number, flowGs: number }) => void,
+ * }} handlers
  */
 export function createScaleSession(transport, handlers = {}) {
   /** @type {import('./flowMetrics.js').ScaleFlowSample[]} */
@@ -33,7 +38,10 @@ export function createScaleSession(transport, handlers = {}) {
     const tS = (evt.timestampMs - extractionEpochMs) / 1000;
     const sample = { tS, weightG: evt.weightG };
     const flow = instantaneousFlowGs(lastSample, sample);
-    if (flow != null) handlers.onInstantFlowGs?.(flow);
+    if (flow != null) {
+      handlers.onInstantFlowGs?.(flow);
+      handlers.onFlowSample?.({ tS: sample.tS, flowGs: flow });
+    }
     lastSample = sample;
     extractionSamples.push(sample);
   });

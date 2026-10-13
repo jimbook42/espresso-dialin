@@ -95,8 +95,36 @@ function markerAtProgress(built, progress) {
   return { x, y, tSec };
 }
 
+const FLOW_GREEN = '#8a9d72';
+
+/**
+ * @param {{ tS: number, flowGs: number }[]} liveFlowSamples
+ * @param {ReturnType<typeof buildSmoothProfilePath>} built
+ * @param {number} flowTimeOffsetSec
+ */
+function buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec) {
+  if (!liveFlowSamples?.length || !built) return null;
+  const maxFlow = Math.max(...liveFlowSamples.map((p) => p.flowGs), 0.5);
+  const { padL, padT, chartH, chartW, totalSec } = built;
+  const xFor = (tSec) => padL + (Math.min(tSec, totalSec) / totalSec) * chartW;
+  const yForFlow = (flow) => padT + chartH - (flow / maxFlow) * chartH * 0.85;
+  const path = liveFlowSamples
+    .map((p, i) => {
+      const tSec = flowTimeOffsetSec + p.tS;
+      return `${i === 0 ? 'M' : 'L'} ${xFor(tSec).toFixed(1)} ${yForFlow(p.flowGs).toFixed(1)}`;
+    })
+    .join(' ');
+  return { path, maxFlow };
+}
+
 /** Smooth Flair-style pressure curve (display only). */
-export function PressureProfileChart({ profile, progress = null, compact = false }) {
+export function PressureProfileChart({
+  profile,
+  progress = null,
+  compact = false,
+  liveFlowSamples = null,
+  flowTimeOffsetSec = 0,
+}) {
   const gradId = useId().replace(/:/g, '');
   const w = 340;
   const h = compact ? 88 : 100;
@@ -107,11 +135,14 @@ export function PressureProfileChart({ profile, progress = null, compact = false
   const padR = 6;
   const padT = compact ? 14 : 16;
   const padB = compact ? 14 : 16;
-  const chartW = w - padL - padR;
   const chartH = h - padT - padB;
 
   const marker =
     progress != null && hasData ? markerAtProgress(built, progress) : null;
+  const flowOverlay =
+    liveFlowSamples?.length && hasData
+      ? buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec)
+      : null;
 
   return (
     <div className={`relative w-full ${compact ? 'h-[5.5rem]' : 'h-[6.25rem]'}`}>
@@ -147,6 +178,29 @@ export function PressureProfileChart({ profile, progress = null, compact = false
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
+              {flowOverlay && (
+                <>
+                  <path
+                    d={flowOverlay.path}
+                    fill="none"
+                    stroke={FLOW_GREEN}
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity="0.9"
+                  />
+                  <text
+                    x={w - padR - 2}
+                    y={padT + 10}
+                    fill={FLOW_GREEN}
+                    fontSize="9"
+                    textAnchor="end"
+                    fontFamily="system-ui, sans-serif"
+                  >
+                    {flowOverlay.maxFlow.toFixed(1)} g/s
+                  </text>
+                </>
+              )}
               {marker != null && (
                 <>
                   <line
