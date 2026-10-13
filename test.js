@@ -19,7 +19,10 @@ import {
   shotResultImproved,
   filterShotsForGrinderLearning,
   recomputeNicheRecommendationFromLastShot,
+  shouldUsePreviousRecipeRecommendation,
+  PREVIOUS_RECIPE_REC_DISCLAIMER,
 } from './src/utils/grinderLogic.js';
+import { runCsvExportTests } from './src/utils/csvExport.test.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
 import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
@@ -198,6 +201,46 @@ function runPendingGrindSessionTests() {
     flairEnabled: false,
   });
   assert.equal(sunbeamUi.sunbeamSetting, 22);
+}
+
+function runPreviousRecipeRecommendationTests() {
+  const recipe = { targetTimeMinS: 27, targetTimeMaxS: 32, targetDoseG: 18, targetYieldG: 36 };
+  const recipeV2 = { ...recipe, targetYieldG: 40 };
+  const oldShot = {
+    id: 's1',
+    beanId: 'b1',
+    grinderModel: 'Sette 270Wi',
+    targetDoseG: 18,
+    targetYieldG: 36,
+    targetTimeMinS: 27,
+    targetTimeMaxS: 32,
+    recommendation: { recommendedSetting: { macro: 13, micro: 'E' }, reason: 'KEEP GRIND' },
+  };
+  const pool = [oldShot];
+  assert.equal(
+    shouldUsePreviousRecipeRecommendation({
+      lastLoggedShot: oldShot,
+      activeRecipe: recipeV2,
+      beanShotsForGrinder: pool,
+      flairEnabled: false,
+    }),
+    true
+  );
+  const onCurrentRecipe = {
+    ...oldShot,
+    id: 's2',
+    targetYieldG: 40,
+  };
+  assert.equal(
+    shouldUsePreviousRecipeRecommendation({
+      lastLoggedShot: onCurrentRecipe,
+      activeRecipe: recipeV2,
+      beanShotsForGrinder: [onCurrentRecipe],
+      flairEnabled: false,
+    }),
+    false
+  );
+  assert.match(PREVIOUS_RECIPE_REC_DISCLAIMER, /previous recipe/i);
 }
 
 function runRecFollowedCsvTests() {
@@ -441,6 +484,8 @@ async function runTests() {
   runGrindSwitchBackTests();
   runPendingGrindSessionTests();
   runRecFollowedCsvTests();
+  runCsvExportTests();
+  runPreviousRecipeRecommendationTests();
   runBalancedTasteTests(recipe, createShot, runCalc);
   runNicheZeroTests();
   runShotCountDisplayTests();

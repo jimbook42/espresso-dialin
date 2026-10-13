@@ -141,6 +141,28 @@ export function shotMatchesRecipeContext(shot, recipe, flairEnabled = false) {
   return shotMatchesRecipeContextImpl(shot, recipe, flairEnabled);
 }
 
+export const PREVIOUS_RECIPE_REC_DISCLAIMER =
+  'Based on your previous recipe — treat as a starting point';
+
+/**
+ * When the recipe changed but nothing is logged yet for the new targets, keep showing
+ * the last shot's saved recommendation until the user logs on the current recipe.
+ */
+export function shouldUsePreviousRecipeRecommendation({
+  lastLoggedShot,
+  activeRecipe,
+  beanShotsForGrinder,
+  flairEnabled = false,
+}) {
+  if (!lastLoggedShot || !activeRecipe) return false;
+  const hasLoggedShotOnCurrentRecipe = beanShotsForGrinder.some((s) =>
+    shotMatchesRecipeContext(s, activeRecipe, flairEnabled)
+  );
+  if (hasLoggedShotOnCurrentRecipe) return false;
+  if (shotMatchesRecipeContext(lastLoggedShot, activeRecipe, flairEnabled)) return false;
+  return Boolean(lastLoggedShot.recommendation?.recommendedSetting);
+}
+
 export function recipeContextForShot(shot, recipe = {}) {
   return {
     targetTimeMinS: shot.targetTimeMinS ?? recipe.targetTimeMinS ?? 27,
