@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isScaleSimPickerEnabled } from '../config/scaleFlag.js';
 import { createScaleSession } from './scaleSession.js';
+import { relativeWeightG, shotStartWeightBaselineG as resolveShotStartBaselineG } from './scaleShotBaseline.js';
 import { createSimulatedTransport } from './transport/simulatedTransport.js';
 import {
   createWebBluetoothTransport,
@@ -41,7 +42,7 @@ export function useTimemoreScale({
   const recordingExtractionRef = useRef(false);
   const liveWeightRef = useRef(0);
   const isConnected = connectStatus === 'connected';
-  const liveRelativeWeightG = Math.max(0, liveWeightG - shotStartWeightBaselineG);
+  const liveRelativeWeightG = relativeWeightG(liveWeightG, shotStartWeightBaselineG);
 
   const disposeSession = useCallback(() => {
     sessionRef.current?.dispose();
@@ -68,12 +69,13 @@ export function useTimemoreScale({
     disposeSession();
     sessionRef.current = createScaleSession(transport, {
       onLiveWeight: (g) => {
-        if (rafRef.current) return;
-        rafRef.current = requestAnimationFrame(() => {
-          rafRef.current = null;
-          liveWeightRef.current = g;
-          setLiveWeightG(g);
-        });
+        liveWeightRef.current = g;
+        if (!rafRef.current) {
+          rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            setLiveWeightG(liveWeightRef.current);
+          });
+        }
       },
       onInstantFlowGs: (f) => setInstantFlowGs(f),
       onLiveTimerS: () => {},
@@ -136,11 +138,18 @@ export function useTimemoreScale({
     recordingExtractionRef.current = false;
     const weightBeforeTare = liveWeightRef.current;
     setShotStartWeightBaselineG(weightBeforeTare);
+    let tareSucceeded = true;
     try {
       await transport.tare();
     } catch {
-      /* keep software baseline so relative weight stays at zero */
+      tareSucceeded = false;
     }
+    const baseline = resolveShotStartBaselineG(
+      weightBeforeTare,
+      liveWeightRef.current,
+      tareSucceeded
+    );
+    setShotStartWeightBaselineG(baseline);
     await transport.startTimer();
     if (!usePreInfusion) {
       sessionRef.current?.beginExtractionTiming();

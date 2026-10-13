@@ -34,6 +34,7 @@ import { runScaleFlowMetricsTests } from './src/scales/flowMetrics.test.js';
 import { runPreinfusionAutoEndTests } from './src/scales/preinfusionAutoEnd.test.js';
 import { runFlairScaleTriggerTests } from './src/scales/flairScaleTriggers.test.js';
 import { runSimulatedTransportTests } from './src/scales/transport/simulatedTransport.test.js';
+import { runScaleShotBaselineTests } from './src/scales/scaleShotBaseline.test.js';
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
 import { runGrindControlsTests } from './src/components/grindControls.test.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
@@ -504,6 +505,7 @@ async function runTests() {
   runPreinfusionAutoEndTests();
   runFlairScaleTriggerTests();
   await runSimulatedTransportTests();
+  await runScaleShotBaselineTests();
   runRecommendationIntegrityTests();
   runBrewGuideTests();
   runBrewGuidanceTests();
