@@ -55,6 +55,7 @@ import {
   persistedSettingsPatchFromRecommendation,
   uiStateFromRecommendedSetting,
 } from './grinders/grinderRegistry.js';
+import { BCG820_GRINDER_ID, ENCORE_ESP_GRINDER_ID } from './grinders/presetGrinders/index.js';
 import {
   defaultCustomGrindValue,
   isCustomGrinderFormValid,
@@ -433,6 +434,7 @@ export default function App() {
 
   const timemoreScale = useTimemoreScale({
     enabled: scaleFeatureEnabled,
+    scaleDeviceId: normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId),
     targetYieldG: activeRecipe?.targetYieldG || 36,
     usePreInfusion: hookUsePreInfusion,
     preInfusionDurationS: hookUsePreInfusion
@@ -1352,6 +1354,9 @@ export default function App() {
 
     try {
       await db.shots.add(shotRecord);
+      if (settingsSetting?.brewGuideGraduationSuppressed) {
+        void patchBrewGuidanceSettings({ brewGuideGraduationSuppressed: false });
+      }
       clearPendingGrind(activeBean.id, grinderModel);
 
       setActualTimeS('');
@@ -1632,7 +1637,9 @@ export default function App() {
       if (result.nicheCalibrationNotice) {
         parts.push(result.nicheCalibrationNotice);
       }
-      setCsvImportSummary(parts.join(', ') + '.');
+      const summary = parts.join(', ');
+      setCsvImportSummary(summary.endsWith('.') ? summary : `${summary}.`);
+      void patchBrewGuidanceSettings({ brewGuideGraduationSuppressed: true });
       window.setTimeout(() => setCsvImportSummary(''), 8000);
     } catch (err) {
       setCsvImportSummary(err?.message || 'Import failed.');
@@ -1935,7 +1942,13 @@ export default function App() {
         
         <header className={`flex items-center justify-between pb-5 mb-6 border-b ${ui.headerBorder}`}>
           <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick} title="Espresso Dial-In">
-            <img src="/logo.jpg" alt="Logo" className="w-8 h-8 rounded-full object-cover ring-1 ring-[#2e2b26]" />
+            <img
+              src={darkMode ? '/logo-header-dark.svg' : '/logo-header-light.svg'}
+              alt="Espresso Dial-In"
+              width={32}
+              height={32}
+              className="w-8 h-8"
+            />
             <div>
               <h1 className={`text-base font-bold ${ui.text} tracking-tight leading-none`}>Espresso Dial-In</h1>
               <p className={`text-[10px] ${ui.muted} tracking-widest uppercase mt-0.5`}>Precision dial-in</p>
@@ -3233,6 +3246,47 @@ export default function App() {
                       <p className={`text-[10px] ${ui.muted}`}>
                         Negative values allow dial readings below 0; positive values extend past 50. Leave blank for the default 0–50 range.
                       </p>
+                    </div>
+                  )}
+                  {(settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting))
+                    === BCG820_GRINDER_ID && (
+                    <div className="space-y-2 border-t border-[rgba(255,255,255,0.06)] pt-3">
+                      <label className={`block ${ui.fieldLabel}`}>Upper burr position (optional)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={settingsSetting?.bcg820UpperBurr ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          void patchBrewGuidanceSettings({
+                            bcg820UpperBurr: raw === '' ? undefined : Number(raw),
+                          });
+                        }}
+                        placeholder="Factory default ~6"
+                        className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                      />
+                    </div>
+                  )}
+                  {(settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting))
+                    === ENCORE_ESP_GRINDER_ID && (
+                    <div className="space-y-2 border-t border-[rgba(255,255,255,0.06)] pt-3">
+                      <label className={`block ${ui.fieldLabel}`}>Shims installed (optional diagnostic)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={4}
+                        value={settingsSetting?.encoreEspShims ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          void patchBrewGuidanceSettings({
+                            encoreEspShims: raw === '' ? undefined : Number(raw),
+                          });
+                        }}
+                        placeholder="0"
+                        className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                      />
+                      <p className={`text-[10px] ${ui.muted}`}>Each shim shifts the effective range by about five settings.</p>
                     </div>
                   )}
                   {settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID && (

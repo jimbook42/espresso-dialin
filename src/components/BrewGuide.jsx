@@ -1,28 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDownToLine,
   Brush,
   ChevronLeft,
-  CircleDot,
   ClipboardList,
   Coffee,
-  CupSoda,
-  Disc,
-  Droplets,
-  FlaskConical,
-  Funnel,
-  Milk,
-  Pin,
   Play,
   Power,
   RotateCcw,
-  Scale,
   Thermometer,
   Timer,
 } from 'lucide-react';
 import { SettingsToggle } from './SettingsToggle';
 import { BrewGuidanceSwitch } from './BrewGuidanceSwitch';
 import { CoffeeBeanIcon } from './CoffeeBeanIcon';
+import {
+  BlindShakerIcon,
+  CoffeeScaleIcon,
+  DistributorIcon,
+  DosingCupIcon,
+  DosingFunnelIcon,
+  GroupFlushIcon,
+  HotChocolateIcon,
+  MilkPitcherIcon,
+  PortafilterIcon,
+  PuckScreenIcon,
+  RdtSprayIcon,
+  SelfLevellingTamperIcon,
+  WdtToolIcon,
+} from './AccessoryIcons';
 import { BREW_GUIDANCE_MODES } from '../brewGuide/guidance';
 import { getBrewGuideMachinePackage } from '../brewGuide/grinderBrewGuide';
 import { isSunbeamGrinderModel } from '../grinders/grinderRegistry.js';
@@ -35,25 +40,25 @@ import {
 } from '../brewGuide/steps';
 
 const ACCESSORY_ICONS = {
-  dosingCup: CupSoda,
-  dosingFunnel: Funnel,
-  rdt: Droplets,
-  blindShaker: FlaskConical,
-  wdt: Pin,
-  distributor: CircleDot,
-  selfLevellingTamper: ArrowDownToLine,
-  puckScreen: Disc,
+  dosingCup: DosingCupIcon,
+  dosingFunnel: DosingFunnelIcon,
+  rdt: RdtSprayIcon,
+  blindShaker: BlindShakerIcon,
+  wdt: WdtToolIcon,
+  distributor: DistributorIcon,
+  selfLevellingTamper: SelfLevellingTamperIcon,
+  puckScreen: PuckScreenIcon,
 };
 
 const STEP_ICONS = {
-  recipe: Scale,
+  recipe: CoffeeScaleIcon,
   power: Power,
   cup: Coffee,
   coffeeBean: CoffeeBeanIcon,
-  weigh: Scale,
-  portafilter: Disc,
+  weigh: CoffeeScaleIcon,
+  portafilter: PortafilterIcon,
   timer: Timer,
-  rinse: Droplets,
+  rinse: GroupFlushIcon,
   log: ClipboardList,
 };
 
@@ -478,7 +483,7 @@ export function BrewGuide({
       >
         <MenuCard
           ui={ui}
-          icon={Milk}
+          icon={MilkPitcherIcon}
           title="Texture milk"
           detail="Heat, position, and texture on the steam wand."
           onClick={() => openGuide('textureMilk', 'milk')}
@@ -492,7 +497,7 @@ export function BrewGuide({
         />
         <MenuCard
           ui={ui}
-          icon={CupSoda}
+          icon={HotChocolateIcon}
           title="Hot chocolate"
           detail="The manual makes this as a mocha."
           onClick={() => openGuide('hotChocolate', 'milk')}
@@ -572,7 +577,7 @@ export function BrewGuide({
           />
           <MenuCard
             ui={ui}
-            icon={Milk}
+            icon={MilkPitcherIcon}
             title="Milk texturing"
             detail="Steam wand, milk drinks, and hot chocolate."
             onClick={() => setScreen('milk')}

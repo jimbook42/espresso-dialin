@@ -12,6 +12,13 @@ import {
   isCustomGrinderProfileActive,
   normalizeCustomGrinderProfile,
 } from './customGrinder.js';
+import {
+  getPresetGrinderDefinition,
+  isPresetGrinderModel,
+  PRESET_GRINDER_DEFINITIONS,
+} from './presetGrinders/index.js';
+
+export { isPresetGrinderModel } from './presetGrinders/index.js';
 
 /** Stored grinder identity strings (must not change). */
 export const SETTE_GRINDER_ID = 'Sette 270Wi';
@@ -290,6 +297,8 @@ export function getGrinderDefinitionById(grinderModel, settings = null) {
   if (grinderModel === SETTE_GRINDER_ID) return setteDefinition;
   if (grinderModel === SUNBEAM_GRINDER_ID) return sunbeamDefinition;
   if (grinderModel === NICHE_ZERO_GRINDER_ID) return nicheZeroDefinition;
+  const preset = getPresetGrinderDefinition(grinderModel);
+  if (preset) return preset;
   const custom = resolveCustomGrinderDefinition(grinderModel, settings);
   if (custom) return custom;
   return null;
@@ -316,6 +325,8 @@ export function grinderSupportsQuantitativeRecommendations(grinderModel, setting
 export function getRecommendationGrinderProfile(grinderModel, settings = null) {
   const custom = resolveCustomGrinderDefinition(grinderModel, settings);
   if (custom) return custom;
+  const preset = getPresetGrinderDefinition(grinderModel);
+  if (preset) return preset;
   if (isSetteGrinderModel(grinderModel)) return setteDefinition;
   if (isSunbeamGrinderModel(grinderModel)) return sunbeamDefinition;
   if (isNicheZeroGrinderModel(grinderModel)) return nicheZeroDefinition;
@@ -386,6 +397,10 @@ export function formatShotGrindForHistory(shot, settings = null) {
   if (customDef) {
     return customDef.formatShotGrindForHistory(shot);
   }
+  if (isPresetGrinderModel(model)) {
+    const presetDef = getPresetGrinderDefinition(model);
+    if (presetDef) return presetDef.formatShotGrindForHistory(shot);
+  }
   if (
     shot?.customGrindValue != null
     && shot.customGrindValue !== ''
@@ -393,6 +408,7 @@ export function formatShotGrindForHistory(shot, settings = null) {
     && !isSetteGrinderModel(model)
     && !isSunbeamGrinderModel(model)
     && !isNicheZeroGrinderModel(model)
+    && !isPresetGrinderModel(model)
   ) {
     const numeric = Number(shot.customGrindValue);
     return Number.isFinite(numeric) ? String(numeric) : String(shot.customGrindValue);
@@ -401,6 +417,9 @@ export function formatShotGrindForHistory(shot, settings = null) {
 }
 
 export function formatPreviousGrindLabel(grinderModel, shot, settings = null) {
+  if (isPresetGrinderModel(grinderModel)) {
+    return getPresetGrinderDefinition(grinderModel).formatPreviousGrindLabel(shot);
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     if (shot?.nicheZeroSetting == null || shot.nicheZeroSetting === '') return '';
     return formatNicheZeroSetting(shot.nicheZeroSetting, settings)
@@ -410,6 +429,9 @@ export function formatPreviousGrindLabel(grinderModel, shot, settings = null) {
 }
 
 export function formatCurrentGrindLabel(grinderModel, grindState, settings = null) {
+  if (isPresetGrinderModel(grinderModel)) {
+    return getPresetGrinderDefinition(grinderModel).formatCurrentGrindLabel(grindState);
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     return formatNicheZeroSetting(grindState?.nicheZeroSetting, settings)
       || String(grindState?.nicheZeroSetting ?? '');
@@ -418,6 +440,9 @@ export function formatCurrentGrindLabel(grinderModel, grindState, settings = nul
 }
 
 export function formatRecommendedGrindDisplay(grinderModel, recommendedSetting, settings = null) {
+  if (isPresetGrinderModel(grinderModel)) {
+    return getPresetGrinderDefinition(grinderModel).formatRecommendedGrindDisplay(recommendedSetting);
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     return formatNicheZeroSetting(recommendedSetting?.nicheZeroSetting, settings)
       || String(recommendedSetting?.nicheZeroSetting ?? NICHE_ZERO_DEFAULT_SETTING);
@@ -426,6 +451,9 @@ export function formatRecommendedGrindDisplay(grinderModel, recommendedSetting, 
 }
 
 export function formatInitialGrindDisplay(grinderModel, initialSetting, settings = null) {
+  if (isPresetGrinderModel(grinderModel)) {
+    return getPresetGrinderDefinition(grinderModel).formatInitialGrindDisplay(initialSetting);
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     return formatNicheZeroSetting(initialSetting?.nicheZeroSetting, settings)
       || String(initialSetting?.nicheZeroSetting ?? NICHE_ZERO_DEFAULT_SETTING);
@@ -434,6 +462,9 @@ export function formatInitialGrindDisplay(grinderModel, initialSetting, settings
 }
 
 export function parseGrindForShotSave(grinderModel, grindState, settings = null) {
+  if (isPresetGrinderModel(grinderModel)) {
+    return getPresetGrinderDefinition(grinderModel).parseGrindForShotSave(grindState);
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     const parsed = parseNicheZeroSetting(grindState?.nicheZeroSetting, settings);
     if (parsed === null) {
@@ -452,6 +483,10 @@ export function parseGrindForShotSave(grinderModel, grindState, settings = null)
 
 export function grindMatchesStoredRecommendation(lastShotGrinderModel, savedGrind, rec, settings = null) {
   if (!rec) return true;
+  if (isPresetGrinderModel(lastShotGrinderModel)) {
+    const def = getPresetGrinderDefinition(lastShotGrinderModel);
+    return def.grindMatchesRecommendation(savedGrind, rec.recommendedSetting ?? rec);
+  }
   if (isCustomGrinderModel(lastShotGrinderModel, settings)) {
     const def = getGrinderDefinitionById(lastShotGrinderModel, settings);
     return def.grindMatchesRecommendation(savedGrind, rec);
@@ -471,6 +506,9 @@ export function grindMatchesStoredRecommendation(lastShotGrinderModel, savedGrin
 }
 
 export function uiStateFromLastShot(grinderModel, shot, settings = null) {
+  if (isPresetGrinderModel(grinderModel)) {
+    return getPresetGrinderDefinition(grinderModel).uiStateFromLastShot(shot);
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     const parsed = parseNicheZeroSetting(shot?.nicheZeroSetting, settings);
     return {
@@ -484,6 +522,9 @@ export function uiStateFromInitialRecommendation(grinderModel, initialSetting, s
   if (isSetteGrinderModel(grinderModel)) {
     return { setteMacro: initialSetting.macro, setteMicro: initialSetting.micro };
   }
+  if (isPresetGrinderModel(grinderModel)) {
+    return { customGrindValue: initialSetting.customGrindValue };
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     return { nicheZeroSetting: initialSetting.nicheZeroSetting };
   }
@@ -494,6 +535,9 @@ export function uiStateFromInitialRecommendation(grinderModel, initialSetting, s
 }
 
 export function uiStateFromRecommendedSetting(grinderModel, recSet, settings = null) {
+  if (isPresetGrinderModel(grinderModel)) {
+    return getPresetGrinderDefinition(grinderModel).uiStateFromRecommendedSetting(recSet);
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     if (recSet?.nicheZeroSetting == null) return null;
     const parsed = parseNicheZeroSetting(recSet.nicheZeroSetting, settings);
@@ -504,6 +548,9 @@ export function uiStateFromRecommendedSetting(grinderModel, recSet, settings = n
 }
 
 export function persistedSettingsPatchFromRecommendation(grinderModel, recSet, settings = null) {
+  if (isPresetGrinderModel(grinderModel)) {
+    return getPresetGrinderDefinition(grinderModel).persistedSettingsPatchFromRecommendation(recSet);
+  }
   if (isNicheZeroGrinderModel(grinderModel)) {
     const parsed = parseNicheZeroSetting(recSet?.nicheZeroSetting, settings);
     if (parsed === null) return {};
@@ -512,7 +559,12 @@ export function persistedSettingsPatchFromRecommendation(grinderModel, recSet, s
   return getUiGrinderPresentation(grinderModel, settings).persistedSettingsPatchFromRecommendation(recSet);
 }
 
-export const GRINDER_REGISTRY_ENTRIES = [setteDefinition, sunbeamDefinition, nicheZeroDefinition];
+export const GRINDER_REGISTRY_ENTRIES = [
+  setteDefinition,
+  sunbeamDefinition,
+  nicheZeroDefinition,
+  ...PRESET_GRINDER_DEFINITIONS,
+];
 
 export const GRINDER_SETUP_OPTIONS = GRINDER_REGISTRY_ENTRIES;
 

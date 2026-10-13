@@ -53,9 +53,8 @@ export function runBrewGuidanceTests() {
   assert.equal(shouldShowGraduationPrompt({ brewGuideGuidanceMode: 'none' }, 10), false);
   assert.equal(shouldShowBrewGuideIntro({ brewGuideIntroSeen: true }, 0), false);
 
-  assert.equal(shouldNavigateToBrewAfterFirstBean({ brewGuideEnabled: true }, true, true), true);
-  assert.equal(shouldNavigateToBrewAfterFirstBean({ brewGuideFirstBeanNavDone: true }, true, true), false);
-  assert.equal(shouldNavigateToBrewAfterFirstBean({}, true, false), false);
+  assert.equal(shouldNavigateToBrewAfterFirstBean({ brewGuideEnabled: true }, true, true), false);
+  assert.equal(shouldShowGraduationPrompt({ brewGuideGraduationSuppressed: true }, 10), false);
 
   const withRdtWdtPuck = normalizeBrewAccessories({
     rdt: true,

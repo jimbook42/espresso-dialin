@@ -3,6 +3,7 @@ import { formatRecentRecipeShotEvidence } from './shotCountDisplay.js';
 import {
   SETTE_GRINDER_ID,
   SUNBEAM_GRINDER_ID,
+  NICHE_ZERO_GRINDER_ID,
   adjustSette,
   adjustSunbeam,
   numericToSette,
@@ -37,6 +38,14 @@ import {
   buildNicheEligibilityLearningNote,
   buildNicheEligibilityCompactCounts,
 } from '../grinders/nicheEligibility.js';
+import { isPresetGrinderModel } from '../grinders/presetGrinders/index.js';
+import { defaultPresetGrindValue } from '../grinders/presetGrinders/dial.js';
+import { getPresetGrinderSpec } from '../grinders/presetGrinders/catalog.js';
+import {
+  mapShotsForReferenceLearning,
+  resolveReferenceLearningDialIO,
+  usesReferenceDialLearning,
+} from '../grinders/referenceLearningDial.js';
 import { isBalancedTaste, normalizeTasteProfile } from './tasteProfile.js';
 import {
   CURRENT_PULL_ELIGIBILITY_ID,
@@ -56,7 +65,7 @@ import {
 
 export { CURRENT_PULL_ELIGIBILITY_ID, isPersistedLearningShot } from './learningShotIdentity.js';
 
-export { NICHE_ZERO_GRINDER_ID } from '../grinders/grinderRegistry.js';
+export { NICHE_ZERO_GRINDER_ID };
 
 export {
   setteToNumeric,
@@ -653,7 +662,7 @@ export function getInitialGrindRecommendation(
           initialSource: historySource,
         };
       }
-      if (isCustomGrinderModel(grinderModel, settings)) {
+      if (isPresetGrinderModel(grinderModel) || isCustomGrinderModel(grinderModel, settings)) {
         return {
           customGrindValue:
             adjustedRec.recommendedSetting.customGrindValue ?? bestShot.customGrindValue,
@@ -668,6 +677,13 @@ export function getInitialGrindRecommendation(
     if (isNicheZeroGrinderModel(grinderModel)) {
       return {
         nicheZeroSetting: parseNicheZeroSetting(bestShot.nicheZeroSetting, settings) ?? NICHE_ZERO_DEFAULT_SETTING,
+        initialSource: historySource,
+      };
+    }
+    if (isPresetGrinderModel(grinderModel)) {
+      const spec = getPresetGrinderSpec(grinderModel);
+      return {
+        customGrindValue: bestShot.customGrindValue ?? defaultPresetGrindValue(spec),
         initialSource: historySource,
       };
     }
@@ -706,6 +722,13 @@ export function getInitialGrindRecommendation(
       nicheZeroSetting: parseNicheZeroSetting(baseDial, settings) ?? NICHE_ZERO_DEFAULT_SETTING,
       initialSource: baseline !== null ? 'roast-baseline' : 'app-default',
     };
+  }
+  if (isPresetGrinderModel(grinderModel)) {
+    const spec = getPresetGrinderSpec(grinderModel);
+    const def = getGrinderDefinitionById(grinderModel, settings);
+    let base = baseline !== null ? baseline : defaultPresetGrindValue(spec);
+    base = adjustCustomGrind(base, ageData.recommendedOffsetSunbeam, def.customProfile);
+    return { customGrindValue: base, initialSource: baseline !== null ? 'roast-baseline' : 'app-default' };
   }
   if (isCustomGrinderModel(grinderModel, settings)) {
     const def = getGrinderDefinitionById(grinderModel, settings);
@@ -864,19 +887,26 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   const grinderProfile = getRecommendationGrinderProfile(grinderModel, settings);
   effectiveSensitivity = grinderProfile.sensitivity;
 
-  if (!grinderSupportsQuantitativeRecommendations(grinderModel, settings)) {
-    const currentDial = parseNicheZeroSetting(nicheZeroSetting, settings) ?? NICHE_ZERO_DEFAULT_SETTING;
+  const referenceDialIO = resolveReferenceLearningDialIO(grinderModel, settings);
+  if (usesReferenceDialLearning(grinderModel, settings)) {
+    const dialRaw =
+      grinderModel === NICHE_ZERO_GRINDER_ID ? nicheZeroSetting : customGrindValue;
+    const currentDial =
+      referenceDialIO.readDialFromState(dialRaw)
+      ?? (grinderModel === NICHE_ZERO_GRINDER_ID
+        ? NICHE_ZERO_DEFAULT_SETTING
+        : defaultPresetGrindValue(getPresetGrinderSpec(grinderModel)));
 
     const comparableHistory = [...learningRecentShots]
       .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     const comparableForLearning = filterComparableShotsForNicheLearning(
-      comparableHistory,
+      mapShotsForReferenceLearning(comparableHistory, referenceDialIO),
       recipe,
       grinderModel
     );
 
-    const currentGrindNumeric = parseNicheZeroSetting(nicheZeroSetting, settings) ?? currentDial;
+    const currentGrindNumeric = currentDial;
     const outlierCheck = detectLikelyShotOutlier({
       actualTime,
       grindNumeric: currentGrindNumeric,
@@ -945,7 +975,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       let rawShift = empirical.shift ?? recommendedDial - currentDial;
       if (!empirical.keepGrind && rawShift !== 0) {
         rawShift = applyGrindShiftDamping(rawShift, nicheDampingOptions);
-        recommendedDial = clampNicheZeroDial(currentDial + rawShift, settings);
+        recommendedDial = referenceDialIO.clampDial(currentDial + rawShift);
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
       } else {
         shift = rawShift;
@@ -990,7 +1020,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       let usedTimingBounded = false;
       if (timingBounded.ok) {
         shift = applyGrindShiftDamping(timingBounded.shift, nicheDampingOptions);
-        recommendedDial = clampNicheZeroDial(currentDial + shift, settings);
+        recommendedDial = referenceDialIO.clampDial(currentDial + shift);
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
         if (shift !== 0) {
           usedTimingBounded = true;
@@ -1103,7 +1133,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       recipe
     );
 
-    const nicheRecommendedSetting = { nicheZeroSetting: recommendedDial };
+    const nicheRecommendedSetting = referenceDialIO.buildRecommendedSetting(recommendedDial);
     const grindSettingHeld = grindMatchesStoredRecommendation(
       grinderModel,
       { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting, customGrindValue },

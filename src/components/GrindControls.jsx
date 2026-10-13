@@ -6,6 +6,7 @@ import {
   adjustSunbeam,
   getGrinderDefinitionById,
   isCustomGrinderModel,
+  isPresetGrinderModel,
   isSetteGrinderModel,
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
@@ -253,7 +254,7 @@ export function GrinderGrindControls({
   onCustomGrindChange,
   ui,
 }) {
-  if (isCustomGrinderModel(grinderModel, settings)) {
+  if (isPresetGrinderModel(grinderModel) || isCustomGrinderModel(grinderModel, settings)) {
     const def = getGrinderDefinitionById(grinderModel, settings);
     return (
       <CustomGrindControl

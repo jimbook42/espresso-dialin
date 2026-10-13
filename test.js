@@ -47,6 +47,9 @@ import { runIsaacB2SetteRegressionTests } from './src/utils/isaacB2SetteRegressi
 import { runTicket614NicheLearningTests } from './src/utils/ticket614NicheLearning.test.js';
 import { runGrindControlsTests } from './src/components/grindControls.test.js';
 import { runCustomGrinderTests } from './src/grinders/customGrinder.test.js';
+import { runPresetGrindersTests } from './src/grinders/presetGrinders/presetGrinders.test.js';
+import { runAcaiaProtocolTests } from './src/scales/protocols/acaia.test.js';
+import { runBookooMiniProtocolTests } from './src/scales/protocols/bookooMini.test.js';
 import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
 import { runFirstLaunchRenderGateTests } from './src/settings/firstLaunchRenderGate.test.js';
 import { runAppEntryTests } from './src/appEntry.test.js';
@@ -577,6 +580,9 @@ async function runTests() {
   await runTicket614NicheLearningTests();
   runGrindControlsTests();
   runCustomGrinderTests();
+  runPresetGrindersTests();
+  runAcaiaProtocolTests();
+  runBookooMiniProtocolTests();
   runOnboardingGateTests();
   runFirstLaunchRenderGateTests();
   runAppEntryTests();

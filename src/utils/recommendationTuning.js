@@ -78,6 +78,7 @@ function nearGrindTolerance(grinderProfile) {
   if (grinderProfile.controlType === 'sette') return NEAR_GRIND_NUMERIC_TOLERANCE.sette;
   if (grinderProfile.controlType === 'sunbeam') return NEAR_GRIND_NUMERIC_TOLERANCE.sunbeam;
   if (grinderProfile.controlType === 'custom') return 1;
+  if (['presetStepped', 'presetStepless', 'fellowOpus1'].includes(grinderProfile.controlType)) return 1;
   return NEAR_GRIND_NUMERIC_TOLERANCE.niche;
 }
 
@@ -372,7 +373,11 @@ export function grindNumericFromShotData(shotData, grinderProfile, settings = nu
   if (isNicheZeroGrinderModel(shotData.grinderModel)) {
     return parseNicheZeroSetting(shotData.nicheZeroSetting, settings);
   }
-  if (shotData.customGrindValue != null && grinderProfile?.controlType === 'custom') {
+  if (
+    shotData.customGrindValue != null
+    && grinderProfile
+    && ['custom', 'presetStepped', 'presetStepless', 'fellowOpus1'].includes(grinderProfile.controlType)
+  ) {
     return grindNumericFromShot(shotData, grinderProfile);
   }
   return grindNumericFromShot(shotData, grinderProfile);
