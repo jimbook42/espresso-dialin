@@ -15,6 +15,7 @@ import {
   getHistoricalRoastBaseline,
   shotEligibleForLearning,
   filterShotsForGrinderLearning,
+  shotMatchesGrinderForLearning,
   recomputeNicheRecommendationFromLastShot,
   KNOWN_ISSUE_REASONS,
   knownIssueReasonLabel,
@@ -251,7 +252,10 @@ export default function App() {
   const lastLoggedShot = shots.find(s => s.beanId === activeBean?.id);
   const lastLearningShot = activeBean && grinderModel
     ? shots.find(
-        (s) => s.beanId === activeBean.id && s.grinderModel === grinderModel && shotEligibleForLearning(s)
+        (s) =>
+          s.beanId === activeBean.id
+          && shotEligibleForLearning(s)
+          && shotMatchesGrinderForLearning(s, grinderModel)
       )
     : null;
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
@@ -336,7 +340,10 @@ export default function App() {
   useEffect(() => {
     if (activeBean && grinderModel) {
       const currentBeanShots = shots.filter(
-        (s) => s.beanId === activeBean.id && s.grinderModel === grinderModel && shotEligibleForLearning(s)
+        (s) =>
+          s.beanId === activeBean.id
+          && shotEligibleForLearning(s)
+          && shotMatchesGrinderForLearning(s, grinderModel)
       );
       
       if (currentBeanShots.length > 0) {

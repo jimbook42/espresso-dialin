@@ -27,9 +27,12 @@ import {
   buildNicheEmpiricalReason,
   buildNicheFallbackReason,
   buildNicheTimingBoundedReason,
-  buildNicheLearningTransparencyNote,
   TIMING_BOUNDED_UNRELIABLE_CODES,
 } from '../grinders/nicheZeroLearning.js';
+import {
+  diagnoseNicheLearningEligibility,
+  buildNicheEligibilityLearningNote,
+} from '../grinders/nicheEligibility.js';
 
 export { NICHE_ZERO_GRINDER_ID } from '../grinders/grinderRegistry.js';
 
@@ -65,14 +68,15 @@ export function shotEligibleForLearning(shot) {
   return shot?.excludeFromLearning !== true;
 }
 
-function shotMatchesGrinderForLearning(shot, activeGrinderModel) {
-  if (!activeGrinderModel) return true;
-  const shotGrinder = shot?.grinderModel;
-  if (shotGrinder === null || shotGrinder === undefined || shotGrinder === '') {
-    return activeGrinderModel === SETTE_GRINDER_ID;
-  }
-  return shotGrinder === activeGrinderModel;
-}
+export {
+  shotMatchesGrinderForLearning,
+  shotHasSavedRecipeTargetContext,
+  shotRecipeMismatchReason,
+} from '../grinders/grinderLearningMatch.js';
+import {
+  shotMatchesGrinderForLearning,
+  shotMatchesRecipeContext as shotMatchesRecipeContextImpl,
+} from '../grinders/grinderLearningMatch.js';
 
 /** Shots that may influence recommendations for the active grinder and bean. */
 export function filterShotsForGrinderLearning(shots, { beanId, grinderModel }) {
@@ -125,30 +129,7 @@ export function generateId() {
 
 /** Recipe + optional Flair context for evidence (current recipe targets). */
 export function shotMatchesRecipeContext(shot, recipe, flairEnabled = false) {
-  const targetDose = recipe?.targetDoseG ?? 18;
-  const targetYield = recipe?.targetYieldG ?? 36;
-  if (Math.abs((shot.actualDoseG || 0) - targetDose) > 0.5) return false;
-  if (Math.abs((shot.actualYieldG || 0) - targetYield) > 1.5) return false;
-
-  const recipeMin = recipe?.targetTimeMinS ?? 27;
-  const recipeMax = recipe?.targetTimeMaxS ?? 32;
-  if (shot.targetTimeMinS != null && shot.targetTimeMaxS != null) {
-    if (shot.targetTimeMinS !== recipeMin || shot.targetTimeMaxS !== recipeMax) return false;
-  }
-  if (shot.targetDoseG != null && Math.abs(shot.targetDoseG - targetDose) > 0.01) return false;
-  if (shot.targetYieldG != null && Math.abs(shot.targetYieldG - targetYield) > 0.01) return false;
-
-  if (!flairEnabled || !recipe?.flairProfile) return true;
-
-  if (!shot.flairProfile) return false;
-
-  const p1 = shot.flairProfile || {};
-  const p2 = recipe.flairProfile || {};
-  if (p1.preinfusionPressure !== p2.preinfusionPressure) return false;
-  if (p1.peakPressure !== p2.peakPressure) return false;
-  if (p1.taperPressure !== p2.taperPressure) return false;
-  if (p1.preinfusion !== p2.preinfusion) return false;
-  return true;
+  return shotMatchesRecipeContextImpl(shot, recipe, flairEnabled);
 }
 
 export function recipeContextForShot(shot, recipe = {}) {
@@ -463,7 +444,10 @@ export function getInitialGrindRecommendation(
   flairEnabled = undefined
 ) {
   const beanShots = allShots.filter(
-    (s) => s.beanId === activeBean?.id && s.grinderModel === grinderModel && shotEligibleForLearning(s)
+    (s) =>
+      s.beanId === activeBean?.id
+      && shotEligibleForLearning(s)
+      && shotMatchesGrinderForLearning(s, grinderModel)
   );
   const currentRecipe = recipes.find(r => r.beanId === activeBean?.id) || {};
   const flairForMatch = flairEnabled === undefined ? Boolean(currentRecipe.flairProfile) : flairEnabled;
@@ -668,12 +652,37 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     };
     const empirical = recommendNicheZeroFromEvidence(empiricalInput);
 
+    const beanIdForEligibility = learningRecentShots[0]?.beanId ?? recentShots[0]?.beanId ?? null;
+    const nicheEligibility = diagnoseNicheLearningEligibility({
+      shots: recentShots,
+      beanId: beanIdForEligibility,
+      grinderModel,
+      recipe,
+      flairEnabled,
+      currentObservation: {
+        nicheZeroSetting: currentDial,
+        actualTimeS: actualTime,
+      },
+    });
+
     let recommendedDial = currentDial;
     let shift = 0;
     let reason;
     let nicheEvidenceMode = 'qualitative-fallback';
     let nicheEmpiricalReasonCode = empirical.ok ? null : empirical.reasonCode;
     let nicheLearningNote = null;
+
+    const attachLearningNote = () => {
+      if (empirical.ok) return;
+      nicheLearningNote = buildNicheEligibilityLearningNote(
+        nicheEligibility,
+        empirical.reasonCode,
+        {
+          recipeComparableCount: comparableHistory.length,
+          grinderLearningShotCount: learningRecentShots.length,
+        }
+      );
+    };
 
     if (empirical.ok) {
       recommendedDial = empirical.recommendedDial;
@@ -704,20 +713,14 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         recommendedDial = timingBounded.recommendedDial;
         shift = timingBounded.shift;
         nicheEvidenceMode = 'timing-bounded';
-        nicheLearningNote = buildNicheLearningTransparencyNote(
-          empirical.reasonCode,
-          empirical.diagnostics,
-          {
-            recipeComparableCount: comparableHistory.length,
-            grinderLearningShotCount: learningRecentShots.length,
-          }
-        );
+        attachLearningNote();
         reason = buildNicheTimingBoundedReason({
           recommendedDial,
           shift,
           empiricalUnavailable: true,
         });
       } else {
+        attachLearningNote();
         reason = buildNicheFallbackReason({
           severeChoke,
           isTimeInRange,
@@ -802,6 +805,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       nicheEvidenceMode,
       nicheEmpiricalReasonCode,
       nicheLearningNote,
+      nicheEligibility,
       engineStats: {
         timeDelta,
         yieldDelta,

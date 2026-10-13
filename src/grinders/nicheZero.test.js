@@ -9,7 +9,6 @@ import {
   estimateSecondsPerMark,
   recommendNicheZeroFromEvidence,
   buildNicheLearningTransparencyNote,
-  NICHE_LEARNING_MIN_OBSERVATIONS,
 } from './nicheZeroLearning.js';
 import {
   getGrinderDefinitionById,
@@ -23,8 +22,13 @@ import {
   getInitialGrindRecommendation,
   filterShotsForGrinderLearning,
   shotMatchesRecipeContext,
+  shotMatchesGrinderForLearning,
+  shotRecipeMismatchReason,
   recomputeNicheRecommendationFromLastShot,
 } from '../utils/grinderLogic.js';
+import {
+  diagnoseNicheLearningEligibility,
+} from './nicheEligibility.js';
 import { recommendNicheTimingBounded } from './nicheZeroLearning.js';
 
 const BASE_RECIPE = { targetTimeMinS: 27, targetTimeMaxS: 32, targetYieldG: 36, targetDoseG: 18 };
@@ -296,6 +300,97 @@ export function runNicheZeroTests() {
     comparableShots: history.map((s) => ({ ...s, actualTimeS: 50 })),
   });
   assert.equal(boundary.ok, false);
+
+  const savedTargetFast = nicheShot({
+    nicheZeroSetting: 14,
+    actualTimeS: 22,
+    actualYieldG: 33,
+    targetDoseG: 18,
+    targetYieldG: 36,
+    targetTimeMinS: 27,
+    targetTimeMaxS: 32,
+  });
+  const savedTargetSlow = nicheShot({
+    nicheZeroSetting: 16,
+    actualTimeS: 38,
+    actualYieldG: 34,
+    targetDoseG: 18,
+    targetYieldG: 36,
+    targetTimeMinS: 27,
+    targetTimeMaxS: 32,
+  });
+  assert.equal(shotMatchesRecipeContext(savedTargetFast, BASE_RECIPE, false), true);
+  assert.equal(shotMatchesRecipeContext(savedTargetSlow, BASE_RECIPE, false), true);
+  assert.equal(shotRecipeMismatchReason({}, BASE_RECIPE, false), 'missing_comparability_fields');
+
+  const g2History = [
+    savedTargetFast,
+    savedTargetSlow,
+    nicheShot({
+      nicheZeroSetting: 15,
+      actualTimeS: 30,
+      actualYieldG: 35,
+      targetDoseG: 18,
+      targetYieldG: 36,
+      targetTimeMinS: 27,
+      targetTimeMaxS: 32,
+    }),
+  ];
+  const g2Diag = diagnoseNicheLearningEligibility({
+    shots: g2History,
+    beanId: 'b1',
+    grinderModel: NICHE_ZERO_GRINDER_ID,
+    recipe: BASE_RECIPE,
+    flairEnabled: false,
+    currentObservation: { nicheZeroSetting: 15, actualTimeS: 30 },
+  });
+  assert.equal(g2Diag.counts.recipeMatched, 3);
+
+  assert.equal(shotMatchesGrinderForLearning({ grinderModel: null }, NICHE_ZERO_GRINDER_ID), false);
+  assert.equal(shotMatchesGrinderForLearning({ grinderModel: 'Sette 270Wi' }, NICHE_ZERO_GRINDER_ID), false);
+
+  const nullGrinderPool = filterShotsForGrinderLearning(
+    [{ beanId: 'b1', grinderModel: null, excludeFromLearning: false }],
+    { beanId: 'b1', grinderModel: NICHE_ZERO_GRINDER_ID }
+  );
+  assert.equal(nullGrinderPool.length, 0);
+
+  const qualitativeOnly = calculateRecommendation(
+    {
+      grinderModel: NICHE_ZERO_GRINDER_ID,
+      nicheZeroSetting: 15,
+      wasPurged: true,
+      actualTime: 30,
+      actualDose: 18,
+      actualYield: 36,
+      tasteProfile: 'good',
+    },
+    BASE_RECIPE,
+    sameDialHistory
+  );
+  assert.equal(qualitativeOnly.nicheEvidenceMode, 'qualitative-fallback');
+  assert.ok(qualitativeOnly.nicheLearningNote);
+  assert.match(qualitativeOnly.nicheLearningNote, /Niche shots/i);
+  assert.ok(qualitativeOnly.nicheEligibility);
+
+  const recipeChangedShot = nicheShot({
+    targetDoseG: 18,
+    targetYieldG: 36,
+    targetTimeMinS: 25,
+    targetTimeMaxS: 30,
+  });
+  const recipeChangeDiag = diagnoseNicheLearningEligibility({
+    shots: [recipeChangedShot],
+    beanId: 'b1',
+    grinderModel: NICHE_ZERO_GRINDER_ID,
+    recipe: BASE_RECIPE,
+    flairEnabled: false,
+    currentObservation: { nicheZeroSetting: 15, actualTimeS: 30 },
+  });
+  assert.equal(recipeChangeDiag.counts.recipeMatched, 0);
+  assert.ok(
+    recipeChangeDiag.shotExclusions.some((e) => e.reasonCode === 'recipe_time_changed')
+  );
 
   console.log('Niche Zero tests passed.');
 }
