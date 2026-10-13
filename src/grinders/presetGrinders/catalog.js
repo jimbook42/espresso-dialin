@@ -190,7 +190,6 @@ export const PRESET_GRINDER_SPECS = [
     defaultSetting: 200,
     lowerIsFiner: true,
     sensitivity: 12,
-    unitSuffix: 'µm',
     defaultBrewTemperatureC: 93,
   },
 ];

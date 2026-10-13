@@ -46,6 +46,7 @@ import {
   grinderPickerValueForSettings,
   resolveActiveGrinderModel,
   isCustomGrinderModel,
+  isPresetGrinderModel,
   isSunbeamGrinderModel,
   isNicheZeroGrinderModel,
   NICHE_ZERO_GRINDER_ID,
@@ -55,7 +56,12 @@ import {
   persistedSettingsPatchFromRecommendation,
   uiStateFromRecommendedSetting,
 } from './grinders/grinderRegistry.js';
-import { BCG820_GRINDER_ID, ENCORE_ESP_GRINDER_ID } from './grinders/presetGrinders/index.js';
+import {
+  BCG820_GRINDER_ID,
+  ENCORE_ESP_GRINDER_ID,
+  getPresetGrinderSpec,
+} from './grinders/presetGrinders/index.js';
+import { defaultPresetGrindValue } from './grinders/presetGrinders/dial.js';
 import {
   defaultCustomGrindValue,
   isCustomGrinderFormValid,
@@ -307,7 +313,7 @@ export default function App() {
   const [setteMicro, setSetteMicro] = useState('E');
   const [sunbeamSetting, setSunbeamSetting] = useState(15);
   const [nicheZeroSetting, setNicheZeroSetting] = useState(15);
-  const [customGrindValue, setCustomGrindValue] = useState(15);
+  const [customGrindValue, setCustomGrindValue] = useState(null);
   const [wasPurged, setWasPurged] = useState(true);
   const [actualDoseG, setActualDoseG] = useState(18);
   const [actualYieldG, setActualYieldG] = useState('');
@@ -383,7 +389,16 @@ export default function App() {
       if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
       if (settingsSetting.preInfusionEnabled !== undefined) setUsePreInfusion(settingsSetting.preInfusionEnabled);
       if (settingsSetting.darkMode !== undefined) setDarkMode(settingsSetting.darkMode);
-      if (isCustomGrinderModel(grinderModelFromSettings, settingsSetting)) {
+      if (isPresetGrinderModel(grinderModelFromSettings)) {
+        const spec = getPresetGrinderSpec(grinderModelFromSettings);
+        if (spec) {
+          setCustomGrindValue(
+            settingsSetting.lastPresetGrindValue
+            ?? settingsSetting.lastCustomGrindValue
+            ?? defaultPresetGrindValue(spec)
+          );
+        }
+      } else if (isCustomGrinderModel(grinderModelFromSettings, settingsSetting)) {
         const profile = normalizeCustomGrinderProfile(settingsSetting.customGrinder);
         if (profile && syncedSettingsCustomGrinderRef.current !== grinderModelFromSettings) {
           syncedSettingsCustomGrinderRef.current = grinderModelFromSettings;
@@ -1354,9 +1369,6 @@ export default function App() {
 
     try {
       await db.shots.add(shotRecord);
-      if (settingsSetting?.brewGuideGraduationSuppressed) {
-        void patchBrewGuidanceSettings({ brewGuideGraduationSuppressed: false });
-      }
       clearPendingGrind(activeBean.id, grinderModel);
 
       setActualTimeS('');
@@ -1504,6 +1516,19 @@ export default function App() {
     return baseline !== null ? 'roast-baseline' : 'app-default';
   })();
 
+  const effectiveCustomGrindValue = (() => {
+    if (customGrindValue !== null && customGrindValue !== '') return customGrindValue;
+    if (isPresetGrinderModel(grinderModel)) {
+      const spec = getPresetGrinderSpec(grinderModel);
+      if (spec) return defaultPresetGrindValue(spec);
+    }
+    if (isCustomGrinderModel(grinderModel, appSettings)) {
+      const profile = normalizeCustomGrinderProfile(appSettings?.customGrinder);
+      if (profile) return defaultCustomGrindValue(profile);
+    }
+    return 15;
+  })();
+
   const currentGrindLabel = formatCurrentGrindLabel(
     grinderModel,
     {
@@ -1511,7 +1536,7 @@ export default function App() {
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting,
-      customGrindValue,
+      customGrindValue: effectiveCustomGrindValue,
     },
     appSettings
   );
@@ -2274,7 +2299,7 @@ export default function App() {
                       setteMicro={setteMicro}
                       sunbeamSetting={sunbeamSetting}
                       nicheZeroSetting={nicheZeroSetting}
-                      customGrindValue={customGrindValue}
+                      customGrindValue={effectiveCustomGrindValue}
                       onSetteMacroChange={handleSetteMacroChange}
                       onSetteMicroChange={handleSetteMicroChange}
                       onSunbeamChange={handleSunbeamChange}

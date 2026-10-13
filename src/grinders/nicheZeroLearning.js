@@ -64,8 +64,16 @@ function nicheLearningDiagnostics(points, estimate = null) {
   };
 }
 
-function clampDial(n, settings = null) {
+function defaultClampDial(n, settings = null) {
   return clampNicheZeroDial(n, settings);
+}
+
+function resolveClampDial(params) {
+  if (typeof params?.clampDial === 'function') {
+    return (n) => params.clampDial(n);
+  }
+  const settings = params?.settings ?? null;
+  return (n) => defaultClampDial(n, settings);
 }
 
 /**
@@ -156,6 +164,7 @@ export function recommendNicheZeroFromEvidence(params) {
     comparableShots = [],
     currentObservation = null,
   } = params;
+  const clampDial = resolveClampDial(params);
 
   const targetMid = (targetMin + targetMax) / 2;
   const timeDelta = actualTime - targetMid;
@@ -202,7 +211,7 @@ export function recommendNicheZeroFromEvidence(params) {
     };
   }
 
-  let dialShift = -timeDelta / secondsPerMark;
+  let dialShift = timeDelta / secondsPerMark;
   if (!Number.isFinite(dialShift)) {
     return {
       ok: false,
@@ -334,6 +343,7 @@ export function recommendNicheTimingBounded(params) {
     severeChoke,
     isTimeInRange,
   } = params;
+  const clampDial = resolveClampDial(params);
   const targetMid = (targetMin + targetMax) / 2;
   const timeDelta = actualTime - targetMid;
   const halfWindow = Math.max((targetMax - targetMin) / 2, 1);

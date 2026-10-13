@@ -19,6 +19,20 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 const vercelSha = (process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
 const appCommitSha = vercelSha ? vercelSha.slice(0, 7) : (pressureLabBuild === 'unknown' ? '' : pressureLabBuild);
 
+const pwaManifest = {
+  name: 'Espresso Dial-In',
+  short_name: 'EspressoDial',
+  start_url: '/',
+  display: 'standalone',
+  background_color: '#1a1714',
+  theme_color: '#1a1714',
+  icons: [
+    { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: '/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ],
+};
+
 // `npm run dev:flair-lab` uses HTTPS so a phone on the bench can open the front camera.
 export default defineConfig(({ mode }) => ({
   define: {
@@ -40,13 +54,12 @@ export default defineConfig(({ mode }) => ({
     mode === 'flairlab' ? basicSsl() : null,
     VitePWA({
       registerType: 'autoUpdate',
-      manifest: {
-        name: 'Espresso Dial-In',
-        short_name: 'EspressoDial',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
-        display: 'standalone'
-      }
-    })
-  ].filter(Boolean)
+      manifestFilename: 'manifest.json',
+      manifest: pwaManifest,
+      injectManifest: false,
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+      },
+    }),
+  ].filter(Boolean),
 }));

@@ -13,8 +13,8 @@ export function buildPresetGrinderDefinition(spec) {
   const dialLabel =
     spec.dialKind === 'fellowOpus1'
       ? 'Dial 0–12 (0.25 steps; 1 is finest)'
-      : spec.unitSuffix
-        ? `Dial ${spec.min}–${spec.max} ${spec.unitSuffix}`
+      : spec.id === 'Zerno Z1'
+        ? 'Dial 0–1400 · µm'
         : spec.dialKind === 'stepless'
           ? `Dial reference ${spec.min}–${spec.max} (stepless)`
           : `Dial ${spec.min}–${spec.max}`;
@@ -28,10 +28,10 @@ export function buildPresetGrinderDefinition(spec) {
     presetSpec: spec,
     controlType,
     supportsQuantitativeRecommendations: !spec.referenceLearning,
-    recommendationIsEstimated: stepped || spec.referenceLearning,
+    recommendationIsEstimated: true,
     referenceLearning: Boolean(spec.referenceLearning),
     sensitivity: spec.sensitivity ?? 4.5,
-    shiftUnit: stepped ? 'STEP(S)' : spec.unitSuffix ? 'µm' : 'INCREMENT(S)',
+    shiftUnit: stepped ? 'step(s)' : 'increment(s)',
     inRangeVerySourShift: stepped ? -1 : -0.5,
     inRangeVeryBitterShift: stepped ? 1 : 0.5,
     chokeReasonStepLabel: stepped ? 'STEP(S)' : 'INCREMENT(S)',

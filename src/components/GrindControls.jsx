@@ -199,7 +199,13 @@ function AxisStepper({
 
   return (
     <div className={`${ui.cardInset} rounded-2xl p-3 ring-1 ring-[rgba(200,138,75,0.12)]`}>
-      <p className={`text-[9px] uppercase tracking-widest ${ui.muted} mb-2 leading-snug font-semibold`}>{label}</p>
+      <p
+        className={`text-[9px] tracking-widest ${ui.muted} mb-2 leading-snug font-semibold ${
+          String(label).includes('µm') ? 'normal-case' : 'uppercase'
+        }`}
+      >
+        {label}
+      </p>
       <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-x-0.5">
         <button
           type="button"

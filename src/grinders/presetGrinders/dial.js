@@ -29,7 +29,7 @@ export function formatPresetGrindDisplay(value, spec) {
   const profile = presetProfileFromSpec(spec);
   const formatted = formatCustomGrindDisplay(value, profile);
   if (!formatted) return '';
-  if (spec.unitSuffix) return `${formatted} ${spec.unitSuffix}`;
+  if (spec.id === 'Zerno Z1') return `${formatted} µm`;
   return formatted;
 }
 

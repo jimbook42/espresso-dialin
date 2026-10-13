@@ -136,7 +136,10 @@ export function formatNicheZeroDialRangeLabel(settings = null) {
 
 export function clampNicheZeroDial(value, settings = null) {
   const { min, max } = getNicheZeroDialLimits(settings);
-  const parsed = parseNicheZeroSetting(value, settings);
-  const n = parsed ?? NICHE_ZERO_DEFAULT_SETTING;
+  const n = typeof value === 'number' ? value : parseFloat(String(value).trim());
+  if (!Number.isFinite(n)) {
+    const parsed = parseNicheZeroSetting(value, settings);
+    return parsed ?? NICHE_ZERO_DEFAULT_SETTING;
+  }
   return Math.min(max, Math.max(min, Math.round(n * 10) / 10));
 }

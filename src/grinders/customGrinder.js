@@ -79,9 +79,7 @@ export function defaultCustomGrindValue(profile) {
  */
 export function adjustCustomGrind(currentValue, dialShift, profile) {
   const current = parseCustomGrindValue(currentValue, profile) ?? defaultCustomGrindValue(profile);
-  let signed = dialShift;
-  if (!profile.lowerIsFiner) signed = -signed;
-  const next = current + signed * profile.step;
+  const next = current + dialShift * profile.step;
   return roundToCustomStep(next, profile);
 }
 

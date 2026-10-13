@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ClipboardList,
   Coffee,
+  Droplets,
   Play,
   Power,
   RotateCcw,

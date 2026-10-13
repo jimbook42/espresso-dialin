@@ -51,6 +51,8 @@ import {
   CURRENT_PULL_ELIGIBILITY_ID,
   isPersistedLearningShot,
 } from './learningShotIdentity.js';
+import { HIGH_LEARNED_CONFIDENCE_THRESHOLD } from './grindShiftDamping.js';
+import { formatDialShiftReasonParts } from '../grinders/presetGrinders/shiftLabel.js';
 import {
   buildOutlierRecommendationReason,
   applyGrindShiftDamping,
@@ -725,10 +727,15 @@ export function getInitialGrindRecommendation(
   }
   if (isPresetGrinderModel(grinderModel)) {
     const spec = getPresetGrinderSpec(grinderModel);
+    if (baseline === null) {
+      return {
+        customGrindValue: defaultPresetGrindValue(spec),
+        initialSource: 'app-default',
+      };
+    }
     const def = getGrinderDefinitionById(grinderModel, settings);
-    let base = baseline !== null ? baseline : defaultPresetGrindValue(spec);
-    base = adjustCustomGrind(base, ageData.recommendedOffsetSunbeam, def.customProfile);
-    return { customGrindValue: base, initialSource: baseline !== null ? 'roast-baseline' : 'app-default' };
+    const base = adjustCustomGrind(baseline, ageData.recommendedOffsetSunbeam, def.customProfile);
+    return { customGrindValue: base, initialSource: 'roast-baseline' };
   }
   if (isCustomGrinderModel(grinderModel, settings)) {
     const def = getGrinderDefinitionById(grinderModel, settings);
@@ -750,8 +757,15 @@ export function shotExcludedFromLearning(shot) {
   return shot?.excludeFromLearning === true;
 }
 
-function prefixEstimatedGrindReason(reason, grinderProfile) {
+function prefixEstimatedGrindReason(reason, grinderProfile, confidence = null) {
   if (!grinderProfile?.recommendationIsEstimated) return reason;
+  if (
+    confidence !== null
+    && Number.isFinite(confidence)
+    && confidence >= HIGH_LEARNED_CONFIDENCE_THRESHOLD
+  ) {
+    return reason;
+  }
   const text = reason || '';
   if (text.toUpperCase().startsWith('ESTIMATED')) return text;
   return `ESTIMATED — ${text}`;
@@ -924,6 +938,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       severeChoke,
       isTimeInRange,
       comparableShots: comparableForLearning,
+      clampDial: referenceDialIO.clampDial.bind(referenceDialIO),
       currentObservation: outlierCheck.isOutlier
         ? null
         : {
@@ -1014,6 +1029,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
             tasteProfile,
             severeChoke,
             isTimeInRange,
+            clampDial: referenceDialIO.clampDial.bind(referenceDialIO),
           })
         : { ok: false };
 
@@ -1144,7 +1160,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
     return {
       recommendedSetting: nicheRecommendedSetting,
-      reason,
+      reason: prefixEstimatedGrindReason(reason, grinderProfile, nicheStepConfidence),
       warning,
       subRecommendation,
       flairWaterTempAdvice,
@@ -1241,9 +1257,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     dampingOptions.isOutlier = outlierCheck.isOutlier;
     shift = proportionalGrindShiftFromTimeDelta(timeDelta, sensitivity, dampingOptions);
 
-    const absShift = Math.abs(shift);
-    const direction = shift < 0 ? "FINER" : "COARSER";
     const secOff = Math.abs(Math.round(timeDelta));
+    const dialReason = formatDialShiftReasonParts(grinderProfile, customGrindValue, shift);
+    const absShift = dialReason?.steps ?? Math.abs(shift);
+    const direction = dialReason?.direction ?? (shift < 0 ? 'FINER' : 'COARSER');
+    const stepLabel = dialReason?.unit ?? grinderProfile.timeOffTargetStepLabel;
 
     if (shift === 0 && outlierCheck.isOutlier) {
       reason = buildOutlierRecommendationReason({
@@ -1253,7 +1271,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     } else if (shift === 0) {
       reason = 'KEEP GRIND — Shot time was off target but grind step is capped until more comparable shots are logged.';
     } else {
-      reason = `GO ${absShift} ${grinderProfile.timeOffTargetStepLabel} ${direction} — Shot was ${secOff}s off target midpoint.`;
+      reason = `GO ${absShift} ${stepLabel} ${direction} — Shot was ${secOff}s off target midpoint.`;
       if (outlierCheck.isOutlier) {
         reason = buildOutlierRecommendationReason({
           baseReason: reason,
@@ -1349,7 +1367,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   return {
     recommendedSetting,
-    reason: prefixEstimatedGrindReason(reason, grinderProfile),
+    reason: prefixEstimatedGrindReason(reason, grinderProfile, sensitivityConfidence),
     warning,
     subRecommendation,
     flairWaterTempAdvice,
