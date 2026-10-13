@@ -8,6 +8,7 @@ import {
   buildBrewSteps,
   grindSettingChanged,
   normalizeBrewAccessories,
+  resolveBrewGuideRecipeTargets,
 } from './steps.js';
 import { runSunbeamGuideTests } from './sunbeam.test.js';
 import { runGrinderBrewGuideTests } from './grinderBrewGuide.test.js';
@@ -194,6 +195,9 @@ export function runBrewGuideTests() {
   assert.equal(brewDialIsReady({ ...DIAL, doseG: '' }), false);
   assert.equal(brewDialIsReady({ ...DIAL, beanName: '' }), false);
   assert.equal(brewDialIsReady({ ...DIAL, yieldG: '' }), false);
+  const resolved = resolveBrewGuideRecipeTargets({ targetDoseG: '', targetYieldG: null });
+  assert.equal(resolved.doseG, '18');
+  assert.equal(resolved.yieldG, '36');
   assert.equal(grindSettingChanged(DIAL), false);
   assert.equal(grindSettingChanged({ ...DIAL, previousGrindLabel: '12' }), true);
   assert.equal(grindSettingChanged({ ...DIAL, previousGrindLabel: '' }), false);

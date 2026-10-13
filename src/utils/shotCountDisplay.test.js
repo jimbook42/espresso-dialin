@@ -6,6 +6,7 @@ import {
 } from './grinderLogic.js';
 import { buildNicheLearningTransparencyNote } from '../grinders/nicheZeroLearning.js';
 import { NICHE_ZERO_GRINDER_ID } from '../grinders/nicheZero.js';
+import { formatRecentRecipeShotEvidence, formatShotCount } from './shotCountDisplay.js';
 
 const BASE_RECIPE = { targetTimeMinS: 27, targetTimeMaxS: 32, targetYieldG: 36, targetDoseG: 18 };
 
@@ -24,6 +25,12 @@ function nicheShot(overrides = {}) {
 }
 
 export function runShotCountDisplayTests() {
+  assert.equal(formatShotCount(0), '0 shots');
+  assert.equal(formatShotCount(1), '1 shot');
+  assert.equal(formatShotCount(2), '2 shots');
+  assert.equal(formatRecentRecipeShotEvidence(1), 'Based on 1 recent shot with this recipe');
+  assert.equal(formatRecentRecipeShotEvidence(3), 'Based on 3 recent shots with this recipe');
+
   const note = buildNicheLearningTransparencyNote(
     'insufficient_observations',
     { observationCount: 2 },
@@ -36,7 +43,7 @@ export function runShotCountDisplayTests() {
     nicheShot({ id: 'only', timestamp: '2026-09-20T12:00:00.000Z', nicheZeroSetting: 14, actualTimeS: 28 }),
   ];
   const liveOne = recomputeNicheRecommendationFromLastShot(oneLogged[0], BASE_RECIPE, oneLogged, false);
-  assert.match(liveOne.evidenceContext, /Based on recent shots/);
+  assert.equal(liveOne.evidenceContext, 'Based on 1 recent shot with this recipe');
 
   const threeLogged = [
     nicheShot({ id: 'a', timestamp: '2026-09-22T12:00:00.000Z', nicheZeroSetting: 14, actualTimeS: 28 }),
@@ -60,6 +67,10 @@ export function runShotCountDisplayTests() {
   assert.equal(
     getRecommendationEvidenceContext(fourComparable, BASE_RECIPE, false),
     'Based on 4 recent shots with this recipe'
+  );
+  assert.equal(
+    getRecommendationEvidenceContext(oneLogged, BASE_RECIPE, false),
+    'Based on 1 recent shot with this recipe'
   );
 
   assert.equal(CURRENT_PULL_ELIGIBILITY_ID, '__current_pull__');

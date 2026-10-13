@@ -497,7 +497,7 @@
         "timeDelta": 1.5,
         "yieldDelta": 0
       },
-      "evidenceContext": "Based on recent shots with this recipe",
+      "evidenceContext": "Based on 1 recent shot with this recipe",
       "flairWaterTempAdvice": null,
       "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
@@ -737,7 +737,7 @@
         "timeDelta": 0.5,
         "yieldDelta": 0
       },
-      "evidenceContext": "Based on recent shots with this recipe",
+      "evidenceContext": "Based on 1 recent shot with this recipe",
       "flairWaterTempAdvice": null,
       "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
@@ -767,7 +767,7 @@
         "timeDelta": 13.5,
         "yieldDelta": 0
       },
-      "evidenceContext": "Based on recent shots with this recipe",
+      "evidenceContext": "Based on 1 recent shot with this recipe",
       "flairWaterTempAdvice": null,
       "reason": "GO 11 MICRO STEP(S) COARSER — Shot was 14s off target midpoint.",
       "recommendedSetting": {
@@ -2150,9 +2150,9 @@
       "initialSource": "bean-history",
       "setting": 15
     },
-    "getRecommendationEvidenceContext/excluded_ignored": "Based on recent shots with this recipe",
+    "getRecommendationEvidenceContext/excluded_ignored": "Based on 1 recent shot with this recipe",
     "getRecommendationEvidenceContext/none": null,
-    "getRecommendationEvidenceContext/one": "Based on recent shots with this recipe",
+    "getRecommendationEvidenceContext/one": "Based on 1 recent shot with this recipe",
     "getRecommendationEvidenceContext/three": "Based on 3 recent shots with this recipe",
     "getShotEngineStats/legacy_empty_grinder": {
       "ageOffsetNote": null,

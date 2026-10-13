@@ -1,4 +1,5 @@
 import Dexie from 'dexie';
+import { formatRecentRecipeShotEvidence } from './shotCountDisplay.js';
 import {
   SETTE_GRINDER_ID,
   SUNBEAM_GRINDER_ID,
@@ -283,9 +284,7 @@ function loggedRecipeComparableShots(shots, recipe, flairEnabled) {
 export function getRecommendationEvidenceContext(recentShots, recipe, flairEnabled = false) {
   const comparable = loggedRecipeComparableShots(recentShots, recipe, flairEnabled);
   if (comparable.length === 0) return null;
-  const count = comparable.length;
-  if (count >= 2) return `Based on ${count} recent shots with this recipe`;
-  return 'Based on recent shots with this recipe';
+  return formatRecentRecipeShotEvidence(comparable.length);
 }
 
 function evidenceContextForRecommendation(recentShots, shotData, recipe, flairEnabled, options) {

@@ -72,6 +72,22 @@ export function formatBrewAmount(value) {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
 }
 
+/** Recipe targets for Brew Guide when stored values are missing (no dial-in yield prefill). */
+export function resolveBrewGuideRecipeTargets(recipe = {}) {
+  const doseG = formatBrewAmount(recipe.targetDoseG) ?? formatBrewAmount(18);
+  const yieldG = formatBrewAmount(recipe.targetYieldG) ?? formatBrewAmount(36);
+  const timeMinS = Number.isFinite(Number(recipe.targetTimeMinS)) ? Number(recipe.targetTimeMinS) : 27;
+  const timeMaxS = Number.isFinite(Number(recipe.targetTimeMaxS)) ? Number(recipe.targetTimeMaxS) : 32;
+  const temp = formatBrewAmount(recipe.brewTemperatureC);
+  return {
+    doseG,
+    yieldG,
+    timeMinS,
+    timeMaxS,
+    brewTemperatureC: temp != null ? Number(temp) : recipe.brewTemperatureC,
+  };
+}
+
 import { getBrewGuideGrindConfig } from './grinderBrewGuide.js';
 
 export function brewDialIsReady(dial) {

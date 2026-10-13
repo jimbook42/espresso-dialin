@@ -7,6 +7,7 @@ import {
   SUNBEAM_GRINDER_ID,
 } from '../grinders/grinderRegistry.js';
 import { GENERIC_BREW_GUIDE_MENU, SUNBEAM_MACHINE_BREW_GUIDE } from './machine/index.js';
+import { resolveBrewGuideRecipeTargets } from './steps.js';
 
 const MACHINE_PACKAGES = Object.freeze({
   [SUNBEAM_MACHINE_BREW_GUIDE.key]: SUNBEAM_MACHINE_BREW_GUIDE,
@@ -57,13 +58,20 @@ export function buildBrewGuideDialPayload({
   grindLabel,
   previousGrindLabel,
 }) {
+  const targets = resolveBrewGuideRecipeTargets({
+    targetDoseG,
+    targetYieldG,
+    targetTimeMinS,
+    targetTimeMaxS,
+    brewTemperatureC,
+  });
   return {
     beanName: beanName || '',
-    doseG: targetDoseG,
-    yieldG: targetYieldG,
-    timeMinS: targetTimeMinS,
-    timeMaxS: targetTimeMaxS,
-    brewTemperatureC,
+    doseG: targets.doseG,
+    yieldG: targets.yieldG,
+    timeMinS: targets.timeMinS,
+    timeMaxS: targets.timeMaxS,
+    brewTemperatureC: targets.brewTemperatureC ?? brewTemperatureC,
     grinderModel,
     grindLabel,
     previousGrindLabel,

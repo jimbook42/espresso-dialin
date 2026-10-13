@@ -81,6 +81,7 @@ import {
 } from './brewGuide/guidance';
 import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
+import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
 import { isScaleEnabled } from './config/scaleFlag.js';
@@ -115,6 +116,33 @@ function createDefaultNewRecipe(grinderModel) {
     brewTemperatureC: defaultBrewTemperatureForGrinder(grinderModel),
     flairProfile: createDefaultFlairProfile(),
   };
+}
+
+function parseRecipeFloatField(raw) {
+  if (raw === '' || raw === null || raw === undefined) return '';
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : '';
+}
+
+function parseRecipeIntField(raw) {
+  if (raw === '' || raw === null || raw === undefined) return '';
+  const n = parseInt(String(raw), 10);
+  return Number.isFinite(n) ? n : '';
+}
+
+function recipeFieldDisplayValue(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  if (typeof value === 'number' && Number.isNaN(value)) return '';
+  return value;
+}
+
+function sanitizeRecipeFormState(recipe, grinderModel) {
+  if (!recipe) return createDefaultNewRecipe(grinderModel);
+  const next = { ...recipe };
+  for (const key of ['targetDoseG', 'targetYieldG', 'targetTimeMinS', 'targetTimeMaxS', 'brewTemperatureC']) {
+    next[key] = recipeFieldDisplayValue(next[key]);
+  }
+  return next;
 }
 
 const EXTRACTION_TIME_COLORS = {
@@ -296,7 +324,18 @@ export default function App() {
   }, [darkMode]);
 
   const activeBeansList = beans.filter(b => !b?.isFinished);
-  const activeBean = beans.find(b => b.id === selectedBeanId) || activeBeansList[0] || beans[0];
+  const effectiveBeanId = (() => {
+    if (selectedBeanId && beans.some((b) => b.id === selectedBeanId)) return selectedBeanId;
+    const remembered = settingsSetting?.lastSelectedBeanId;
+    if (remembered) {
+      const match =
+        beans.find((b) => b.id === remembered && !b?.isFinished)
+        || beans.find((b) => b.id === remembered);
+      if (match) return match.id;
+    }
+    return activeBeansList[0]?.id || beans[0]?.id || '';
+  })();
+  const activeBean = beans.find(b => b.id === effectiveBeanId) || activeBeansList[0] || beans[0];
   const activeRecipe = recipes.find(r => r.beanId === activeBean?.id);
   const lastLoggedShot = findLatestShotForBeanAndGrinder(shots, activeBean?.id, grinderModel);
   const lastLearningShot = activeBean && grinderModel
@@ -479,12 +518,6 @@ export default function App() {
     else handleStopTimer();
   };
 
-  useEffect(() => {
-    if (activeRecipe?.targetYieldG && !actualYieldG) {
-      setActualYieldG(activeRecipe.targetYieldG);
-    }
-  }, [activeRecipe?.id]);
-
   const stashPendingGrind = (model, beanId, grindFields) => {
     const key = pendingGrindSessionKey(beanId, model);
     const snap = capturePendingGrindState(model, grindFields);
@@ -553,7 +586,7 @@ export default function App() {
     if (uiState.setteMicro != null) setSetteMicro(uiState.setteMicro);
     if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
     if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
-  }, [selectedBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
+  }, [effectiveBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
 
   const handleSaveGrinderSetup = async (model, options = {}) => {
     const {
@@ -637,6 +670,17 @@ export default function App() {
   const patchBrewGuidanceSettings = async (patch) => {
     const currentSettings = await db.settings.get('global') || { id: 'global' };
     await db.settings.put({ ...currentSettings, ...patch });
+  };
+
+  const rememberSelectedBeanId = async (beanId) => {
+    if (!beanId) return;
+    await patchBrewGuidanceSettings({ lastSelectedBeanId: beanId });
+  };
+
+  const selectActiveBean = (beanId) => {
+    setSelectedBeanId(beanId);
+    prefillDoseFromRecipe(recipes.find((r) => r.beanId === beanId));
+    void rememberSelectedBeanId(beanId);
   };
 
   const handleDismissBrewGuideIntro = () => {
@@ -750,8 +794,7 @@ export default function App() {
         const beanId = generateId();
         await db.beans.add({ ...beanToSave, id: beanId, isFinished: false, thawHistory: [], createdAt: new Date().toISOString() });
         await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: generateId(), beanId });
-        setSelectedBeanId(beanId);
-        prefillDoseFromRecipe(newRecipe);
+        selectActiveBean(beanId);
 
         const currentSettings = await db.settings.get('global') || { id: 'global' };
         if (shouldNavigateToBrewAfterFirstBean(currentSettings, isFirstBeanAdd, Boolean(currentSettings.brewGuideEnabled))) {
@@ -778,7 +821,7 @@ export default function App() {
     const { focusFlairProfile = false } = options;
     const recipe = recipes.find(r => r.beanId === bean.id);
     setNewBean(bean);
-    if (recipe) setNewRecipe(recipe);
+    if (recipe) setNewRecipe(sanitizeRecipeFormState(recipe, grinderModel));
     setIsEditingBean(true);
     setActiveTab('beans');
     if (focusFlairProfile) {
@@ -821,9 +864,11 @@ export default function App() {
 
   const handleToggleFinished = async (beanId, currentStatus) => {
     await db.beans.update(beanId, { isFinished: !currentStatus });
-    if (!currentStatus && selectedBeanId === beanId) {
+    if (!currentStatus && effectiveBeanId === beanId) {
       const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
-      setSelectedBeanId(remaining.length > 0 ? remaining[0].id : '');
+      const nextId = remaining.length > 0 ? remaining[0].id : '';
+      setSelectedBeanId(nextId);
+      void rememberSelectedBeanId(nextId);
     }
   };
 
@@ -837,9 +882,11 @@ export default function App() {
       const associatedShots = await db.shots.where('beanId').equals(beanId).toArray();
       for (const s of associatedShots) await db.shots.delete(s.id);
 
-      if (selectedBeanId === beanId) {
+      if (effectiveBeanId === beanId) {
         const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
-        setSelectedBeanId(remaining.length > 0 ? remaining[0].id : '');
+        const nextId = remaining.length > 0 ? remaining[0].id : '';
+      setSelectedBeanId(nextId);
+      void rememberSelectedBeanId(nextId);
       }
     }
   };
@@ -1049,7 +1096,7 @@ export default function App() {
       if (activeRecipe?.targetDoseG != null && activeRecipe.targetDoseG !== '') {
         setActualDoseG(activeRecipe.targetDoseG);
       }
-      setActualYieldG(activeRecipe?.targetYieldG || '');
+      setActualYieldG('');
       setShotRating(null);
       setNotes('');
       setTasteProfile('');
@@ -1654,12 +1701,8 @@ export default function App() {
                   <div className="flex justify-between items-start gap-2 flex-wrap">
                     <div className="flex-1 min-w-0">
                       <select
-                        value={activeBean?.id || ''}
-                        onChange={(e) => {
-                          const beanId = e.target.value;
-                          setSelectedBeanId(beanId);
-                          prefillDoseFromRecipe(recipes.find((r) => r.beanId === beanId));
-                        }}
+                        value={effectiveBeanId}
+                        onChange={(e) => selectActiveBean(e.target.value)}
                         className={`bg-transparent ${ui.text} font-bold text-base focus:outline-none w-full truncate`}
                       >
                         {activeBeansList.map(b => (
@@ -1875,7 +1918,7 @@ export default function App() {
                       timeMaxS: activeRecipe?.targetTimeMaxS,
                       brewTemperatureC: activeRecipe?.brewTemperatureC,
                       grinderModel,
-                      grindLabel: recommendedGrindDisplay,
+                      grindLabel: recommendedGrindDisplay || currentGrindLabel,
                       previousGrindLabel,
                     }}
                     onOpenFullGuide={() => setActiveTab('brew')}
@@ -2161,7 +2204,7 @@ export default function App() {
               targetTimeMaxS: activeRecipe?.targetTimeMaxS,
               brewTemperatureC: activeRecipe?.brewTemperatureC,
               grinderModel,
-              grindLabel: recommendedGrindDisplay,
+              grindLabel: recommendedGrindDisplay || currentGrindLabel,
               previousGrindLabel,
             })}
           />
@@ -2306,15 +2349,15 @@ export default function App() {
                 <h3 className={`${ui.sectionTitle} mb-3`}>Target recipe profile</h3>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   {[
-                    { label: 'Target dose', key: 'targetDoseG', value: newRecipe.targetDoseG, suffix: 'g', parse: (v) => parseFloat(v) },
-                    { label: 'Yield', key: 'targetYieldG', value: newRecipe.targetYieldG, suffix: 'g', parse: (v) => v },
+                    { label: 'Target dose', key: 'targetDoseG', value: newRecipe.targetDoseG, suffix: 'g', parse: parseRecipeFloatField },
+                    { label: 'Yield', key: 'targetYieldG', value: newRecipe.targetYieldG, suffix: 'g', parse: parseRecipeFloatField },
                   ].map((field) => (
                     <div key={field.key} className={ui.metricCell}>
                       <span className={`${ui.fieldLabel} block mb-1`}>{field.label}</span>
                       <input
                         type="number"
                         step="0.1"
-                        value={field.value}
+                        value={recipeFieldDisplayValue(field.value)}
                         onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: field.parse(e.target.value) })}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                       />
@@ -2331,8 +2374,8 @@ export default function App() {
                       <span className={`${ui.fieldLabel} block mb-1`}>{field.label}</span>
                       <input
                         type="number"
-                        value={field.value}
-                        onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: parseInt(e.target.value, 10) })}
+                        value={recipeFieldDisplayValue(field.value)}
+                        onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: parseRecipeIntField(e.target.value) })}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                       />
                       <span className={`text-[9px] ${ui.muted} text-center block`}>s</span>
@@ -2344,8 +2387,8 @@ export default function App() {
                     <span className={`${ui.fieldLabel} block mb-1`}>Brew temp</span>
                     <input
                       type="number"
-                      value={newRecipe.brewTemperatureC || ''}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, brewTemperatureC: parseInt(e.target.value, 10) })}
+                      value={recipeFieldDisplayValue(newRecipe.brewTemperatureC)}
+                      onChange={(e) => setNewRecipe({ ...newRecipe, brewTemperatureC: parseRecipeIntField(e.target.value) })}
                       className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                     />
                     <span className={`text-[9px] ${ui.muted} text-center block`}>°C</span>
@@ -2703,7 +2746,7 @@ export default function App() {
 
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: 'Total shots', value: totalShots },
+                { label: 'Total', value: formatShotCount(totalShots) },
                 { label: 'Target compliance', value: `${complianceRate}%` },
                 { label: 'Avg extraction', value: `${avgExtractionTime}s` },
                 { label: 'Active profiles', value: activeBeansList.length },
@@ -2788,7 +2831,7 @@ export default function App() {
                       <div key={item.label} className="space-y-1">
                         <div className="flex justify-between font-semibold">
                           <span className={subTextClass}>{item.label}</span>
-                          <span>{item.count} shots ({pct}%)</span>
+                          <span>{formatShotCount(item.count)} ({pct}%)</span>
                         </div>
                         <div className={`h-2 w-full ${ui.progressTrack} rounded-full overflow-hidden`}>
                           <div style={{ width: `${pct}%` }} className={`h-full ${item.color} transition-all duration-500`} />
