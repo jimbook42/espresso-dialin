@@ -6,16 +6,13 @@ import {
   adjustSette,
   adjustSunbeam,
   numericToSette,
-  setteToNumeric,
   getRecommendationGrinderProfile,
   resolveShotStatsGrinderModel,
   getShotStatsGrinderProfile,
   isSetteGrinderModel,
   isNicheZeroGrinderModel,
-  isSunbeamGrinderModel,
   isCustomGrinderModel,
   grinderSupportsQuantitativeRecommendations,
-  NICHE_ZERO_GRINDER_ID,
   getGrinderDefinitionById,
 } from '../grinders/grinderRegistry.js';
 import { adjustCustomGrind, defaultCustomGrindValue } from '../grinders/customGrinder.js';
@@ -313,16 +310,13 @@ function evidenceContextForRecommendation(recentShots, shotData, recipe, flairEn
 
 function freshnessOffsetsForEffectiveDays(effectiveDays) {
   const days = Math.max(0, Math.floor(Number(effectiveDays) || 0));
-  let offsetSette = 0;
-  let offsetSunbeam = 0;
-  if (days <= 3) { offsetSette = -3; offsetSunbeam = -2; }
-  else if (days <= 7) { offsetSette = -2; offsetSunbeam = -1; }
-  else if (days <= 14) { offsetSette = -1; offsetSunbeam = 0; }
-  else if (days <= 30) { offsetSette = 0; offsetSunbeam = 0; }
-  else if (days <= 45) { offsetSette = 1; offsetSunbeam = 1; }
-  else if (days <= 60) { offsetSette = 2; offsetSunbeam = 1; }
-  else { offsetSette = 3; offsetSunbeam = 2; }
-  return { offsetSette, offsetSunbeam };
+  if (days <= 3) return { offsetSette: -3, offsetSunbeam: -2 };
+  if (days <= 7) return { offsetSette: -2, offsetSunbeam: -1 };
+  if (days <= 14) return { offsetSette: -1, offsetSunbeam: 0 };
+  if (days <= 30) return { offsetSette: 0, offsetSunbeam: 0 };
+  if (days <= 45) return { offsetSette: 1, offsetSunbeam: 1 };
+  if (days <= 60) return { offsetSette: 2, offsetSunbeam: 1 };
+  return { offsetSette: 3, offsetSunbeam: 2 };
 }
 
 export function getIdealFreezeWindow(roastType) {
@@ -340,7 +334,7 @@ export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
 
   const roastDate = new Date(bean.roastDate);
   const today = mockDateOverride ? new Date(mockDateOverride) : new Date();
-  let effectiveDays = 0;
+  let effectiveDays;
   const storageType = bean.storageType || 'bag';
   const postThawStorage = bean.postThawStorage || 'bag';
 
@@ -757,6 +751,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   const isBitter = tasteProfile === 'bitter' || tasteProfile === 'very_bitter';
   const isSour = tasteProfile === 'sour' || tasteProfile === 'very_sour';
 
+  // Initial values are overwritten on every quantitative path; niche branch returns before use.
   let shift = 0;
   let reason = '';
   let warning = null;
@@ -1139,8 +1134,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   let flairWaterTempAdvice = null;
   const currentTemp = recipe.brewTemperatureC;
-  const currentFlairProfile = flairEnabled ? recipe.flairProfile : null;
-
   const currentOutcome = classifyShotOutcome(
     { actualTimeS: actualTime, actualYieldG: actualYield, tasteProfile, targetTimeMinS: targetMin, targetTimeMaxS: targetMax },
     recipe

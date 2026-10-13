@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   db,
   generateId,
@@ -338,6 +338,7 @@ export default function App() {
 
   useEffect(() => {
     if (settingsSetting) {
+      queueMicrotask(() => {
       setSettingsGrinderPickerValue(grinderPickerValueForSettings(settingsSetting));
       if (settingsSetting.customGrinder) {
         setSettingsCustomGrinderDraft(settingsSetting.customGrinder);
@@ -367,6 +368,7 @@ export default function App() {
           );
         }
       }
+      });
     }
   }, [settingsSetting, isEditingBean]);
 
@@ -425,7 +427,12 @@ export default function App() {
     || (timemoreScale.isConnected && scaleRecipePreinfusion)
     || flairTimedPreinfusionAuto;
   const scaleAutoEndPreinfusionRef = useRef(false);
+  const [brewGuideTimerActive, setBrewGuideTimerActive] = useState(false);
   const brewGuideTimerActiveRef = useRef(false);
+  const syncBrewGuideTimerActive = (active) => {
+    brewGuideTimerActiveRef.current = active;
+    setBrewGuideTimerActive(active);
+  };
   const profilePreinfusionTimeS = Number(activeRecipe?.flairProfile?.preinfusionTime) || 0;
   const flowChartTimeOffsetSec = timerUsePreInfusion ? Math.max(profilePreinfusionTimeS, 4) : 0;
   const scaleLiveFlowOnProfile =
@@ -485,6 +492,7 @@ export default function App() {
     timemoreScale.liveRelativeWeightG,
     timemoreScale.weightTriggersPrimed,
     timerUsePreInfusion,
+    preinfusionScaleCtx,
     activeRecipe?.flairProfile,
     scaleFeatureEnabled,
     timemoreScale,
@@ -507,9 +515,9 @@ export default function App() {
     return `0:${String(secs).padStart(2, '0')}.${tenths}`;
   };
 
-  const releaseBrewGuideTimer = () => {
+  const releaseBrewGuideTimer = useCallback(() => {
     if (!brewGuideTimerActiveRef.current) return;
-    brewGuideTimerActiveRef.current = false;
+    syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
@@ -518,10 +526,10 @@ export default function App() {
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
     }
-  };
+  }, [timemoreScale]);
 
-  const handleStartTimer = async () => {
-    brewGuideTimerActiveRef.current = false;
+  const handleStartTimer = async ({ fromBrewGuide = false } = {}) => {
+    if (!fromBrewGuide) syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -673,7 +681,17 @@ export default function App() {
     if (uiState.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
     if (uiState.nicheZeroSetting != null) setNicheZeroSetting(uiState.nicheZeroSetting);
     if (uiState.customGrindValue != null) setCustomGrindValue(uiState.customGrindValue);
-  }, [effectiveBeanId, activeBean?.id, grinderModel, beans.length, mockDate, activeBean?.thawDate]);
+  }, [
+    effectiveBeanId,
+    activeBean,
+    grinderModel,
+    beans,
+    mockDate,
+    flairEnabled,
+    recipes,
+    shots,
+    appSettings,
+  ]);
 
   const handleSaveGrinderSetup = async (modelOrPicker, options = {}) => {
     const {
@@ -1447,33 +1465,6 @@ export default function App() {
     && (!timerUsePreInfusion || !preInfusionPhase)
     && timemoreScale.instantFlowGs != null;
 
-  const formatFlairRecipeLines = (profile) => {
-    if (!profile) return [];
-    const lines = [];
-    if (profile.preinfusionPressure) {
-      const endTrigger = profile.preinfusionEndTrigger || 'manual';
-      const endDetail =
-        endTrigger === 'weight'
-          ? `${profile.preinfusionEndWeightG || '—'}g`
-          : endTrigger === 'manual'
-            ? 'manual'
-            : `${profile.preinfusionTime || '—'}s`;
-      lines.push(`Pre-infusion: ${profile.preinfusionPressure} bar · end ${endTrigger} @ ${endDetail}`);
-    }
-    if (profile.peakPressure) {
-      lines.push(`Hold: ${profile.peakPressure} bar → ${profile.peakEndYield || '—'}g`);
-    }
-    if (profile.taperPressure) {
-      const taperTrigger = profile.taperStartTrigger || 'weight';
-      const taperAt =
-        taperTrigger === 'time'
-          ? `${profile.taperStartTimeS || '—'}s`
-          : `${profile.peakEndYield || '—'}g`;
-      lines.push(`Taper: ${profile.taperPressure} bar · start ${taperTrigger} @ ${taperAt}`);
-    }
-    return lines;
-  };
-
   const applyRecommendation = async () => {
     if (!dynamicRec || !dynamicRec.recommendedSetting) return;
     const recSet = dynamicRec.recommendedSetting;
@@ -1531,9 +1522,6 @@ export default function App() {
 
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, mockDate) : null;
   const filteredShots = historyFilterBeanId === 'all' ? shots : shots.filter(s => s.beanId === historyFilterBeanId);
-
-  const referenceNow = mockDate ? new Date(mockDate) : new Date();
-  const lastBrewDaysAgo = lastLoggedShot ? Math.max(0, Math.floor((referenceNow - new Date(lastLoggedShot.timestamp)) / (1000 * 60 * 60 * 24))) : 0;
 
   const totalShots = shots.length;
   const compliantShots = shots.filter(s => {
@@ -1599,30 +1587,21 @@ export default function App() {
   };
 
   const handleBrewStartTimer = () => {
-    brewGuideTimerActiveRef.current = true;
+    syncBrewGuideTimerActive(true);
     setActualTimeS('');
-    handleStartTimer();
+    void handleStartTimer({ fromBrewGuide: true });
   };
 
   const handleBrewResetTimer = () => {
-    brewGuideTimerActiveRef.current = false;
+    syncBrewGuideTimerActive(false);
     handleResetTimer();
     setActualTimeS('');
   };
 
   useLayoutEffect(() => {
     if (activeTab === 'brew' && brewGuideEnabled) return;
-    if (!brewGuideTimerActiveRef.current) return;
-    brewGuideTimerActiveRef.current = false;
-    scaleAutoEndPreinfusionRef.current = false;
-    setTimerRunning(false);
-    setTimerTicks(0);
-    setPreInfusionSeconds(0);
-    setPreInfusionPhase(false);
-    if (timemoreScale.isConnected) {
-      void timemoreScale.notifyShotCancelled();
-    }
-  }, [activeTab, brewGuideEnabled, timemoreScale.isConnected]);
+    releaseBrewGuideTimer();
+  }, [activeTab, brewGuideEnabled, releaseBrewGuideTimer]);
 
   const handleBrewHandoff = ({ timeS, yieldG } = {}) => {
     if (activeRecipe && activeRecipe.targetDoseG != null && activeRecipe.targetDoseG !== '') {
@@ -1646,7 +1625,7 @@ export default function App() {
         customGrindValue: uiState?.customGrindValue ?? customGrindValue,
       });
     }
-    brewGuideTimerActiveRef.current = false;
+    syncBrewGuideTimerActive(false);
     setBrewTimerHost(false);
     setShotFieldHighlights({ ...EMPTY_SHOT_FIELD_HIGHLIGHTS, taste: true });
     setActiveTab('dial');
@@ -1683,7 +1662,7 @@ export default function App() {
     <div className={`min-h-screen ${ui.page} relative`}>
       
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
-      {timerRunning && !brewTimerHost && !brewGuideTimerActiveRef.current && (
+      {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
         <div
           className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           onClick={handleTimerSurfaceTap}

@@ -372,7 +372,7 @@ export function buildNicheTimingBoundedReason({ recommendedDial, shift, empirica
   return `Set dial to ${recommendedDial} (${Math.abs(shift)} mark${Math.abs(shift) === 1 ? '' : 's'} ${dir}) — ${detail}.`;
 }
 
-export function buildNicheEmpiricalReason({ currentDial, recommendedDial, shift, secondsPerMark, keepGrind }) {
+export function buildNicheEmpiricalReason({ recommendedDial, shift, secondsPerMark, keepGrind }) {
   if (keepGrind) return 'KEEP GRIND — Balanced and in range.';
   const dir = shift < 0 ? 'finer (lower number)' : 'coarser (higher number)';
   const absShift = Math.abs(shift);

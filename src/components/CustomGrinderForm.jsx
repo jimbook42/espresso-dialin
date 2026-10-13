@@ -1,4 +1,4 @@
-import { isCustomGrinderFormValid, normalizeCustomGrinderProfile } from '../grinders/customGrinder.js';
+import { normalizeCustomGrinderProfile } from '../grinders/customGrinder.js';
 
 const inputClass =
   'w-full bg-[#211e1a] border border-[#2e2b26] text-[#f5f2eb] rounded-lg p-2.5 text-sm font-semibold';

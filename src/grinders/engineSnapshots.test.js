@@ -25,7 +25,6 @@ import {
   createSetteShot,
   createSunbeamShot,
   FLAIR_RECIPE,
-  LEGACY_BEAN,
   LEGACY_RECIPE,
   LEGACY_SHOT,
   MOCK_NOW,

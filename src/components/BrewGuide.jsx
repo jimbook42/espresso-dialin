@@ -298,22 +298,22 @@ export function BrewGuide({
     return () => onTimerHost(false);
   }, [screen, step?.kind, onTimerHost]);
 
-  useEffect(() => {
-    const onTimerStep = screen === 'steps' && step?.kind === 'timer';
-    if (!onTimerStep && extractPhase === 'running') {
-      onResetTimer();
-      setExtractPhase('idle');
-      setCapturedTime(null);
-    }
-  }, [screen, step?.kind, extractPhase, onResetTimer]);
+  const abortRunningExtract = () => {
+    if (extractPhase !== 'running') return;
+    onResetTimer();
+    setExtractPhase('idle');
+    setCapturedTime(null);
+  };
 
   useEffect(() => {
     if (!accessoriesOpenRequest) return;
-    setSetupReturnTo(accessoriesReturnTo);
-    setDraft(normalizeBrewAccessories(accessories));
-    setScreen('setup');
-    onAccessoriesOpenHandled();
-  }, [accessoriesOpenRequest, accessoriesReturnTo, onAccessoriesOpenHandled]);
+    queueMicrotask(() => {
+      setSetupReturnTo(accessoriesReturnTo);
+      setDraft(normalizeBrewAccessories(accessories));
+      setScreen('setup');
+      onAccessoriesOpenHandled();
+    });
+  }, [accessoriesOpenRequest, accessoriesReturnTo, accessories, onAccessoriesOpenHandled]);
 
   const exitAccessorySetup = () => {
     if (setupReturnTo === 'dial') {
@@ -611,6 +611,7 @@ export function BrewGuide({
 
   const goBack = () => {
     if (step.kind === 'timer' && timerLive) resetExtract();
+    else abortRunningExtract();
     if (index === 0) setScreen('menu');
     else setStepIndex(index - 1);
   };
@@ -627,6 +628,9 @@ export function BrewGuide({
       setScreen('menu');
       onHandoff({ timeS, yieldG });
       return;
+    }
+    if (step.kind === 'timer' && extractPhase === 'running') {
+      abortRunningExtract();
     }
     if (index >= steps.length - 1) {
       setStepIndex(0);

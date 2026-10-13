@@ -1,4 +1,3 @@
-import React from 'react';
 import { Coffee, X } from 'lucide-react';
 
 const SECTIONS = [

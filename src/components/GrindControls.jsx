@@ -10,7 +10,6 @@ import {
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
 import {
-  adjustCustomGrind,
   customDialIndexToValue,
   customDialMaxIndex,
   customDialValueIndex,
@@ -26,7 +25,6 @@ import {
   parseNicheZeroSetting,
 } from '../grinders/nicheZero.js';
 import {
-  CENTER_TICK,
   computeTickStripTranslate,
   computeTickWindow,
   VISIBLE_TICKS,
@@ -153,6 +151,8 @@ function AxisStepper({
   onInc,
   ui,
   dialKind,
+  valueIndexOverride,
+  maxValueIndexOverride,
   canDec = true,
   canInc = true,
 }) {
@@ -161,7 +161,8 @@ function AxisStepper({
   const [dragOffsetPx, setDragOffsetPx] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const valueIndex = config.valueIndex(display);
+  const valueIndex = valueIndexOverride ?? config.valueIndex(display);
+  const maxValueIndex = maxValueIndexOverride ?? config.maxValueIndex;
   const stepperBtnClass = `${ui.stepperBtn} disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100`;
 
   const endDrag = useCallback(() => {
@@ -224,7 +225,7 @@ function AxisStepper({
       </div>
       <SpinningTickScale
         valueIndex={valueIndex}
-        maxValueIndex={config.maxValueIndex}
+        maxValueIndex={maxValueIndex}
         dragOffsetPx={dragOffsetPx}
         isDragging={isDragging}
         onPointerDown={handlePointerDown}
@@ -388,15 +389,6 @@ export function CustomGrindControl({ setting, profile, label, onChange, ui }) {
     onChange(customDialIndexToValue(nextIndex, profile));
   };
 
-  const customDialKind = `custom-${profile.min}-${profile.max}-${profile.step}`;
-
-  if (!DIAL_CONFIG[customDialKind]) {
-    DIAL_CONFIG[customDialKind] = {
-      valueIndex: (v) => customDialValueIndex(v, profile),
-      maxValueIndex: maxIndex,
-    };
-  }
-
   return (
     <AxisStepper
       label={label}
@@ -406,7 +398,9 @@ export function CustomGrindControl({ setting, profile, label, onChange, ui }) {
       canDec={valueIndex > 0}
       canInc={valueIndex < maxIndex}
       ui={ui}
-      dialKind={customDialKind}
+      dialKind="macro"
+      valueIndexOverride={valueIndex}
+      maxValueIndexOverride={maxIndex}
     />
   );
 }

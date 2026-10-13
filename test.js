@@ -63,7 +63,8 @@ import assert from 'assert';
 /** Ignore metadata fields when comparing initial grind outputs. */
 function initialGrindOutput(result) {
   if (!result || typeof result !== 'object') return result;
-  const { initialSource, ...grind } = result;
+  const grind = { ...result };
+  delete grind.initialSource;
   return grind;
 }
 
@@ -743,7 +744,8 @@ function runKnownIssueLearningTests() {
   );
   assert.deepEqual(initialGrindOutput(reIncluded), { macro: 14, micro: 'A' });
 
-  const { recommendation: _dropRec, ...shotBGrindOnly } = shotB;
+  const { recommendation, ...shotBGrindOnly } = shotB;
+  void recommendation;
   const reIncludedGrind = getInitialGrindRecommendation(
     ...initArgs,
     [{ ...shotBGrindOnly, excludeFromLearning: false }],
