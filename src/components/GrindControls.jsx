@@ -21,7 +21,8 @@ import {
   formatNicheZeroSetting,
   NICHE_ZERO_DEFAULT_SETTING,
   NICHE_ZERO_DIAL_MAX,
-  NICHE_ZERO_DIAL_MIN,
+  formatNicheZeroDialRangeLabel,
+  getNicheZeroDialLimits,
   parseNicheZeroSetting,
 } from '../grinders/nicheZero.js';
 import {
@@ -280,6 +281,7 @@ export function GrinderGrindControls({
       <NicheZeroGrindControl
         setting={nicheZeroSetting}
         onChange={onNicheZeroChange}
+        settings={settings}
         ui={ui}
       />
     );
@@ -304,24 +306,31 @@ export function GrinderGrindControls({
   );
 }
 
-export function NicheZeroGrindControl({ setting, onChange, ui }) {
+export function NicheZeroGrindControl({ setting, onChange, settings = null, ui }) {
+  const { min, max } = getNicheZeroDialLimits(settings);
   const bump = (delta) => {
-    onChange(adjustNicheZero(setting, delta));
+    onChange(adjustNicheZero(setting, delta, settings));
   };
 
-  const parsed = parseNicheZeroSetting(setting) ?? NICHE_ZERO_DEFAULT_SETTING;
-  const display = formatNicheZeroSetting(parsed) || formatNicheZeroSetting(NICHE_ZERO_DEFAULT_SETTING);
+  const parsed = parseNicheZeroSetting(setting, settings) ?? NICHE_ZERO_DEFAULT_SETTING;
+  const display =
+    formatNicheZeroSetting(parsed, settings)
+    || formatNicheZeroSetting(NICHE_ZERO_DEFAULT_SETTING, settings);
+  const nicheTickMax = Math.round((max - min) * 10);
+  const nicheTickIndex = Math.round((parsed - min) * 10);
 
   return (
     <AxisStepper
-      label={nicheUi.dialFieldLabel}
+      label={formatNicheZeroDialRangeLabel(settings)}
       display={display}
       onDec={() => bump(-1)}
       onInc={() => bump(1)}
-      canDec={parsed > NICHE_ZERO_DIAL_MIN}
-      canInc={parsed < NICHE_ZERO_DIAL_MAX}
+      canDec={parsed > min}
+      canInc={parsed < max}
       ui={ui}
       dialKind="niche"
+      valueIndexOverride={nicheTickIndex}
+      maxValueIndexOverride={nicheTickMax}
     />
   );
 }

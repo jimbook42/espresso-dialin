@@ -1,4 +1,5 @@
 import { getShotEngineStats, knownIssueReasonLabel } from '../utils/grinderLogic';
+import { formatSecondsPerStepDisplay } from '../utils/grinderSensitivityDisplay.js';
 
 function formatSigned(value, unit = '', digits = 1) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
@@ -19,7 +20,14 @@ export function ShotEngineStatsPanel({ shot, recipe, ui }) {
   const rows = [
     { label: 'Time delta (vs midpoint)', value: `${formatSigned(stats.timeDelta, 's')}` },
     { label: 'Yield delta (vs target)', value: `${formatSigned(stats.yieldDelta, 'g')}` },
-    { label: 'Sensitivity', value: stats.sensitivity ? `${stats.sensitivity}s per step` : '—' },
+    {
+      label: 'Sensitivity',
+      value: formatSecondsPerStepDisplay(stats.sensitivity, {
+        confidence: stats.sensitivityConfidence,
+        usedEmpiricalSlope: stats.sensitivityUsedEmpiricalSlope,
+        isDefaultSensitivity: stats.sensitivityIsDefault,
+      }),
+    },
     { label: 'Applied shift', value: stats.shiftSummary },
     { label: 'Age / freshness', value: stats.ageOffsetNote || '—' },
     { label: 'Baseline history', value: stats.evidenceContext || 'No prior recipe-matched shots in context' },

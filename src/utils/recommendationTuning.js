@@ -279,9 +279,9 @@ export function countChannelingMentions(...textParts) {
 /**
  * @param {Array<object>} comparableShots recipe-matched, learning-eligible history (newest first)
  */
-export function sensitivityConfidenceForQuantitativeGrinder(comparableShots, grinderModel, recipe, settings = null) {
+function sensitivityEstimateFromComparableShots(comparableShots, grinderModel, recipe, settings) {
   const grinderProfile = getRecommendationGrinderProfile(grinderModel, settings);
-  const cleaned = filterOutliersFromLearningShots(comparableShots, recipe, grinderModel);
+  const cleaned = filterOutliersFromLearningShots(comparableShots, recipe, grinderModel, settings);
   const points = cleaned
     .map((s, idx) => ({
       grind: grindNumericFromShot(s, grinderProfile),
@@ -291,6 +291,43 @@ export function sensitivityConfidenceForQuantitativeGrinder(comparableShots, gri
     .filter((p) => p.grind !== null && Number.isFinite(p.time));
 
   const estimate = estimateSecondsPerStepFromPairs(points);
+  return { estimate, points, grinderProfile };
+}
+
+export function sensitivityConfidenceForQuantitativeGrinder(
+  comparableShots,
+  grinderModel,
+  recipe,
+  settings = null,
+  grinderWideComparableShots = null
+) {
+  const { estimate: beanEstimate, points, grinderProfile } = sensitivityEstimateFromComparableShots(
+    comparableShots,
+    grinderModel,
+    recipe,
+    settings
+  );
+
+  let estimate = beanEstimate;
+  if (
+    grinderWideComparableShots
+    && grinderWideComparableShots.length > 0
+    && !hasReliableLearnedSensitivity(beanEstimate)
+  ) {
+    const { estimate: grinderEstimate } = sensitivityEstimateFromComparableShots(
+      grinderWideComparableShots,
+      grinderModel,
+      recipe,
+      settings
+    );
+    if (
+      hasReliableLearnedSensitivity(grinderEstimate)
+      || (grinderEstimate.confidence ?? 0) > (beanEstimate.confidence ?? 0)
+    ) {
+      estimate = grinderEstimate;
+    }
+  }
+
   const fallbackSensitivity = grinderProfile.sensitivity;
   const reliableLearnedSensitivity = hasReliableLearnedSensitivity(estimate);
   const secondsPerStep =
@@ -305,6 +342,10 @@ export function sensitivityConfidenceForQuantitativeGrinder(comparableShots, gri
     usedEmpiricalSlope: estimate.secondsPerStep !== null,
     reliableLearnedSensitivity,
     defaultSensitivity: fallbackSensitivity,
+    usedGrinderWideLearning:
+      grinderWideComparableShots != null
+      && grinderWideComparableShots.length > 0
+      && estimate !== beanEstimate,
   };
 }
 
@@ -327,9 +368,9 @@ export function shotsForOutlierContext(learningRecentShots, recipeMatchedShots) 
   return [...learningRecentShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
-export function grindNumericFromShotData(shotData, grinderProfile) {
+export function grindNumericFromShotData(shotData, grinderProfile, settings = null) {
   if (isNicheZeroGrinderModel(shotData.grinderModel)) {
-    return parseNicheZeroSetting(shotData.nicheZeroSetting);
+    return parseNicheZeroSetting(shotData.nicheZeroSetting, settings);
   }
   if (shotData.customGrindValue != null && grinderProfile?.controlType === 'custom') {
     return grindNumericFromShot(shotData, grinderProfile);

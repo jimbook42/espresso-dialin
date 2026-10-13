@@ -8,6 +8,7 @@ import {
   NICHE_ZERO_DIAL_MIN,
   NICHE_ZERO_DIAL_MAX,
   parseNicheZeroSetting,
+  clampNicheZeroDial,
 } from './nicheZero.js';
 
 export const NICHE_LEARNING_MIN_OBSERVATIONS = 3;
@@ -63,8 +64,8 @@ function nicheLearningDiagnostics(points, estimate = null) {
   };
 }
 
-function clampDial(n) {
-  return Math.round(Math.min(NICHE_ZERO_DIAL_MAX, Math.max(NICHE_ZERO_DIAL_MIN, n)) * 10) / 10;
+function clampDial(n, settings = null) {
+  return clampNicheZeroDial(n, settings);
 }
 
 /**
