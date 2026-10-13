@@ -1,5 +1,6 @@
 import {
   formatRecommendedGrindDisplay,
+  grindMatchesStoredRecommendation,
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
 import { KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
@@ -47,24 +48,38 @@ function stripLeadingEstimatedPrefix(raw) {
 /**
  * Plain-language grind recommendation for the Dial-In hero (direction, why, target setting).
  */
-export function formatGrindRecommendationSummary(grinderModel, rec, settings = null) {
+export function formatGrindRecommendationSummary(grinderModel, rec, settings = null, loggedGrind = null) {
   if (!rec?.recommendedSetting) return null;
 
   const { estimated, text: reasonBody } = stripLeadingEstimatedPrefix(rec.reason || rec.originalReason || '');
   const targetSetting = formatRecommendedGrindDisplay(grinderModel, rec.recommendedSetting, settings);
   const { lead, detail } = splitRecommendationReason(reasonBody);
 
-  const holdingOutlier =
-    /LIKELY OUTLIER/i.test(reasonBody) && /Holding to a small grind change/i.test(reasonBody);
+  const holdsGrind =
+    rec.grindSettingHeld === true
+    || (loggedGrind
+      && grindMatchesStoredRecommendation(
+        grinderModel,
+        loggedGrind,
+        rec.recommendedSetting,
+        settings
+      ));
+  const holdingOutlier = /LIKELY OUTLIER/i.test(reasonBody) && holdsGrind;
   const direction = holdingOutlier
     ? 'Grind setting held'
     : directionFromLead(lead) || directionFromLead(detail);
 
+  const channelingInWarning = (rec.warning || '').toLowerCase().includes('channeling');
   let why = detail || (lead && !direction ? lead : '');
   if (holdingOutlier) {
-    why = 'If puck prep, channeling, or an early stop caused this, mark the shot as a known issue.';
+    why = channelingInWarning
+      ? 'Recommendation held on your current grind setting.'
+      : 'If puck prep, channeling, or an early stop caused this, mark the shot as a known issue.';
   }
   why = stripKnownIssueHint(why);
+  if (channelingInWarning) {
+    why = why.replace(/channeling/gi, '').replace(/\s{2,}/g, ' ').trim();
+  }
   const estimatedLabel = estimated ? 'Estimated' : '';
 
   if (isNicheZeroGrinderModel(grinderModel)) {

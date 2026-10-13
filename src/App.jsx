@@ -104,6 +104,7 @@ import {
 } from './brewGuide/guidance';
 import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
 import { brewGuideIntroMachineSettingsLine, brewGuideSettingsToggleDetail } from './brewGuide/copy.js';
+import { APP_VERSION_LABEL } from './config/appVersion.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
 import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
@@ -1380,11 +1381,25 @@ export default function App() {
             originalReason: liveQuantitativeRec.reason,
           }
         : ageAdjustedRec;
+  const loggedGrindForRecommendation = {
+    setteMacro,
+    setteMicro,
+    sunbeamSetting,
+    nicheZeroSetting,
+    customGrindValue,
+  };
   const grindRecommendationSummary = dynamicRec?.recommendedSetting
-    ? formatGrindRecommendationSummary(grinderModel, dynamicRec, appSettings)
+    ? formatGrindRecommendationSummary(
+        grinderModel,
+        dynamicRec,
+        appSettings,
+        loggedGrindForRecommendation
+      )
     : null;
   const nicheLearningBlocksEvidence =
-    isNicheZeroGrinderModel(grinderModel) && Boolean(dynamicRec?.nicheLearningNote);
+    isNicheZeroGrinderModel(grinderModel)
+    && Boolean(dynamicRec?.nicheLearningNote)
+    && !dynamicRec?.outlierGrindHeld;
   const recommendationEvidenceContext =
     (activeRecipe && beanShotsForGrinder.length > 0
       ? getRecommendationEvidenceContext(beanShotsForGrinder, activeRecipe, flairEnabled)
@@ -1532,7 +1547,7 @@ export default function App() {
     ]);
     const rows = buildShotsCsvRows(allShots, {
       beans: allBeans,
-      formatShotGrindForHistory,
+      formatShotGrindForHistory: (shot) => formatShotGrindForHistory(shot, appSettings),
       normalizeTasteProfile,
       formatRecFollowedForCsv,
       knownIssueReasonLabel,
@@ -2001,7 +2016,7 @@ export default function App() {
                   {recommendationEvidenceContext && !nicheLearningBlocksEvidence && (
                     <p className={`text-[10px] ${ui.muted}`}>{recommendationEvidenceContext}</p>
                   )}
-                  {dynamicRec?.nicheLearningNote && (
+                  {dynamicRec?.nicheLearningNote && !dynamicRec?.outlierGrindHeld && (
                     <p className={`text-[10px] ${ui.muted} leading-relaxed`}>{dynamicRec.nicheLearningNote}</p>
                   )}
                   {dynamicRec?.nicheEmpiricalValidationNote && (
@@ -2795,7 +2810,7 @@ export default function App() {
             ) : (
               filteredShots.map(s => {
                 const bean = beans.find(b => b.id === s.beanId);
-                const grindStr = formatShotGrindForHistory(s);
+                const grindStr = formatShotGrindForHistory(s, appSettings);
                 const recipeForShot = recipes.find(r => r.beanId === s.beanId);
                 const minT = recipeForShot?.targetTimeMinS || 27;
                 const maxT = recipeForShot?.targetTimeMaxS || 32;
@@ -3316,7 +3331,7 @@ export default function App() {
 
         <footer className="text-center pt-8 pb-4">
           <span className={`text-[10px] ${subTextClass} tracking-widest uppercase opacity-60 font-mono`}>
-            Espresso Dial-In • v4.3
+            Espresso Dial-In • {APP_VERSION_LABEL}
           </span>
         </footer>
 

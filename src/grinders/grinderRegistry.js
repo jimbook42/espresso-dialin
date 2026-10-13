@@ -373,7 +373,23 @@ export function defaultBrewTemperatureForGrinder(grinderModel) {
 }
 
 export function formatShotGrindForHistory(shot, settings = null) {
-  return getUiGrinderPresentation(shot?.grinderModel, settings).formatShotGrindForHistory(shot);
+  const model = shot?.grinderModel;
+  const customDef = resolveCustomGrinderDefinition(model, settings);
+  if (customDef) {
+    return customDef.formatShotGrindForHistory(shot);
+  }
+  if (
+    shot?.customGrindValue != null
+    && shot.customGrindValue !== ''
+    && model
+    && !isSetteGrinderModel(model)
+    && !isSunbeamGrinderModel(model)
+    && !isNicheZeroGrinderModel(model)
+  ) {
+    const numeric = Number(shot.customGrindValue);
+    return Number.isFinite(numeric) ? String(numeric) : String(shot.customGrindValue);
+  }
+  return getUiGrinderPresentation(model, settings).formatShotGrindForHistory(shot);
 }
 
 export function formatPreviousGrindLabel(grinderModel, shot, settings = null) {

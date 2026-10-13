@@ -14,6 +14,7 @@ import {
   isCustomGrinderModel,
   grinderSupportsQuantitativeRecommendations,
   getGrinderDefinitionById,
+  grindMatchesStoredRecommendation,
 } from '../grinders/grinderRegistry.js';
 import { adjustCustomGrind, defaultCustomGrindValue } from '../grinders/customGrinder.js';
 import {
@@ -686,6 +687,7 @@ export function getInitialGrindRecommendation(
 
 function attachExtremeTimeKnownIssueHint(warning, actualTime) {
   if (!shouldAttachKnownIssueHintForExtremeTime(actualTime)) return warning;
+  if (warning?.includes(KNOWN_ISSUE_OUTLIER_HINT)) return warning;
   return warning
     ? `${warning} ${KNOWN_ISSUE_OUTLIER_HINT}`
     : KNOWN_ISSUE_OUTLIER_HINT;
@@ -920,6 +922,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         reason = buildOutlierRecommendationReason({
           baseReason: shift === 0 ? 'KEEP GRIND — Balanced and in range.' : reason,
           outlierDetail: outlierCheck.detail,
+          holdGrind: shift === 0 && outlierCheck.holdGrind === true,
         });
         if (shift === 0) {
           recommendedDial = currentDial;
@@ -960,7 +963,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
             empiricalUnavailable: true,
           });
           if (outlierCheck.isOutlier) {
-            reason = buildOutlierRecommendationReason({ baseReason: reason, outlierDetail: outlierCheck.detail });
+            reason = buildOutlierRecommendationReason({
+              baseReason: reason,
+              outlierDetail: outlierCheck.detail,
+              holdGrind: shift === 0 && outlierCheck.holdGrind === true,
+            });
           }
         }
       }
@@ -985,6 +992,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
           reason = buildOutlierRecommendationReason({
             baseReason: reason || 'KEEP GRIND — Balanced and in range.',
             outlierDetail: outlierCheck.detail,
+            holdGrind: shift === 0 && outlierCheck.holdGrind === true,
           });
         }
       }
@@ -1057,8 +1065,18 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       recipe
     );
 
+    const nicheRecommendedSetting = { nicheZeroSetting: recommendedDial };
+    const grindSettingHeld = grindMatchesStoredRecommendation(
+      grinderModel,
+      { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting, customGrindValue },
+      nicheRecommendedSetting,
+      settings
+    );
+    const outlierGrindHeld =
+      outlierCheck.isOutlier && outlierCheck.holdGrind === true && grindSettingHeld;
+
     return {
-      recommendedSetting: { nicheZeroSetting: recommendedDial },
+      recommendedSetting: nicheRecommendedSetting,
       reason,
       warning,
       subRecommendation,
@@ -1067,9 +1085,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       shotOutcome,
       nicheEvidenceMode,
       nicheEmpiricalReasonCode,
-      nicheLearningNote,
+      nicheLearningNote: outlierGrindHeld ? null : nicheLearningNote,
       nicheEmpiricalValidationNote,
       nicheEligibility,
+      grindSettingHeld,
+      outlierGrindHeld,
       engineStats: {
         timeDelta,
         yieldDelta,
@@ -1086,6 +1106,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   let shift = 0;
   let reason;
+  let outlierGrindHeld = false;
   if (severeChoke) {
     shift = severeChokeCoarseShift(grinderModel, targetMin, targetMax, settings);
     const absShift = Math.abs(shift);
@@ -1120,9 +1141,11 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     if (inRangeOutlier.isOutlier) {
       if (inRangeOutlier.holdGrind) {
         shift = 0;
+        outlierGrindHeld = true;
         reason = buildOutlierRecommendationReason({
           baseReason: reason,
           outlierDetail: inRangeOutlier.detail,
+          holdGrind: true,
         });
       }
       warning = warning
@@ -1164,16 +1187,22 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     const secOff = Math.abs(Math.round(timeDelta));
 
     if (shift === 0 && outlierCheck.isOutlier) {
+      outlierGrindHeld = outlierCheck.holdGrind === true;
       reason = buildOutlierRecommendationReason({
         baseReason: 'KEEP GRIND — Balanced and in range.',
         outlierDetail: outlierCheck.detail,
+        holdGrind: outlierGrindHeld,
       });
     } else if (shift === 0) {
       reason = 'KEEP GRIND — Shot time was off target but grind step is capped until more comparable shots are logged.';
     } else {
       reason = `GO ${absShift} ${grinderProfile.timeOffTargetStepLabel} ${direction} — Shot was ${secOff}s off target midpoint.`;
       if (outlierCheck.isOutlier) {
-        reason = buildOutlierRecommendationReason({ baseReason: reason, outlierDetail: outlierCheck.detail });
+        reason = buildOutlierRecommendationReason({
+          baseReason: reason,
+          outlierDetail: outlierCheck.detail,
+          holdGrind: false,
+        });
       }
     }
     if (outlierCheck.isOutlier) {
@@ -1260,6 +1289,13 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   const shiftUnit = grinderProfile.shiftUnit;
 
+  const grindSettingHeld = grindMatchesStoredRecommendation(
+    grinderModel,
+    { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting, customGrindValue },
+    recommendedSetting,
+    settings
+  );
+
   return {
     recommendedSetting,
     reason: prefixEstimatedGrindReason(reason, grinderProfile),
@@ -1268,6 +1304,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     flairWaterTempAdvice,
     evidenceContext,
     shotOutcome,
+    grindSettingHeld,
+    outlierGrindHeld,
     engineStats: {
       timeDelta,
       yieldDelta,

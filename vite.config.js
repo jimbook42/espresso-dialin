@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import process from 'node:process';
 import { defineConfig } from 'vite';
@@ -14,6 +15,9 @@ function pressureLabBuildId() {
 }
 
 const pressureLabBuild = pressureLabBuildId();
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+const vercelSha = (process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
+const appCommitSha = vercelSha ? vercelSha.slice(0, 7) : (pressureLabBuild === 'unknown' ? '' : pressureLabBuild);
 
 // `npm run dev:flair-lab` uses HTTPS so a phone on the bench can open the front camera.
 export default defineConfig(({ mode }) => ({
@@ -28,6 +32,8 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_SCALE_ALLOW_SIM': JSON.stringify(
       process.env.VITE_SCALE_ALLOW_SIM === 'true' ? 'true' : 'false'
     ),
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
+    'import.meta.env.VITE_APP_COMMIT_SHA': JSON.stringify(appCommitSha),
   },
   plugins: [
     react(),

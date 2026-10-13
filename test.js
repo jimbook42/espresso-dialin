@@ -1175,6 +1175,8 @@ function runDecafRegressionTests() {
     'engineStats',
     'evidenceContext',
     'flairWaterTempAdvice',
+    'grindSettingHeld',
+    'outlierGrindHeld',
     'reason',
     'recommendedSetting',
     'shotOutcome',

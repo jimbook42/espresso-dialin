@@ -262,9 +262,18 @@ export function dampQuantitativeShift(
   return sign * magnitude;
 }
 
-export function buildOutlierRecommendationReason({ baseReason, outlierDetail }) {
+export function buildOutlierRecommendationReason({ baseReason, outlierDetail, holdGrind = false }) {
   const trimmed = baseReason?.trim() || 'Adjust grind cautiously.';
-  return `LIKELY OUTLIER — ${outlierDetail} Holding to a small grind change. ${trimmed} ${KNOWN_ISSUE_OUTLIER_HINT}`;
+  if (holdGrind) {
+    return `LIKELY OUTLIER — ${outlierDetail} Holding grind unchanged. ${trimmed}`;
+  }
+  return `LIKELY OUTLIER — ${outlierDetail} ${trimmed}`;
+}
+
+/** Count user-facing "channeling" mentions (case-insensitive) across dial-card text blocks. */
+export function countChannelingMentions(...textParts) {
+  const combined = textParts.filter(Boolean).join(' ');
+  return (combined.match(/channeling/gi) || []).length;
 }
 
 /**

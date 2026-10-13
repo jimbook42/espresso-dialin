@@ -93,6 +93,21 @@ function testPresentation() {
   assert.equal(sunbeamDef.shortBadgeLabel, 'Sunbeam');
   assert.equal(formatShotGrindForHistory({ grinderModel: SETTE_GRINDER_ID, setteMacro: 11, setteMicro: 'B' }), '11-B');
   assert.equal(formatShotGrindForHistory({ grinderModel: SUNBEAM_GRINDER_ID, sunbeamSetting: 14 }), '14');
+
+  const customSettings = {
+    grinderModel: 'DF64',
+    customGrinder: {
+      name: 'DF64',
+      dialType: 'stepped',
+      min: 1,
+      max: 20,
+      step: 1,
+      lowerIsFiner: true,
+    },
+  };
+  const customShot = { grinderModel: 'DF64', customGrindValue: 12, sunbeamSetting: 15 };
+  assert.equal(formatShotGrindForHistory(customShot, customSettings), '12');
+  assert.equal(formatShotGrindForHistory(customShot), '12', 'legacy custom shots without settings must not fall back to Sunbeam 15');
   assert.equal(formatCurrentGrindLabel(SETTE_GRINDER_ID, { setteMacro: 13, setteMicro: 'E' }), '13-E');
   assert.equal(formatPreviousGrindLabel(SETTE_GRINDER_ID, { setteMacro: '', setteMicro: 'E' }), '');
   assert.equal(formatRecommendedGrindDisplay(SUNBEAM_GRINDER_ID, { setting: 12 }), '12');

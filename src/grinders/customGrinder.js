@@ -142,7 +142,8 @@ export function buildCustomGrinderDefinition(profile) {
       return customValueToNumeric(shot?.customGrindValue, p);
     },
     formatShotGrindForHistory(shot) {
-      return formatCustomGrindDisplay(shot?.customGrindValue, p) || formatCustomGrindDisplay(defaultCustomGrindValue(p), p);
+      if (shot?.customGrindValue == null || shot.customGrindValue === '') return '';
+      return formatCustomGrindDisplay(shot.customGrindValue, p) || String(shot.customGrindValue);
     },
     formatPreviousGrindLabel(shot) {
       if (shot?.customGrindValue == null || shot.customGrindValue === '') return '';
