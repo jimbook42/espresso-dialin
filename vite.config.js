@@ -22,6 +22,12 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_ENABLE_PRESSURE_LAB': JSON.stringify(
       process.env.VITE_ENABLE_PRESSURE_LAB === 'true' ? 'true' : 'false'
     ),
+    'import.meta.env.VITE_ENABLE_SCALE': JSON.stringify(
+      process.env.VITE_ENABLE_SCALE === 'true' ? 'true' : 'false'
+    ),
+    'import.meta.env.VITE_SCALE_ALLOW_SIM': JSON.stringify(
+      process.env.VITE_SCALE_ALLOW_SIM === 'true' ? 'true' : 'false'
+    ),
   },
   plugins: [
     react(),

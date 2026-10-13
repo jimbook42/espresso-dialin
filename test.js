@@ -28,6 +28,9 @@ import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
 import { runPressureLabFlagTests } from './src/config/pressureLabFlag.test.js';
+import { runScaleFlagTests } from './src/config/scaleFlag.test.js';
+import { runTimemoreFramedTests } from './src/scales/protocols/timemoreFramed.test.js';
+import { runScaleFlowMetricsTests } from './src/scales/flowMetrics.test.js';
 import { runShotCountDisplayTests } from './src/utils/shotCountDisplay.test.js';
 import { resolveGrindControlUiState } from './src/grinders/grindControlUiState.js';
 import {
@@ -490,6 +493,9 @@ async function runTests() {
   runNicheZeroTests();
   runShotCountDisplayTests();
   runPressureLabFlagTests();
+  runScaleFlagTests();
+  runTimemoreFramedTests();
+  runScaleFlowMetricsTests();
   runRecommendationIntegrityTests();
   runBrewGuideTests();
   runBrewGuidanceTests();

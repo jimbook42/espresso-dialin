@@ -78,6 +78,9 @@ import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
+import { isScaleEnabled } from './config/scaleFlag.js';
+import { ScalePanel } from './components/ScalePanel.jsx';
+import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 
 const EXTRACTION_TIME_COLORS = {
   inRange: { bar: 'bg-[#8a9d72]', dot: 'bg-[#8a9d72]', label: 'text-[#9cb088]' },
@@ -158,6 +161,8 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
+  const scaleFeatureEnabled = isScaleEnabled();
+  const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
@@ -880,6 +885,12 @@ export default function App() {
       ...(excludeFromLearning
         ? { excludeFromLearning: true, knownIssueReason: knownIssueReason || 'other' }
         : {}),
+      ...(scaleShotMetrics?.scaleFlowCurve?.length
+        ? {
+            scaleFlowRateGs: scaleShotMetrics.scaleFlowRateGs ?? undefined,
+            scaleFlowCurve: scaleShotMetrics.scaleFlowCurve,
+          }
+        : {}),
     };
 
     try {
@@ -896,6 +907,7 @@ export default function App() {
       setTasteProfile('');
       setExcludeFromLearning(false);
       setKnownIssueReason('puck_prep');
+      setScaleShotMetrics(null);
       handleResetTimer();
 
       setTimeout(() => {
@@ -1716,6 +1728,20 @@ export default function App() {
                     </div>
                   </div>
 
+                  {scaleFeatureEnabled && (
+                    <ScalePanel
+                      ui={ui}
+                      targetYieldG={activeRecipe?.targetYieldG || 36}
+                      usePreInfusion={usePreInfusion}
+                      preInfusionDurationS={
+                        usePreInfusion ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12 : 0
+                      }
+                      onYieldChange={setActualYieldG}
+                      onTimeChange={setActualTimeS}
+                      onMetricsReady={setScaleShotMetrics}
+                    />
+                  )}
+
                   {/* Dose / Yield / Time */}
                   <div className="grid grid-cols-3 gap-2">
                     <div
@@ -2314,8 +2340,21 @@ export default function App() {
                       ))}
                     </div>
 
+                    {s.scaleFlowCurve?.length > 0 && (
+                      <ScaleFlowChart
+                        flowCurve={s.scaleFlowCurve}
+                        averageFlowRateGs={s.scaleFlowRateGs}
+                        compact
+                      />
+                    )}
+
                     <div className={`flex flex-wrap items-center gap-2 text-[10px] ${ui.muted}`}>
                       {preSec && <span className="italic">Pre-infusion: {preSec}s.</span>}
+                      {s.scaleFlowRateGs != null && Number.isFinite(s.scaleFlowRateGs) && (
+                        <span className={`${ui.accentText} font-semibold`}>
+                          Scale flow {s.scaleFlowRateGs.toFixed(2)} g/s
+                        </span>
+                      )}
                       {(s.brewTemperatureC || recipeForShot?.brewTemperatureC) && (
                         <span className={`${ui.tempPill} px-2 py-0.5 rounded-full font-semibold`}>
                           {s.brewTemperatureC || recipeForShot?.brewTemperatureC}°C
