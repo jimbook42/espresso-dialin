@@ -410,6 +410,7 @@ export default function App() {
     const targets = preinfusionAutoEndTargets(activeRecipe?.flairProfile, preinfusionScaleCtx);
     if (targets.trigger === 'manual') return;
     if (targets.trigger === 'weight' && !scaleConnected) return;
+    if (targets.trigger === 'weight' && !timemoreScale.weightTriggersPrimed) return;
     if (targets.timeS == null && targets.weightG == null) return;
     if (scaleAutoEndPreinfusionRef.current) return;
     if (
@@ -433,6 +434,7 @@ export default function App() {
     timerSeconds,
     timemoreScale.isConnected,
     timemoreScale.liveRelativeWeightG,
+    timemoreScale.weightTriggersPrimed,
     timerUsePreInfusion,
     activeRecipe?.flairProfile,
     scaleFeatureEnabled,

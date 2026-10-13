@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isScaleSimPickerEnabled } from '../config/scaleFlag.js';
 import { createScaleSession } from './scaleSession.js';
-import { relativeWeightG, shotStartWeightBaselineG as resolveShotStartBaselineG } from './scaleShotBaseline.js';
+import {
+  addedMassSinceStartG,
+  beginShotWeightTracking,
+  createShotWeightTracking,
+  ingestShotWeightSample,
+  noteShotTareOutcome,
+  weightTriggersReady,
+} from './scaleShotBaseline.js';
 import { createSimulatedTransport } from './transport/simulatedTransport.js';
 import {
   createWebBluetoothTransport,
@@ -32,7 +39,8 @@ export function useTimemoreScale({
   const [transportKind, setTransportKind] = useState('sim');
   const [connectStatus, setConnectStatus] = useState('idle');
   const [liveWeightG, setLiveWeightG] = useState(0);
-  const [shotStartWeightBaselineG, setShotStartWeightBaselineG] = useState(0);
+  const [liveRelativeWeightG, setLiveRelativeWeightG] = useState(0);
+  const [weightTriggersPrimed, setWeightTriggersPrimed] = useState(false);
   const [instantFlowGs, setInstantFlowGs] = useState(null);
   const [liveFlowSeries, setLiveFlowSeries] = useState([]);
 
@@ -41,8 +49,18 @@ export function useTimemoreScale({
   const rafRef = useRef(null);
   const recordingExtractionRef = useRef(false);
   const liveWeightRef = useRef(0);
+  const shotWeightTrackingRef = useRef(createShotWeightTracking());
+
+  const syncRelativeFromLive = useCallback((liveG) => {
+    const tracking = shotWeightTrackingRef.current;
+    ingestShotWeightSample(tracking, liveG);
+    const added = addedMassSinceStartG(tracking, liveG);
+    const primed = weightTriggersReady(tracking);
+    setLiveRelativeWeightG(added);
+    setWeightTriggersPrimed(primed);
+  }, []);
+
   const isConnected = connectStatus === 'connected';
-  const liveRelativeWeightG = relativeWeightG(liveWeightG, shotStartWeightBaselineG);
 
   const disposeSession = useCallback(() => {
     sessionRef.current?.dispose();
@@ -57,6 +75,12 @@ export function useTimemoreScale({
     if (t) await t.disconnect().catch(() => {});
   }, [disposeSession]);
 
+  const resetShotWeightTracking = useCallback(() => {
+    shotWeightTrackingRef.current = createShotWeightTracking();
+    setLiveRelativeWeightG(0);
+    setWeightTriggersPrimed(false);
+  }, []);
+
   useEffect(() => {
     if (!enabled) return undefined;
     return () => {
@@ -70,6 +94,7 @@ export function useTimemoreScale({
     sessionRef.current = createScaleSession(transport, {
       onLiveWeight: (g) => {
         liveWeightRef.current = g;
+        syncRelativeFromLive(g);
         if (!rafRef.current) {
           rafRef.current = requestAnimationFrame(() => {
             rafRef.current = null;
@@ -86,7 +111,7 @@ export function useTimemoreScale({
         });
       },
     });
-  }, [disposeSession]);
+  }, [disposeSession, syncRelativeFromLive]);
 
   const buildTransport = useCallback(() => {
     if (transportKind === 'sim') {
@@ -109,7 +134,7 @@ export function useTimemoreScale({
       attachSession(transport);
       setConnectStatus('connected');
       liveWeightRef.current = 0;
-      setShotStartWeightBaselineG(0);
+      resetShotWeightTracking();
       setLiveWeightG(0);
       setInstantFlowGs(null);
     } catch (err) {
@@ -117,7 +142,7 @@ export function useTimemoreScale({
       setConnectStatus('error');
       transportRef.current = null;
     }
-  }, [enabled, disposeTransport, buildTransport, attachSession]);
+  }, [enabled, disposeTransport, buildTransport, attachSession, resetShotWeightTracking]);
 
   const disconnect = useCallback(async () => {
     setConnectStatus('idle');
@@ -136,26 +161,27 @@ export function useTimemoreScale({
     setLiveFlowSeries([]);
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
-    const weightBeforeTare = liveWeightRef.current;
-    setShotStartWeightBaselineG(weightBeforeTare);
+
+    const weightAtStart = liveWeightRef.current;
+    beginShotWeightTracking(shotWeightTrackingRef.current, weightAtStart);
+    setLiveRelativeWeightG(0);
+    setWeightTriggersPrimed(false);
+
     let tareSucceeded = true;
     try {
       await transport.tare();
     } catch {
       tareSucceeded = false;
     }
-    const baseline = resolveShotStartBaselineG(
-      weightBeforeTare,
-      liveWeightRef.current,
-      tareSucceeded
-    );
-    setShotStartWeightBaselineG(baseline);
+    noteShotTareOutcome(shotWeightTrackingRef.current, tareSucceeded);
+    syncRelativeFromLive(liveWeightRef.current);
+
     await transport.startTimer();
     if (!usePreInfusion) {
       sessionRef.current?.beginExtractionTiming();
       recordingExtractionRef.current = true;
     }
-  }, [enabled, connectStatus, usePreInfusion]);
+  }, [enabled, connectStatus, usePreInfusion, syncRelativeFromLive]);
 
   const notifyPreInfusionEnded = useCallback(async () => {
     const transport = transportRef.current;
@@ -177,7 +203,7 @@ export function useTimemoreScale({
     const metrics = sessionRef.current?.getShotMetrics() ?? null;
     const yieldG = Math.max(0, Math.round(liveWeightRef.current * 10) / 10);
     recordingExtractionRef.current = false;
-    setShotStartWeightBaselineG(0);
+    resetShotWeightTracking();
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
     const shotMetrics =
@@ -188,7 +214,7 @@ export function useTimemoreScale({
           }
         : null;
     return { yieldG, metrics: shotMetrics };
-  }, [enabled, connectStatus]);
+  }, [enabled, connectStatus, resetShotWeightTracking]);
 
   const notifyShotCancelled = useCallback(async () => {
     const transport = transportRef.current;
@@ -196,10 +222,10 @@ export function useTimemoreScale({
     await transport.stopTimer().catch(() => {});
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
-    setShotStartWeightBaselineG(0);
+    resetShotWeightTracking();
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
-  }, [enabled, connectStatus]);
+  }, [enabled, connectStatus, resetShotWeightTracking]);
 
   if (!enabled) {
     return {
@@ -211,6 +237,7 @@ export function useTimemoreScale({
       isConnected: false,
       liveWeightG: 0,
       liveRelativeWeightG: 0,
+      weightTriggersPrimed: false,
       instantFlowGs: null,
       liveFlowSeries: [],
       connect: noopAsync,
@@ -232,6 +259,7 @@ export function useTimemoreScale({
     isConnected,
     liveWeightG,
     liveRelativeWeightG,
+    weightTriggersPrimed,
     instantFlowGs,
     liveFlowSeries,
     connect,
@@ -242,4 +270,4 @@ export function useTimemoreScale({
     notifyShotStopped,
     notifyShotCancelled,
   };
-}
+};
