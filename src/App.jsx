@@ -384,6 +384,7 @@ export default function App() {
   const flairPressureProfileRef = useRef(null);
   const pendingFocusFlairProfileRef = useRef(false);
   const pendingGrindByKeyRef = useRef({});
+  const lastSeenPersistedGrindByKeyRef = useRef({});
   const brewTempDefaultRef = useRef('');
   const syncedSettingsCustomGrinderRef = useRef('');
   const [validationError, setValidationError] = useState('');
@@ -901,6 +902,7 @@ export default function App() {
     if (!activeBean || !grinderModel) return;
     const uiState = resolveGrindControlUiStateWithPending({
       pendingGrindByKey: pendingGrindByKeyRef.current,
+      lastSeenPersistedGrindByKey: lastSeenPersistedGrindByKeyRef.current,
       grinderModel,
       shots,
       activeBean,

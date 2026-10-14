@@ -74,6 +74,9 @@ export function resolveShotWeightReadout({
       : liveWeightG;
     return { visible: true, grams, mode: 'settling' };
   }
+  if (!timerRunning && !weightTriggersPrimed) {
+    return { visible: false, grams: 0, mode: 'hidden' };
+  }
   const show =
     timerRunning || (Number.isFinite(liveWeightG) && liveWeightG > 0);
   if (!show) {

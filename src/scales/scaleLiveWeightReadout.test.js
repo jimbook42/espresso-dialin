@@ -85,5 +85,18 @@ export function runScaleLiveWeightReadoutTests() {
     { visible: true, grams: 36.4, mode: 'frozen' }
   );
 
+  assert.equal(
+    resolveShotWeightReadout({
+      timerRunning: false,
+      weightTriggersPrimed: false,
+      liveRelativeWeightG: 0,
+      liveWeightG: 42.5,
+      isConnected: true,
+      yieldSettleActive: false,
+    }).visible,
+    false,
+    'idle cup weight after shot must not show stale settling readout'
+  );
+
   console.log('Scale live weight readout tests passed.');
 }
