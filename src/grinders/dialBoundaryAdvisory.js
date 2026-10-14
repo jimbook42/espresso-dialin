@@ -84,12 +84,21 @@ function atDialEnd(value, limits, which) {
  */
 function reasonWantsFiner(reason) {
   const u = (reason || '').toUpperCase();
-  return u.includes('FINER') || u.includes('LOWER DIAL');
+  return (
+    u.includes('FINER')
+    || u.includes('LOWER DIAL')
+    || u.includes('CONSIDER GRINDING FINER')
+  );
 }
 
 function reasonWantsCoarser(reason) {
   const u = (reason || '').toUpperCase();
-  return u.includes('COARSER') || u.includes('CHOKE') || u.includes('HIGHER DIAL');
+  return (
+    u.includes('COARSER')
+    || u.includes('CHOKE')
+    || u.includes('HIGHER DIAL')
+    || u.includes('CONSIDER GRINDING COARSER')
+  );
 }
 
 function currentDialFromEngineStats(grinderModel, rec, settings) {
@@ -108,8 +117,15 @@ export function dialBoundaryAdvisoryForRecommendation(grinderModel, rec, setting
   const current = currentDialFromEngineStats(grinderModel, rec, settings);
   if (limits == null || current === null) return null;
 
-  const wantedFiner = shift < 0 || (shift === 0 && reasonWantsFiner(reason));
-  const wantedCoarser = shift > 0 || (shift === 0 && reasonWantsCoarser(reason));
+  const timeDelta = rec?.engineStats?.timeDelta;
+  const wantedFiner =
+    shift < 0
+    || (shift === 0 && reasonWantsFiner(reason))
+    || (shift === 0 && Number.isFinite(timeDelta) && timeDelta < -0.25);
+  const wantedCoarser =
+    shift > 0
+    || (shift === 0 && reasonWantsCoarser(reason))
+    || (shift === 0 && Number.isFinite(timeDelta) && timeDelta > 0.25);
   if (!wantedFiner && !wantedCoarser) return null;
 
   if (wantedFiner && atDialEnd(current, limits, 'min')) {

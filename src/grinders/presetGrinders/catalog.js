@@ -78,6 +78,7 @@ export const PRESET_GRINDER_SPECS = [
   {
     id: FELLOW_OPUS_GRINDER_ID,
     settingsSelectLabel: 'Fellow Opus (gen 1)',
+    shortBadgeLabel: 'Opus',
     setupCardHint: 'Espresso dial 1–12 in 0.25 steps (1 is finest; do not grind below 1).',
     dialKind: 'fellowOpus1',
     min: 1,

@@ -18,7 +18,7 @@ import {
   filterShotsForGrinderModelLearning,
   shotMatchesGrinderForLearning,
   findLatestShotForBeanAndGrinder,
-  recomputeNicheRecommendationFromLastShot,
+  recomputeReferenceLearningRecommendationFromLastShot,
   recomputeQuantitativeRecommendationFromLastShot,
   grinderSupportsQuantitativeRecommendations,
   shouldUsePreviousRecipeRecommendation,
@@ -1453,12 +1453,11 @@ export default function App() {
     && lastLearningShot.grinderModel === grinderModel
       ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate, appSettings)
       : null;
-  const liveNicheRec =
+  const liveReferenceLearningRec =
     !usePreviousRecipeRecommendation
-    && isNicheZeroGrinderModel(grinderModel)
     && lastLearningShot
     && activeRecipe
-      ? recomputeNicheRecommendationFromLastShot(
+      ? recomputeReferenceLearningRecommendationFromLastShot(
           lastLearningShot,
           activeRecipe,
           beanShotsForGrinder,
@@ -1489,11 +1488,11 @@ export default function App() {
         originalReason: lastLoggedShot.recommendation?.reason ?? previousRecipeRec.originalReason,
         previousRecipeDisclaimer: PREVIOUS_RECIPE_REC_DISCLAIMER,
       }
-    : liveNicheRec
+    : liveReferenceLearningRec
       ? {
-          ...liveNicheRec,
+          ...liveReferenceLearningRec,
           ageWarning: ageAdjustedRec?.ageWarning ?? null,
-          originalReason: liveNicheRec.reason,
+          originalReason: liveReferenceLearningRec.reason,
         }
       : liveQuantitativeRec
         ? {

@@ -56,6 +56,7 @@ export function runPresetGrindersTests() {
   const opus = getPresetGrinderSpec(FELLOW_OPUS_GRINDER_ID);
   assert.equal(parsePresetGrindValue(1.5, opus), 1.5);
   assert.equal(adjustPresetGrind(1.5, -1, opus), 1.25);
+  assert.equal(getPresetGrinderDefinition(FELLOW_OPUS_GRINDER_ID).shortBadgeLabel, 'Opus');
 
   const philos = getPresetGrinderSpec(MAZZER_PHILOS_GRINDER_ID);
   assert.equal(adjustPresetGrind(20, -1, philos), 19);

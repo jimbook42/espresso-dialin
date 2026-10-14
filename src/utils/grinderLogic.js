@@ -486,14 +486,22 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
     }
   }
 
+  const stored = lastShot.recommendation;
   return {
     recommendedSetting: adjustedSetting,
     ageWarning: ageWarning,
-    originalReason: lastShot.recommendation.reason,
-    warning: lastShot.recommendation.warning,
-    subRecommendation: lastShot.recommendation.subRecommendation,
-    flairWaterTempAdvice: lastShot.recommendation.flairWaterTempAdvice,
-    evidenceContext: lastShot.recommendation.evidenceContext,
+    reason: stored.reason,
+    originalReason: stored.reason,
+    warning: stored.warning,
+    subRecommendation: stored.subRecommendation,
+    flairWaterTempAdvice: stored.flairWaterTempAdvice,
+    evidenceContext: stored.evidenceContext,
+    inputGrind: stored.inputGrind,
+    engineStats: stored.engineStats,
+    nicheLearningNote: stored.nicheLearningNote,
+    nicheEmpiricalValidationNote: stored.nicheEmpiricalValidationNote,
+    outlierGrindHeld: stored.outlierGrindHeld,
+    grindSettingHeld: stored.grindSettingHeld,
   };
 }
 
@@ -545,7 +553,7 @@ export function recomputeQuantitativeRecommendationFromLastShot(
   );
 }
 
-export function recomputeNicheRecommendationFromLastShot(
+export function recomputeReferenceLearningRecommendationFromLastShot(
   lastShot,
   recipe,
   grinderBeanShots = [],
@@ -553,17 +561,19 @@ export function recomputeNicheRecommendationFromLastShot(
   settings = null,
   grinderLearningShots = null
 ) {
-  if (!lastShot || !isNicheZeroGrinderModel(lastShot.grinderModel) || !recipe) return null;
+  if (!lastShot || !recipe) return null;
+  if (!usesReferenceDialLearning(lastShot.grinderModel, settings)) return null;
   const history = grinderBeanShots.filter((s) => s.id !== lastShot.id);
   return calculateRecommendation(
     {
       id: lastShot.id,
       beanId: lastShot.beanId,
       grinderModel: lastShot.grinderModel,
-      setteMacro: null,
-      setteMicro: null,
-      sunbeamSetting: null,
-      nicheZeroSetting: lastShot.nicheZeroSetting,
+      setteMacro: lastShot.setteMacro ?? null,
+      setteMicro: lastShot.setteMicro ?? null,
+      sunbeamSetting: lastShot.sunbeamSetting ?? null,
+      nicheZeroSetting: lastShot.nicheZeroSetting ?? null,
+      customGrindValue: lastShot.customGrindValue,
       wasPurged: lastShot.wasPurged !== false,
       actualTime: lastShot.actualTimeS,
       actualYield: lastShot.actualYieldG,
@@ -580,6 +590,24 @@ export function recomputeNicheRecommendationFromLastShot(
       settings,
       grinderLearningShots: grinderLearningShots ?? grinderBeanShots,
     }
+  );
+}
+
+export function recomputeNicheRecommendationFromLastShot(
+  lastShot,
+  recipe,
+  grinderBeanShots = [],
+  flairEnabled = false,
+  settings = null,
+  grinderLearningShots = null
+) {
+  return recomputeReferenceLearningRecommendationFromLastShot(
+    lastShot,
+    recipe,
+    grinderBeanShots,
+    flairEnabled,
+    settings,
+    grinderLearningShots
   );
 }
 

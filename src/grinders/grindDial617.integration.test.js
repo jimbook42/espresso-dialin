@@ -2,7 +2,19 @@ import assert from 'assert';
 import { SETTE_GRINDER_ID, NICHE_ZERO_GRINDER_ID, persistedSettingsPatchFromRecommendation } from './grinderRegistry.js';
 import { resolveGrindControlUiStateWithPending } from './pendingGrindSession.js';
 import { patchGrindUiForBeanGrinder } from './grindDialByBean.js';
-import { PRESET_GRINDER_IDS, ENCORE_ESP_GRINDER_ID, getPresetGrinderSpec } from './presetGrinders/catalog.js';
+import {
+  PRESET_GRINDER_IDS,
+  ENCORE_ESP_GRINDER_ID,
+  EUREKA_SPECIALITA_GRINDER_ID,
+  EUREKA_ZERO_GRINDER_ID,
+  EUREKA_ZERO_55S_GRINDER_ID,
+  EUREKA_ZERO_65_AP_GRINDER_ID,
+  EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
+  FELLOW_OPUS_2_GRINDER_ID,
+  ZERNO_Z1_GRINDER_ID,
+  getPresetGrinderSpec,
+} from './presetGrinders/catalog.js';
+import { getAgeAdjustedRecommendation, recomputeReferenceLearningRecommendationFromLastShot } from '../utils/grinderLogic.js';
 import { adjustPresetGrind, defaultPresetGrindValue } from './presetGrinders/dial.js';
 import { calculateRecommendation } from '../utils/grinderLogic.js';
 import { formatGrindRecommendationSummary } from '../utils/grindRecommendationDisplay.js';
@@ -137,7 +149,19 @@ export function runGrindDial617IntegrationTests() {
   assert.match(encoreSummary, /coarsest end of the dial/i);
   assert.doesNotMatch(encoreSummary, /Grind coarser/i);
 
-  for (const grinderId of PRESET_GRINDER_IDS) {
+  const dialEndGrinders = [
+    ...[
+      EUREKA_SPECIALITA_GRINDER_ID,
+      EUREKA_ZERO_GRINDER_ID,
+      EUREKA_ZERO_55S_GRINDER_ID,
+      EUREKA_ZERO_65_AP_GRINDER_ID,
+      EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
+    ],
+    FELLOW_OPUS_2_GRINDER_ID,
+    ZERNO_Z1_GRINDER_ID,
+  ];
+
+  for (const grinderId of dialEndGrinders) {
     const spec = getPresetGrinderSpec(grinderId);
     const atMin = calculateRecommendation(
       {
@@ -151,10 +175,15 @@ export function runGrindDial617IntegrationTests() {
       RECIPE,
       []
     );
-    if (dialBoundaryAdvisoryForRecommendation(grinderId, atMin)) {
-      const summary = formatGrindRecommendationSummary(grinderId, atMin);
-      assert.match(summary, /finest end of the dial/i);
-    }
+    assert.ok(
+      dialBoundaryAdvisoryForRecommendation(grinderId, atMin),
+      `${grinderId} at min should trigger dial boundary advisory`
+    );
+    const minSummary = formatGrindRecommendationSummary(grinderId, atMin);
+    assert.match(minSummary, /finest end of the dial/i);
+    assert.match(minSummary, /dose or yield/i);
+    assert.doesNotMatch(minSummary, /Grind finer/i);
+
     const atMax = calculateRecommendation(
       {
         grinderModel: grinderId,
@@ -167,11 +196,54 @@ export function runGrindDial617IntegrationTests() {
       RECIPE,
       []
     );
-    if (dialBoundaryAdvisoryForRecommendation(grinderId, atMax)) {
-      const summary = formatGrindRecommendationSummary(grinderId, atMax);
-      assert.match(summary, /coarsest end of the dial/i);
-    }
+    assert.ok(
+      dialBoundaryAdvisoryForRecommendation(grinderId, atMax),
+      `${grinderId} at max should trigger dial boundary advisory`
+    );
+    const maxSummary = formatGrindRecommendationSummary(grinderId, atMax);
+    assert.match(maxSummary, /coarsest end of the dial/i);
+    assert.match(maxSummary, /dose or yield/i);
+    assert.doesNotMatch(maxSummary, /Grind coarser/i);
   }
+
+  const eurekaZeroMinRec = calculateRecommendation(
+    {
+      grinderModel: EUREKA_ZERO_GRINDER_ID,
+      customGrindValue: 0,
+      wasPurged: true,
+      actualTime: 12,
+      actualYield: 36,
+      tasteProfile: 'balanced',
+    },
+    RECIPE,
+    []
+  );
+  const ageBean = { id: 'bean-age', roastDate: '2026-01-01' };
+  const eurekaShot = {
+    id: 'shot-eureka',
+    beanId: ageBean.id,
+    grinderModel: EUREKA_ZERO_GRINDER_ID,
+    customGrindValue: 0,
+    wasPurged: true,
+    actualTimeS: 12,
+    actualYieldG: 36,
+    tasteProfile: 'balanced',
+    beanAgeDays: 5,
+    recommendation: eurekaZeroMinRec,
+  };
+  const ageAdjusted = getAgeAdjustedRecommendation(eurekaShot, ageBean);
+  const ageSummary = formatGrindRecommendationSummary(EUREKA_ZERO_GRINDER_ID, ageAdjusted);
+  assert.match(ageSummary, /finest end of the dial/i);
+
+  const liveFromShot = recomputeReferenceLearningRecommendationFromLastShot(
+    eurekaShot,
+    RECIPE,
+    [eurekaShot]
+  );
+  assert.match(
+    formatGrindRecommendationSummary(EUREKA_ZERO_GRINDER_ID, liveFromShot),
+    /finest end of the dial/i
+  );
 
   console.log('Grind dial 6.17 integration tests passed.');
 }
