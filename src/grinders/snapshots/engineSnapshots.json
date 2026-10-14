@@ -131,6 +131,7 @@
     },
     "calculateRecommendation/legacy_grinder/empty": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -163,6 +164,7 @@
     },
     "calculateRecommendation/legacy_grinder/null": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -195,6 +197,7 @@
     },
     "calculateRecommendation/legacy_grinder/undefined": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -227,6 +230,7 @@
     },
     "calculateRecommendation/legacy_grinder/unknown_string": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -259,6 +263,7 @@
     },
     "calculateRecommendation/sette/edge_max": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -292,6 +297,7 @@
     },
     "calculateRecommendation/sette/edge_min": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -325,6 +331,7 @@
     },
     "calculateRecommendation/sette/fast_far": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -358,6 +365,7 @@
     },
     "calculateRecommendation/sette/fast_near": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -391,6 +399,7 @@
     },
     "calculateRecommendation/sette/flair_mixed_history": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -424,6 +433,7 @@
     },
     "calculateRecommendation/sette/flair_off_still_shows_flair_temp_advice": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -457,6 +467,7 @@
     },
     "calculateRecommendation/sette/flair_three_bitter": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -490,6 +501,7 @@
     },
     "calculateRecommendation/sette/flair_three_sour": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -523,6 +535,7 @@
     },
     "calculateRecommendation/sette/good_with_slow_history": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -556,6 +569,7 @@
     },
     "calculateRecommendation/sette/in_range_balanced": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -589,6 +603,7 @@
     },
     "calculateRecommendation/sette/in_range_bitter": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -622,6 +637,7 @@
     },
     "calculateRecommendation/sette/in_range_good": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -655,6 +671,7 @@
     },
     "calculateRecommendation/sette/in_range_sour": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -688,6 +705,7 @@
     },
     "calculateRecommendation/sette/in_range_very_bitter": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -721,6 +739,7 @@
     },
     "calculateRecommendation/sette/in_range_very_sour": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -754,6 +773,7 @@
     },
     "calculateRecommendation/sette/midpoint": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -787,6 +807,7 @@
     },
     "calculateRecommendation/sette/not_followed_improved": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -820,6 +841,7 @@
     },
     "calculateRecommendation/sette/not_followed_worse": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -853,6 +875,7 @@
     },
     "calculateRecommendation/sette/one_step_near_mid_fast": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -886,6 +909,7 @@
     },
     "calculateRecommendation/sette/ratio_advisory_bitter": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -919,6 +943,7 @@
     },
     "calculateRecommendation/sette/rounding_half_step_negative_then_min_step": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -952,6 +977,7 @@
     },
     "calculateRecommendation/sette/rounding_half_step_positive": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -985,6 +1011,7 @@
     },
     "calculateRecommendation/sette/rounding_t26_25": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1018,6 +1045,7 @@
     },
     "calculateRecommendation/sette/rounding_t26_75": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1051,6 +1079,7 @@
     },
     "calculateRecommendation/sette/rounding_t28_75": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1084,6 +1113,7 @@
     },
     "calculateRecommendation/sette/severe_choke": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1117,6 +1147,7 @@
     },
     "calculateRecommendation/sette/slow_far": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1150,6 +1181,7 @@
     },
     "calculateRecommendation/sette/slow_near": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1183,6 +1215,7 @@
     },
     "calculateRecommendation/sette/unpurged_warning": {
       "engineStats": {
+        "currentDial": 122,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1216,6 +1249,7 @@
     },
     "calculateRecommendation/sette/yield_in_range_over": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1249,6 +1283,7 @@
     },
     "calculateRecommendation/sette/yield_in_range_under": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1282,6 +1317,7 @@
     },
     "calculateRecommendation/sette/yield_out_fast_under": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1315,6 +1351,7 @@
     },
     "calculateRecommendation/sette/yield_out_slow_under": {
       "engineStats": {
+        "currentDial": 112,
         "sensitivity": 1.25,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1348,6 +1385,7 @@
     },
     "calculateRecommendation/sunbeam/clamp_max_coarse": {
       "engineStats": {
+        "currentDial": 30,
         "sensitivity": 4.5,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1380,6 +1418,7 @@
     },
     "calculateRecommendation/sunbeam/clamp_min_fine": {
       "engineStats": {
+        "currentDial": 1,
         "sensitivity": 4.5,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1412,6 +1451,7 @@
     },
     "calculateRecommendation/sunbeam/edge_max": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1444,6 +1484,7 @@
     },
     "calculateRecommendation/sunbeam/edge_min": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1476,6 +1517,7 @@
     },
     "calculateRecommendation/sunbeam/fast_far": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1508,6 +1550,7 @@
     },
     "calculateRecommendation/sunbeam/fast_near": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1540,6 +1583,7 @@
     },
     "calculateRecommendation/sunbeam/in_range_balanced": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1572,6 +1616,7 @@
     },
     "calculateRecommendation/sunbeam/in_range_bitter": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1604,6 +1649,7 @@
     },
     "calculateRecommendation/sunbeam/in_range_good": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1636,6 +1682,7 @@
     },
     "calculateRecommendation/sunbeam/in_range_sour": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1668,6 +1715,7 @@
     },
     "calculateRecommendation/sunbeam/in_range_very_bitter": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1700,6 +1748,7 @@
     },
     "calculateRecommendation/sunbeam/in_range_very_sour": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1732,6 +1781,7 @@
     },
     "calculateRecommendation/sunbeam/midpoint": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1764,6 +1814,7 @@
     },
     "calculateRecommendation/sunbeam/one_step_near_mid_fast": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1796,6 +1847,7 @@
     },
     "calculateRecommendation/sunbeam/rounding_half_step_positive": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1828,6 +1880,7 @@
     },
     "calculateRecommendation/sunbeam/severe_choke": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1860,6 +1913,7 @@
     },
     "calculateRecommendation/sunbeam/slow_far": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1892,6 +1946,7 @@
     },
     "calculateRecommendation/sunbeam/slow_near": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -1924,6 +1979,7 @@
     },
     "calculateRecommendation/sunbeam/yield_in_range_over": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1956,6 +2012,7 @@
     },
     "calculateRecommendation/sunbeam/yield_in_range_under": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": null,
         "sensitivityIsDefault": true,
@@ -1988,6 +2045,7 @@
     },
     "calculateRecommendation/sunbeam/yield_out_fast_under": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,
@@ -2020,6 +2078,7 @@
     },
     "calculateRecommendation/sunbeam/yield_out_slow_under": {
       "engineStats": {
+        "currentDial": 15,
         "sensitivity": 4.5,
         "sensitivityConfidence": 0,
         "sensitivityIsDefault": true,

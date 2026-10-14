@@ -92,29 +92,47 @@ function reasonWantsCoarser(reason) {
   return u.includes('COARSER') || u.includes('CHOKE') || u.includes('HIGHER DIAL');
 }
 
+function currentDialFromEngineStats(grinderModel, rec, settings) {
+  const stored = rec?.engineStats?.currentDial;
+  if (stored != null && Number.isFinite(stored)) return stored;
+  return recommendedDialValue(grinderModel, rec?.inputGrind, settings);
+}
+
 export function dialBoundaryAdvisoryForRecommendation(grinderModel, rec, settings = null) {
   const shift = rec?.engineStats?.shift ?? 0;
   const reason = rec?.reason || rec?.originalReason || '';
 
   const limits = grinderDialLimits(grinderModel, settings);
-  const target = recommendedDialValue(grinderModel, rec?.recommendedSetting, settings);
-  if (limits == null || target === null) return null;
+  const current = currentDialFromEngineStats(grinderModel, rec, settings);
+  if (limits == null || current === null) return null;
 
   const wantedFiner = shift < 0 || (shift === 0 && reasonWantsFiner(reason));
   const wantedCoarser = shift > 0 || (shift === 0 && reasonWantsCoarser(reason));
   if (!wantedFiner && !wantedCoarser) return null;
 
-  if (wantedFiner && atDialEnd(target, limits, 'min')) {
+  if (wantedFiner && atDialEnd(current, limits, 'min')) {
     return {
       headline: 'Already at the finest end of the dial',
       detail: DOSE_YIELD_HINT,
     };
   }
-  if (wantedCoarser && atDialEnd(target, limits, 'max')) {
+  if (wantedCoarser && atDialEnd(current, limits, 'max')) {
     return {
       headline: 'Already at the coarsest end of the dial',
       detail: DOSE_YIELD_HINT,
     };
   }
   return null;
+}
+
+/** Optional suffix when a move lands on the dial limit but the user is not already there. */
+export function dialLimitReachedNote(grinderModel, rec, settings = null) {
+  const limits = grinderDialLimits(grinderModel, settings);
+  const current = currentDialFromEngineStats(grinderModel, rec, settings);
+  const target = recommendedDialValue(grinderModel, rec?.recommendedSetting, settings);
+  if (limits == null || current === null || target === null) return '';
+  if (atDialEnd(current, limits, 'min') || atDialEnd(current, limits, 'max')) return '';
+  if (atDialEnd(target, limits, 'min')) return ' (finest setting on your dial)';
+  if (atDialEnd(target, limits, 'max')) return ' (coarsest setting on your dial)';
+  return '';
 }

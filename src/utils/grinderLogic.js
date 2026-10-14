@@ -897,6 +897,14 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   const grinderProfile = getRecommendationGrinderProfile(grinderModel, settings);
   effectiveSensitivity = grinderProfile.sensitivity;
+  const currentGrindNumeric = grindNumericFromShotData(shotData, grinderProfile, settings);
+  const recommendationInputGrind = {
+    macro: setteMacro,
+    micro: setteMicro,
+    setting: sunbeamSetting,
+    nicheZeroSetting,
+    customGrindValue,
+  };
 
   const referenceDialIO = resolveReferenceLearningDialIO(grinderModel, settings);
   if (usesReferenceDialLearning(grinderModel, settings)) {
@@ -1157,6 +1165,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
     return {
       recommendedSetting: nicheRecommendedSetting,
+      inputGrind: recommendationInputGrind,
       reason: prefixEstimatedGrindReason(reason, grinderProfile, nicheStepConfidence),
       warning,
       subRecommendation,
@@ -1183,6 +1192,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         shiftUnit: grinderProfile.shiftUnit,
         severeChoke: severeChoke,
         tasteOverride: isTimeInRange && !isBalancedTaste(tasteProfile),
+        currentDial: Number.isFinite(currentDial) ? currentDial : currentGrindNumeric,
       },
     };
   }
@@ -1242,7 +1252,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       reliableLearnedSensitivity,
     };
 
-    const currentGrindNumeric = grindNumericFromShotData(shotData, grinderProfile, settings);
     const outlierCheck = detectLikelyShotOutlier({
       actualTime,
       grindNumeric: currentGrindNumeric,
@@ -1364,6 +1373,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   return {
     recommendedSetting,
+    inputGrind: recommendationInputGrind,
     reason: prefixEstimatedGrindReason(reason, grinderProfile, sensitivityConfidence),
     warning,
     subRecommendation,
@@ -1385,6 +1395,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       shiftUnit,
       severeChoke: severeChoke,
       tasteOverride: isTimeInRange && !isBalancedTaste(tasteProfile),
+      currentDial: Number.isFinite(currentGrindNumeric) ? currentGrindNumeric : null,
     },
   };
 }

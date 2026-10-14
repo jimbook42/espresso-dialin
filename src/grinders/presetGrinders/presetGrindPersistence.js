@@ -18,14 +18,6 @@ export function getPersistedPresetGrindValue(settings, grinderModel) {
     if (parsed !== null) return parsed;
   }
 
-  if (
-    settings?.grinderModel === grinderModel
-    && settings?.lastPresetGrindValue != null
-    && settings?.lastPresetGrindValue !== ''
-  ) {
-    return parsePresetGrindValue(settings.lastPresetGrindValue, spec);
-  }
-
   return null;
 }
 
@@ -48,7 +40,7 @@ export function persistedPresetGrindSettingsPatch(grinderModel, value, existingS
 
   return {
     presetGrindByModel,
-    lastPresetGrindValue: parsed,
-    lastCustomGrindValue: parsed,
+    lastPresetGrindValue: null,
+    lastCustomGrindValue: null,
   };
 }

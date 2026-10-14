@@ -245,6 +245,30 @@ export function runGrindRecommendationDisplayTests() {
   assert.match(opusSummary, /dose or yield/i);
   assert.doesNotMatch(opusSummary, /Grind finer/i);
 
+  const opusMoveToFinestRec = calculateRecommendation(
+    {
+      grinderModel: FELLOW_OPUS_GRINDER_ID,
+      customGrindValue: 1.5,
+      wasPurged: true,
+      actualTime: 12,
+      actualYield: 36,
+      tasteProfile: 'balanced',
+    },
+    recipe,
+    []
+  );
+  assert.ok(opusMoveToFinestRec.recommendedSetting.customGrindValue < 1.5);
+  assert.equal(
+    dialBoundaryAdvisoryForRecommendation(FELLOW_OPUS_GRINDER_ID, opusMoveToFinestRec),
+    null
+  );
+  const opusMoveSummary = formatGrindRecommendationSummary(
+    FELLOW_OPUS_GRINDER_ID,
+    opusMoveToFinestRec
+  );
+  assert.match(opusMoveSummary, /Grind finer/i);
+  assert.doesNotMatch(opusMoveSummary, /finest end of the dial/i);
+
   const nicheAtMaxRec = calculateRecommendation(
     {
       grinderModel: 'Niche Zero',
