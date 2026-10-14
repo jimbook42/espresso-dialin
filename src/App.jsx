@@ -63,6 +63,10 @@ import {
 } from './grinders/presetGrinders/index.js';
 import { defaultPresetGrindValue } from './grinders/presetGrinders/dial.js';
 import {
+  getPersistedPresetGrindValue,
+  persistedPresetGrindSettingsPatch,
+} from './grinders/presetGrinders/presetGrindPersistence.js';
+import {
   defaultCustomGrindValue,
   isCustomGrinderFormValid,
   normalizeCustomGrinderProfile,
@@ -392,11 +396,8 @@ export default function App() {
       if (isPresetGrinderModel(grinderModelFromSettings)) {
         const spec = getPresetGrinderSpec(grinderModelFromSettings);
         if (spec) {
-          setCustomGrindValue(
-            settingsSetting.lastPresetGrindValue
-            ?? settingsSetting.lastCustomGrindValue
-            ?? defaultPresetGrindValue(spec)
-          );
+          const persisted = getPersistedPresetGrindValue(settingsSetting, grinderModelFromSettings);
+          setCustomGrindValue(persisted ?? defaultPresetGrindValue(spec));
         }
       } else if (isCustomGrinderModel(grinderModelFromSettings, settingsSetting)) {
         const profile = normalizeCustomGrinderProfile(settingsSetting.customGrinder);
@@ -692,6 +693,14 @@ export default function App() {
     });
   };
 
+  const persistPresetGrindToSettings = async (model, value) => {
+    if (!isPresetGrinderModel(model)) return;
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    const patch = persistedPresetGrindSettingsPatch(model, value, currentSettings);
+    if (Object.keys(patch).length === 0) return;
+    await db.settings.put({ ...currentSettings, ...patch });
+  };
+
   const handleCustomGrindChange = (value) => {
     setCustomGrindValue(value);
     stashPendingGrind(grinderModel, activeBean?.id, {
@@ -701,6 +710,7 @@ export default function App() {
       nicheZeroSetting,
       customGrindValue: value,
     });
+    void persistPresetGrindToSettings(grinderModel, value);
   };
 
   useEffect(() => {
@@ -767,6 +777,16 @@ export default function App() {
       });
     }
     const currentSettings = await db.settings.get('global') || { id: 'global' };
+    if (isPresetGrinderModel(model)) {
+      const spec = getPresetGrinderSpec(model);
+      const persisted = getPersistedPresetGrindValue(
+        { ...currentSettings, grinderModel: model },
+        model
+      );
+      if (spec) {
+        setCustomGrindValue(persisted ?? defaultPresetGrindValue(spec));
+      }
+    }
     if (typeof flairChoice === 'boolean') setFlairEnabled(flairChoice);
     if (typeof preInfusionChoice === 'boolean') setUsePreInfusion(preInfusionChoice);
     const nextSettings = {
@@ -1369,6 +1389,9 @@ export default function App() {
 
     try {
       await db.shots.add(shotRecord);
+      if (isPresetGrinderModel(logGrinderModel) && finalCustomGrind != null && finalCustomGrind !== '') {
+        await persistPresetGrindToSettings(logGrinderModel, finalCustomGrind);
+      }
       clearPendingGrind(activeBean.id, grinderModel);
 
       setActualTimeS('');
@@ -1609,7 +1632,7 @@ export default function App() {
       });
       await db.settings.put({
         ...currentSettings,
-        ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet, appSettings),
+        ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet, currentSettings),
       });
     }
 

@@ -35,9 +35,12 @@ export function formatPresetGrindDisplay(value, spec) {
 
 export function clampPresetGrind(value, spec) {
   const profile = presetProfileFromSpec(spec);
-  const parsed = parseCustomGrindValue(value, profile);
-  if (parsed === null) return defaultCustomGrindValue(profile);
-  return parsed;
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  if (!Number.isFinite(n)) {
+    const parsed = parseCustomGrindValue(value, profile);
+    return parsed ?? defaultCustomGrindValue(profile);
+  }
+  return parseCustomGrindValue(n, profile) ?? defaultCustomGrindValue(profile);
 }
 
 export function adjustPresetGrind(currentValue, dialShift, spec) {

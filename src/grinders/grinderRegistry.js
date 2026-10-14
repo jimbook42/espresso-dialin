@@ -549,7 +549,10 @@ export function uiStateFromRecommendedSetting(grinderModel, recSet, settings = n
 
 export function persistedSettingsPatchFromRecommendation(grinderModel, recSet, settings = null) {
   if (isPresetGrinderModel(grinderModel)) {
-    return getPresetGrinderDefinition(grinderModel).persistedSettingsPatchFromRecommendation(recSet);
+    return getPresetGrinderDefinition(grinderModel).persistedSettingsPatchFromRecommendation(
+      recSet,
+      settings
+    );
   }
   if (isNicheZeroGrinderModel(grinderModel)) {
     const parsed = parseNicheZeroSetting(recSet?.nicheZeroSetting, settings);

@@ -1,6 +1,7 @@
 import { getInitialGrindRecommendation, shotEligibleForLearning } from '../utils/grinderLogic.js';
 import { shotMatchesGrinderForLearning } from './grinderLearningMatch.js';
-import { uiStateFromInitialRecommendation, uiStateFromLastShot } from './grinderRegistry.js';
+import { isPresetGrinderModel, uiStateFromInitialRecommendation, uiStateFromLastShot } from './grinderRegistry.js';
+import { getPersistedPresetGrindValue } from './presetGrinders/presetGrindPersistence.js';
 
 /**
  * Grind control UI state when bean/grinder context changes.
@@ -25,6 +26,13 @@ export function resolveGrindControlUiState({
   settings = null,
 }) {
   if (!activeBean || !grinderModel) return null;
+
+  if (isPresetGrinderModel(grinderModel)) {
+    const persisted = getPersistedPresetGrindValue(settings, grinderModel);
+    if (persisted !== null) {
+      return { customGrindValue: persisted };
+    }
+  }
 
   const currentBeanShots = shots.filter(
     (s) =>

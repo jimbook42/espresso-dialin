@@ -10,9 +10,16 @@ import {
 } from './catalog.js';
 import {
   adjustPresetGrind,
+  clampPresetGrind,
   defaultPresetGrindValue,
   parsePresetGrindValue,
 } from './dial.js';
+import {
+  getPersistedPresetGrindValue,
+  persistedPresetGrindSettingsPatch,
+} from './presetGrindPersistence.js';
+import { resolveGrindControlUiState } from '../grindControlUiState.js';
+import { persistedSettingsPatchFromRecommendation } from '../grinderRegistry.js';
 import { getPresetGrinderDefinition } from './index.js';
 import {
   getRecommendationGrinderProfile,
@@ -146,6 +153,99 @@ export function runPresetGrindersTests() {
 
   const applyUi = uiStateFromRecommendedSetting(BCG820_GRINDER_ID, { customGrindValue: 11 });
   assert.equal(applyUi.customGrindValue, 11);
+
+  for (const grinderId of PRESET_GRINDER_IDS) {
+    const spec = getPresetGrinderSpec(grinderId);
+    assert.equal(clampPresetGrind(spec.min - 50, spec), spec.min);
+    assert.equal(clampPresetGrind(spec.max + 50, spec), spec.max);
+    const atMin = adjustPresetGrind(spec.min, -5, spec);
+    assert.equal(atMin, spec.min);
+    const atMax = adjustPresetGrind(spec.max, 5, spec);
+    assert.equal(atMax, spec.max);
+  }
+
+  const opusFast = calculateRecommendation(
+    {
+      grinderModel: FELLOW_OPUS_GRINDER_ID,
+      customGrindValue: 1,
+      wasPurged: true,
+      actualDose: 18,
+      actualYield: 36,
+      tasteProfile: 'balanced',
+    },
+    RECIPE,
+    []
+  );
+  assert.ok(opusFast.recommendedSetting.customGrindValue >= 1);
+
+  const bean = { id: 'bean-persist', roastType: 'Medium' };
+  const shotAt195 = {
+    beanId: bean.id,
+    grinderModel: ZERNO_Z1_GRINDER_ID,
+    customGrindValue: 195,
+    timestamp: '2026-10-01T12:00:00.000Z',
+    excludeFromLearning: false,
+  };
+
+  for (const grinderId of PRESET_GRINDER_IDS) {
+    const spec = getPresetGrinderSpec(grinderId);
+    const applied = adjustPresetGrind(spec.defaultSetting, 2, spec);
+    const logged = adjustPresetGrind(spec.defaultSetting, -1, spec);
+    assert.notEqual(applied, logged);
+
+    let settings = { id: 'global', grinderModel: grinderId };
+    settings = {
+      ...settings,
+      ...persistedPresetGrindSettingsPatch(grinderId, applied, settings),
+    };
+    assert.equal(getPersistedPresetGrindValue(settings, grinderId), applied);
+
+    const otherId = grinderId === BCG820_GRINDER_ID ? ENCORE_ESP_GRINDER_ID : BCG820_GRINDER_ID;
+    const otherSpec = getPresetGrinderSpec(otherId);
+    const otherVal = defaultPresetGrindValue(otherSpec);
+    settings = {
+      ...settings,
+      grinderModel: otherId,
+      ...persistedPresetGrindSettingsPatch(otherId, otherVal, settings),
+    };
+    assert.equal(getPersistedPresetGrindValue(settings, otherId), otherVal);
+    assert.equal(getPersistedPresetGrindValue(settings, grinderId), applied);
+
+    const patch = persistedSettingsPatchFromRecommendation(
+      grinderId,
+      { customGrindValue: applied },
+      settings
+    );
+    settings = { ...settings, ...patch };
+
+    const uiAfterApply = resolveGrindControlUiState({
+      grinderModel: grinderId,
+      shots: [{ ...shotAt195, grinderModel: grinderId, customGrindValue: logged }],
+      activeBean: bean,
+      recipes: [{ beanId: bean.id, ...RECIPE }],
+      beans: [bean],
+      mockDate: null,
+      flairEnabled: false,
+      settings,
+    });
+    assert.equal(
+      uiAfterApply.customGrindValue,
+      applied,
+      `${grinderId}: persisted apply should beat last logged shot`
+    );
+
+    const uiAfterSwitch = resolveGrindControlUiState({
+      grinderModel: grinderId,
+      shots: [],
+      activeBean: bean,
+      recipes: [],
+      beans: [bean],
+      mockDate: null,
+      flairEnabled: false,
+      settings,
+    });
+    assert.equal(uiAfterSwitch.customGrindValue, applied, `${grinderId}: reload/switch restore`);
+  }
 
   console.log('Preset grinder tests passed.');
 }

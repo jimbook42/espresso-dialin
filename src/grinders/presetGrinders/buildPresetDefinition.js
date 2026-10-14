@@ -7,12 +7,13 @@ import {
   presetProfileFromSpec,
   presetValueToNumeric,
 } from './dial.js';
+import { persistedPresetGrindSettingsPatch } from './presetGrindPersistence.js';
 
 export function buildPresetGrinderDefinition(spec) {
   const profile = presetProfileFromSpec(spec);
   const dialLabel =
     spec.dialKind === 'fellowOpus1'
-      ? 'Dial 0–12 (0.25 steps; 1 is finest)'
+      ? 'Dial 1–12 (0.25 steps; 1 is finest)'
       : spec.id === 'Zerno Z1'
         ? 'Dial 0–1400 · µm'
         : spec.dialKind === 'stepless'
@@ -92,10 +93,10 @@ export function buildPresetGrinderDefinition(spec) {
       if (parsed === null) return null;
       return { customGrindValue: parsed };
     },
-    persistedSettingsPatchFromRecommendation(recSet) {
+    persistedSettingsPatchFromRecommendation(recSet, settings = null) {
       const parsed = parsePresetGrindValue(recSet?.customGrindValue, spec);
       if (parsed === null) return {};
-      return { lastPresetGrindValue: parsed, lastCustomGrindValue: parsed };
+      return persistedPresetGrindSettingsPatch(spec.id, parsed, settings || {});
     },
     parseGrindForShotSave({ customGrindValue }) {
       const parsed = parsePresetGrindValue(customGrindValue, spec);

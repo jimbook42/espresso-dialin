@@ -1,6 +1,7 @@
 import {
   isCustomGrinderModel,
   isNicheZeroGrinderModel,
+  isPresetGrinderModel,
   isSetteGrinderModel,
   isSunbeamGrinderModel,
 } from './grinderRegistry.js';
@@ -28,6 +29,9 @@ export function capturePendingGrindState(grinderModel, {
   }
   if (isNicheZeroGrinderModel(grinderModel)) {
     return { nicheZeroSetting };
+  }
+  if (isPresetGrinderModel(grinderModel)) {
+    return { customGrindValue };
   }
   if (isCustomGrinderModel(grinderModel, settings)) {
     return { customGrindValue };

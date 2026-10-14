@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "preview:scale": "VITE_SCALE_ALLOW_SIM=true vite preview --host 127.0.0.1 --port 4173 --strictPort",
-    "test": "node test.js && node src/utils/recommendationTuning.test.js && node src/grinders/grinderRegistry.test.js && node src/grinders/engineSnapshots.test.js"
+    "test": "node test.js && node src/utils/recommendationTuning.test.js && node src/grinders/grinderRegistry.test.js && node src/grinders/engineSnapshots.test.js && node scripts/check-dist-manifest.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
