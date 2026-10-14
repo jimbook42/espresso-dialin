@@ -24,11 +24,14 @@ export function createSimulatedTransport(config = {}) {
   const dripAfterStopS = Number(config.dripAfterStopS) > 0 ? Number(config.dripAfterStopS) : 0;
   let postStopUntilMs = 0;
   let weightAtStopG = 0;
+  let lastEmittedWeightG = 0;
+  let postStopDripExtraG = 0;
 
   const weightHandlers = new Set();
   const timerHandlers = new Set();
 
   const emitWeight = (w) => {
+    lastEmittedWeightG = w;
     const evt = { weightG: w, timestampMs: Date.now() };
     weightHandlers.forEach((h) => h(evt));
   };
@@ -73,8 +76,9 @@ export function createSimulatedTransport(config = {}) {
     }
     if (dripAfterStopS > 0 && postStopUntilMs > now) {
       const dripProgress = 1 - (postStopUntilMs - now) / (dripAfterStopS * 1000);
-      const extra = dripProgress * Math.min(2.5, targetYieldG * 0.04);
-      emitWeight(weightAtStopG + extra);
+      const targetExtra = dripProgress * Math.min(2.5, targetYieldG * 0.04);
+      postStopDripExtraG = Math.max(postStopDripExtraG, targetExtra);
+      emitWeight(weightAtStopG + postStopDripExtraG);
     } else if (postStopUntilMs > 0 && postStopUntilMs <= now) {
       postStopUntilMs = 0;
       if (intervalId) {
@@ -142,11 +146,14 @@ export function createSimulatedTransport(config = {}) {
     },
     async stopTimer() {
       const finalTimerS = extractionStarted && timerStartMs ? (Date.now() - timerStartMs) / 1000 : 0;
+      const elapsedShotS = (Date.now() - shotStartMs) / 1000;
+      const weightNow = lastEmittedWeightG > 0 ? lastEmittedWeightG : computeWeight(elapsedShotS);
       running = false;
       extractionStarted = false;
       emitTimer(finalTimerS, false);
       if (dripAfterStopS > 0) {
-        weightAtStopG = computeWeight((Date.now() - shotStartMs) / 1000);
+        weightAtStopG = weightNow;
+        postStopDripExtraG = 0;
         postStopUntilMs = Date.now() + dripAfterStopS * 1000;
         if (!intervalId) {
           intervalId = setInterval(tick, tickMs);

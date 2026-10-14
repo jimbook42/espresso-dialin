@@ -80,6 +80,11 @@ import {
 } from './settings/firstLaunchRenderGate.js';
 import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
 import { writeCachedGlobalSettings } from './settings/settingsLocalCache.js';
+import {
+  clearRecommendationCardDisplayHoldPatch,
+  getRecommendationCardDisplayHold,
+  patchRecommendationCardDisplayHold,
+} from './settings/recommendationCardDisplayHold.js';
 import { isDevUrlSimScaleActive } from './config/devUrlSimScale.js';
 import {
   isSmartScaleIntegrationActive,
@@ -298,6 +303,7 @@ export default function App() {
   const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
   const [shotCountdownValue, setShotCountdownValue] = useState(null);
+  const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
   const shotCountdownStartOptsRef = useRef(null);
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
   const yieldSettleUserEditedRef = useRef(false);
@@ -619,6 +625,7 @@ export default function App() {
   const cancelShotCountdown = useCallback(() => {
     const opts = shotCountdownStartOptsRef.current;
     setShotCountdownValue(null);
+    setCountdownHandoffPending(false);
     shotCountdownStartOptsRef.current = null;
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
@@ -653,15 +660,22 @@ export default function App() {
     if (shotCountdownValue <= 0) {
       const opts = shotCountdownStartOptsRef.current || {};
       shotCountdownStartOptsRef.current = null;
+      setCountdownHandoffPending(true);
       setShotCountdownValue(null);
       void handleStartTimer({ ...opts, tareAlreadyDone: true });
       return undefined;
     }
     const tick = window.setTimeout(() => {
-      setShotCountdownValue((v) => (v == null ? null : v - 1));
+      setShotCountdownValue((v) => (v != null && v > 0 ? v - 1 : v));
     }, 1000);
     return () => window.clearTimeout(tick);
   }, [shotCountdownValue]);
+
+  useEffect(() => {
+    if (timerRunning && countdownHandoffPending) {
+      setCountdownHandoffPending(false);
+    }
+  }, [timerRunning, countdownHandoffPending]);
 
   const handleEndPreInfusion = () => {
     setPreInfusionSeconds(timerSeconds);
@@ -720,6 +734,11 @@ export default function App() {
   };
 
   useEffect(() => () => clearYieldSettleTimer(), [clearYieldSettleTimer]);
+
+  useEffect(() => {
+    if (!yieldSettleActive) return;
+    timemoreScale.recordYieldSettleSample();
+  }, [yieldSettleActive, timemoreScale.liveRelativeWeightG, timemoreScale]);
 
   const handleCancelTimer = () => {
     cancelShotCountdown();
@@ -1524,6 +1543,14 @@ export default function App() {
 
     try {
       await db.shots.add(shotRecord);
+      const displayHoldClear = clearRecommendationCardDisplayHoldPatch(
+        appSettings,
+        activeBean.id,
+        logGrinderModel
+      );
+      if (Object.keys(displayHoldClear).length > 0) {
+        await db.settings.put({ ...appSettings, ...displayHoldClear });
+      }
       await persistGrindUiToSettings(
         logGrinderModel,
         grindUiSnapshotFromControls({
@@ -1796,14 +1823,22 @@ export default function App() {
         nicheZeroSetting: uiState.nicheZeroSetting ?? nicheZeroSetting,
         customGrindValue: uiState.customGrindValue ?? customGrindValue,
       });
+      const recPatch = persistedSettingsPatchFromRecommendation(
+        applyGrinder,
+        recSet,
+        currentSettings,
+        activeBean?.id
+      );
+      const displayHoldPatch = patchRecommendationCardDisplayHold(
+        currentSettings,
+        activeBean?.id,
+        applyGrinder,
+        appliedLabel
+      );
       await db.settings.put({
         ...currentSettings,
-        ...persistedSettingsPatchFromRecommendation(
-          applyGrinder,
-          recSet,
-          currentSettings,
-          activeBean?.id
-        ),
+        ...recPatch,
+        ...displayHoldPatch,
       });
     }
 
@@ -1907,6 +1942,8 @@ export default function App() {
 
   const recommendedGrindDisplay = (() => {
     if (appliedRecommendationDisplay && !pendingBasketAdjustment) return appliedRecommendationDisplay;
+    const heldLabel = getRecommendationCardDisplayHold(appSettings, activeBean?.id, grinderModel);
+    if (heldLabel) return heldLabel;
     if (displayDynamicRec?.recommendedSetting && grinderModel) {
       return formatRecommendedGrindDisplay(grinderModel, displayDynamicRec.recommendedSetting, appSettings);
     }
@@ -2033,10 +2070,10 @@ export default function App() {
       )}
 
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
-      {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
+      {(timerRunning || yieldSettleActive) && !brewTimerHost && !brewGuideTimerActive && (
         <div
-          className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-          onClick={handleTimerSurfaceTap}
+          className={`fixed inset-0 z-[60] flex flex-col bg-[#121212] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${yieldSettleActive ? '' : 'cursor-pointer'}`}
+          onClick={yieldSettleActive ? undefined : handleTimerSurfaceTap}
           role="presentation"
         >
           <div className="h-14 px-4 flex items-center justify-between border-b border-[#1e1e1e] shrink-0">
@@ -2100,6 +2137,11 @@ export default function App() {
             >
               {formatTimerLive(timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
             </div>
+            {yieldSettleActive && (
+              <p className="text-[11px] tracking-wide text-[#6b6457] mt-2 text-center" role="status">
+                Settling…
+              </p>
+            )}
             {scaleShowLiveReadout && (
               <p className="text-[15px] text-[#c88a4b] font-semibold tabular-nums mt-3 text-center">
                 {scaleLiveReadoutG.toFixed(1)}g
@@ -2128,9 +2170,11 @@ export default function App() {
             </div>
 
             <p className="text-center text-[11px] text-[#4a4846] pointer-events-none">
-              {timerUsePreInfusion && preInfusionPhase
-                ? 'Tap anywhere to end pre-infusion'
-                : 'Tap anywhere to stop and fill shot time'}
+              {yieldSettleActive
+                ? 'Reading final weight'
+                : timerUsePreInfusion && preInfusionPhase
+                  ? 'Tap anywhere to end pre-infusion'
+                  : 'Tap anywhere to stop and fill shot time'}
             </p>
 
             <div className="flex flex-col gap-3 pointer-events-auto">
@@ -2775,6 +2819,8 @@ export default function App() {
             timer={{
               running: timerRunning,
               countdownActive: shotCountdownActive,
+              countdownHandoffPending,
+              yieldSettleActive,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
               usePreInfusion,
               preInfusionPhase,

@@ -14,6 +14,7 @@ import { createSimulatedTransport } from './transport/simulatedTransport.js';
 import { createBluetoothScaleTransport } from './transport/createBluetoothScaleTransport.js';
 import { isWebBluetoothAvailable } from './transport/webBluetoothTransport.js';
 import { roundYieldG } from './scaleShotStopSettle.js';
+import { resolveSettledYieldG } from './scaleYieldSettleResolve.js';
 
 const noopAsync = async () => {};
 
@@ -52,6 +53,11 @@ export function useTimemoreScale({
   const recordingExtractionRef = useRef(false);
   const liveWeightRef = useRef(0);
   const shotWeightTrackingRef = useRef(createShotWeightTracking());
+  const yieldSettleSnapshotRef = useRef(null);
+
+  const readRelativeShotWeightG = useCallback(() => {
+    return addedMassSinceStartG(shotWeightTrackingRef.current, liveWeightRef.current);
+  }, []);
 
   const syncRelativeFromLive = useCallback((liveG) => {
     const tracking = shotWeightTrackingRef.current;
@@ -211,6 +217,13 @@ export function useTimemoreScale({
     }
   }, [enabled, connectStatus, usePreInfusion, prepareShotWeightBaseline]);
 
+  const recordYieldSettleSample = useCallback(() => {
+    const snap = yieldSettleSnapshotRef.current;
+    if (!snap) return;
+    const relativeG = readRelativeShotWeightG();
+    snap.peakG = Math.max(snap.peakG, relativeG);
+  }, [readRelativeShotWeightG]);
+
   const finalizeShotStop = useCallback(() => {
     const transport = transportRef.current;
     if (!enabled || !transport || connectStatus !== 'connected') {
@@ -218,7 +231,12 @@ export function useTimemoreScale({
     }
     sessionRef.current?.stopRecording();
     const metrics = sessionRef.current?.getShotMetrics() ?? null;
-    const yieldG = roundYieldG(liveWeightRef.current);
+    const snap = yieldSettleSnapshotRef.current;
+    const relativeNow = readRelativeShotWeightG();
+    const yieldG = snap
+      ? resolveSettledYieldG(snap.atStopG, snap.peakG, relativeNow)
+      : roundYieldG(relativeNow);
+    yieldSettleSnapshotRef.current = null;
     recordingExtractionRef.current = false;
     resetShotWeightTracking();
     setInstantFlowGs(null);
@@ -238,9 +256,11 @@ export function useTimemoreScale({
     if (!enabled || !transport || connectStatus !== 'connected') {
       return false;
     }
+    const atStopG = readRelativeShotWeightG();
+    yieldSettleSnapshotRef.current = { atStopG, peakG: atStopG };
     transport.stopTimer().catch(() => {});
     return true;
-  }, [enabled, connectStatus]);
+  }, [enabled, connectStatus, readRelativeShotWeightG]);
 
   const notifyPreInfusionEnded = useCallback(async () => {
     const transport = transportRef.current;
@@ -264,6 +284,7 @@ export function useTimemoreScale({
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
     resetShotWeightTracking();
+    yieldSettleSnapshotRef.current = null;
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
   }, [enabled, connectStatus, resetShotWeightTracking]);
@@ -288,6 +309,7 @@ export function useTimemoreScale({
       notifyShotStarted: noopAsync,
       notifyPreInfusionEnded: noopAsync,
       notifyShotYieldSettleBegin: () => false,
+      recordYieldSettleSample: () => {},
       finalizeShotYieldSettle: () => ({ yieldG: null, metrics: null }),
       notifyShotStopped: () => ({ yieldG: null, metrics: null }),
       notifyShotCancelled: noopAsync,
@@ -313,6 +335,7 @@ export function useTimemoreScale({
     notifyShotStarted,
     notifyPreInfusionEnded,
     notifyShotYieldSettleBegin,
+    recordYieldSettleSample,
     finalizeShotYieldSettle: finalizeShotStop,
     notifyShotStopped,
     notifyShotCancelled,

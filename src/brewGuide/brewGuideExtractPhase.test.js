@@ -20,6 +20,22 @@ export function runBrewGuideExtractPhaseTests() {
     BREW_EXTRACT_IDLE
   );
   assert.equal(
+    syncBrewExtractPhaseWithTimer(BREW_EXTRACT_ARMING, {
+      timerRunning: false,
+      countdownActive: false,
+      countdownHandoffPending: true,
+    }),
+    BREW_EXTRACT_ARMING
+  );
+  assert.equal(
+    syncBrewExtractPhaseWithTimer(BREW_EXTRACT_ARMING, {
+      timerRunning: true,
+      countdownActive: false,
+      countdownHandoffPending: true,
+    }),
+    BREW_EXTRACT_RUNNING
+  );
+  assert.equal(
     syncBrewExtractPhaseWithTimer(BREW_EXTRACT_RUNNING, { timerRunning: false, countdownActive: false }),
     BREW_EXTRACT_RUNNING
   );

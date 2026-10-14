@@ -265,6 +265,8 @@ export function BrewGuide({
   timer = {
     running: false,
     countdownActive: false,
+    countdownHandoffPending: false,
+    yieldSettleActive: false,
     label: '0:00.0',
     usePreInfusion: false,
     preInfusionPhase: false,
@@ -321,9 +323,10 @@ export function BrewGuide({
     const next = syncBrewExtractPhaseWithTimer(extractPhase, {
       timerRunning: timer.running,
       countdownActive: timer.countdownActive,
+      countdownHandoffPending: timer.countdownHandoffPending,
     });
     if (next !== extractPhase) setExtractPhase(next);
-  }, [extractPhase, timer.running, timer.countdownActive]);
+  }, [extractPhase, timer.running, timer.countdownActive, timer.countdownHandoffPending]);
 
   const abortRunningExtract = () => {
     if (extractPhase !== BREW_EXTRACT_RUNNING && extractPhase !== BREW_EXTRACT_ARMING) return;
@@ -734,6 +737,11 @@ export function BrewGuide({
                 ? `${capturedTime}s`
                 : (extractPhase === BREW_EXTRACT_IDLE || extractPhase === BREW_EXTRACT_ARMING ? '0:00.0' : timer.label)}
             </p>
+            {timer.yieldSettleActive && (
+              <p className={`text-[11px] tracking-wide text-center ${ui.muted}`} role="status">
+                Settling…
+              </p>
+            )}
             <p className={`text-base leading-relaxed text-center ${ui.sub}`}>{timerHint}</p>
             {step.note && <p className={`text-sm leading-relaxed text-center ${ui.muted}`}>{step.note}</p>}
             <StepHelps key={step.id} helps={step.helps} ui={ui} />
