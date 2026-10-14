@@ -1,4 +1,5 @@
 import Dexie from 'dexie';
+import { installSettingsLocalCacheHook } from '../settings/settingsLocalCache.js';
 import { formatRecentRecipeShotEvidence } from './shotCountDisplay.js';
 import {
   SETTE_GRINDER_ID,
@@ -95,6 +96,8 @@ db.version(17).stores({
   // settings row also stores darkMode, Brew Guide config, and brew guidance UI prefs (UI only); no schema bump — Dexie keeps existing shot/bean data at v17
   settings: 'id, grinderModel, flairEnabled, preInfusionEnabled, lastSetteMacro, lastSetteMicro, lastSunbeamSetting'
 });
+
+installSettingsLocalCacheHook(db);
 
 /**
  * True only when the bean was explicitly marked decaf.

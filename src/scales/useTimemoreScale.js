@@ -12,6 +12,7 @@ import {
 import { createSimulatedTransport } from './transport/simulatedTransport.js';
 import { createBluetoothScaleTransport } from './transport/createBluetoothScaleTransport.js';
 import { isWebBluetoothAvailable } from './transport/webBluetoothTransport.js';
+import { roundYieldG } from './scaleShotStopSettle.js';
 
 const noopAsync = async () => {};
 
@@ -153,7 +154,7 @@ export function useTimemoreScale({
     await transportRef.current?.tare();
   }, []);
 
-  const notifyShotStarted = useCallback(async () => {
+  const prepareShotWeightBaseline = useCallback(async () => {
     const transport = transportRef.current;
     if (!enabled || !transport || connectStatus !== 'connected') return;
     setInstantFlowGs(null);
@@ -179,33 +180,34 @@ export function useTimemoreScale({
       liveWeightRef.current = weightAtStart;
     }
     syncRelativeFromLive(liveWeightRef.current);
+  }, [enabled, connectStatus, syncRelativeFromLive]);
+
+  const notifyShotCountdownPrepare = useCallback(async () => {
+    await prepareShotWeightBaseline();
+  }, [prepareShotWeightBaseline]);
+
+  const notifyShotStarted = useCallback(async ({ tareAlreadyDone = false } = {}) => {
+    const transport = transportRef.current;
+    if (!enabled || !transport || connectStatus !== 'connected') return;
+    if (!tareAlreadyDone) {
+      await prepareShotWeightBaseline();
+    }
 
     await transport.startTimer();
     if (!usePreInfusion) {
       sessionRef.current?.beginExtractionTiming();
       recordingExtractionRef.current = true;
     }
-  }, [enabled, connectStatus, usePreInfusion, syncRelativeFromLive]);
+  }, [enabled, connectStatus, usePreInfusion, prepareShotWeightBaseline]);
 
-  const notifyPreInfusionEnded = useCallback(async () => {
-    const transport = transportRef.current;
-    if (!enabled || !transport || connectStatus !== 'connected') return;
-    sessionRef.current?.beginExtractionTiming();
-    recordingExtractionRef.current = true;
-    if (transportKind === 'sim' && typeof transport.endPreinfusion === 'function') {
-      transport.endPreinfusion();
-    }
-  }, [enabled, connectStatus, transportKind]);
-
-  const notifyShotStopped = useCallback(() => {
+  const finalizeShotStop = useCallback(() => {
     const transport = transportRef.current;
     if (!enabled || !transport || connectStatus !== 'connected') {
       return { yieldG: null, metrics: null };
     }
-    transport.stopTimer().catch(() => {});
     sessionRef.current?.stopRecording();
     const metrics = sessionRef.current?.getShotMetrics() ?? null;
-    const yieldG = Math.max(0, Math.round(liveWeightRef.current * 10) / 10);
+    const yieldG = roundYieldG(liveWeightRef.current);
     recordingExtractionRef.current = false;
     resetShotWeightTracking();
     setInstantFlowGs(null);
@@ -219,6 +221,30 @@ export function useTimemoreScale({
         : null;
     return { yieldG, metrics: shotMetrics };
   }, [enabled, connectStatus, resetShotWeightTracking]);
+
+  const notifyShotYieldSettleBegin = useCallback(() => {
+    const transport = transportRef.current;
+    if (!enabled || !transport || connectStatus !== 'connected') {
+      return false;
+    }
+    transport.stopTimer().catch(() => {});
+    return true;
+  }, [enabled, connectStatus]);
+
+  const notifyPreInfusionEnded = useCallback(async () => {
+    const transport = transportRef.current;
+    if (!enabled || !transport || connectStatus !== 'connected') return;
+    sessionRef.current?.beginExtractionTiming();
+    recordingExtractionRef.current = true;
+    if (transportKind === 'sim' && typeof transport.endPreinfusion === 'function') {
+      transport.endPreinfusion();
+    }
+  }, [enabled, connectStatus, transportKind]);
+
+  const notifyShotStopped = useCallback(() => {
+    notifyShotYieldSettleBegin();
+    return finalizeShotStop();
+  }, [notifyShotYieldSettleBegin, finalizeShotStop]);
 
   const notifyShotCancelled = useCallback(async () => {
     const transport = transportRef.current;
@@ -247,8 +273,11 @@ export function useTimemoreScale({
       connect: noopAsync,
       disconnect: noopAsync,
       tare: noopAsync,
+      notifyShotCountdownPrepare: noopAsync,
       notifyShotStarted: noopAsync,
       notifyPreInfusionEnded: noopAsync,
+      notifyShotYieldSettleBegin: () => false,
+      finalizeShotYieldSettle: () => ({ yieldG: null, metrics: null }),
       notifyShotStopped: () => ({ yieldG: null, metrics: null }),
       notifyShotCancelled: noopAsync,
     };
@@ -269,8 +298,11 @@ export function useTimemoreScale({
     connect,
     disconnect,
     tare,
+    notifyShotCountdownPrepare,
     notifyShotStarted,
     notifyPreInfusionEnded,
+    notifyShotYieldSettleBegin,
+    finalizeShotYieldSettle: finalizeShotStop,
     notifyShotStopped,
     notifyShotCancelled,
   };

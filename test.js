@@ -38,6 +38,10 @@ import { runScalePreferenceTests } from './src/settings/scalePreference.test.js'
 import { runTimemoreFramedTests } from './src/scales/protocols/timemoreFramed.test.js';
 import { runScaleFlowMetricsTests } from './src/scales/flowMetrics.test.js';
 import { runPreinfusionAutoEndTests } from './src/scales/preinfusionAutoEnd.test.js';
+import { runScaleSettleDelayTests } from './src/scales/scaleSettleDelay.test.js';
+import { runShotStartCountdownTests } from './src/settings/shotStartCountdown.test.js';
+import { runGrindControlBootstrapTests } from './src/grinders/grindControlBootstrap.test.js';
+import { runBasketChangeAdjustmentTests } from './src/utils/basketChangeAdjustment.test.js';
 import { runFlairScaleTriggerTests } from './src/scales/flairScaleTriggers.test.js';
 import { runSimulatedTransportTests } from './src/scales/transport/simulatedTransport.test.js';
 import { runScaleShotBaselineTests } from './src/scales/scaleShotBaseline.test.js';
@@ -603,6 +607,10 @@ async function runTests() {
   runTimemoreFramedTests();
   runScaleFlowMetricsTests();
   runPreinfusionAutoEndTests();
+  runScaleSettleDelayTests();
+  runShotStartCountdownTests();
+  runGrindControlBootstrapTests();
+  runBasketChangeAdjustmentTests();
   runFlairScaleTriggerTests();
   await runSimulatedTransportTests();
   await runScaleShotBaselineTests();
