@@ -66,6 +66,7 @@ export function buildBrewGuideDialPayload({
   grindLabel,
   previousGrindLabel,
   flairEnabled = false,
+  scaleConnected = false,
 }) {
   const targets = resolveBrewGuideRecipeTargets({
     targetDoseG,
@@ -85,6 +86,7 @@ export function buildBrewGuideDialPayload({
     grindLabel,
     previousGrindLabel,
     flairEnabled: Boolean(flairEnabled),
+    scaleConnected: Boolean(scaleConnected),
   };
 }
 

@@ -31,6 +31,7 @@ import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, 
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
+import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx';
 import { GrinderGrindControls } from './components/GrindControls';
 import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
 import { buildAppDefaultInitialGrindHint } from './utils/initialGrindHint.js';
@@ -79,6 +80,13 @@ import {
   shouldRenderFirstLaunchWizard,
 } from './settings/firstLaunchRenderGate.js';
 import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
+import { writeCachedGlobalSettings } from './settings/settingsLocalCache.js';
+import {
+  clearRecommendationCardDisplayHoldPatch,
+  getRecommendationCardDisplayHold,
+  patchRecommendationCardDisplayHold,
+} from './settings/recommendationCardDisplayHold.js';
+import { isDevUrlSimScaleActive } from './config/devUrlSimScale.js';
 import {
   isSmartScaleIntegrationActive,
   listSmartScalePickerOptions,
@@ -115,6 +123,21 @@ import {
   tasteProfilesMatch,
 } from './utils/tasteProfile.js';
 import { SettingsToggle } from './components/SettingsToggle';
+import { readCachedGrindBootstrapState } from './grinders/grindControlBootstrap.js';
+import {
+  isShotStartCountdownActive,
+  normalizeShotStartCountdown,
+  SHOT_START_COUNTDOWN_FLAIR_ONLY,
+  SHOT_START_COUNTDOWN_OFF,
+  SHOT_START_COUNTDOWN_ON,
+} from './settings/shotStartCountdown.js';
+import { SHOT_YIELD_SETTLE_MS } from './scales/scaleShotStopSettle.js';
+import {
+  applyBasketChangeToRecommendation,
+  buildBasketAdjustmentBasisRec,
+  BASKET_FLOW_FEWER_HOLES,
+  BASKET_FLOW_MORE_HOLES,
+} from './utils/basketChangeAdjustment.js';
 import { BrewGuide } from './components/BrewGuide';
 import { BrewGuideIntroModal } from './components/BrewGuideIntroModal';
 import { BrewGraduationPrompt } from './components/BrewGraduationPrompt';
@@ -131,6 +154,7 @@ import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
 import { brewGuideIntroMachineSettingsLine, brewGuideSettingsToggleDetail } from './brewGuide/copy.js';
 import { APP_VERSION_LABEL } from './config/appVersion.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
+import { isBrewGuideExtractCountdownActive } from './brewGuide/brewGuideExtractPhase.js';
 import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
@@ -217,6 +241,8 @@ function extractionTimeStatus(timeS, minT, maxT) {
 
 const EMPTY_SHOT_FIELD_HIGHLIGHTS = { dose: false, yield: false, time: false, taste: false };
 
+const cachedGrindBootstrap = readCachedGrindBootstrapState();
+
 function formatMissingShotFields(keys) {
   const labels = { dose: 'dose', yield: 'yield', time: 'time', taste: 'taste' };
   const parts = keys.map((key) => labels[key]);
@@ -275,8 +301,19 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
-  const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting);
+  const devUrlSimScaleActive = isDevUrlSimScaleActive();
+  const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
+  const [shotCountdownValue, setShotCountdownValue] = useState(null);
+  const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
+  const shotCountdownStartOptsRef = useRef(null);
+  const [yieldSettleActive, setYieldSettleActive] = useState(false);
+  const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
+  const yieldSettleUserEditedRef = useRef(false);
+  const yieldSettleTimerRef = useRef(null);
+  const [basketChangePromptOpen, setBasketChangePromptOpen] = useState(false);
+  const [pendingBasketAdjustment, setPendingBasketAdjustment] = useState(null);
+  const [appliedRecommendationDisplay, setAppliedRecommendationDisplay] = useState(null);
   const appSettings = settingsSetting;
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
@@ -311,14 +348,20 @@ export default function App() {
   
   const [newRecipe, setNewRecipe] = useState(() => createDefaultNewRecipe(''));
 
-  const [grinderModel, setGrinderModel] = useState('');
+  const [grinderModel, setGrinderModel] = useState(() => cachedGrindBootstrap?.grinderModel || '');
   const [flairEnabled, setFlairEnabled] = useState(false);
 
-  const [setteMacro, setSetteMacro] = useState(13);
-  const [setteMicro, setSetteMicro] = useState('E');
-  const [sunbeamSetting, setSunbeamSetting] = useState(15);
-  const [nicheZeroSetting, setNicheZeroSetting] = useState(15);
-  const [customGrindValue, setCustomGrindValue] = useState(null);
+  const [setteMacro, setSetteMacro] = useState(() => cachedGrindBootstrap?.grindUi?.setteMacro ?? 13);
+  const [setteMicro, setSetteMicro] = useState(() => cachedGrindBootstrap?.grindUi?.setteMicro ?? 'E');
+  const [sunbeamSetting, setSunbeamSetting] = useState(
+    () => cachedGrindBootstrap?.grindUi?.sunbeamSetting ?? 15
+  );
+  const [nicheZeroSetting, setNicheZeroSetting] = useState(
+    () => cachedGrindBootstrap?.grindUi?.nicheZeroSetting ?? 15
+  );
+  const [customGrindValue, setCustomGrindValue] = useState(
+    () => cachedGrindBootstrap?.grindUi?.customGrindValue ?? null
+  );
   const [wasPurged, setWasPurged] = useState(true);
   const [actualDoseG, setActualDoseG] = useState(18);
   const [actualYieldG, setActualYieldG] = useState('');
@@ -365,6 +408,12 @@ export default function App() {
   const [settingsCustomGrinderDraft, setSettingsCustomGrinderDraft] = useState(null);
   const [brewAccessoriesOpenRequest, setBrewAccessoriesOpenRequest] = useState(0);
   const [brewAccessoriesReturnTo, setBrewAccessoriesReturnTo] = useState('brew');
+
+  useEffect(() => {
+    if (settingsSetting?.id === 'global') {
+      writeCachedGlobalSettings(settingsSetting);
+    }
+  }, [settingsSetting]);
 
   useEffect(() => {
     if (settingsSetting) {
@@ -561,19 +610,89 @@ export default function App() {
     }
   }, [timemoreScale]);
 
-  const handleStartTimer = async ({ fromBrewGuide = false } = {}) => {
-    if (!fromBrewGuide) syncBrewGuideTimerActive(false);
+  const handleStartTimer = async ({ fromBrewGuide = false, tareAlreadyDone = false } = {}) => {
+    if (fromBrewGuide) syncBrewGuideTimerActive(true);
+    else syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
+    setFrozenShotWeightG(null);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     if (timemoreScale.isConnected) {
       setScaleShotMetrics(null);
-      await timemoreScale.notifyShotStarted();
+      await timemoreScale.notifyShotStarted({ tareAlreadyDone });
     }
     if (timerUsePreInfusion) setPreInfusionPhase(true);
     else setPreInfusionPhase(false);
     setTimerRunning(true);
   };
+
+  const cancelShotCountdown = useCallback(() => {
+    const opts = shotCountdownStartOptsRef.current;
+    setShotCountdownValue(null);
+    setCountdownHandoffPending(false);
+    shotCountdownStartOptsRef.current = null;
+    if (timemoreScale.isConnected) {
+      void timemoreScale.notifyShotCancelled();
+    }
+    if (opts?.fromBrewGuide) {
+      syncBrewGuideTimerActive(false);
+      scaleAutoEndPreinfusionRef.current = false;
+      setTimerRunning(false);
+      setTimerTicks(0);
+      setPreInfusionSeconds(0);
+      setPreInfusionPhase(false);
+    }
+  }, [timemoreScale]);
+
+  const requestStartTimer = useCallback(
+    (opts = {}) => {
+      if (shotCountdownValue != null || timerRunning) return;
+      const useCountdown = isShotStartCountdownActive(
+        appSettings?.shotStartCountdown,
+        flairEnabled
+      );
+      if (!useCountdown) {
+        void handleStartTimer(opts);
+        return;
+      }
+      if (opts.fromBrewGuide) {
+        syncBrewGuideTimerActive(true);
+        scaleAutoEndPreinfusionRef.current = false;
+        setTimerRunning(false);
+        setTimerTicks(0);
+        setPreInfusionSeconds(0);
+        setPreInfusionPhase(false);
+      }
+      shotCountdownStartOptsRef.current = opts;
+      setShotCountdownValue(3);
+      if (timemoreScale.isConnected) {
+        void timemoreScale.notifyShotCountdownPrepare();
+      }
+    },
+    [shotCountdownValue, timerRunning, appSettings?.shotStartCountdown, flairEnabled, timemoreScale]
+  );
+
+  useEffect(() => {
+    if (shotCountdownValue == null) return undefined;
+    if (shotCountdownValue <= 0) {
+      const opts = shotCountdownStartOptsRef.current || {};
+      shotCountdownStartOptsRef.current = null;
+      setCountdownHandoffPending(true);
+      setShotCountdownValue(null);
+      void handleStartTimer({ ...opts, tareAlreadyDone: true });
+      return undefined;
+    }
+    const tick = window.setTimeout(() => {
+      setShotCountdownValue((v) => (v != null && v > 0 ? v - 1 : v));
+    }, 1000);
+    return () => window.clearTimeout(tick);
+  }, [shotCountdownValue]);
+
+  useEffect(() => {
+    if (timerRunning && countdownHandoffPending) {
+      setCountdownHandoffPending(false);
+    }
+  }, [timerRunning, countdownHandoffPending]);
 
   const handleEndPreInfusion = () => {
     setPreInfusionSeconds(timerSeconds);
@@ -582,6 +701,31 @@ export default function App() {
       void timemoreScale.notifyPreInfusionEnded();
     }
   };
+
+  const clearYieldSettleTimer = useCallback(() => {
+    if (yieldSettleTimerRef.current) {
+      window.clearTimeout(yieldSettleTimerRef.current);
+      yieldSettleTimerRef.current = null;
+    }
+  }, []);
+
+  const finalizeYieldSettle = useCallback(() => {
+    clearYieldSettleTimer();
+    setYieldSettleActive(false);
+    if (timemoreScale.isConnected) {
+      const { yieldG, metrics } = timemoreScale.finalizeShotYieldSettle();
+      if (!yieldSettleUserEditedRef.current && yieldG != null && yieldG > 0) {
+        setActualYieldG(String(yieldG));
+        setFrozenShotWeightG(yieldG);
+      } else {
+        setFrozenShotWeightG(null);
+      }
+      setScaleShotMetrics(metrics);
+    } else {
+      setFrozenShotWeightG(null);
+    }
+    yieldSettleUserEditedRef.current = false;
+  }, [clearYieldSettleTimer, timemoreScale]);
 
   const handleStopTimer = () => {
     setTimerRunning(false);
@@ -592,16 +736,38 @@ export default function App() {
     const rounded = Math.round(finalExtractionTime);
     setActualTimeS(rounded);
     if (timemoreScale.isConnected) {
-      const { yieldG, metrics } = timemoreScale.notifyShotStopped();
-      if (yieldG != null && yieldG > 0) {
-        setActualYieldG(String(yieldG));
+      clearYieldSettleTimer();
+      yieldSettleUserEditedRef.current = false;
+      const began = timemoreScale.notifyShotYieldSettleBegin();
+      if (began) {
+        setYieldSettleActive(true);
+        yieldSettleTimerRef.current = window.setTimeout(() => {
+          finalizeYieldSettle();
+        }, SHOT_YIELD_SETTLE_MS);
+      } else {
+        const { yieldG, metrics } = timemoreScale.notifyShotStopped();
+        if (yieldG != null && yieldG > 0) {
+          setActualYieldG(String(yieldG));
+        }
+        setScaleShotMetrics(metrics);
       }
-      setScaleShotMetrics(metrics);
     }
     return rounded;
   };
 
+  useEffect(() => () => clearYieldSettleTimer(), [clearYieldSettleTimer]);
+
+  useEffect(() => {
+    if (!yieldSettleActive) return;
+    timemoreScale.recordYieldSettleSample();
+  }, [yieldSettleActive, timemoreScale.liveRelativeWeightG, timemoreScale]);
+
   const handleCancelTimer = () => {
+    cancelShotCountdown();
+    clearYieldSettleTimer();
+    setYieldSettleActive(false);
+    setFrozenShotWeightG(null);
+    yieldSettleUserEditedRef.current = false;
     scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
@@ -613,6 +779,8 @@ export default function App() {
   };
 
   const handleResetTimer = () => {
+    cancelShotCountdown();
+    setFrozenShotWeightG(null);
     scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
@@ -895,6 +1063,12 @@ export default function App() {
     setUsePreInfusion(val);
     const currentSettings = await db.settings.get('global') || { id: 'global' };
     await db.settings.put({ ...currentSettings, preInfusionEnabled: val });
+  };
+
+  const handleShotStartCountdownChange = async (value) => {
+    const normalized = normalizeShotStartCountdown(value);
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    await db.settings.put({ ...currentSettings, shotStartCountdown: normalized });
   };
 
   const handleToggleDarkMode = async () => {
@@ -1393,6 +1567,14 @@ export default function App() {
 
     try {
       await db.shots.add(shotRecord);
+      const displayHoldClear = clearRecommendationCardDisplayHoldPatch(
+        appSettings,
+        activeBean.id,
+        logGrinderModel
+      );
+      if (Object.keys(displayHoldClear).length > 0) {
+        await db.settings.put({ ...appSettings, ...displayHoldClear });
+      }
       await persistGrindUiToSettings(
         logGrinderModel,
         grindUiSnapshotFromControls({
@@ -1405,6 +1587,8 @@ export default function App() {
       );
       clearPendingGrind(activeBean.id, grinderModel);
       setApplyRecConfirmation('');
+      setPendingBasketAdjustment(null);
+      setAppliedRecommendationDisplay(null);
 
       setActualTimeS('');
       if (activeRecipe?.targetDoseG != null && activeRecipe.targetDoseG !== '') {
@@ -1502,9 +1686,6 @@ export default function App() {
             originalReason: liveQuantitativeRec.reason,
           }
         : ageAdjustedRec;
-  const grindRecommendationSummary = dynamicRec?.recommendedSetting
-    ? formatGrindRecommendationSummary(grinderModel, dynamicRec, appSettings)
-    : null;
   const nicheLearningBlocksEvidence =
     isNicheZeroGrinderModel(grinderModel)
     && Boolean(dynamicRec?.nicheLearningNote)
@@ -1575,6 +1756,31 @@ export default function App() {
     appSettings
   );
 
+  const basketAdjustmentBasis = buildBasketAdjustmentBasisRec(dynamicRec, grinderModel, {
+    initialGrindSetting,
+    hasBeanShotsForGrinder: beanShotsForGrinder.length > 0,
+    grindFields: {
+      setteMacro,
+      setteMicro,
+      sunbeamSetting,
+      nicheZeroSetting,
+      customGrindValue: effectiveCustomGrindValue,
+    },
+    settings: appSettings,
+  });
+  const displayDynamicRec =
+    pendingBasketAdjustment && basketAdjustmentBasis?.recommendedSetting
+      ? applyBasketChangeToRecommendation(
+          basketAdjustmentBasis,
+          grinderModel,
+          pendingBasketAdjustment,
+          appSettings
+        )
+      : dynamicRec;
+  const grindRecommendationSummary = displayDynamicRec?.recommendedSetting
+    ? formatGrindRecommendationSummary(grinderModel, displayDynamicRec, appSettings)
+    : null;
+
   const initialGrindHint = (() => {
     if (!initialGrindHintSource) return null;
     switch (initialGrindHintSource) {
@@ -1606,10 +1812,6 @@ export default function App() {
       : timerRunning
         ? timerSeconds
         : 0;
-  const scaleLiveReadoutG =
-    timerRunning && timemoreScale.weightTriggersPrimed
-      ? timemoreScale.liveRelativeWeightG
-      : timemoreScale.liveWeightG;
   const scaleShowLiveReadout =
     scaleFeatureEnabled && timemoreScale.isConnected && (timerRunning || timemoreScale.liveWeightG > 0);
   const scaleShowFlow =
@@ -1619,8 +1821,8 @@ export default function App() {
     && timemoreScale.instantFlowGs != null;
 
   const applyRecommendation = async () => {
-    if (!dynamicRec || !dynamicRec.recommendedSetting) return;
-    const recSet = dynamicRec.recommendedSetting;
+    if (!displayDynamicRec || !displayDynamicRec.recommendedSetting) return;
+    const recSet = displayDynamicRec.recommendedSetting;
     const appliedLabel = formatRecommendedGrindDisplay(grinderModel, recSet, appSettings);
     
     const currentSettings = await db.settings.get('global') || { id: 'global' };
@@ -1641,14 +1843,22 @@ export default function App() {
         nicheZeroSetting: uiState.nicheZeroSetting ?? nicheZeroSetting,
         customGrindValue: uiState.customGrindValue ?? customGrindValue,
       });
+      const recPatch = persistedSettingsPatchFromRecommendation(
+        applyGrinder,
+        recSet,
+        currentSettings,
+        activeBean?.id
+      );
+      const displayHoldPatch = patchRecommendationCardDisplayHold(
+        currentSettings,
+        activeBean?.id,
+        applyGrinder,
+        appliedLabel
+      );
       await db.settings.put({
         ...currentSettings,
-        ...persistedSettingsPatchFromRecommendation(
-          applyGrinder,
-          recSet,
-          currentSettings,
-          activeBean?.id
-        ),
+        ...recPatch,
+        ...displayHoldPatch,
       });
     }
 
@@ -1658,6 +1868,8 @@ export default function App() {
       setTimeout(() => setHighlightGrind(false), 1500);
     }
 
+    setPendingBasketAdjustment(null);
+    setAppliedRecommendationDisplay(appliedLabel);
     setApplyRecConfirmation(`Grind set to ${appliedLabel}.`);
     window.setTimeout(() => setApplyRecConfirmation(''), 4000);
   };
@@ -1749,8 +1961,11 @@ export default function App() {
   })();
 
   const recommendedGrindDisplay = (() => {
-    if (lastLearningShot && lastLearningShot.grinderModel === grinderModel && dynamicRec?.recommendedSetting) {
-      return formatRecommendedGrindDisplay(grinderModel, dynamicRec.recommendedSetting, appSettings);
+    if (appliedRecommendationDisplay && !pendingBasketAdjustment) return appliedRecommendationDisplay;
+    const heldLabel = getRecommendationCardDisplayHold(appSettings, activeBean?.id, grinderModel);
+    if (heldLabel) return heldLabel;
+    if (displayDynamicRec?.recommendedSetting && grinderModel) {
+      return formatRecommendedGrindDisplay(grinderModel, displayDynamicRec.recommendedSetting, appSettings);
     }
     return currentGrindLabel;
   })();
@@ -1775,10 +1990,15 @@ export default function App() {
   };
 
   const handleBrewStartTimer = () => {
-    syncBrewGuideTimerActive(true);
     setActualTimeS('');
-    void handleStartTimer({ fromBrewGuide: true });
+    requestStartTimer({ fromBrewGuide: true });
   };
+
+  const shotCountdownOverlayVisible = shotCountdownValue != null && shotCountdownValue > 0;
+  const brewGuideExtractCountdownActive = isBrewGuideExtractCountdownActive({
+    shotCountdownValue,
+    countdownHandoffPending,
+  });
 
   const handleBrewResetTimer = () => {
     syncBrewGuideTimerActive(false);
@@ -1857,6 +2077,22 @@ export default function App() {
   return (
     <div className={`min-h-screen ${ui.page} relative`}>
       
+      {shotCountdownOverlayVisible && (
+        <div className="fixed inset-0 z-[65] flex flex-col items-center justify-center bg-[#121212] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+          <p className="text-[11px] tracking-[0.2em] uppercase text-[#9a9690] mb-6">Get ready</p>
+          <p className="text-[clamp(5rem,28vw,8rem)] font-black tabular-nums text-[#ede9e3] leading-none">
+            {shotCountdownValue}
+          </p>
+          <button
+            type="button"
+            onClick={cancelShotCountdown}
+            className="mt-10 px-5 py-2.5 rounded-xl border border-[#3a3a3a] text-[#9a9690] text-sm font-semibold"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
       {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
         <div
@@ -1926,14 +2162,14 @@ export default function App() {
               {formatTimerLive(timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
             </div>
             {scaleShowLiveReadout && (
-              <p className="text-[15px] text-[#c88a4b] font-semibold tabular-nums mt-3 text-center">
-                {scaleLiveReadoutG.toFixed(1)}g
-                {scaleShowFlow && (
-                  <span className="text-[#8a9d72] font-medium ml-2">
-                    · {timemoreScale.instantFlowGs.toFixed(2)} g/s
-                  </span>
-                )}
-              </p>
+              <ShotTimerWeightReadout
+                variant="fullscreen"
+                timerRunning={timerRunning}
+                showFlow={scaleShowFlow}
+                instantFlowGs={timemoreScale.instantFlowGs}
+                yieldSettleActive={yieldSettleActive}
+                frozenYieldG={frozenShotWeightG}
+              />
             )}
             <p className="text-[13px] text-[#6b6457] mt-4 text-center">
               {timerUsePreInfusion && preInfusionPhase
@@ -2177,6 +2413,9 @@ export default function App() {
                   {grindRecommendationSummary && (
                     <p className={`text-sm ${ui.sub} leading-relaxed`}>{grindRecommendationSummary}</p>
                   )}
+                  {displayDynamicRec?.basketChangeNote && (
+                    <p className={`text-[10px] ${ui.accentText} font-semibold`}>{displayDynamicRec.basketChangeNote}</p>
+                  )}
                   {recommendationEvidenceContext && !nicheLearningBlocksEvidence && (
                     <p className={`text-[10px] ${ui.muted}`}>{recommendationEvidenceContext}</p>
                   )}
@@ -2222,23 +2461,74 @@ export default function App() {
                     </p>
                   )}
 
-                  <div className={`flex items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
-                    <p className={`text-xs ${ui.muted}`}>
+                  <div className={`flex flex-wrap items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
+                    <p className={`text-xs ${ui.muted} min-w-0 flex-1`}>
                       {lastLoggedShot
                         ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${tasteProfileDisplayLabel(lastLoggedShot.tasteProfile)})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ` · kept in history, not used for learning${lastLoggedShot.knownIssueReason ? ` (${knownIssueReasonLabel(lastLoggedShot.knownIssueReason)})` : ''}` : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
                         : `Logging grind ${currentGrindLabel}`}
                     </p>
-                    {dynamicRec?.recommendedSetting && (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={applyRecommendation}
-                        className={`text-xs px-4 py-2.5 rounded-xl flex items-center gap-1 min-h-[44px] shrink-0 transition-colors ${ui.applyRec}`}
+                        onClick={() => setBasketChangePromptOpen(true)}
+                        className={`text-[10px] px-3 py-2 rounded-lg ${ui.secondaryBtn} font-semibold opacity-80`}
                       >
-                        Apply rec <ArrowRight className="w-3 h-3" />
+                        Changed basket
                       </button>
-                    )}
+                      {displayDynamicRec?.recommendedSetting && (
+                        <button
+                          type="button"
+                          onClick={applyRecommendation}
+                          className={`text-xs px-4 py-2.5 rounded-xl flex items-center gap-1 min-h-[44px] shrink-0 transition-colors ${ui.applyRec}`}
+                        >
+                          Apply rec <ArrowRight className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {basketChangePromptOpen && (
+                  <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 bg-black/70">
+                    <div className={`${ui.card} rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl`}>
+                      <h3 className={`text-sm font-bold ${ui.text}`}>Basket change</h3>
+                      <p className={`text-xs ${ui.muted}`}>
+                        Apply a one-time grind tweak to the next recommendation only (not saved to your learning model).
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAppliedRecommendationDisplay(null);
+                          setPendingBasketAdjustment(BASKET_FLOW_MORE_HOLES);
+                          setBasketChangePromptOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-3 rounded-xl ${ui.secondaryBtn} text-sm font-semibold`}
+                      >
+                        More holes / faster flow
+                        <span className={`block text-[10px] font-normal ${ui.muted} mt-0.5`}>Grind a little finer for the next suggestion</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAppliedRecommendationDisplay(null);
+                          setPendingBasketAdjustment(BASKET_FLOW_FEWER_HOLES);
+                          setBasketChangePromptOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-3 rounded-xl ${ui.secondaryBtn} text-sm font-semibold`}
+                      >
+                        Fewer holes / tighter flow
+                        <span className={`block text-[10px] font-normal ${ui.muted} mt-0.5`}>Grind a little coarser for the next suggestion</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBasketChangePromptOpen(false)}
+                        className={`w-full py-2.5 text-xs font-bold ${ui.ghostBtn}`}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {showBrewGraduationPrompt && (
                   <BrewGraduationPrompt
@@ -2286,20 +2576,22 @@ export default function App() {
                     <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <p className={`text-[10px] uppercase tracking-widest ${ui.muted} mb-2`}>Live shot timer</p>
-                        <span className="text-4xl font-black font-mono text-[#f5f2eb] tabular-nums">{formatTime(timerSeconds)}</span>
+                        <span className={`text-4xl font-black font-mono tabular-nums ${ui.text}`}>{formatTime(timerSeconds)}</span>
                         {scaleShowLiveReadout && (
-                          <p className={`text-sm font-semibold tabular-nums mt-1 ${ui.accentText}`}>
-                            {scaleLiveReadoutG.toFixed(1)}g
-                            {scaleShowFlow && (
-                              <span className={`${ui.muted} font-medium ml-2`}>
-                                {timemoreScale.instantFlowGs.toFixed(2)} g/s
-                              </span>
-                            )}
-                          </p>
+                          <ShotTimerWeightReadout
+                            variant="dial-inline"
+                            timerRunning={timerRunning}
+                            showFlow={scaleShowFlow}
+                            instantFlowGs={timemoreScale.instantFlowGs}
+                            darkMode={darkMode}
+                            ui={ui}
+                            yieldSettleActive={yieldSettleActive}
+                            frozenYieldG={frozenShotWeightG}
+                          />
                         )}
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        <button type="button" onClick={handleStartTimer} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
+                        <button type="button" onClick={() => requestStartTimer()} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
                           <Play className="w-4 h-4 fill-current" /> Start
                         </button>
                         <button type="button" onClick={handleResetTimer} className={`p-3.5 min-h-[48px] min-w-[48px] ${ui.secondaryBtn} rounded-xl`}>
@@ -2307,7 +2599,7 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                    {scaleFeatureEnabled && (
+                    {scaleFeatureEnabled && !devUrlSimScaleActive && (
                       <ScaleTimerControls
                         ui={ui}
                         simAllowed={timemoreScale.simAllowed}
@@ -2386,12 +2678,18 @@ export default function App() {
                         placeholder="36"
                         value={actualYieldG}
                         onChange={(e) => {
+                          if (yieldSettleActive) yieldSettleUserEditedRef.current = true;
                           setActualYieldG(e.target.value);
                           setShotFieldHighlights((prev) => ({ ...prev, yield: false }));
                         }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
                       />
                       <p className={`text-[9px] ${ui.accentText} text-center mt-1`}>1:{brewRatio}</p>
+                      {yieldSettleActive && (
+                        <p className={`text-[10px] ${ui.muted} text-center mt-2`} role="status">
+                          Reading final weight…
+                        </p>
+                      )}
                     </div>
                     <div
                       ref={timeInputRef}
@@ -2537,8 +2835,15 @@ export default function App() {
             accessoriesReturnTo={brewAccessoriesReturnTo}
             onAccessoriesExit={handleExitBrewAccessories}
             onAccessoriesOpenHandled={handleAccessoriesOpenHandled}
+            scaleLiveReadoutEnabled={
+              scaleFeatureEnabled && timemoreScale.isConnected
+            }
             timer={{
               running: timerRunning,
+              countdownActive: brewGuideExtractCountdownActive,
+              countdownHandoffPending,
+              yieldSettleActive,
+              frozenShotWeightG,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
               usePreInfusion,
               preInfusionPhase,
@@ -2554,6 +2859,7 @@ export default function App() {
               grindLabel: recommendedGrindDisplay || currentGrindLabel,
               previousGrindLabel,
               flairEnabled,
+              scaleConnected: scaleFeatureEnabled && timemoreScale.isConnected,
             })}
           />
         )}
@@ -3402,6 +3708,21 @@ export default function App() {
                       <span className={`text-[10px] ${ui.muted}`}>Two-phase timer: pre → shot</span>
                     </div>
                     <SettingsToggle checked={usePreInfusion} onChange={handleTogglePreInfusion} label="Track pre-infusion time" />
+                  </div>
+                  <div className={`border-t ${ui.modalDivider} pt-3 space-y-2`}>
+                    <label className={`block ${ui.fieldLabel}`}>Shot start countdown</label>
+                    <select
+                      value={normalizeShotStartCountdown(settingsSetting?.shotStartCountdown)}
+                      onChange={(e) => { void handleShotStartCountdownChange(e.target.value); }}
+                      className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold text-xs`}
+                    >
+                      <option value={SHOT_START_COUNTDOWN_OFF}>Off</option>
+                      <option value={SHOT_START_COUNTDOWN_ON}>On</option>
+                      <option value={SHOT_START_COUNTDOWN_FLAIR_ONLY}>Flair only (default)</option>
+                    </select>
+                    <p className={`text-[10px] ${ui.muted}`}>
+                      Optional 3-2-1 before the timer; tares the scale during the countdown when connected.
+                    </p>
                   </div>
                   <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
                     <div>

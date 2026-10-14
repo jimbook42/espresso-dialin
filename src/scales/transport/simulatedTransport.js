@@ -21,11 +21,17 @@ export function createSimulatedTransport(config = {}) {
   let absoluteYieldTargetG = targetYieldG;
   let extractionStartElapsedS = 0;
   let weightAtExtractionStartG = 0;
+  const dripAfterStopS = Number(config.dripAfterStopS) > 0 ? Number(config.dripAfterStopS) : 0;
+  let postStopUntilMs = 0;
+  let weightAtStopG = 0;
+  let lastEmittedWeightG = 0;
+  let postStopDripExtraG = 0;
 
   const weightHandlers = new Set();
   const timerHandlers = new Set();
 
   const emitWeight = (w) => {
+    lastEmittedWeightG = w;
     const evt = { weightG: w, timestampMs: Date.now() };
     weightHandlers.forEach((h) => h(evt));
   };
@@ -58,13 +64,27 @@ export function createSimulatedTransport(config = {}) {
   };
 
   const tick = () => {
-    if (!running) return;
     const now = Date.now();
-    const elapsedShotS = (now - shotStartMs) / 1000;
-    emitWeight(computeWeight(elapsedShotS));
-    if (extractionStarted) {
-      const timerS = (now - timerStartMs) / 1000;
-      emitTimer(timerS, true);
+    if (running) {
+      const elapsedShotS = (now - shotStartMs) / 1000;
+      emitWeight(computeWeight(elapsedShotS));
+      if (extractionStarted) {
+        const timerS = (now - timerStartMs) / 1000;
+        emitTimer(timerS, true);
+      }
+      return;
+    }
+    if (dripAfterStopS > 0 && postStopUntilMs > now) {
+      const dripProgress = 1 - (postStopUntilMs - now) / (dripAfterStopS * 1000);
+      const targetExtra = dripProgress * Math.min(2.5, targetYieldG * 0.04);
+      postStopDripExtraG = Math.max(postStopDripExtraG, targetExtra);
+      emitWeight(weightAtStopG + postStopDripExtraG);
+    } else if (postStopUntilMs > 0 && postStopUntilMs <= now) {
+      postStopUntilMs = 0;
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
     }
   };
 
@@ -126,9 +146,20 @@ export function createSimulatedTransport(config = {}) {
     },
     async stopTimer() {
       const finalTimerS = extractionStarted && timerStartMs ? (Date.now() - timerStartMs) / 1000 : 0;
+      const elapsedShotS = (Date.now() - shotStartMs) / 1000;
+      const weightNow = lastEmittedWeightG > 0 ? lastEmittedWeightG : computeWeight(elapsedShotS);
       running = false;
       extractionStarted = false;
       emitTimer(finalTimerS, false);
+      if (dripAfterStopS > 0) {
+        weightAtStopG = weightNow;
+        postStopDripExtraG = 0;
+        postStopUntilMs = Date.now() + dripAfterStopS * 1000;
+        if (!intervalId) {
+          intervalId = setInterval(tick, tickMs);
+        }
+        tick();
+      }
     },
     /** End pre-infusion: extraction timer starts here (not at first drip). */
     endPreinfusion() {
