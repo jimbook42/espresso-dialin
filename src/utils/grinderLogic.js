@@ -3,6 +3,7 @@ import { formatRecentRecipeShotEvidence } from './shotCountDisplay.js';
 import {
   SETTE_GRINDER_ID,
   SUNBEAM_GRINDER_ID,
+  NICHE_ZERO_GRINDER_ID,
   adjustSette,
   adjustSunbeam,
   numericToSette,
@@ -37,15 +38,28 @@ import {
   buildNicheEligibilityLearningNote,
   buildNicheEligibilityCompactCounts,
 } from '../grinders/nicheEligibility.js';
+import { isPresetGrinderModel } from '../grinders/presetGrinders/index.js';
+import { defaultPresetGrindValue } from '../grinders/presetGrinders/dial.js';
+import { getPresetGrinderSpec } from '../grinders/presetGrinders/catalog.js';
+import {
+  mapShotsForReferenceLearning,
+  resolveReferenceLearningDialIO,
+  usesReferenceDialLearning,
+} from '../grinders/referenceLearningDial.js';
 import { isBalancedTaste, normalizeTasteProfile } from './tasteProfile.js';
 import {
   CURRENT_PULL_ELIGIBILITY_ID,
   isPersistedLearningShot,
 } from './learningShotIdentity.js';
+import { HIGH_LEARNED_CONFIDENCE_THRESHOLD } from './grindShiftDamping.js';
+import { formatDialShiftReasonParts } from '../grinders/presetGrinders/shiftLabel.js';
 import {
   buildOutlierRecommendationReason,
   applyGrindShiftDamping,
   proportionalGrindShiftFromTimeDelta,
+  capQuantitativeGrindShift,
+  applyMinimumQuantitativeShift,
+  effectiveQuantitativeSensitivity,
   detectLikelyShotOutlier,
   filterComparableShotsForNicheLearning,
   grindNumericFromShotData,
@@ -56,7 +70,7 @@ import {
 
 export { CURRENT_PULL_ELIGIBILITY_ID, isPersistedLearningShot } from './learningShotIdentity.js';
 
-export { NICHE_ZERO_GRINDER_ID } from '../grinders/grinderRegistry.js';
+export { NICHE_ZERO_GRINDER_ID };
 
 export {
   setteToNumeric,
@@ -475,14 +489,22 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
     }
   }
 
+  const stored = lastShot.recommendation;
   return {
     recommendedSetting: adjustedSetting,
     ageWarning: ageWarning,
-    originalReason: lastShot.recommendation.reason,
-    warning: lastShot.recommendation.warning,
-    subRecommendation: lastShot.recommendation.subRecommendation,
-    flairWaterTempAdvice: lastShot.recommendation.flairWaterTempAdvice,
-    evidenceContext: lastShot.recommendation.evidenceContext,
+    reason: stored.reason,
+    originalReason: stored.reason,
+    warning: stored.warning,
+    subRecommendation: stored.subRecommendation,
+    flairWaterTempAdvice: stored.flairWaterTempAdvice,
+    evidenceContext: stored.evidenceContext,
+    inputGrind: stored.inputGrind,
+    engineStats: stored.engineStats,
+    nicheLearningNote: stored.nicheLearningNote,
+    nicheEmpiricalValidationNote: stored.nicheEmpiricalValidationNote,
+    outlierGrindHeld: stored.outlierGrindHeld,
+    grindSettingHeld: stored.grindSettingHeld,
   };
 }
 
@@ -534,7 +556,7 @@ export function recomputeQuantitativeRecommendationFromLastShot(
   );
 }
 
-export function recomputeNicheRecommendationFromLastShot(
+export function recomputeReferenceLearningRecommendationFromLastShot(
   lastShot,
   recipe,
   grinderBeanShots = [],
@@ -542,17 +564,19 @@ export function recomputeNicheRecommendationFromLastShot(
   settings = null,
   grinderLearningShots = null
 ) {
-  if (!lastShot || !isNicheZeroGrinderModel(lastShot.grinderModel) || !recipe) return null;
+  if (!lastShot || !recipe) return null;
+  if (!usesReferenceDialLearning(lastShot.grinderModel, settings)) return null;
   const history = grinderBeanShots.filter((s) => s.id !== lastShot.id);
   return calculateRecommendation(
     {
       id: lastShot.id,
       beanId: lastShot.beanId,
       grinderModel: lastShot.grinderModel,
-      setteMacro: null,
-      setteMicro: null,
-      sunbeamSetting: null,
-      nicheZeroSetting: lastShot.nicheZeroSetting,
+      setteMacro: lastShot.setteMacro ?? null,
+      setteMicro: lastShot.setteMicro ?? null,
+      sunbeamSetting: lastShot.sunbeamSetting ?? null,
+      nicheZeroSetting: lastShot.nicheZeroSetting ?? null,
+      customGrindValue: lastShot.customGrindValue,
       wasPurged: lastShot.wasPurged !== false,
       actualTime: lastShot.actualTimeS,
       actualYield: lastShot.actualYieldG,
@@ -569,6 +593,24 @@ export function recomputeNicheRecommendationFromLastShot(
       settings,
       grinderLearningShots: grinderLearningShots ?? grinderBeanShots,
     }
+  );
+}
+
+export function recomputeNicheRecommendationFromLastShot(
+  lastShot,
+  recipe,
+  grinderBeanShots = [],
+  flairEnabled = false,
+  settings = null,
+  grinderLearningShots = null
+) {
+  return recomputeReferenceLearningRecommendationFromLastShot(
+    lastShot,
+    recipe,
+    grinderBeanShots,
+    flairEnabled,
+    settings,
+    grinderLearningShots
   );
 }
 
@@ -653,7 +695,7 @@ export function getInitialGrindRecommendation(
           initialSource: historySource,
         };
       }
-      if (isCustomGrinderModel(grinderModel, settings)) {
+      if (isPresetGrinderModel(grinderModel) || isCustomGrinderModel(grinderModel, settings)) {
         return {
           customGrindValue:
             adjustedRec.recommendedSetting.customGrindValue ?? bestShot.customGrindValue,
@@ -668,6 +710,13 @@ export function getInitialGrindRecommendation(
     if (isNicheZeroGrinderModel(grinderModel)) {
       return {
         nicheZeroSetting: parseNicheZeroSetting(bestShot.nicheZeroSetting, settings) ?? NICHE_ZERO_DEFAULT_SETTING,
+        initialSource: historySource,
+      };
+    }
+    if (isPresetGrinderModel(grinderModel)) {
+      const spec = getPresetGrinderSpec(grinderModel);
+      return {
+        customGrindValue: bestShot.customGrindValue ?? defaultPresetGrindValue(spec),
         initialSource: historySource,
       };
     }
@@ -707,6 +756,15 @@ export function getInitialGrindRecommendation(
       initialSource: baseline !== null ? 'roast-baseline' : 'app-default',
     };
   }
+  if (isPresetGrinderModel(grinderModel)) {
+    const spec = getPresetGrinderSpec(grinderModel);
+    // Presets use catalog defaults on a fresh bean — never cross-bean roast baselines
+    // (averaged dial numbers from other beans collapse Eureka variants to the same high end).
+    return {
+      customGrindValue: defaultPresetGrindValue(spec),
+      initialSource: 'app-default',
+    };
+  }
   if (isCustomGrinderModel(grinderModel, settings)) {
     const def = getGrinderDefinitionById(grinderModel, settings);
     const profile = def.customProfile;
@@ -727,8 +785,15 @@ export function shotExcludedFromLearning(shot) {
   return shot?.excludeFromLearning === true;
 }
 
-function prefixEstimatedGrindReason(reason, grinderProfile) {
+function prefixEstimatedGrindReason(reason, grinderProfile, confidence = null) {
   if (!grinderProfile?.recommendationIsEstimated) return reason;
+  if (
+    confidence !== null
+    && Number.isFinite(confidence)
+    && confidence >= HIGH_LEARNED_CONFIDENCE_THRESHOLD
+  ) {
+    return reason;
+  }
   const text = reason || '';
   if (text.toUpperCase().startsWith('ESTIMATED')) return text;
   return `ESTIMATED — ${text}`;
@@ -739,9 +804,11 @@ function buildNicheZeroQualitativeReason({
   isTimeInRange,
   tasteProfile,
   timeDelta,
+  grinderShortName = null,
 }) {
   if (severeChoke) {
-    return 'SEVERE CHOKE — Grind substantially coarser on the Niche dial (higher number). Dial step size is not auto-calibrated in this app.';
+    const dialRef = grinderShortName ? `${grinderShortName} dial` : 'dial';
+    return `SEVERE CHOKE — Grind substantially coarser on the ${dialRef} (higher number). Dial step size is not auto-calibrated in this app.`;
   }
   if (isTimeInRange) {
     if (tasteProfile === 'very_sour') {
@@ -765,7 +832,7 @@ function buildNicheZeroQualitativeReason({
   return `Shot was ${secOff}s slow — consider grinding coarser (higher dial number). Timing guidance only; dial steps are not auto-calibrated.`;
 }
 
-function nicheSupplementalLearningNote(empirical, nicheEligibility) {
+function nicheSupplementalLearningNote(empirical, nicheEligibility, grinderModel, settings = null) {
   if (empirical.ok || !empirical.reasonCode) return null;
   if (!['insufficient_observations', 'insufficient_variation'].includes(empirical.reasonCode)) {
     return null;
@@ -782,9 +849,11 @@ function nicheSupplementalLearningNote(empirical, nicheEligibility) {
     return buildNicheEligibilityLearningNote(nicheEligibility, empirical.reasonCode, {
       recipeComparableCount: nicheEligibility.counts.recipeMatched,
       grinderLearningShotCount: nicheEligibility.counts.grinderMatched,
+      grinderModel,
+      settings,
     });
   }
-  return `${transparency} — ${buildNicheEligibilityCompactCounts(nicheEligibility)}`;
+  return `${transparency} — ${buildNicheEligibilityCompactCounts(nicheEligibility, grinderModel, settings)}`;
 }
 
 export function calculateRecommendation(shotData, recipe, recentShots = [], flairEnabled = false, options = {}) {
@@ -863,20 +932,36 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   const grinderProfile = getRecommendationGrinderProfile(grinderModel, settings);
   effectiveSensitivity = grinderProfile.sensitivity;
+  const currentGrindNumeric = grindNumericFromShotData(shotData, grinderProfile, settings);
+  const recommendationInputGrind = {
+    macro: setteMacro,
+    micro: setteMicro,
+    setting: sunbeamSetting,
+    nicheZeroSetting,
+    customGrindValue,
+  };
 
-  if (!grinderSupportsQuantitativeRecommendations(grinderModel, settings)) {
-    const currentDial = parseNicheZeroSetting(nicheZeroSetting, settings) ?? NICHE_ZERO_DEFAULT_SETTING;
+  const referenceDialIO = resolveReferenceLearningDialIO(grinderModel, settings);
+  if (usesReferenceDialLearning(grinderModel, settings)) {
+    const grinderShortName = referenceDialIO?.grinderLabel ?? null;
+    const dialRaw =
+      grinderModel === NICHE_ZERO_GRINDER_ID ? nicheZeroSetting : customGrindValue;
+    const currentDial =
+      referenceDialIO.readDialFromState(dialRaw)
+      ?? (grinderModel === NICHE_ZERO_GRINDER_ID
+        ? NICHE_ZERO_DEFAULT_SETTING
+        : defaultPresetGrindValue(getPresetGrinderSpec(grinderModel)));
 
     const comparableHistory = [...learningRecentShots]
       .filter((s) => shotMatchesRecipeContext(s, recipe, flairEnabled))
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     const comparableForLearning = filterComparableShotsForNicheLearning(
-      comparableHistory,
+      mapShotsForReferenceLearning(comparableHistory, referenceDialIO),
       recipe,
       grinderModel
     );
 
-    const currentGrindNumeric = parseNicheZeroSetting(nicheZeroSetting, settings) ?? currentDial;
+    const currentGrindNumeric = currentDial;
     const outlierCheck = detectLikelyShotOutlier({
       actualTime,
       grindNumeric: currentGrindNumeric,
@@ -894,6 +979,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       severeChoke,
       isTimeInRange,
       comparableShots: comparableForLearning,
+      clampDial: referenceDialIO.clampDial.bind(referenceDialIO),
       currentObservation: outlierCheck.isOutlier
         ? null
         : {
@@ -945,7 +1031,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       let rawShift = empirical.shift ?? recommendedDial - currentDial;
       if (!empirical.keepGrind && rawShift !== 0) {
         rawShift = applyGrindShiftDamping(rawShift, nicheDampingOptions);
-        recommendedDial = clampNicheZeroDial(currentDial + rawShift, settings);
+        recommendedDial = referenceDialIO.clampDial(currentDial + rawShift);
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
       } else {
         shift = rawShift;
@@ -958,6 +1044,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         shift,
         secondsPerMark: empirical.secondsPerMark,
         keepGrind: empirical.keepGrind || shift === 0,
+        grinderShortName,
       });
       if (
         outlierCheck.isOutlier
@@ -984,18 +1071,24 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
             tasteProfile,
             severeChoke,
             isTimeInRange,
+            clampDial: referenceDialIO.clampDial.bind(referenceDialIO),
           })
         : { ok: false };
 
       let usedTimingBounded = false;
       if (timingBounded.ok) {
         shift = applyGrindShiftDamping(timingBounded.shift, nicheDampingOptions);
-        recommendedDial = clampNicheZeroDial(currentDial + shift, settings);
+        recommendedDial = referenceDialIO.clampDial(currentDial + shift);
         shift = Math.round((recommendedDial - currentDial) * 10) / 10;
         if (shift !== 0) {
           usedTimingBounded = true;
           nicheEvidenceMode = 'timing-bounded';
-          nicheLearningNote = nicheSupplementalLearningNote(empirical, nicheEligibility);
+          nicheLearningNote = nicheSupplementalLearningNote(
+            empirical,
+            nicheEligibility,
+            grinderModel,
+            settings
+          );
           reason = buildNicheTimingBoundedReason({
             recommendedDial,
             shift,
@@ -1019,6 +1112,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
           tasteProfile,
           timeDelta,
           reasonCode: empirical.reasonCode,
+          grinderShortName,
         });
         if (!reason) {
           reason = buildNicheZeroQualitativeReason({
@@ -1026,9 +1120,15 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
             isTimeInRange,
             tasteProfile,
             timeDelta,
+            grinderShortName,
           });
         }
-        nicheLearningNote = nicheSupplementalLearningNote(empirical, nicheEligibility);
+        nicheLearningNote = nicheSupplementalLearningNote(
+          empirical,
+          nicheEligibility,
+          grinderModel,
+          settings
+        );
         if (
           outlierCheck.isOutlier
           && !(isTimeInRange && isBalancedTaste(tasteProfile) && shift === 0)
@@ -1103,7 +1203,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       recipe
     );
 
-    const nicheRecommendedSetting = { nicheZeroSetting: recommendedDial };
+    const nicheRecommendedSetting = referenceDialIO.buildRecommendedSetting(recommendedDial);
     const grindSettingHeld = grindMatchesStoredRecommendation(
       grinderModel,
       { setteMacro, setteMicro, sunbeamSetting, nicheZeroSetting, customGrindValue },
@@ -1114,7 +1214,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
     return {
       recommendedSetting: nicheRecommendedSetting,
-      reason,
+      inputGrind: recommendationInputGrind,
+      reason: prefixEstimatedGrindReason(reason, grinderProfile, nicheStepConfidence),
       warning,
       subRecommendation,
       flairWaterTempAdvice,
@@ -1140,6 +1241,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         shiftUnit: grinderProfile.shiftUnit,
         severeChoke: severeChoke,
         tasteOverride: isTimeInRange && !isBalancedTaste(tasteProfile),
+        currentDial: Number.isFinite(currentDial) ? currentDial : currentGrindNumeric,
       },
     };
   }
@@ -1191,7 +1293,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     sensitivityConfidence = confidence;
     sensitivityUsedEmpiricalSlope = usedEmpiricalSlope;
     sensitivityIsDefault = !reliableLearnedSensitivity || !usedEmpiricalSlope;
-    effectiveSensitivity = secondsPerStep || grinderProfile.sensitivity;
+    effectiveSensitivity = secondsPerStep || effectiveQuantitativeSensitivity(grinderProfile);
     const sensitivity = effectiveSensitivity;
     const dampingOptions = {
       isOutlier: false,
@@ -1199,7 +1301,6 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       reliableLearnedSensitivity,
     };
 
-    const currentGrindNumeric = grindNumericFromShotData(shotData, grinderProfile, settings);
     const outlierCheck = detectLikelyShotOutlier({
       actualTime,
       grindNumeric: currentGrindNumeric,
@@ -1210,10 +1311,14 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
     dampingOptions.isOutlier = outlierCheck.isOutlier;
     shift = proportionalGrindShiftFromTimeDelta(timeDelta, sensitivity, dampingOptions);
+    shift = capQuantitativeGrindShift(shift, grinderProfile);
+    shift = applyMinimumQuantitativeShift(shift, grinderProfile);
 
-    const absShift = Math.abs(shift);
-    const direction = shift < 0 ? "FINER" : "COARSER";
     const secOff = Math.abs(Math.round(timeDelta));
+    const dialReason = formatDialShiftReasonParts(grinderProfile, customGrindValue, shift);
+    const absShift = dialReason?.steps ?? Math.abs(shift);
+    const direction = dialReason?.direction ?? (shift < 0 ? 'FINER' : 'COARSER');
+    const stepLabel = dialReason?.unit ?? grinderProfile.timeOffTargetStepLabel;
 
     if (shift === 0 && outlierCheck.isOutlier) {
       reason = buildOutlierRecommendationReason({
@@ -1223,7 +1328,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     } else if (shift === 0) {
       reason = 'KEEP GRIND — Shot time was off target but grind step is capped until more comparable shots are logged.';
     } else {
-      reason = `GO ${absShift} ${grinderProfile.timeOffTargetStepLabel} ${direction} — Shot was ${secOff}s off target midpoint.`;
+      reason = `GO ${absShift} ${stepLabel} ${direction} — Shot was ${secOff}s off target midpoint.`;
       if (outlierCheck.isOutlier) {
         reason = buildOutlierRecommendationReason({
           baseReason: reason,
@@ -1319,7 +1424,8 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   return {
     recommendedSetting,
-    reason: prefixEstimatedGrindReason(reason, grinderProfile),
+    inputGrind: recommendationInputGrind,
+    reason: prefixEstimatedGrindReason(reason, grinderProfile, sensitivityConfidence),
     warning,
     subRecommendation,
     flairWaterTempAdvice,
@@ -1340,6 +1446,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
       shiftUnit,
       severeChoke: severeChoke,
       tasteOverride: isTimeInRange && !isBalancedTaste(tasteProfile),
+      currentDial: Number.isFinite(currentGrindNumeric) ? currentGrindNumeric : null,
     },
   };
 }

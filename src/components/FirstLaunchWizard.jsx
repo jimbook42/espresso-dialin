@@ -53,7 +53,7 @@ export function FirstLaunchWizard({
     <div className={`min-h-screen ${ui.page} flex items-center justify-center p-6`}>
       <div className={`${ui.card} p-8 rounded-2xl max-w-md w-full space-y-6 shadow-2xl`}>
         <div className="flex flex-col items-center gap-3">
-          <img src="/logo.jpg" alt="Espresso Dial-In" className="w-16 h-16 rounded-full object-cover ring-2 ring-[#2e2b26]" />
+          <img src="/logo-header-dark.svg" alt="Espresso Dial-In" width={64} height={64} className="w-16 h-16" />
           <div className="text-center">
             <h1 className="text-xl font-bold text-[#f5f2eb] tracking-tight">Welcome</h1>
             <p className="text-xs text-[#6b6457] mt-1">Set up grinder, scale, and optional features</p>

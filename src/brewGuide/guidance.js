@@ -39,16 +39,15 @@ export function shouldShowGraduationPrompt(settings, shotCount) {
   if (normalizeBrewGuidanceMode(settings?.brewGuideGuidanceMode) !== BREW_GUIDANCE_MODES.full) {
     return false;
   }
+  if (settings?.brewGuideGraduationSuppressed === true) return false;
   if (settings?.brewGuideGraduationDismissed === true) return false;
   const total = typeof shotCount === 'number' ? shotCount : countLoggedShots(shotCount);
   return total >= BREW_GUIDANCE_GRADUATION_SHOT_COUNT;
 }
 
-/** After the first bean profile is saved with Brew Guide on, send the user to Brew Guide once. */
-export function shouldNavigateToBrewAfterFirstBean(settings, isFirstBeanAdd, brewGuideEnabled) {
-  if (!isFirstBeanAdd || !brewGuideEnabled) return false;
-  if (settings?.brewGuideFirstBeanNavDone === true) return false;
-  return true;
+/** Legacy hook — first-bean navigation to Brew Guide is disabled (stay on current flow). */
+export function shouldNavigateToBrewAfterFirstBean() {
+  return false;
 }
 
 function firstSentence(text) {

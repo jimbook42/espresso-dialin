@@ -29,8 +29,9 @@ function runCustomGrinderDialMathTests() {
   assert.equal(adjustCustomGrind(5, -1, profile), 4);
   assert.equal(adjustCustomGrind(5, 1, profile), 6);
 
-  const higherIsFiner = { ...profile, lowerIsFiner: false };
-  assert.equal(adjustCustomGrind(5, -1, higherIsFiner), 6);
+  const higherIsCoarser = { ...profile, lowerIsFiner: false };
+  assert.equal(adjustCustomGrind(5, -1, higherIsCoarser), 4);
+  assert.equal(adjustCustomGrind(5, 1, higherIsCoarser), 6);
 
   const stepless = normalizeCustomGrinderProfile({
     name: 'Stepless',

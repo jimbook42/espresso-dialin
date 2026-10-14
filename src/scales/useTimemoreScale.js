@@ -10,10 +10,8 @@ import {
   weightTriggersReady,
 } from './scaleShotBaseline.js';
 import { createSimulatedTransport } from './transport/simulatedTransport.js';
-import {
-  createWebBluetoothTransport,
-  isWebBluetoothAvailable,
-} from './transport/webBluetoothTransport.js';
+import { createBluetoothScaleTransport } from './transport/createBluetoothScaleTransport.js';
+import { isWebBluetoothAvailable } from './transport/webBluetoothTransport.js';
 
 const noopAsync = async () => {};
 
@@ -29,6 +27,7 @@ const noopAsync = async () => {};
  */
 export function useTimemoreScale({
   enabled,
+  scaleDeviceId = 'timemore-dot',
   targetYieldG = 36,
   usePreInfusion = false,
   preInfusionDurationS = 8,
@@ -120,8 +119,8 @@ export function useTimemoreScale({
         preinfusionDurationS: usePreInfusion ? preInfusionDurationS : 0,
       });
     }
-    return createWebBluetoothTransport();
-  }, [transportKind, targetYieldG, usePreInfusion, preInfusionDurationS]);
+    return createBluetoothScaleTransport(scaleDeviceId);
+  }, [transportKind, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS]);
 
   const connect = useCallback(async () => {
     if (!enabled) return;

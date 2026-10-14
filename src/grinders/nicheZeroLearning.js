@@ -64,8 +64,16 @@ function nicheLearningDiagnostics(points, estimate = null) {
   };
 }
 
-function clampDial(n, settings = null) {
+function defaultClampDial(n, settings = null) {
   return clampNicheZeroDial(n, settings);
+}
+
+function resolveClampDial(params) {
+  if (typeof params?.clampDial === 'function') {
+    return (n) => params.clampDial(n);
+  }
+  const settings = params?.settings ?? null;
+  return (n) => defaultClampDial(n, settings);
 }
 
 /**
@@ -156,6 +164,7 @@ export function recommendNicheZeroFromEvidence(params) {
     comparableShots = [],
     currentObservation = null,
   } = params;
+  const clampDial = resolveClampDial(params);
 
   const targetMid = (targetMin + targetMax) / 2;
   const timeDelta = actualTime - targetMid;
@@ -202,7 +211,7 @@ export function recommendNicheZeroFromEvidence(params) {
     };
   }
 
-  let dialShift = -timeDelta / secondsPerMark;
+  let dialShift = timeDelta / secondsPerMark;
   if (!Number.isFinite(dialShift)) {
     return {
       ok: false,
@@ -334,6 +343,7 @@ export function recommendNicheTimingBounded(params) {
     severeChoke,
     isTimeInRange,
   } = params;
+  const clampDial = resolveClampDial(params);
   const targetMid = (targetMin + targetMax) / 2;
   const timeDelta = actualTime - targetMid;
   const halfWindow = Math.max((targetMax - targetMin) / 2, 1);
@@ -376,13 +386,24 @@ export function buildNicheTimingBoundedReason({ recommendedDial, shift, empirica
   return `Set dial to ${recommendedDial} (${Math.abs(shift)} mark${Math.abs(shift) === 1 ? '' : 's'} ${dir}) — ${detail}.`;
 }
 
-export function buildNicheEmpiricalReason({ recommendedDial, shift, secondsPerMark, keepGrind }) {
+function comparableShotsPhrase(grinderShortName) {
+  if (grinderShortName) return `comparable ${grinderShortName} shots`;
+  return 'comparable shots';
+}
+
+export function buildNicheEmpiricalReason({
+  recommendedDial,
+  shift,
+  secondsPerMark,
+  keepGrind,
+  grinderShortName = null,
+}) {
   if (keepGrind) return 'KEEP GRIND — Balanced and in range.';
   const dir = shift < 0 ? 'finer (lower number)' : 'coarser (higher number)';
   const absShift = Math.abs(shift);
   const perMark = Math.abs(secondsPerMark).toFixed(1);
   if (absShift < 0.05) return 'KEEP GRIND — Balanced and in range.';
-  return `Set dial to ${recommendedDial} (${absShift} mark${absShift === 1 ? '' : 's'} ${dir}) — estimated from your comparable Niche shots (~${perMark}s per mark locally).`;
+  return `Set dial to ${recommendedDial} (${absShift} mark${absShift === 1 ? '' : 's'} ${dir}) — estimated from your ${comparableShotsPhrase(grinderShortName)} (~${perMark}s per mark locally).`;
 }
 
 export function buildNicheFallbackReason({
@@ -391,10 +412,11 @@ export function buildNicheFallbackReason({
   tasteProfile,
   timeDelta,
   reasonCode,
+  grinderShortName = null,
 }) {
   if (reasonCode === 'insufficient_observations' || reasonCode === 'insufficient_variation') {
     if (severeChoke) {
-      return 'SEVERE CHOKE — Grind substantially coarser (higher dial number). Not enough comparable Niche history to size the step numerically.';
+      return `SEVERE CHOKE — Grind substantially coarser (higher dial number). Not enough ${comparableShotsPhrase(grinderShortName)} history to size the step numerically.`;
     }
     if (isTimeInRange) {
       if (tasteProfile === 'very_sour' || tasteProfile === 'sour') {
@@ -415,7 +437,8 @@ export function buildNicheFallbackReason({
     if (isTimeInRange && isBalancedTaste(tasteProfile) && !severeChoke) {
       return 'KEEP GRIND — Balanced and in range.';
     }
-    return 'Comparable Niche shots disagree on how the dial affects time — keeping your current dial until the pattern is clearer.';
+    const label = grinderShortName ? `${grinderShortName} ` : '';
+    return `Comparable ${label}shots disagree on how the dial affects time — keeping your current dial until the pattern is clearer.`;
   }
   if (reasonCode === 'excessive_adjustment' || reasonCode === 'implausible_slope') {
     if (isTimeInRange && isBalancedTaste(tasteProfile) && !severeChoke) {
@@ -426,7 +449,7 @@ export function buildNicheFallbackReason({
   if (reasonCode === 'boundary') {
     return 'Recommendation would move past the dial limit — adjust manually in small steps at the boundary.';
   }
-  return 'Insufficient reliable Niche history for a numeric dial step — qualitative timing guidance only.';
+  return 'Insufficient reliable shot history for a numeric dial step — qualitative timing guidance only.';
 }
 
 export { TIMING_BOUNDED_UNRELIABLE_CODES };

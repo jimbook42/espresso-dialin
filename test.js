@@ -47,6 +47,14 @@ import { runIsaacB2SetteRegressionTests } from './src/utils/isaacB2SetteRegressi
 import { runTicket614NicheLearningTests } from './src/utils/ticket614NicheLearning.test.js';
 import { runGrindControlsTests } from './src/components/grindControls.test.js';
 import { runCustomGrinderTests } from './src/grinders/customGrinder.test.js';
+import { runPresetGrindersTests } from './src/grinders/presetGrinders/presetGrinders.test.js';
+import { runFreshBeanPresetIntegrationTests } from './src/grinders/presetGrinders/freshBeanPresetIntegration.test.js';
+import { runGrindDial617IntegrationTests } from './src/grinders/grindDial617.integration.test.js';
+import { runNicheEligibilityTests } from './src/grinders/nicheEligibility.test.js';
+import { runPresetGrinderShiftSanity618Tests } from './src/grinders/presetGrinderShiftSanity618.test.js';
+import { runGrind618Repair1Tests } from './src/grinders/grind618Repair1.test.js';
+import { runAcaiaProtocolTests } from './src/scales/protocols/acaia.test.js';
+import { runBookooMiniProtocolTests } from './src/scales/protocols/bookooMini.test.js';
 import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
 import { runFirstLaunchRenderGateTests } from './src/settings/firstLaunchRenderGate.test.js';
 import { runAppEntryTests } from './src/appEntry.test.js';
@@ -577,6 +585,14 @@ async function runTests() {
   await runTicket614NicheLearningTests();
   runGrindControlsTests();
   runCustomGrinderTests();
+  runPresetGrindersTests();
+  runFreshBeanPresetIntegrationTests();
+  runGrindDial617IntegrationTests();
+  runNicheEligibilityTests();
+  runPresetGrinderShiftSanity618Tests();
+  runGrind618Repair1Tests();
+  runAcaiaProtocolTests();
+  runBookooMiniProtocolTests();
   runOnboardingGateTests();
   runFirstLaunchRenderGateTests();
   runAppEntryTests();
@@ -1197,6 +1213,7 @@ function runDecafRegressionTests() {
     'evidenceContext',
     'flairWaterTempAdvice',
     'grindSettingHeld',
+    'inputGrind',
     'outlierGrindHeld',
     'reason',
     'recommendedSetting',

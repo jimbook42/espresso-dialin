@@ -25,7 +25,13 @@ const MIN_OBS_FOR_FULL_CONFIDENCE = 5;
 /** Below this, learned seconds-per-step is not trusted — use default grinder sensitivity (uncapped). */
 export const LEARNED_SENSITIVITY_MIN_CONFIDENCE = 0.45;
 export { GRIND_SHIFT_DAMPING, HIGH_LEARNED_CONFIDENCE_THRESHOLD } from './grindShiftDamping.js';
-export { proportionalGrindShiftFromTimeDelta, applyGrindShiftDamping } from './grindShiftDamping.js';
+export {
+  proportionalGrindShiftFromTimeDelta,
+  applyGrindShiftDamping,
+  capQuantitativeGrindShift,
+  applyMinimumQuantitativeShift,
+  maxQuantitativeShiftSteps,
+} from './grindShiftDamping.js';
 
 export const KNOWN_ISSUE_OUTLIER_HINT =
   'If this was puck prep or another one-off, mark it as a known issue in History to leave it out.';
@@ -74,10 +80,25 @@ export function grindNumericFromShot(shot, grinderProfile) {
   return Number.isFinite(num) ? num : null;
 }
 
+/**
+ * Default seconds-per-engine-step for quantitative presets.
+ * Catalog sensitivity is seconds per one labeled dial unit; fractional steps scale down.
+ */
+export function effectiveQuantitativeSensitivity(grinderProfile) {
+  const base = grinderProfile?.sensitivity;
+  const step = grinderProfile?.customProfile?.step;
+  if (!Number.isFinite(base)) return 4.5;
+  if (Number.isFinite(step) && step > 0 && step < 1) {
+    return base / step;
+  }
+  return base;
+}
+
 function nearGrindTolerance(grinderProfile) {
   if (grinderProfile.controlType === 'sette') return NEAR_GRIND_NUMERIC_TOLERANCE.sette;
   if (grinderProfile.controlType === 'sunbeam') return NEAR_GRIND_NUMERIC_TOLERANCE.sunbeam;
   if (grinderProfile.controlType === 'custom') return 1;
+  if (['presetStepped', 'presetStepless', 'fellowOpus1'].includes(grinderProfile.controlType)) return 1;
   return NEAR_GRIND_NUMERIC_TOLERANCE.niche;
 }
 
@@ -328,7 +349,7 @@ export function sensitivityConfidenceForQuantitativeGrinder(
     }
   }
 
-  const fallbackSensitivity = grinderProfile.sensitivity;
+  const fallbackSensitivity = effectiveQuantitativeSensitivity(grinderProfile);
   const reliableLearnedSensitivity = hasReliableLearnedSensitivity(estimate);
   const secondsPerStep =
     reliableLearnedSensitivity && estimate.secondsPerStep !== null
@@ -372,7 +393,11 @@ export function grindNumericFromShotData(shotData, grinderProfile, settings = nu
   if (isNicheZeroGrinderModel(shotData.grinderModel)) {
     return parseNicheZeroSetting(shotData.nicheZeroSetting, settings);
   }
-  if (shotData.customGrindValue != null && grinderProfile?.controlType === 'custom') {
+  if (
+    shotData.customGrindValue != null
+    && grinderProfile
+    && ['custom', 'presetStepped', 'presetStepless', 'fellowOpus1'].includes(grinderProfile.controlType)
+  ) {
     return grindNumericFromShot(shotData, grinderProfile);
   }
   return grindNumericFromShot(shotData, grinderProfile);

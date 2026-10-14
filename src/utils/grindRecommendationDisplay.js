@@ -2,6 +2,10 @@ import {
   formatRecommendedGrindDisplay,
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
+import {
+  dialBoundaryAdvisoryForRecommendation,
+  dialLimitReachedNote,
+} from '../grinders/dialBoundaryAdvisory.js';
 import { KNOWN_ISSUE_CHOKE_HINT, KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
 
 const REASON_SPLIT = /—|–/;
@@ -66,11 +70,29 @@ export function formatGrindRecommendationSummary(grinderModel, rec, settings = n
   why = stripKnownIssueHint(why);
   const estimatedLabel = estimated ? 'Estimated' : '';
 
-  if (isNicheZeroGrinderModel(grinderModel)) {
-    const parts = [estimatedLabel, direction, why, targetSetting ? `Target dial: ${targetSetting}` : ''].filter(Boolean);
+  const boundary = dialBoundaryAdvisoryForRecommendation(grinderModel, rec, settings);
+  if (boundary) {
+    const parts = [estimatedLabel, boundary.headline, boundary.detail].filter(Boolean);
     return parts.join(' · ');
   }
 
-  const parts = [estimatedLabel, direction, why, targetSetting ? `Target setting: ${targetSetting}` : ''].filter(Boolean);
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    const limitNote = dialLimitReachedNote(grinderModel, rec, settings);
+    const parts = [
+      estimatedLabel,
+      direction,
+      why,
+      targetSetting ? `Target dial: ${targetSetting}${limitNote}` : '',
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }
+
+  const limitNote = dialLimitReachedNote(grinderModel, rec, settings);
+  const parts = [
+    estimatedLabel,
+    direction,
+    why,
+    targetSetting ? `Target setting: ${targetSetting}${limitNote}` : '',
+  ].filter(Boolean);
   return parts.join(' · ');
 }

@@ -18,7 +18,7 @@ import {
   filterShotsForGrinderModelLearning,
   shotMatchesGrinderForLearning,
   findLatestShotForBeanAndGrinder,
-  recomputeNicheRecommendationFromLastShot,
+  recomputeReferenceLearningRecommendationFromLastShot,
   recomputeQuantitativeRecommendationFromLastShot,
   grinderSupportsQuantitativeRecommendations,
   shouldUsePreviousRecipeRecommendation,
@@ -46,6 +46,7 @@ import {
   grinderPickerValueForSettings,
   resolveActiveGrinderModel,
   isCustomGrinderModel,
+  isPresetGrinderModel,
   isSunbeamGrinderModel,
   isNicheZeroGrinderModel,
   NICHE_ZERO_GRINDER_ID,
@@ -55,6 +56,17 @@ import {
   persistedSettingsPatchFromRecommendation,
   uiStateFromRecommendedSetting,
 } from './grinders/grinderRegistry.js';
+import {
+  BCG820_GRINDER_ID,
+  ENCORE_ESP_GRINDER_ID,
+  getPresetGrinderSpec,
+} from './grinders/presetGrinders/index.js';
+import { defaultPresetGrindValue } from './grinders/presetGrinders/dial.js';
+import {
+  getGrindUiForBeanGrinder,
+  grindUiSnapshotFromControls,
+  patchGrindUiForBeanGrinder,
+} from './grinders/grindDialByBean.js';
 import {
   defaultCustomGrindValue,
   isCustomGrinderFormValid,
@@ -306,7 +318,7 @@ export default function App() {
   const [setteMicro, setSetteMicro] = useState('E');
   const [sunbeamSetting, setSunbeamSetting] = useState(15);
   const [nicheZeroSetting, setNicheZeroSetting] = useState(15);
-  const [customGrindValue, setCustomGrindValue] = useState(15);
+  const [customGrindValue, setCustomGrindValue] = useState(null);
   const [wasPurged, setWasPurged] = useState(true);
   const [actualDoseG, setActualDoseG] = useState(18);
   const [actualYieldG, setActualYieldG] = useState('');
@@ -383,12 +395,8 @@ export default function App() {
       if (settingsSetting.preInfusionEnabled !== undefined) setUsePreInfusion(settingsSetting.preInfusionEnabled);
       if (settingsSetting.darkMode !== undefined) setDarkMode(settingsSetting.darkMode);
       if (isCustomGrinderModel(grinderModelFromSettings, settingsSetting)) {
-        const profile = normalizeCustomGrinderProfile(settingsSetting.customGrinder);
-        if (profile && syncedSettingsCustomGrinderRef.current !== grinderModelFromSettings) {
+        if (syncedSettingsCustomGrinderRef.current !== grinderModelFromSettings) {
           syncedSettingsCustomGrinderRef.current = grinderModelFromSettings;
-          setCustomGrindValue(
-            settingsSetting.lastCustomGrindValue ?? defaultCustomGrindValue(profile)
-          );
         }
       }
       });
@@ -433,6 +441,7 @@ export default function App() {
 
   const timemoreScale = useTimemoreScale({
     enabled: scaleFeatureEnabled,
+    scaleDeviceId: normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId),
     targetYieldG: activeRecipe?.targetYieldG || 36,
     usePreInfusion: hookUsePreInfusion,
     preInfusionDurationS: hookUsePreInfusion
@@ -631,59 +640,82 @@ export default function App() {
     if (key) delete pendingGrindByKeyRef.current[key];
   };
 
+  const persistGrindUiToSettings = async (model, uiSnapshot) => {
+    if (!activeBean?.id || !model || !uiSnapshot) return;
+    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    const patch = patchGrindUiForBeanGrinder(
+      currentSettings,
+      activeBean.id,
+      model,
+      uiSnapshot
+    );
+    if (Object.keys(patch).length === 0) return;
+    await db.settings.put({ ...currentSettings, ...patch });
+  };
+
   const handleSetteMacroChange = (value) => {
     setSetteMacro(value);
-    stashPendingGrind(grinderModel, activeBean?.id, {
+    const snap = grindUiSnapshotFromControls({
       setteMacro: value,
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting,
       customGrindValue,
     });
+    stashPendingGrind(grinderModel, activeBean?.id, snap);
+    void persistGrindUiToSettings(grinderModel, snap);
   };
 
   const handleSetteMicroChange = (value) => {
     setSetteMicro(value);
-    stashPendingGrind(grinderModel, activeBean?.id, {
+    const snap = grindUiSnapshotFromControls({
       setteMacro,
       setteMicro: value,
       sunbeamSetting,
       nicheZeroSetting,
       customGrindValue,
     });
+    stashPendingGrind(grinderModel, activeBean?.id, snap);
+    void persistGrindUiToSettings(grinderModel, snap);
   };
 
   const handleSunbeamChange = (value) => {
     setSunbeamSetting(value);
-    stashPendingGrind(grinderModel, activeBean?.id, {
+    const snap = grindUiSnapshotFromControls({
       setteMacro,
       setteMicro,
       sunbeamSetting: value,
       nicheZeroSetting,
       customGrindValue,
     });
+    stashPendingGrind(grinderModel, activeBean?.id, snap);
+    void persistGrindUiToSettings(grinderModel, snap);
   };
 
   const handleNicheZeroChange = (value) => {
     setNicheZeroSetting(value);
-    stashPendingGrind(grinderModel, activeBean?.id, {
+    const snap = grindUiSnapshotFromControls({
       setteMacro,
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting: value,
       customGrindValue,
     });
+    stashPendingGrind(grinderModel, activeBean?.id, snap);
+    void persistGrindUiToSettings(grinderModel, snap);
   };
 
   const handleCustomGrindChange = (value) => {
     setCustomGrindValue(value);
-    stashPendingGrind(grinderModel, activeBean?.id, {
+    const snap = grindUiSnapshotFromControls({
       setteMacro,
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting,
       customGrindValue: value,
     });
+    stashPendingGrind(grinderModel, activeBean?.id, snap);
+    void persistGrindUiToSettings(grinderModel, snap);
   };
 
   useEffect(() => {
@@ -750,6 +782,15 @@ export default function App() {
       });
     }
     const currentSettings = await db.settings.get('global') || { id: 'global' };
+    if (isPresetGrinderModel(model) && activeBean?.id) {
+      const spec = getPresetGrinderSpec(model);
+      const persisted = getGrindUiForBeanGrinder(currentSettings, activeBean.id, model);
+      if (spec) {
+        setCustomGrindValue(
+          persisted?.customGrindValue ?? defaultPresetGrindValue(spec)
+        );
+      }
+    }
     if (typeof flairChoice === 'boolean') setFlairEnabled(flairChoice);
     if (typeof preInfusionChoice === 'boolean') setUsePreInfusion(preInfusionChoice);
     const nextSettings = {
@@ -1352,7 +1393,18 @@ export default function App() {
 
     try {
       await db.shots.add(shotRecord);
+      await persistGrindUiToSettings(
+        logGrinderModel,
+        grindUiSnapshotFromControls({
+          setteMacro: finalMacro,
+          setteMicro: finalMicro,
+          sunbeamSetting: finalSunbeam,
+          nicheZeroSetting: finalNicheZero,
+          customGrindValue: finalCustomGrind,
+        })
+      );
       clearPendingGrind(activeBean.id, grinderModel);
+      setApplyRecConfirmation('');
 
       setActualTimeS('');
       if (activeRecipe?.targetDoseG != null && activeRecipe.targetDoseG !== '') {
@@ -1402,12 +1454,11 @@ export default function App() {
     && lastLearningShot.grinderModel === grinderModel
       ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate, appSettings)
       : null;
-  const liveNicheRec =
+  const liveReferenceLearningRec =
     !usePreviousRecipeRecommendation
-    && isNicheZeroGrinderModel(grinderModel)
     && lastLearningShot
     && activeRecipe
-      ? recomputeNicheRecommendationFromLastShot(
+      ? recomputeReferenceLearningRecommendationFromLastShot(
           lastLearningShot,
           activeRecipe,
           beanShotsForGrinder,
@@ -1438,11 +1489,11 @@ export default function App() {
         originalReason: lastLoggedShot.recommendation?.reason ?? previousRecipeRec.originalReason,
         previousRecipeDisclaimer: PREVIOUS_RECIPE_REC_DISCLAIMER,
       }
-    : liveNicheRec
+    : liveReferenceLearningRec
       ? {
-          ...liveNicheRec,
+          ...liveReferenceLearningRec,
           ageWarning: ageAdjustedRec?.ageWarning ?? null,
-          originalReason: liveNicheRec.reason,
+          originalReason: liveReferenceLearningRec.reason,
         }
       : liveQuantitativeRec
         ? {
@@ -1499,6 +1550,19 @@ export default function App() {
     return baseline !== null ? 'roast-baseline' : 'app-default';
   })();
 
+  const effectiveCustomGrindValue = (() => {
+    if (customGrindValue !== null && customGrindValue !== '') return customGrindValue;
+    if (isPresetGrinderModel(grinderModel)) {
+      const spec = getPresetGrinderSpec(grinderModel);
+      if (spec) return defaultPresetGrindValue(spec);
+    }
+    if (isCustomGrinderModel(grinderModel, appSettings)) {
+      const profile = normalizeCustomGrinderProfile(appSettings?.customGrinder);
+      if (profile) return defaultCustomGrindValue(profile);
+    }
+    return 15;
+  })();
+
   const currentGrindLabel = formatCurrentGrindLabel(
     grinderModel,
     {
@@ -1506,7 +1570,7 @@ export default function App() {
       setteMicro,
       sunbeamSetting,
       nicheZeroSetting,
-      customGrindValue,
+      customGrindValue: effectiveCustomGrindValue,
     },
     appSettings
   );
@@ -1579,7 +1643,12 @@ export default function App() {
       });
       await db.settings.put({
         ...currentSettings,
-        ...persistedSettingsPatchFromRecommendation(applyGrinder, recSet, appSettings),
+        ...persistedSettingsPatchFromRecommendation(
+          applyGrinder,
+          recSet,
+          currentSettings,
+          activeBean?.id
+        ),
       });
     }
 
@@ -1632,7 +1701,9 @@ export default function App() {
       if (result.nicheCalibrationNotice) {
         parts.push(result.nicheCalibrationNotice);
       }
-      setCsvImportSummary(parts.join(', ') + '.');
+      const summary = parts.join(', ');
+      setCsvImportSummary(summary.endsWith('.') ? summary : `${summary}.`);
+      void patchBrewGuidanceSettings({ brewGuideGraduationSuppressed: true });
       window.setTimeout(() => setCsvImportSummary(''), 8000);
     } catch (err) {
       setCsvImportSummary(err?.message || 'Import failed.');
@@ -1935,7 +2006,13 @@ export default function App() {
         
         <header className={`flex items-center justify-between pb-5 mb-6 border-b ${ui.headerBorder}`}>
           <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick} title="Espresso Dial-In">
-            <img src="/logo.jpg" alt="Logo" className="w-8 h-8 rounded-full object-cover ring-1 ring-[#2e2b26]" />
+            <img
+              src={darkMode ? '/logo-header-dark.svg' : '/logo-header-light.svg'}
+              alt="Espresso Dial-In"
+              width={32}
+              height={32}
+              className="w-8 h-8"
+            />
             <div>
               <h1 className={`text-base font-bold ${ui.text} tracking-tight leading-none`}>Espresso Dial-In</h1>
               <p className={`text-[10px] ${ui.muted} tracking-widest uppercase mt-0.5`}>Precision dial-in</p>
@@ -2261,7 +2338,7 @@ export default function App() {
                       setteMicro={setteMicro}
                       sunbeamSetting={sunbeamSetting}
                       nicheZeroSetting={nicheZeroSetting}
-                      customGrindValue={customGrindValue}
+                      customGrindValue={effectiveCustomGrindValue}
                       onSetteMacroChange={handleSetteMacroChange}
                       onSetteMicroChange={handleSetteMicroChange}
                       onSunbeamChange={handleSunbeamChange}
@@ -3235,6 +3312,47 @@ export default function App() {
                       </p>
                     </div>
                   )}
+                  {(settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting))
+                    === BCG820_GRINDER_ID && (
+                    <div className="space-y-2 border-t border-[rgba(255,255,255,0.06)] pt-3">
+                      <label className={`block ${ui.fieldLabel}`}>Upper burr position (optional)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={settingsSetting?.bcg820UpperBurr ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          void patchBrewGuidanceSettings({
+                            bcg820UpperBurr: raw === '' ? undefined : Number(raw),
+                          });
+                        }}
+                        placeholder="Factory default ~6"
+                        className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                      />
+                    </div>
+                  )}
+                  {(settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting))
+                    === ENCORE_ESP_GRINDER_ID && (
+                    <div className="space-y-2 border-t border-[rgba(255,255,255,0.06)] pt-3">
+                      <label className={`block ${ui.fieldLabel}`}>Shims installed (optional diagnostic)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={4}
+                        value={settingsSetting?.encoreEspShims ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          void patchBrewGuidanceSettings({
+                            encoreEspShims: raw === '' ? undefined : Number(raw),
+                          });
+                        }}
+                        placeholder="0"
+                        className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
+                      />
+                      <p className={`text-[10px] ${ui.muted}`}>Each shim shifts the effective range by about five settings.</p>
+                    </div>
+                  )}
                   {settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID && (
                     <div className="space-y-2">
                       <CustomGrinderForm
@@ -3387,7 +3505,15 @@ export default function App() {
               <div className={`shrink-0 p-6 pt-3 border-t ${ui.modalDivider} ${ui.card}`}>
                 <button
                   type="button"
-                  onClick={() => setIsSettingsOpen(false)}
+                  onClick={() => {
+                    if (
+                      settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID
+                      && isCustomGrinderFormValid(settingsCustomGrinderDraft)
+                    ) {
+                      void handleSaveCustomGrinderFromSettings();
+                    }
+                    setIsSettingsOpen(false);
+                  }}
                   className={`w-full ${currentTheme.primary} font-bold py-3 rounded-xl text-sm shadow`}
                 >
                   Save & Close

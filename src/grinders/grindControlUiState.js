@@ -1,6 +1,7 @@
 import { getInitialGrindRecommendation, shotEligibleForLearning } from '../utils/grinderLogic.js';
 import { shotMatchesGrinderForLearning } from './grinderLearningMatch.js';
-import { uiStateFromInitialRecommendation, uiStateFromLastShot } from './grinderRegistry.js';
+import { isPresetGrinderModel, uiStateFromInitialRecommendation, uiStateFromLastShot } from './grinderRegistry.js';
+import { getGrindUiForBeanGrinder } from './grindDialByBean.js';
 
 /**
  * Grind control UI state when bean/grinder context changes.
@@ -25,6 +26,11 @@ export function resolveGrindControlUiState({
   settings = null,
 }) {
   if (!activeBean || !grinderModel) return null;
+
+  const persisted = getGrindUiForBeanGrinder(settings, activeBean.id, grinderModel);
+  if (persisted && Object.keys(persisted).length > 0) {
+    return persisted;
+  }
 
   const currentBeanShots = shots.filter(
     (s) =>
