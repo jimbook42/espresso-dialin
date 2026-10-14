@@ -25,7 +25,7 @@ export function resolveReferenceLearningDialIO(grinderModel, settings = null) {
       buildRecommendedSetting(dial) {
         return { nicheZeroSetting: dial };
       },
-      grinderLabel: 'Niche',
+      grinderLabel: 'Niche Zero',
     };
   }
   const def = getPresetGrinderDefinition(grinderModel);

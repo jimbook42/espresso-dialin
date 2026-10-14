@@ -801,9 +801,11 @@ function buildNicheZeroQualitativeReason({
   isTimeInRange,
   tasteProfile,
   timeDelta,
+  grinderShortName = null,
 }) {
   if (severeChoke) {
-    return 'SEVERE CHOKE — Grind substantially coarser on the Niche dial (higher number). Dial step size is not auto-calibrated in this app.';
+    const dialRef = grinderShortName ? `${grinderShortName} dial` : 'dial';
+    return `SEVERE CHOKE — Grind substantially coarser on the ${dialRef} (higher number). Dial step size is not auto-calibrated in this app.`;
   }
   if (isTimeInRange) {
     if (tasteProfile === 'very_sour') {
@@ -827,7 +829,7 @@ function buildNicheZeroQualitativeReason({
   return `Shot was ${secOff}s slow — consider grinding coarser (higher dial number). Timing guidance only; dial steps are not auto-calibrated.`;
 }
 
-function nicheSupplementalLearningNote(empirical, nicheEligibility) {
+function nicheSupplementalLearningNote(empirical, nicheEligibility, grinderModel, settings = null) {
   if (empirical.ok || !empirical.reasonCode) return null;
   if (!['insufficient_observations', 'insufficient_variation'].includes(empirical.reasonCode)) {
     return null;
@@ -844,9 +846,11 @@ function nicheSupplementalLearningNote(empirical, nicheEligibility) {
     return buildNicheEligibilityLearningNote(nicheEligibility, empirical.reasonCode, {
       recipeComparableCount: nicheEligibility.counts.recipeMatched,
       grinderLearningShotCount: nicheEligibility.counts.grinderMatched,
+      grinderModel,
+      settings,
     });
   }
-  return `${transparency} — ${buildNicheEligibilityCompactCounts(nicheEligibility)}`;
+  return `${transparency} — ${buildNicheEligibilityCompactCounts(nicheEligibility, grinderModel, settings)}`;
 }
 
 export function calculateRecommendation(shotData, recipe, recentShots = [], flairEnabled = false, options = {}) {
@@ -936,6 +940,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
   const referenceDialIO = resolveReferenceLearningDialIO(grinderModel, settings);
   if (usesReferenceDialLearning(grinderModel, settings)) {
+    const grinderShortName = referenceDialIO?.grinderLabel ?? null;
     const dialRaw =
       grinderModel === NICHE_ZERO_GRINDER_ID ? nicheZeroSetting : customGrindValue;
     const currentDial =
@@ -1036,6 +1041,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         shift,
         secondsPerMark: empirical.secondsPerMark,
         keepGrind: empirical.keepGrind || shift === 0,
+        grinderShortName,
       });
       if (
         outlierCheck.isOutlier
@@ -1074,7 +1080,12 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
         if (shift !== 0) {
           usedTimingBounded = true;
           nicheEvidenceMode = 'timing-bounded';
-          nicheLearningNote = nicheSupplementalLearningNote(empirical, nicheEligibility);
+          nicheLearningNote = nicheSupplementalLearningNote(
+            empirical,
+            nicheEligibility,
+            grinderModel,
+            settings
+          );
           reason = buildNicheTimingBoundedReason({
             recommendedDial,
             shift,
@@ -1098,6 +1109,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
           tasteProfile,
           timeDelta,
           reasonCode: empirical.reasonCode,
+          grinderShortName,
         });
         if (!reason) {
           reason = buildNicheZeroQualitativeReason({
@@ -1105,9 +1117,15 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
             isTimeInRange,
             tasteProfile,
             timeDelta,
+            grinderShortName,
           });
         }
-        nicheLearningNote = nicheSupplementalLearningNote(empirical, nicheEligibility);
+        nicheLearningNote = nicheSupplementalLearningNote(
+          empirical,
+          nicheEligibility,
+          grinderModel,
+          settings
+        );
         if (
           outlierCheck.isOutlier
           && !(isTimeInRange && isBalancedTaste(tasteProfile) && shift === 0)

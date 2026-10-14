@@ -379,7 +379,7 @@ export function runNicheZeroTests() {
   );
   assert.equal(qualitativeOnly.nicheEvidenceMode, 'qualitative-fallback');
   assert.ok(qualitativeOnly.nicheLearningNote);
-  assert.match(qualitativeOnly.nicheLearningNote, /Niche shots/i);
+  assert.match(qualitativeOnly.nicheLearningNote, /Niche Zero shots/i);
   assert.ok(qualitativeOnly.nicheEligibility);
 
   const recipeChangedShot = nicheShot({
@@ -435,7 +435,7 @@ export function runNicheZeroTests() {
     false
   );
   assert.ok(liveThree.nicheLearningNote);
-  assert.match(liveThree.nicheLearningNote, /3 Niche shots/);
+  assert.match(liveThree.nicheLearningNote, /3 Niche Zero shots/);
   assert.match(liveThree.nicheLearningNote, /3 match recipe/);
 
   const loggingThird = calculateRecommendation(
@@ -452,7 +452,7 @@ export function runNicheZeroTests() {
     BASE_RECIPE,
     threeSameDialPool.slice(0, 2)
   );
-  assert.match(loggingThird.nicheLearningNote, /3 Niche shots/);
+  assert.match(loggingThird.nicheLearningNote, /3 Niche Zero shots/);
 
   const oldRecipeShots = [
     nicheShot({

@@ -380,6 +380,24 @@ export function getUiGrinderPresentation(grinderModel, settings = null) {
   return sunbeamDefinition;
 }
 
+/** Badge-style short name for user-facing copy (e.g. comparables line). */
+export function grinderShortDisplayName(grinderModel, settings = null) {
+  const label = getUiGrinderPresentation(grinderModel, settings)?.shortBadgeLabel;
+  const trimmed = typeof label === 'string' ? label.trim() : '';
+  return trimmed || null;
+}
+
+/** e.g. "25 Speedy shots" or "1 shot" when no short badge label exists. */
+export function formatGrinderMatchedShotCount(count, grinderModel, settings = null) {
+  const n = Number(count);
+  if (!Number.isFinite(n)) return '0 shots';
+  const short = grinderShortDisplayName(grinderModel, settings);
+  if (short) {
+    return n === 1 ? `1 ${short} shot` : `${n} ${short} shots`;
+  }
+  return n === 1 ? '1 shot' : `${n} shots`;
+}
+
 export function defaultBrewTemperatureForGrinder(grinderModel) {
   return getUiGrinderPresentation(grinderModel).defaultBrewTemperatureC;
 }
