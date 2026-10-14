@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isScaleSimPickerEnabled } from '../config/scaleFlag.js';
+import { isDevUrlSimScaleActive } from '../config/devUrlSimScale.js';
 import { createScaleSession } from './scaleSession.js';
 import {
   addedMassSinceStartG,
@@ -33,7 +34,8 @@ export function useTimemoreScale({
   usePreInfusion = false,
   preInfusionDurationS = 8,
 }) {
-  const simAllowed = enabled && isScaleSimPickerEnabled();
+  const devUrlSim = enabled && isDevUrlSimScaleActive();
+  const simAllowed = enabled && (isScaleSimPickerEnabled() || devUrlSim);
   const bleAvailable = isWebBluetoothAvailable();
 
   const [transportKind, setTransportKind] = useState('sim');
@@ -118,10 +120,11 @@ export function useTimemoreScale({
       return createSimulatedTransport({
         targetYieldG: Number(targetYieldG) || 36,
         preinfusionDurationS: usePreInfusion ? preInfusionDurationS : 0,
+        dripAfterStopS: devUrlSim ? 2.5 : 0,
       });
     }
     return createBluetoothScaleTransport(scaleDeviceId);
-  }, [transportKind, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS]);
+  }, [transportKind, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS, devUrlSim]);
 
   const connect = useCallback(async () => {
     if (!enabled) return;
@@ -143,6 +146,14 @@ export function useTimemoreScale({
       transportRef.current = null;
     }
   }, [enabled, disposeTransport, buildTransport, attachSession, resetShotWeightTracking]);
+
+  const devUrlAutoConnectRef = useRef(false);
+  useEffect(() => {
+    if (!devUrlSim || devUrlAutoConnectRef.current) return;
+    devUrlAutoConnectRef.current = true;
+    setTransportKind('sim');
+    void connect();
+  }, [devUrlSim, connect]);
 
   const disconnect = useCallback(async () => {
     setConnectStatus('idle');

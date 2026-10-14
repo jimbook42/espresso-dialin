@@ -80,6 +80,7 @@ import {
 } from './settings/firstLaunchRenderGate.js';
 import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
 import { writeCachedGlobalSettings } from './settings/settingsLocalCache.js';
+import { isDevUrlSimScaleActive } from './config/devUrlSimScale.js';
 import {
   isSmartScaleIntegrationActive,
   listSmartScalePickerOptions,
@@ -292,7 +293,8 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
-  const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting);
+  const devUrlSimScaleActive = isDevUrlSimScaleActive();
+  const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
   const [shotCountdownValue, setShotCountdownValue] = useState(null);
   const shotCountdownStartOptsRef = useRef(null);
@@ -301,6 +303,7 @@ export default function App() {
   const yieldSettleTimerRef = useRef(null);
   const [basketChangePromptOpen, setBasketChangePromptOpen] = useState(false);
   const [pendingBasketAdjustment, setPendingBasketAdjustment] = useState(null);
+  const [appliedRecommendationDisplay, setAppliedRecommendationDisplay] = useState(null);
   const appSettings = settingsSetting;
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
@@ -598,7 +601,8 @@ export default function App() {
   }, [timemoreScale]);
 
   const handleStartTimer = async ({ fromBrewGuide = false, tareAlreadyDone = false } = {}) => {
-    if (!fromBrewGuide) syncBrewGuideTimerActive(false);
+    if (fromBrewGuide) syncBrewGuideTimerActive(true);
+    else syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -612,10 +616,14 @@ export default function App() {
   };
 
   const cancelShotCountdown = useCallback(() => {
+    const opts = shotCountdownStartOptsRef.current;
     setShotCountdownValue(null);
     shotCountdownStartOptsRef.current = null;
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
+    }
+    if (opts?.fromBrewGuide) {
+      syncBrewGuideTimerActive(false);
     }
   }, [timemoreScale]);
 
@@ -728,6 +736,7 @@ export default function App() {
   };
 
   const handleResetTimer = () => {
+    cancelShotCountdown();
     scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
@@ -1527,6 +1536,7 @@ export default function App() {
       clearPendingGrind(activeBean.id, grinderModel);
       setApplyRecConfirmation('');
       setPendingBasketAdjustment(null);
+      setAppliedRecommendationDisplay(null);
 
       setActualTimeS('');
       if (activeRecipe?.targetDoseG != null && activeRecipe.targetDoseG !== '') {
@@ -1790,6 +1800,7 @@ export default function App() {
     }
 
     setPendingBasketAdjustment(null);
+    setAppliedRecommendationDisplay(appliedLabel);
     setApplyRecConfirmation(`Grind set to ${appliedLabel}.`);
     window.setTimeout(() => setApplyRecConfirmation(''), 4000);
   };
@@ -1881,6 +1892,7 @@ export default function App() {
   })();
 
   const recommendedGrindDisplay = (() => {
+    if (appliedRecommendationDisplay) return appliedRecommendationDisplay;
     if (lastLearningShot && lastLearningShot.grinderModel === grinderModel && displayDynamicRec?.recommendedSetting) {
       return formatRecommendedGrindDisplay(grinderModel, displayDynamicRec.recommendedSetting, appSettings);
     }
@@ -1907,10 +1919,11 @@ export default function App() {
   };
 
   const handleBrewStartTimer = () => {
-    syncBrewGuideTimerActive(true);
     setActualTimeS('');
     requestStartTimer({ fromBrewGuide: true });
   };
+
+  const shotCountdownActive = shotCountdownValue != null && shotCountdownValue > 0;
 
   const handleBrewResetTimer = () => {
     syncBrewGuideTimerActive(false);
@@ -2507,7 +2520,7 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                    {scaleFeatureEnabled && (
+                    {scaleFeatureEnabled && !devUrlSimScaleActive && (
                       <ScaleTimerControls
                         ui={ui}
                         simAllowed={timemoreScale.simAllowed}
@@ -2745,6 +2758,7 @@ export default function App() {
             onAccessoriesOpenHandled={handleAccessoriesOpenHandled}
             timer={{
               running: timerRunning,
+              countdownActive: shotCountdownActive,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
               usePreInfusion,
               preInfusionPhase,

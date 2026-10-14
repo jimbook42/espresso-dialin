@@ -29,6 +29,7 @@ import { runBeanRecipeResolutionTests } from './src/utils/beanRecipeResolution.t
 import { runCsvTimestampTests } from './src/utils/csvTimestamp.test.js';
 import { runCsvRoundTripTests } from './src/utils/csvRoundTrip.test.js';
 import { runBrewGuideTests } from './src/brewGuide/steps.test.js';
+import { runBrewGuideExtractPhaseTests } from './src/brewGuide/brewGuideExtractPhase.test.js';
 import { runNicheZeroTests } from './src/grinders/nicheZero.test.js';
 import { runBrewGuidanceTests } from './src/brewGuide/guidance.test.js';
 import { runFlairPressureLabTests } from './src/flairPressureLab/gaugeConfig.test.js';
@@ -616,6 +617,7 @@ async function runTests() {
   await runScaleShotBaselineTests();
   runRecommendationIntegrityTests();
   runBrewGuideTests();
+  runBrewGuideExtractPhaseTests();
   runBrewGuidanceTests();
   runFlairPressureLabTests();
   runDecafRegressionTests();

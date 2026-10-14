@@ -31,6 +31,13 @@ import {
 } from './AccessoryIcons';
 import { BREW_GUIDANCE_MODES } from '../brewGuide/guidance';
 import { getBrewGuideMachinePackage } from '../brewGuide/grinderBrewGuide';
+import {
+  BREW_EXTRACT_ARMING,
+  BREW_EXTRACT_IDLE,
+  BREW_EXTRACT_RUNNING,
+  BREW_EXTRACT_STOPPED,
+  syncBrewExtractPhaseWithTimer,
+} from '../brewGuide/brewGuideExtractPhase.js';
 import { isSunbeamGrinderModel } from '../grinders/grinderRegistry.js';
 import {
   BREW_ACCESSORIES,
@@ -255,7 +262,13 @@ export function BrewGuide({
   onOpenBeans,
   hasActiveBean = true,
   dial,
-  timer = { running: false, label: '0:00.0', usePreInfusion: false, preInfusionPhase: false },
+  timer = {
+    running: false,
+    countdownActive: false,
+    label: '0:00.0',
+    usePreInfusion: false,
+    preInfusionPhase: false,
+  },
   onStartTimer = () => {},
   onStopTimer = () => null,
   onResetTimer = () => {},
@@ -279,7 +292,7 @@ export function BrewGuide({
   const stepHeaderRef = useRef(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [extractPhase, setExtractPhase] = useState('idle');
+  const [extractPhase, setExtractPhase] = useState(BREW_EXTRACT_IDLE);
   const [capturedTime, setCapturedTime] = useState(null);
   const [yieldInput, setYieldInput] = useState('');
 
@@ -304,10 +317,18 @@ export function BrewGuide({
     return () => onTimerHost(false);
   }, [screen, step?.kind, onTimerHost]);
 
+  useEffect(() => {
+    const next = syncBrewExtractPhaseWithTimer(extractPhase, {
+      timerRunning: timer.running,
+      countdownActive: timer.countdownActive,
+    });
+    if (next !== extractPhase) setExtractPhase(next);
+  }, [extractPhase, timer.running, timer.countdownActive]);
+
   const abortRunningExtract = () => {
-    if (extractPhase !== 'running') return;
+    if (extractPhase !== BREW_EXTRACT_RUNNING && extractPhase !== BREW_EXTRACT_ARMING) return;
     onResetTimer();
-    setExtractPhase('idle');
+    setExtractPhase(BREW_EXTRACT_IDLE);
     setCapturedTime(null);
   };
 
@@ -359,7 +380,7 @@ export function BrewGuide({
     onResetTimer();
     setCapturedTime(null);
     setYieldInput('');
-    setExtractPhase('idle');
+    setExtractPhase(BREW_EXTRACT_IDLE);
     setStepIndex(0);
     setScreen('steps');
   };
@@ -367,18 +388,18 @@ export function BrewGuide({
   const finishTimer = () => {
     const rounded = onStopTimer();
     setCapturedTime(rounded);
-    setExtractPhase('stopped');
+    setExtractPhase(BREW_EXTRACT_STOPPED);
   };
 
   const resetExtract = () => {
     onResetTimer();
     setCapturedTime(null);
-    setExtractPhase('idle');
+    setExtractPhase(BREW_EXTRACT_IDLE);
   };
 
   const handleTimerSurface = (event) => {
     if (event.target.closest('[data-timer-dismiss]')) return;
-    if (step?.kind !== 'timer' || extractPhase !== 'running') return;
+    if (step?.kind !== 'timer' || extractPhase !== BREW_EXTRACT_RUNNING) return;
     if (timer.usePreInfusion && timer.preInfusionPhase) {
       onEndPreInfusion();
       return;
@@ -609,9 +630,9 @@ export function BrewGuide({
 
   const StepIcon = STEP_ICONS[step.icon] || Coffee;
   const stepNumber = index + 1;
-  const timerLive = extractPhase === 'running';
+  const timerLive = extractPhase === BREW_EXTRACT_RUNNING;
   const yieldMissing = step.kind === 'yield' && !(Number(yieldInput) > 0);
-  const doneDisabled = (step.kind === 'timer' && extractPhase !== 'stopped')
+  const doneDisabled = (step.kind === 'timer' && extractPhase !== BREW_EXTRACT_STOPPED)
     || (step.kind === 'handoff' && capturedTime == null)
     || yieldMissing;
 
@@ -629,13 +650,13 @@ export function BrewGuide({
       const yieldG = yieldInput;
       setCapturedTime(null);
       setYieldInput('');
-      setExtractPhase('idle');
+      setExtractPhase(BREW_EXTRACT_IDLE);
       setStepIndex(0);
       setScreen('menu');
       onHandoff({ timeS, yieldG });
       return;
     }
-    if (step.kind === 'timer' && extractPhase === 'running') {
+    if (step.kind === 'timer' && (extractPhase === BREW_EXTRACT_RUNNING || extractPhase === BREW_EXTRACT_ARMING)) {
       abortRunningExtract();
     }
     if (index >= steps.length - 1) {
@@ -647,11 +668,13 @@ export function BrewGuide({
   };
 
   let timerHint = 'Start the timer as you start the shot.';
-  if (extractPhase === 'running' && timer.usePreInfusion && timer.preInfusionPhase) {
+  if (extractPhase === BREW_EXTRACT_ARMING) {
+    timerHint = 'Get ready…';
+  } else if (extractPhase === BREW_EXTRACT_RUNNING && timer.usePreInfusion && timer.preInfusionPhase) {
     timerHint = 'Tap anywhere to end pre-infusion.';
-  } else if (extractPhase === 'running') {
+  } else if (extractPhase === BREW_EXTRACT_RUNNING) {
     timerHint = 'Tap anywhere to stop the timer.';
-  } else if (extractPhase === 'stopped') {
+  } else if (extractPhase === BREW_EXTRACT_STOPPED) {
     timerHint = 'Let the cup finish, then note the yield on the next step.';
   }
 
@@ -707,18 +730,21 @@ export function BrewGuide({
               className={`text-center text-[clamp(2.75rem,14vw,3.75rem)] font-black font-mono tabular-nums leading-none ${ui.text}`}
               aria-live="polite"
             >
-              {extractPhase === 'stopped' && capturedTime != null ? `${capturedTime}s` : (extractPhase === 'idle' ? '0:00.0' : timer.label)}
+              {extractPhase === BREW_EXTRACT_STOPPED && capturedTime != null
+                ? `${capturedTime}s`
+                : (extractPhase === BREW_EXTRACT_IDLE || extractPhase === BREW_EXTRACT_ARMING ? '0:00.0' : timer.label)}
             </p>
             <p className={`text-base leading-relaxed text-center ${ui.sub}`}>{timerHint}</p>
             {step.note && <p className={`text-sm leading-relaxed text-center ${ui.muted}`}>{step.note}</p>}
             <StepHelps key={step.id} helps={step.helps} ui={ui} />
             <div data-timer-dismiss>
-              {extractPhase === 'idle' && (
+              {(extractPhase === BREW_EXTRACT_IDLE || extractPhase === BREW_EXTRACT_ARMING) && (
                 <button
                   type="button"
+                  disabled={extractPhase === BREW_EXTRACT_ARMING}
                   onClick={() => {
                     setCapturedTime(null);
-                    setExtractPhase('running');
+                    setExtractPhase(BREW_EXTRACT_ARMING);
                     onStartTimer();
                   }}
                   className={`w-full min-h-[64px] rounded-[20px] text-base flex items-center justify-center gap-2 ${ui.primary}`}
@@ -727,7 +753,7 @@ export function BrewGuide({
                   Start timer
                 </button>
               )}
-              {extractPhase === 'running' && (
+              {extractPhase === BREW_EXTRACT_RUNNING && (
                 <button
                   type="button"
                   onClick={() => {
@@ -805,7 +831,7 @@ export function BrewGuide({
 
       <div className={`fixed bottom-[4.25rem] left-0 right-0 p-3 z-40 ${ui.dock} backdrop-blur`} data-timer-dismiss>
         <div className="max-w-xl mx-auto space-y-2">
-          {step.kind === 'timer' && extractPhase !== 'idle' && (
+          {step.kind === 'timer' && extractPhase !== BREW_EXTRACT_IDLE && extractPhase !== BREW_EXTRACT_ARMING && (
             <button
               type="button"
               onClick={resetExtract}
