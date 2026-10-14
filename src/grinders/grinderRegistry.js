@@ -17,6 +17,7 @@ import {
   isPresetGrinderModel,
   PRESET_GRINDER_DEFINITIONS,
 } from './presetGrinders/index.js';
+import { patchGrindUiForBeanGrinder } from './grindDialByBean.js';
 
 export { isPresetGrinderModel } from './presetGrinders/index.js';
 
@@ -547,19 +548,37 @@ export function uiStateFromRecommendedSetting(grinderModel, recSet, settings = n
   return getUiGrinderPresentation(grinderModel, settings).uiStateFromRecommendedSetting(recSet);
 }
 
-export function persistedSettingsPatchFromRecommendation(grinderModel, recSet, settings = null) {
+export function persistedSettingsPatchFromRecommendation(
+  grinderModel,
+  recSet,
+  settings = null,
+  beanId = null
+) {
+  if (!beanId) return {};
+  const uiState = uiStateFromRecommendedSetting(grinderModel, recSet, settings);
+  if (!uiState) return {};
+  const base = settings || {};
+  const beanPatch = patchGrindUiForBeanGrinder(base, beanId, grinderModel, uiState);
+  if (isNicheZeroGrinderModel(grinderModel) && uiState.nicheZeroSetting != null) {
+    return { ...beanPatch, lastNicheZeroSetting: uiState.nicheZeroSetting };
+  }
+  if (isSetteGrinderModel(grinderModel) && uiState.setteMacro != null) {
+    return {
+      ...beanPatch,
+      lastSetteMacro: uiState.setteMacro,
+      lastSetteMicro: uiState.setteMicro,
+    };
+  }
   if (isPresetGrinderModel(grinderModel)) {
-    return getPresetGrinderDefinition(grinderModel).persistedSettingsPatchFromRecommendation(
-      recSet,
-      settings
-    );
+    return beanPatch;
   }
-  if (isNicheZeroGrinderModel(grinderModel)) {
-    const parsed = parseNicheZeroSetting(recSet?.nicheZeroSetting, settings);
-    if (parsed === null) return {};
-    return { lastNicheZeroSetting: parsed };
+  if (isCustomGrinderModel(grinderModel, settings) && uiState.customGrindValue != null) {
+    return { ...beanPatch, lastCustomGrindValue: uiState.customGrindValue };
   }
-  return getUiGrinderPresentation(grinderModel, settings).persistedSettingsPatchFromRecommendation(recSet);
+  if (isSunbeamGrinderModel(grinderModel) && uiState.sunbeamSetting != null) {
+    return { ...beanPatch, lastSunbeamSetting: uiState.sunbeamSetting };
+  }
+  return beanPatch;
 }
 
 export const GRINDER_REGISTRY_ENTRIES = [

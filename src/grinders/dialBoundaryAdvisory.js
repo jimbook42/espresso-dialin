@@ -93,9 +93,11 @@ function reasonWantsCoarser(reason) {
 }
 
 function currentDialFromEngineStats(grinderModel, rec, settings) {
+  const fromInput = recommendedDialValue(grinderModel, rec?.inputGrind, settings);
+  if (fromInput !== null) return fromInput;
   const stored = rec?.engineStats?.currentDial;
   if (stored != null && Number.isFinite(stored)) return stored;
-  return recommendedDialValue(grinderModel, rec?.inputGrind, settings);
+  return null;
 }
 
 export function dialBoundaryAdvisoryForRecommendation(grinderModel, rec, settings = null) {
@@ -127,6 +129,7 @@ export function dialBoundaryAdvisoryForRecommendation(grinderModel, rec, setting
 
 /** Optional suffix when a move lands on the dial limit but the user is not already there. */
 export function dialLimitReachedNote(grinderModel, rec, settings = null) {
+  if (dialBoundaryAdvisoryForRecommendation(grinderModel, rec, settings)) return '';
   const limits = grinderDialLimits(grinderModel, settings);
   const current = currentDialFromEngineStats(grinderModel, rec, settings);
   const target = recommendedDialValue(grinderModel, rec?.recommendedSetting, settings);

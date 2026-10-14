@@ -1,46 +1,34 @@
 import { getPresetGrinderSpec, isPresetGrinderId } from './catalog.js';
 import { parsePresetGrindValue } from './dial.js';
+import {
+  getGrindUiForBeanGrinder,
+  patchGrindUiForBeanGrinder,
+} from '../grindDialByBean.js';
 
 /**
- * Per-grinder last applied / dialed values for ticket 6.15 presets (survives reload and grinder switches).
- * @param {object|null} settings
- * @param {string} grinderModel
- * @returns {number|null}
+ * Per-bean, per-grinder preset dial (never shared across beans).
  */
-export function getPersistedPresetGrindValue(settings, grinderModel) {
-  if (!isPresetGrinderId(grinderModel)) return null;
+export function getPersistedPresetGrindValue(settings, grinderModel, beanId) {
+  if (!isPresetGrinderId(grinderModel) || !beanId) return null;
+  const snap = getGrindUiForBeanGrinder(settings, beanId, grinderModel);
+  if (snap?.customGrindValue == null) return null;
   const spec = getPresetGrinderSpec(grinderModel);
   if (!spec) return null;
-
-  const fromMap = settings?.presetGrindByModel?.[grinderModel];
-  if (fromMap != null && fromMap !== '') {
-    const parsed = parsePresetGrindValue(fromMap, spec);
-    if (parsed !== null) return parsed;
-  }
-
-  return null;
+  return parsePresetGrindValue(snap.customGrindValue, spec);
 }
 
-/**
- * @param {string} grinderModel
- * @param {number|string} value
- * @param {object} [existingSettings]
- */
-export function persistedPresetGrindSettingsPatch(grinderModel, value, existingSettings = {}) {
-  if (!isPresetGrinderId(grinderModel)) return {};
+export function persistedPresetGrindSettingsPatch(
+  grinderModel,
+  value,
+  existingSettings = {},
+  beanId
+) {
+  if (!isPresetGrinderId(grinderModel) || !beanId) return {};
   const spec = getPresetGrinderSpec(grinderModel);
   if (!spec) return {};
   const parsed = parsePresetGrindValue(value, spec);
   if (parsed === null) return {};
-
-  const presetGrindByModel = {
-    ...(existingSettings.presetGrindByModel || {}),
-    [grinderModel]: parsed,
-  };
-
-  return {
-    presetGrindByModel,
-    lastPresetGrindValue: null,
-    lastCustomGrindValue: null,
-  };
+  return patchGrindUiForBeanGrinder(existingSettings, beanId, grinderModel, {
+    customGrindValue: parsed,
+  });
 }

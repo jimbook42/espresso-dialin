@@ -201,9 +201,9 @@ export function runPresetGrindersTests() {
     let settings = { id: 'global', grinderModel: grinderId };
     settings = {
       ...settings,
-      ...persistedPresetGrindSettingsPatch(grinderId, applied, settings),
+      ...persistedPresetGrindSettingsPatch(grinderId, applied, settings, bean.id),
     };
-    assert.equal(getPersistedPresetGrindValue(settings, grinderId), applied);
+    assert.equal(getPersistedPresetGrindValue(settings, grinderId, bean.id), applied);
 
     const otherId = grinderId === BCG820_GRINDER_ID ? ENCORE_ESP_GRINDER_ID : BCG820_GRINDER_ID;
     const otherSpec = getPresetGrinderSpec(otherId);
@@ -211,15 +211,16 @@ export function runPresetGrindersTests() {
     settings = {
       ...settings,
       grinderModel: otherId,
-      ...persistedPresetGrindSettingsPatch(otherId, otherVal, settings),
+      ...persistedPresetGrindSettingsPatch(otherId, otherVal, settings, bean.id),
     };
-    assert.equal(getPersistedPresetGrindValue(settings, otherId), otherVal);
-    assert.equal(getPersistedPresetGrindValue(settings, grinderId), applied);
+    assert.equal(getPersistedPresetGrindValue(settings, otherId, bean.id), otherVal);
+    assert.equal(getPersistedPresetGrindValue(settings, grinderId, bean.id), applied);
 
     const patch = persistedSettingsPatchFromRecommendation(
       grinderId,
       { customGrindValue: applied },
-      settings
+      settings,
+      bean.id
     );
     settings = { ...settings, ...patch };
 

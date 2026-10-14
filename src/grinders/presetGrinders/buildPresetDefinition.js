@@ -93,10 +93,10 @@ export function buildPresetGrinderDefinition(spec) {
       if (parsed === null) return null;
       return { customGrindValue: parsed };
     },
-    persistedSettingsPatchFromRecommendation(recSet, settings = null) {
+    persistedSettingsPatchFromRecommendation(recSet, settings = null, beanId = null) {
       const parsed = parsePresetGrindValue(recSet?.customGrindValue, spec);
-      if (parsed === null) return {};
-      return persistedPresetGrindSettingsPatch(spec.id, parsed, settings || {});
+      if (parsed === null || !beanId) return {};
+      return persistedPresetGrindSettingsPatch(spec.id, parsed, settings || {}, beanId);
     },
     parseGrindForShotSave({ customGrindValue }) {
       const parsed = parsePresetGrindValue(customGrindValue, spec);
