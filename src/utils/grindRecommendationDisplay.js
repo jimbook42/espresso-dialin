@@ -2,6 +2,7 @@ import {
   formatRecommendedGrindDisplay,
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
+import { dialBoundaryAdvisoryForRecommendation } from '../grinders/dialBoundaryAdvisory.js';
 import { KNOWN_ISSUE_CHOKE_HINT, KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
 
 const REASON_SPLIT = /—|–/;
@@ -65,6 +66,12 @@ export function formatGrindRecommendationSummary(grinderModel, rec, settings = n
   }
   why = stripKnownIssueHint(why);
   const estimatedLabel = estimated ? 'Estimated' : '';
+
+  const boundary = dialBoundaryAdvisoryForRecommendation(grinderModel, rec, settings);
+  if (boundary) {
+    const parts = [estimatedLabel, boundary.headline, boundary.detail].filter(Boolean);
+    return parts.join(' · ');
+  }
 
   if (isNicheZeroGrinderModel(grinderModel)) {
     const parts = [estimatedLabel, direction, why, targetSetting ? `Target dial: ${targetSetting}` : ''].filter(Boolean);

@@ -4,6 +4,11 @@ import {
   ENCORE_ESP_GRINDER_ID,
   FELLOW_OPUS_GRINDER_ID,
   MAZZER_PHILOS_GRINDER_ID,
+  EUREKA_SPECIALITA_GRINDER_ID,
+  EUREKA_ZERO_GRINDER_ID,
+  EUREKA_ZERO_55S_GRINDER_ID,
+  EUREKA_ZERO_65_AP_GRINDER_ID,
+  EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
   PRESET_GRINDER_IDS,
   ZERNO_Z1_GRINDER_ID,
   getPresetGrinderSpec,
@@ -246,6 +251,84 @@ export function runPresetGrindersTests() {
     });
     assert.equal(uiAfterSwitch.customGrindValue, applied, `${grinderId}: reload/switch restore`);
   }
+
+  const freshBean = { id: 'fresh-bean', roastType: 'Medium' };
+  const otherBean = { id: 'other-bean', roastType: 'Medium' };
+  const dialedEurekaShot = {
+    beanId: otherBean.id,
+    grinderModel: EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
+    customGrindValue: 50,
+    actualTimeS: 29,
+    actualYieldG: 36,
+    tasteProfile: 'balanced',
+    targetTimeMinS: 27,
+    targetTimeMaxS: 32,
+    timestamp: '2026-10-01T12:00:00.000Z',
+    excludeFromLearning: false,
+  };
+  const crossBeanShots = [dialedEurekaShot];
+  const recipes = [{ beanId: otherBean.id, ...RECIPE }, { beanId: freshBean.id, ...RECIPE }];
+
+  for (const grinderId of PRESET_GRINDER_IDS) {
+    const spec = getPresetGrinderSpec(grinderId);
+    const expected = defaultPresetGrindValue(spec);
+    const initial = getInitialGrindRecommendation(
+      grinderId,
+      'Medium',
+      freshBean,
+      recipes,
+      crossBeanShots,
+      [freshBean, otherBean]
+    );
+    assert.equal(
+      initial.customGrindValue,
+      expected,
+      `${grinderId}: fresh bean must start at preset default, not cross-bean baseline`
+    );
+    assert.ok(
+      initial.customGrindValue >= spec.min && initial.customGrindValue <= spec.max,
+      `${grinderId}: default must be within dial range`
+    );
+    assert.notEqual(
+      initial.customGrindValue,
+      spec.max,
+      `${grinderId}: fresh start must not be dial max`
+    );
+  }
+
+  assert.equal(
+    getInitialGrindRecommendation(
+      EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
+      'Medium',
+      freshBean,
+      recipes,
+      crossBeanShots,
+      [freshBean, otherBean]
+    ).customGrindValue,
+    2
+  );
+  assert.equal(
+    getInitialGrindRecommendation(
+      EUREKA_SPECIALITA_GRINDER_ID,
+      'Medium',
+      freshBean,
+      recipes,
+      crossBeanShots,
+      [freshBean, otherBean]
+    ).customGrindValue,
+    2
+  );
+  assert.notEqual(
+    getInitialGrindRecommendation(
+      EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
+      'Medium',
+      freshBean,
+      recipes,
+      crossBeanShots,
+      [freshBean, otherBean]
+    ).customGrindValue,
+    50
+  );
 
   console.log('Preset grinder tests passed.');
 }

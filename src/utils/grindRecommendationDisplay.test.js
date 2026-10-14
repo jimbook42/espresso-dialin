@@ -1,6 +1,8 @@
 import assert from 'assert';
 import { calculateRecommendation } from './grinderLogic.js';
 import { formatGrindRecommendationSummary } from './grindRecommendationDisplay.js';
+import { dialBoundaryAdvisoryForRecommendation } from '../grinders/dialBoundaryAdvisory.js';
+import { FELLOW_OPUS_GRINDER_ID } from '../grinders/presetGrinders/catalog.js';
 import { KNOWN_ISSUE_OUTLIER_HINT } from './recommendationTuning.js';
 
 export function runGrindRecommendationDisplayTests() {
@@ -219,6 +221,45 @@ export function runGrindRecommendationDisplayTests() {
   const nicheMoveAfterApply = formatGrindRecommendationSummary('Niche Zero', nicheMoveRecDial);
   assert.doesNotMatch(nicheMoveAfterApply, /Grind setting held/i);
   assert.match(nicheMoveAfterApply, /Grind finer/i);
+
+  const opusAtFinestRec = calculateRecommendation(
+    {
+      grinderModel: FELLOW_OPUS_GRINDER_ID,
+      customGrindValue: 1,
+      wasPurged: true,
+      actualTime: 8,
+      actualYield: 36,
+      tasteProfile: 'balanced',
+    },
+    recipe,
+    []
+  );
+  assert.ok(opusAtFinestRec.engineStats.shift < 0, 'fast shot at Opus finest should want finer');
+  const opusBoundary = dialBoundaryAdvisoryForRecommendation(
+    FELLOW_OPUS_GRINDER_ID,
+    opusAtFinestRec
+  );
+  assert.ok(opusBoundary, 'Opus at finest should trigger dial boundary advisory');
+  const opusSummary = formatGrindRecommendationSummary(FELLOW_OPUS_GRINDER_ID, opusAtFinestRec);
+  assert.match(opusSummary, /finest end of the dial/i);
+  assert.match(opusSummary, /dose or yield/i);
+  assert.doesNotMatch(opusSummary, /Grind finer/i);
+
+  const nicheAtMaxRec = calculateRecommendation(
+    {
+      grinderModel: 'Niche Zero',
+      nicheZeroSetting: 50,
+      wasPurged: true,
+      actualTime: 45,
+      actualYield: 36,
+      tasteProfile: 'balanced',
+    },
+    recipe,
+    []
+  );
+  const nicheMaxSummary = formatGrindRecommendationSummary('Niche Zero', nicheAtMaxRec);
+  assert.match(nicheMaxSummary, /coarsest end of the dial/i);
+  assert.doesNotMatch(nicheMaxSummary, /Grind coarser/i);
 
   console.log('Grind recommendation display tests passed.');
 }

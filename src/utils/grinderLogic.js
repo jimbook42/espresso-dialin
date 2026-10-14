@@ -727,15 +727,12 @@ export function getInitialGrindRecommendation(
   }
   if (isPresetGrinderModel(grinderModel)) {
     const spec = getPresetGrinderSpec(grinderModel);
-    if (baseline === null) {
-      return {
-        customGrindValue: defaultPresetGrindValue(spec),
-        initialSource: 'app-default',
-      };
-    }
-    const def = getGrinderDefinitionById(grinderModel, settings);
-    const base = adjustCustomGrind(baseline, ageData.recommendedOffsetSunbeam, def.customProfile);
-    return { customGrindValue: base, initialSource: 'roast-baseline' };
+    // Presets use catalog defaults on a fresh bean — never cross-bean roast baselines
+    // (averaged dial numbers from other beans collapse Eureka variants to the same high end).
+    return {
+      customGrindValue: defaultPresetGrindValue(spec),
+      initialSource: 'app-default',
+    };
   }
   if (isCustomGrinderModel(grinderModel, settings)) {
     const def = getGrinderDefinitionById(grinderModel, settings);
