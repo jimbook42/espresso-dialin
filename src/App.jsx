@@ -153,6 +153,7 @@ import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
 import { brewGuideIntroMachineSettingsLine, brewGuideSettingsToggleDetail } from './brewGuide/copy.js';
 import { APP_VERSION_LABEL } from './config/appVersion.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
+import { isBrewGuideExtractCountdownActive } from './brewGuide/brewGuideExtractPhase.js';
 import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
@@ -632,6 +633,11 @@ export default function App() {
     }
     if (opts?.fromBrewGuide) {
       syncBrewGuideTimerActive(false);
+      scaleAutoEndPreinfusionRef.current = false;
+      setTimerRunning(false);
+      setTimerTicks(0);
+      setPreInfusionSeconds(0);
+      setPreInfusionPhase(false);
     }
   }, [timemoreScale]);
 
@@ -645,6 +651,14 @@ export default function App() {
       if (!useCountdown) {
         void handleStartTimer(opts);
         return;
+      }
+      if (opts.fromBrewGuide) {
+        syncBrewGuideTimerActive(true);
+        scaleAutoEndPreinfusionRef.current = false;
+        setTimerRunning(false);
+        setTimerTicks(0);
+        setPreInfusionSeconds(0);
+        setPreInfusionPhase(false);
       }
       shotCountdownStartOptsRef.current = opts;
       setShotCountdownValue(3);
@@ -1974,7 +1988,11 @@ export default function App() {
     requestStartTimer({ fromBrewGuide: true });
   };
 
-  const shotCountdownActive = shotCountdownValue != null && shotCountdownValue > 0;
+  const shotCountdownOverlayVisible = shotCountdownValue != null && shotCountdownValue > 0;
+  const brewGuideExtractCountdownActive = isBrewGuideExtractCountdownActive({
+    shotCountdownValue,
+    countdownHandoffPending,
+  });
 
   const handleBrewResetTimer = () => {
     syncBrewGuideTimerActive(false);
@@ -2053,7 +2071,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${ui.page} relative`}>
       
-      {shotCountdownValue != null && shotCountdownValue > 0 && (
+      {shotCountdownOverlayVisible && (
         <div className="fixed inset-0 z-[65] flex flex-col items-center justify-center bg-[#121212] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
           <p className="text-[11px] tracking-[0.2em] uppercase text-[#9a9690] mb-6">Get ready</p>
           <p className="text-[clamp(5rem,28vw,8rem)] font-black tabular-nums text-[#ede9e3] leading-none">
@@ -2070,10 +2088,10 @@ export default function App() {
       )}
 
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
-      {(timerRunning || yieldSettleActive) && !brewTimerHost && !brewGuideTimerActive && (
+      {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
         <div
-          className={`fixed inset-0 z-[60] flex flex-col bg-[#121212] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${yieldSettleActive ? '' : 'cursor-pointer'}`}
-          onClick={yieldSettleActive ? undefined : handleTimerSurfaceTap}
+          className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+          onClick={handleTimerSurfaceTap}
           role="presentation"
         >
           <div className="h-14 px-4 flex items-center justify-between border-b border-[#1e1e1e] shrink-0">
@@ -2137,11 +2155,6 @@ export default function App() {
             >
               {formatTimerLive(timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
             </div>
-            {yieldSettleActive && (
-              <p className="text-[11px] tracking-wide text-[#6b6457] mt-2 text-center" role="status">
-                Settling…
-              </p>
-            )}
             {scaleShowLiveReadout && (
               <p className="text-[15px] text-[#c88a4b] font-semibold tabular-nums mt-3 text-center">
                 {scaleLiveReadoutG.toFixed(1)}g
@@ -2170,11 +2183,9 @@ export default function App() {
             </div>
 
             <p className="text-center text-[11px] text-[#4a4846] pointer-events-none">
-              {yieldSettleActive
-                ? 'Reading final weight'
-                : timerUsePreInfusion && preInfusionPhase
-                  ? 'Tap anywhere to end pre-infusion'
-                  : 'Tap anywhere to stop and fill shot time'}
+              {timerUsePreInfusion && preInfusionPhase
+                ? 'Tap anywhere to end pre-infusion'
+                : 'Tap anywhere to stop and fill shot time'}
             </p>
 
             <div className="flex flex-col gap-3 pointer-events-auto">
@@ -2818,7 +2829,7 @@ export default function App() {
             onAccessoriesOpenHandled={handleAccessoriesOpenHandled}
             timer={{
               running: timerRunning,
-              countdownActive: shotCountdownActive,
+              countdownActive: brewGuideExtractCountdownActive,
               countdownHandoffPending,
               yieldSettleActive,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
