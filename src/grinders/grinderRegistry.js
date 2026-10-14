@@ -517,8 +517,9 @@ export function grindMatchesStoredRecommendation(lastShotGrinderModel, savedGrin
     return sunbeamDefinition.grindMatchesRecommendation(savedGrind, rec);
   }
   if (isNicheZeroGrinderModel(lastShotGrinderModel)) {
+    const target = rec?.recommendedSetting ?? rec;
     const a = parseNicheZeroSetting(savedGrind?.nicheZeroSetting, settings);
-    const b = parseNicheZeroSetting(rec?.recommendedSetting?.nicheZeroSetting, settings);
+    const b = parseNicheZeroSetting(target?.nicheZeroSetting, settings);
     return a !== null && b !== null && a === b;
   }
   return true;

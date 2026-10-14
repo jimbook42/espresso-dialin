@@ -4,7 +4,8 @@
  */
 
 import { formatGrinderMatchedShotCount } from './grinderRegistry.js';
-import { readShotLearningDial } from './learningDialFromShot.js';
+import { dialSpreadFromLoggedShots, readShotLearningDial } from './learningDialFromShot.js';
+import { NICHE_ZERO_DEFAULT_SETTING } from './nicheZero.js';
 import { mapShotsForReferenceLearning, resolveReferenceLearningDialIO } from './referenceLearningDial.js';
 import {
   recommendNicheZeroFromEvidence,
@@ -127,18 +128,21 @@ export function diagnoseNicheLearningEligibility({
     ? mapShotsForReferenceLearning(comparableShots, refIO)
     : comparableShots;
 
-  const currentDial =
-    currentObservation?.nicheZeroSetting != null
-      ? readShotLearningDial(
-          { nicheZeroSetting: currentObservation.nicheZeroSetting },
-          grinderModel,
-          settings
-        )
-      : null;
+  const currentDial = currentObservation
+    ? readShotLearningDial(
+        {
+          nicheZeroSetting: currentObservation.nicheZeroSetting,
+          customGrindValue: currentObservation.customGrindValue,
+        },
+        grinderModel,
+        settings
+      )
+    : null;
   const currentTime = currentObservation?.actualTimeS;
+  const loggedDialSpread = dialSpreadFromLoggedShots(comparableForEmpirical, grinderModel, settings);
 
   const empiricalInput = {
-    currentDial: currentDial ?? 15,
+    currentDial: currentDial ?? NICHE_ZERO_DEFAULT_SETTING,
     actualTime: Number(currentTime ?? 30),
     targetMin: recipe?.targetTimeMinS ?? 27,
     targetMax: recipe?.targetTimeMaxS ?? 32,
@@ -189,7 +193,7 @@ export function diagnoseNicheLearningEligibility({
     },
     shotExclusions,
     observationCount: diagnostics.observationCount ?? 0,
-    dialSpread: diagnostics.dialSpread ?? 0,
+    dialSpread: loggedDialSpread,
     pairCount: diagnostics.pairCount ?? 0,
     finalReasonCode,
     verdict,

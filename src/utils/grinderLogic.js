@@ -58,6 +58,7 @@ import {
   applyGrindShiftDamping,
   proportionalGrindShiftFromTimeDelta,
   capQuantitativeGrindShift,
+  applyMinimumQuantitativeShift,
   effectiveQuantitativeSensitivity,
   detectLikelyShotOutlier,
   filterComparableShotsForNicheLearning,
@@ -1311,6 +1312,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     dampingOptions.isOutlier = outlierCheck.isOutlier;
     shift = proportionalGrindShiftFromTimeDelta(timeDelta, sensitivity, dampingOptions);
     shift = capQuantitativeGrindShift(shift, grinderProfile);
+    shift = applyMinimumQuantitativeShift(shift, grinderProfile);
 
     const secOff = Math.abs(Math.round(timeDelta));
     const dialReason = formatDialShiftReasonParts(grinderProfile, customGrindValue, shift);

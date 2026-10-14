@@ -10,3 +10,13 @@ export function readShotLearningDial(shot, grinderModel, settings = null) {
   }
   return parseNicheZeroSetting(shot?.nicheZeroSetting, settings);
 }
+
+/** Spread across logged comparable shots only (not defaults or the in-progress pull). */
+export function dialSpreadFromLoggedShots(comparableShots, grinderModel, settings = null) {
+  const dials = comparableShots
+    .map((s) => readShotLearningDial(s, grinderModel, settings))
+    .filter((d) => d !== null && Number.isFinite(d));
+  if (dials.length < 2) return 0;
+  const spread = Math.max(...dials) - Math.min(...dials);
+  return Math.round(spread * 10) / 10;
+}

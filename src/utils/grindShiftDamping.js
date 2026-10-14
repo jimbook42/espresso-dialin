@@ -66,7 +66,7 @@ export function maxQuantitativeShiftSteps(grinderProfile) {
   }
   const rangeSteps = (profile.max - profile.min) / profile.step;
   if (!Number.isFinite(rangeSteps) || rangeSteps <= 0) return 6;
-  return Math.max(2, Math.min(12, Math.ceil(rangeSteps * 0.18)));
+  return Math.max(2, Math.min(12, Math.floor(rangeSteps * 0.18)));
 }
 
 export function capQuantitativeGrindShift(shift, grinderProfile) {
@@ -74,4 +74,22 @@ export function capQuantitativeGrindShift(shift, grinderProfile) {
   const max = maxQuantitativeShiftSteps(grinderProfile);
   const sign = shift < 0 ? -1 : 1;
   return sign * Math.min(Math.abs(shift), max);
+}
+
+/** Minimum engine-step move for wide-range presets (e.g. Zerno µm). */
+export function minQuantitativeShiftSteps(grinderProfile) {
+  const profile = grinderProfile?.customProfile;
+  if (!profile) return 1;
+  const rangeSteps = (profile.max - profile.min) / profile.step;
+  if (!Number.isFinite(rangeSteps) || rangeSteps <= 0) return 1;
+  return Math.max(1, Math.floor(rangeSteps * 0.03));
+}
+
+export function applyMinimumQuantitativeShift(shift, grinderProfile) {
+  if (!shift || !grinderProfile?.customProfile) return shift;
+  const min = minQuantitativeShiftSteps(grinderProfile);
+  const sign = shift < 0 ? -1 : 1;
+  const abs = Math.abs(shift);
+  if (abs >= min) return shift;
+  return sign * min;
 }

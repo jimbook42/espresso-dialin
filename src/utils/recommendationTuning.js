@@ -29,6 +29,7 @@ export {
   proportionalGrindShiftFromTimeDelta,
   applyGrindShiftDamping,
   capQuantitativeGrindShift,
+  applyMinimumQuantitativeShift,
   maxQuantitativeShiftSteps,
 } from './grindShiftDamping.js';
 
