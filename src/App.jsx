@@ -31,6 +31,7 @@ import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, 
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
+import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx';
 import { GrinderGrindControls } from './components/GrindControls';
 import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
 import { buildAppDefaultInitialGrindHint } from './utils/initialGrindHint.js';
@@ -1802,10 +1803,6 @@ export default function App() {
       : timerRunning
         ? timerSeconds
         : 0;
-  const scaleLiveReadoutG =
-    timerRunning && timemoreScale.weightTriggersPrimed
-      ? timemoreScale.liveRelativeWeightG
-      : timemoreScale.liveWeightG;
   const scaleShowLiveReadout =
     scaleFeatureEnabled && timemoreScale.isConnected && (timerRunning || timemoreScale.liveWeightG > 0);
   const scaleShowFlow =
@@ -2156,14 +2153,12 @@ export default function App() {
               {formatTimerLive(timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
             </div>
             {scaleShowLiveReadout && (
-              <p className="text-[15px] text-[#c88a4b] font-semibold tabular-nums mt-3 text-center">
-                {scaleLiveReadoutG.toFixed(1)}g
-                {scaleShowFlow && (
-                  <span className="text-[#8a9d72] font-medium ml-2">
-                    · {timemoreScale.instantFlowGs.toFixed(2)} g/s
-                  </span>
-                )}
-              </p>
+              <ShotTimerWeightReadout
+                variant="fullscreen"
+                timerRunning={timerRunning}
+                showFlow={scaleShowFlow}
+                instantFlowGs={timemoreScale.instantFlowGs}
+              />
             )}
             <p className="text-[13px] text-[#6b6457] mt-4 text-center">
               {timerUsePreInfusion && preInfusionPhase
@@ -2572,14 +2567,14 @@ export default function App() {
                         <p className={`text-[10px] uppercase tracking-widest ${ui.muted} mb-2`}>Live shot timer</p>
                         <span className="text-4xl font-black font-mono text-[#f5f2eb] tabular-nums">{formatTime(timerSeconds)}</span>
                         {scaleShowLiveReadout && (
-                          <p className={`text-sm font-semibold tabular-nums mt-1 ${ui.accentText}`}>
-                            {scaleLiveReadoutG.toFixed(1)}g
-                            {scaleShowFlow && (
-                              <span className={`${ui.muted} font-medium ml-2`}>
-                                {timemoreScale.instantFlowGs.toFixed(2)} g/s
-                              </span>
-                            )}
-                          </p>
+                          <ShotTimerWeightReadout
+                            variant="dial-inline"
+                            timerRunning={timerRunning}
+                            showFlow={scaleShowFlow}
+                            instantFlowGs={timemoreScale.instantFlowGs}
+                            darkMode={darkMode}
+                            ui={ui}
+                          />
                         )}
                       </div>
                       <div className="flex gap-2 shrink-0">
@@ -2827,6 +2822,9 @@ export default function App() {
             accessoriesReturnTo={brewAccessoriesReturnTo}
             onAccessoriesExit={handleExitBrewAccessories}
             onAccessoriesOpenHandled={handleAccessoriesOpenHandled}
+            scaleLiveReadoutEnabled={
+              scaleFeatureEnabled && timemoreScale.isConnected
+            }
             timer={{
               running: timerRunning,
               countdownActive: brewGuideExtractCountdownActive,

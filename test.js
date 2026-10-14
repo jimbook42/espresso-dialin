@@ -40,6 +40,7 @@ import { runTimemoreFramedTests } from './src/scales/protocols/timemoreFramed.te
 import { runScaleFlowMetricsTests } from './src/scales/flowMetrics.test.js';
 import { runPreinfusionAutoEndTests } from './src/scales/preinfusionAutoEnd.test.js';
 import { runScaleSettleDelayTests } from './src/scales/scaleSettleDelay.test.js';
+import { runScaleLiveWeightReadoutTests } from './src/scales/scaleLiveWeightReadout.test.js';
 import { runScaleYieldSettleResolveTests } from './src/scales/scaleYieldSettleResolve.test.js';
 import { runShotStartCountdownTests } from './src/settings/shotStartCountdown.test.js';
 import { runGrindControlBootstrapTests } from './src/grinders/grindControlBootstrap.test.js';
@@ -610,6 +611,7 @@ async function runTests() {
   runScaleFlowMetricsTests();
   runPreinfusionAutoEndTests();
   runScaleSettleDelayTests();
+  runScaleLiveWeightReadoutTests();
   runScaleYieldSettleResolveTests();
   runShotStartCountdownTests();
   runGrindControlBootstrapTests();

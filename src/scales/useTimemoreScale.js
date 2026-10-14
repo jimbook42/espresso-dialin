@@ -15,6 +15,7 @@ import { createBluetoothScaleTransport } from './transport/createBluetoothScaleT
 import { isWebBluetoothAvailable } from './transport/webBluetoothTransport.js';
 import { roundYieldG } from './scaleShotStopSettle.js';
 import { resolveSettledYieldG } from './scaleYieldSettleResolve.js';
+import { publishScaleLiveWeight, resetScaleLiveWeightStore } from './scaleLiveWeightStore.js';
 
 const noopAsync = async () => {};
 
@@ -49,14 +50,25 @@ export function useTimemoreScale({
 
   const transportRef = useRef(null);
   const sessionRef = useRef(null);
-  const rafRef = useRef(null);
   const recordingExtractionRef = useRef(false);
+  const connectStatusRef = useRef(connectStatus);
+  connectStatusRef.current = connectStatus;
   const liveWeightRef = useRef(0);
   const shotWeightTrackingRef = useRef(createShotWeightTracking());
   const yieldSettleSnapshotRef = useRef(null);
 
   const readRelativeShotWeightG = useCallback(() => {
     return addedMassSinceStartG(shotWeightTrackingRef.current, liveWeightRef.current);
+  }, []);
+
+  const publishWeightSnapshot = useCallback((liveG, relativeG, primed) => {
+    publishScaleLiveWeight({
+      liveWeightG: liveG,
+      liveRelativeWeightG: relativeG,
+      weightTriggersPrimed: primed,
+      isConnected: connectStatusRef.current === 'connected',
+      connectStatus: connectStatusRef.current,
+    });
   }, []);
 
   const syncRelativeFromLive = useCallback((liveG) => {
@@ -66,7 +78,8 @@ export function useTimemoreScale({
     const primed = weightTriggersReady(tracking);
     setLiveRelativeWeightG(added);
     setWeightTriggersPrimed(primed);
-  }, []);
+    publishWeightSnapshot(liveG, added, primed);
+  }, [publishWeightSnapshot]);
 
   const isConnected = connectStatus === 'connected';
 
@@ -87,28 +100,34 @@ export function useTimemoreScale({
     shotWeightTrackingRef.current = createShotWeightTracking();
     setLiveRelativeWeightG(0);
     setWeightTriggersPrimed(false);
-  }, []);
+    publishWeightSnapshot(liveWeightRef.current, 0, false);
+  }, [publishWeightSnapshot]);
 
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!enabled) {
+      resetScaleLiveWeightStore();
+      return undefined;
+    }
     return () => {
       disposeTransport();
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      resetScaleLiveWeightStore();
     };
   }, [enabled, disposeTransport]);
+
+  useEffect(() => {
+    publishScaleLiveWeight({
+      isConnected: connectStatus === 'connected',
+      connectStatus,
+    });
+  }, [connectStatus]);
 
   const attachSession = useCallback((transport) => {
     disposeSession();
     sessionRef.current = createScaleSession(transport, {
       onLiveWeight: (g) => {
         liveWeightRef.current = g;
+        setLiveWeightG(g);
         syncRelativeFromLive(g);
-        if (!rafRef.current) {
-          rafRef.current = requestAnimationFrame(() => {
-            rafRef.current = null;
-            setLiveWeightG(liveWeightRef.current);
-          });
-        }
       },
       onInstantFlowGs: (f) => setInstantFlowGs(f),
       onLiveTimerS: () => {},
@@ -145,6 +164,7 @@ export function useTimemoreScale({
       liveWeightRef.current = 0;
       resetShotWeightTracking();
       setLiveWeightG(0);
+      publishWeightSnapshot(0, 0, false);
       setInstantFlowGs(null);
     } catch (err) {
       console.warn('[scale] connect failed', err);

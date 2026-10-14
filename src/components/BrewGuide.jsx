@@ -12,6 +12,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { SettingsToggle } from './SettingsToggle';
+import { ShotTimerWeightReadout } from './ShotTimerWeightReadout.jsx';
 import { BrewGuidanceSwitch } from './BrewGuidanceSwitch';
 import { CoffeeBeanIcon } from './CoffeeBeanIcon';
 import {
@@ -284,6 +285,7 @@ export function BrewGuide({
   accessoriesReturnTo = 'brew',
   onAccessoriesExit = () => {},
   onAccessoriesOpenHandled = () => {},
+  scaleLiveReadoutEnabled = false,
 }) {
   const [screen, setScreen] = useState(setupComplete ? 'menu' : 'setup');
   const [setupReturnTo, setSetupReturnTo] = useState('brew');
@@ -741,6 +743,14 @@ export function BrewGuide({
               <p className={`text-[11px] tracking-wide text-center ${ui.muted}`} role="status">
                 Settling…
               </p>
+            )}
+            {scaleLiveReadoutEnabled
+              && (extractPhase === BREW_EXTRACT_RUNNING || extractPhase === BREW_EXTRACT_STOPPED) && (
+              <ShotTimerWeightReadout
+                variant="brew-guide"
+                timerRunning={extractPhase === BREW_EXTRACT_RUNNING && timer.running}
+                ui={ui}
+              />
             )}
             <p className={`text-base leading-relaxed text-center ${ui.sub}`}>{timerHint}</p>
             {step.note && <p className={`text-sm leading-relaxed text-center ${ui.muted}`}>{step.note}</p>}
