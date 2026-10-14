@@ -63,6 +63,8 @@ import { runGrind618Repair1Tests } from './src/grinders/grind618Repair1.test.js'
 import { runAcaiaProtocolTests } from './src/scales/protocols/acaia.test.js';
 import { runBookooMiniProtocolTests } from './src/scales/protocols/bookooMini.test.js';
 import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
+import { runPatchGlobalSettingsTests } from './src/settings/patchGlobalSettings.test.js';
+import { runPwaInstallStateTests } from './src/pwa/pwaInstallState.test.js';
 import { runFirstLaunchRenderGateTests } from './src/settings/firstLaunchRenderGate.test.js';
 import { runAppEntryTests } from './src/appEntry.test.js';
 import { shouldShowFirstLaunchOnboarding } from './src/settings/onboardingGate.js';
@@ -601,6 +603,8 @@ async function runTests() {
   runAcaiaProtocolTests();
   runBookooMiniProtocolTests();
   runOnboardingGateTests();
+  await runPatchGlobalSettingsTests();
+  runPwaInstallStateTests();
   runFirstLaunchRenderGateTests();
   runAppEntryTests();
   runCustomGrinderRecommendationTests(recipe);
