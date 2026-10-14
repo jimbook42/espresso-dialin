@@ -2231,9 +2231,16 @@
     },
     "getAgeAdjustedRecommendation/fresher_by_3": {
       "ageWarning": "Bean freshness shift detected. Recommendation dynamically shifted coarser.",
+      "engineStats": "__undefined__",
       "evidenceContext": "__undefined__",
       "flairWaterTempAdvice": "__undefined__",
+      "grindSettingHeld": "__undefined__",
+      "inputGrind": "__undefined__",
+      "nicheEmpiricalValidationNote": "__undefined__",
+      "nicheLearningNote": "__undefined__",
       "originalReason": "KEEP GRIND — Balanced and in range.",
+      "outlierGrindHeld": "__undefined__",
+      "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
         "macro": 10,
         "micro": "B"
@@ -2243,9 +2250,16 @@
     },
     "getAgeAdjustedRecommendation/fresher_by_5": {
       "ageWarning": "Thaw/Freshness detected: Active beans are 5 days fresher than your last logged shot. Recommendation dynamically shifted coarser to compensate.",
+      "engineStats": "__undefined__",
       "evidenceContext": "__undefined__",
       "flairWaterTempAdvice": "__undefined__",
+      "grindSettingHeld": "__undefined__",
+      "inputGrind": "__undefined__",
+      "nicheEmpiricalValidationNote": "__undefined__",
+      "nicheLearningNote": "__undefined__",
       "originalReason": "KEEP GRIND — Balanced and in range.",
+      "outlierGrindHeld": "__undefined__",
+      "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
         "macro": 10,
         "micro": "C"
@@ -2256,9 +2270,16 @@
     "getAgeAdjustedRecommendation/no_recommendation": null,
     "getAgeAdjustedRecommendation/older_by_12": {
       "ageWarning": "Aging detected: Active beans are 12 days older than your last logged shot. Recommendation dynamically shifted finer to compensate.",
+      "engineStats": "__undefined__",
       "evidenceContext": "__undefined__",
       "flairWaterTempAdvice": "__undefined__",
+      "grindSettingHeld": "__undefined__",
+      "inputGrind": "__undefined__",
+      "nicheEmpiricalValidationNote": "__undefined__",
+      "nicheLearningNote": "__undefined__",
       "originalReason": "KEEP GRIND — Balanced and in range.",
+      "outlierGrindHeld": "__undefined__",
+      "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
         "macro": 9,
         "micro": "H"
@@ -2268,9 +2289,16 @@
     },
     "getAgeAdjustedRecommendation/older_by_6": {
       "ageWarning": "Bean aged 6 days since last shot. Recommendation dynamically shifted finer.",
+      "engineStats": "__undefined__",
       "evidenceContext": "__undefined__",
       "flairWaterTempAdvice": "__undefined__",
+      "grindSettingHeld": "__undefined__",
+      "inputGrind": "__undefined__",
+      "nicheEmpiricalValidationNote": "__undefined__",
+      "nicheLearningNote": "__undefined__",
       "originalReason": "KEEP GRIND — Balanced and in range.",
+      "outlierGrindHeld": "__undefined__",
+      "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
         "macro": 9,
         "micro": "I"
@@ -2280,9 +2308,16 @@
     },
     "getAgeAdjustedRecommendation/same_age": {
       "ageWarning": null,
+      "engineStats": "__undefined__",
       "evidenceContext": "__undefined__",
       "flairWaterTempAdvice": "__undefined__",
+      "grindSettingHeld": "__undefined__",
+      "inputGrind": "__undefined__",
+      "nicheEmpiricalValidationNote": "__undefined__",
+      "nicheLearningNote": "__undefined__",
       "originalReason": "KEEP GRIND — Balanced and in range.",
+      "outlierGrindHeld": "__undefined__",
+      "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
         "macro": 10,
         "micro": "A"
@@ -2292,9 +2327,16 @@
     },
     "getAgeAdjustedRecommendation/sunbeam_shift": {
       "ageWarning": "Thaw/Freshness detected: Active beans are 5 days fresher than your last logged shot. Recommendation dynamically shifted coarser to compensate.",
+      "engineStats": "__undefined__",
       "evidenceContext": "__undefined__",
       "flairWaterTempAdvice": "__undefined__",
+      "grindSettingHeld": "__undefined__",
+      "inputGrind": "__undefined__",
+      "nicheEmpiricalValidationNote": "__undefined__",
+      "nicheLearningNote": "__undefined__",
       "originalReason": "KEEP GRIND — Balanced and in range.",
+      "outlierGrindHeld": "__undefined__",
+      "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
         "setting": 16
       },

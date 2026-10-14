@@ -18,7 +18,7 @@ import {
   filterShotsForGrinderModelLearning,
   shotMatchesGrinderForLearning,
   findLatestShotForBeanAndGrinder,
-  recomputeNicheRecommendationFromLastShot,
+  recomputeReferenceLearningRecommendationFromLastShot,
   recomputeQuantitativeRecommendationFromLastShot,
   grinderSupportsQuantitativeRecommendations,
   shouldUsePreviousRecipeRecommendation,
@@ -1404,6 +1404,7 @@ export default function App() {
         })
       );
       clearPendingGrind(activeBean.id, grinderModel);
+      setApplyRecConfirmation('');
 
       setActualTimeS('');
       if (activeRecipe?.targetDoseG != null && activeRecipe.targetDoseG !== '') {
@@ -1453,12 +1454,11 @@ export default function App() {
     && lastLearningShot.grinderModel === grinderModel
       ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate, appSettings)
       : null;
-  const liveNicheRec =
+  const liveReferenceLearningRec =
     !usePreviousRecipeRecommendation
-    && isNicheZeroGrinderModel(grinderModel)
     && lastLearningShot
     && activeRecipe
-      ? recomputeNicheRecommendationFromLastShot(
+      ? recomputeReferenceLearningRecommendationFromLastShot(
           lastLearningShot,
           activeRecipe,
           beanShotsForGrinder,
@@ -1489,11 +1489,11 @@ export default function App() {
         originalReason: lastLoggedShot.recommendation?.reason ?? previousRecipeRec.originalReason,
         previousRecipeDisclaimer: PREVIOUS_RECIPE_REC_DISCLAIMER,
       }
-    : liveNicheRec
+    : liveReferenceLearningRec
       ? {
-          ...liveNicheRec,
+          ...liveReferenceLearningRec,
           ageWarning: ageAdjustedRec?.ageWarning ?? null,
-          originalReason: liveNicheRec.reason,
+          originalReason: liveReferenceLearningRec.reason,
         }
       : liveQuantitativeRec
         ? {
@@ -3505,7 +3505,15 @@ export default function App() {
               <div className={`shrink-0 p-6 pt-3 border-t ${ui.modalDivider} ${ui.card}`}>
                 <button
                   type="button"
-                  onClick={() => setIsSettingsOpen(false)}
+                  onClick={() => {
+                    if (
+                      settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID
+                      && isCustomGrinderFormValid(settingsCustomGrinderDraft)
+                    ) {
+                      void handleSaveCustomGrinderFromSettings();
+                    }
+                    setIsSettingsOpen(false);
+                  }}
                   className={`w-full ${currentTheme.primary} font-bold py-3 rounded-xl text-sm shadow`}
                 >
                   Save & Close

@@ -3,7 +3,10 @@
  * Does not change confidence gate constants — only explains and counts exclusions.
  */
 
-import { parseNicheZeroSetting } from './nicheZero.js';
+import { formatGrinderMatchedShotCount } from './grinderRegistry.js';
+import { dialSpreadFromLoggedShots, readShotLearningDial } from './learningDialFromShot.js';
+import { NICHE_ZERO_DEFAULT_SETTING } from './nicheZero.js';
+import { mapShotsForReferenceLearning, resolveReferenceLearningDialIO } from './referenceLearningDial.js';
 import {
   recommendNicheZeroFromEvidence,
   buildNicheLearningTransparencyNote,
@@ -39,8 +42,8 @@ const VERDICT_FROM_REASON = {
   boundary: 'filtering_excluded',
 };
 
-function learningFieldReason(shot) {
-  const dial = parseNicheZeroSetting(shot?.nicheZeroSetting);
+function learningFieldReason(shot, grinderModel, settings = null) {
+  const dial = readShotLearningDial(shot, grinderModel, settings);
   const timeS = Number(shot?.actualTimeS ?? shot?.actualTime ?? NaN);
   if (dial === null) return 'missing_dial';
   if (!Number.isFinite(timeS)) return 'missing_time';
@@ -50,13 +53,13 @@ function learningFieldReason(shot) {
 /**
  * @returns {null | string} exclusion reason for this shot in the learning funnel
  */
-export function nicheShotLearningExclusionReason(shot, { grinderModel, recipe, flairEnabled }) {
+export function nicheShotLearningExclusionReason(shot, { grinderModel, recipe, flairEnabled, settings = null }) {
   if (!shot) return 'missing_shot';
   if (shot.excludeFromLearning === true) return 'excluded_from_learning';
   if (!shotMatchesGrinderForLearning(shot, grinderModel)) return 'wrong_grinder';
   const recipeReason = shotRecipeMismatchReason(shot, recipe, flairEnabled);
   if (recipeReason) return recipeReason;
-  const fieldReason = learningFieldReason(shot);
+  const fieldReason = learningFieldReason(shot, grinderModel, settings);
   if (fieldReason) return fieldReason;
   return null;
 }
@@ -71,6 +74,7 @@ export function diagnoseNicheLearningEligibility({
   recipe,
   flairEnabled = false,
   currentObservation = null,
+  settings = null,
 }) {
   const beanShots = beanId ? shots.filter((s) => s.beanId === beanId) : [...shots];
 
@@ -105,7 +109,7 @@ export function diagnoseNicheLearningEligibility({
     recipeMatched += 1;
     if (isPersistedLearningShot(shot)) loggedRecipeMatched += 1;
 
-    const fieldReason = learningFieldReason(shot);
+    const fieldReason = learningFieldReason(shot, grinderModel, settings);
     if (fieldReason) {
       shotExclusions.push({ shotKey: shot.id || shot.timestamp, reasonCode: fieldReason });
       continue;
@@ -116,24 +120,36 @@ export function diagnoseNicheLearningEligibility({
   const comparableShots = grinderPool.filter((s) => {
     const recipeReason = shotRecipeMismatchReason(s, recipe, flairEnabled);
     if (recipeReason) return false;
-    return learningFieldReason(s) === null;
+    return learningFieldReason(s, grinderModel, settings) === null;
   });
 
-  const currentDial =
-    currentObservation?.nicheZeroSetting != null
-      ? parseNicheZeroSetting(currentObservation.nicheZeroSetting)
-      : null;
+  const refIO = resolveReferenceLearningDialIO(grinderModel, settings);
+  const comparableForEmpirical = refIO
+    ? mapShotsForReferenceLearning(comparableShots, refIO)
+    : comparableShots;
+
+  const currentDial = currentObservation
+    ? readShotLearningDial(
+        {
+          nicheZeroSetting: currentObservation.nicheZeroSetting,
+          customGrindValue: currentObservation.customGrindValue,
+        },
+        grinderModel,
+        settings
+      )
+    : null;
   const currentTime = currentObservation?.actualTimeS;
+  const loggedDialSpread = dialSpreadFromLoggedShots(comparableForEmpirical, grinderModel, settings);
 
   const empiricalInput = {
-    currentDial: currentDial ?? 15,
+    currentDial: currentDial ?? NICHE_ZERO_DEFAULT_SETTING,
     actualTime: Number(currentTime ?? 30),
     targetMin: recipe?.targetTimeMinS ?? 27,
     targetMax: recipe?.targetTimeMaxS ?? 32,
     tasteProfile: 'sour',
     severeChoke: false,
     isTimeInRange: true,
-    comparableShots: [...comparableShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
+    comparableShots: [...comparableForEmpirical].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
     currentObservation: currentObservation
       ? {
           nicheZeroSetting: currentDial,
@@ -177,7 +193,7 @@ export function diagnoseNicheLearningEligibility({
     },
     shotExclusions,
     observationCount: diagnostics.observationCount ?? 0,
-    dialSpread: diagnostics.dialSpread ?? 0,
+    dialSpread: loggedDialSpread,
     pairCount: diagnostics.pairCount ?? 0,
     finalReasonCode,
     verdict,
@@ -186,20 +202,20 @@ export function diagnoseNicheLearningEligibility({
   };
 }
 
-export function buildRecipeChangedLearningNote(eligibility) {
+export function buildRecipeChangedLearningNote(eligibility, grinderModel, settings = null) {
   if (
     eligibility.counts.grinderMatched > 0
     && eligibility.counts.recipeMatched === 0
     && shotExclusionsIndicateRecipeChange(eligibility.shotExclusions)
   ) {
-    return `Your recipe changed, so earlier shots at the old recipe aren't used for dial learning. Log fresh pulls at the new targets. — ${buildNicheEligibilityCompactCounts(eligibility)}`;
+    return `Your recipe changed, so earlier shots at the old recipe aren't used for dial learning. Log fresh pulls at the new targets. — ${buildNicheEligibilityCompactCounts(eligibility, grinderModel, settings)}`;
   }
   return null;
 }
 
-export function buildNicheEligibilityCompactCounts(eligibility) {
+export function buildNicheEligibilityCompactCounts(eligibility, grinderModel, settings = null) {
   const { counts, dialSpread } = eligibility;
-  const grinderLabel = counts.grinderMatched === 1 ? '1 Niche shot' : `${counts.grinderMatched} Niche shots`;
+  const grinderLabel = formatGrinderMatchedShotCount(counts.grinderMatched, grinderModel, settings);
   const recipePart = `${counts.recipeMatched} match recipe`;
   const spreadPart =
     eligibility.observationCount > 0 ? ` · dial spread ${dialSpread}` : '';
@@ -212,11 +228,16 @@ export function buildNicheEligibilityCompactCounts(eligibility) {
 export function buildNicheEligibilityLearningNote(
   eligibility,
   empiricalReasonCode,
-  { recipeComparableCount = 0, grinderLearningShotCount = 0 } = {}
+  {
+    recipeComparableCount = 0,
+    grinderLearningShotCount = 0,
+    grinderModel = null,
+    settings = null,
+  } = {}
 ) {
   if (eligibility.empiricalOk) return null;
 
-  const recipeChangedNote = buildRecipeChangedLearningNote(eligibility);
+  const recipeChangedNote = buildRecipeChangedLearningNote(eligibility, grinderModel, settings);
   if (recipeChangedNote) return recipeChangedNote;
 
   const countsForNote = {
@@ -231,10 +252,10 @@ export function buildNicheEligibilityLearningNote(
 
   if (!stageNote) {
     if (eligibility.counts.grinderMatched === 0) {
-      return `Why not learning yet: no saved shots for this grinder on this bean. (${buildNicheEligibilityCompactCounts(eligibility)})`;
+      return `Why not learning yet: no saved shots for this grinder on this bean. (${buildNicheEligibilityCompactCounts(eligibility, grinderModel, settings)})`;
     }
     if (eligibility.counts.recipeMatched === 0 && eligibility.counts.grinderMatched > 0) {
-      return `Why not learning yet: none of your saved shots match this recipe’s targets. (${buildNicheEligibilityCompactCounts(eligibility)})`;
+      return `Why not learning yet: none of your saved shots match this recipe’s targets. (${buildNicheEligibilityCompactCounts(eligibility, grinderModel, settings)})`;
     }
     return null;
   }
@@ -244,8 +265,8 @@ export function buildNicheEligibilityLearningNote(
     && countsForNote.grinderLearningShotCount > 0
     && shotExclusionsIndicateRecipeChange(eligibility.shotExclusions)
   ) {
-    return buildRecipeChangedLearningNote(eligibility);
+    return buildRecipeChangedLearningNote(eligibility, grinderModel, settings);
   }
 
-  return `${stageNote} — ${buildNicheEligibilityCompactCounts(eligibility)}`;
+  return `${stageNote} — ${buildNicheEligibilityCompactCounts(eligibility, grinderModel, settings)}`;
 }

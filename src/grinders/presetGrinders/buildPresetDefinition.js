@@ -37,7 +37,8 @@ export function buildPresetGrinderDefinition(spec) {
     inRangeVeryBitterShift: stepped ? 1 : 0.5,
     chokeReasonStepLabel: stepped ? 'STEP(S)' : 'INCREMENT(S)',
     timeOffTargetStepLabel: stepped ? 'STEP(S)' : 'INCREMENT(S)',
-    shortBadgeLabel: spec.settingsSelectLabel.split(' ').slice(-1)[0] || spec.id,
+    shortBadgeLabel:
+      spec.shortBadgeLabel || spec.settingsSelectLabel.split(' ').slice(-1)[0] || spec.id,
     settingsSelectLabel: spec.settingsSelectLabel,
     setupCardLabel: spec.settingsSelectLabel,
     setupCardHint: spec.setupCardHint,
