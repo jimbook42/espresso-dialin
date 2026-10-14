@@ -1,6 +1,7 @@
 import assert from 'assert';
 import {
   applyBasketChangeToRecommendation,
+  buildBasketAdjustmentBasisRec,
   BASKET_FLOW_FEWER_HOLES,
   BASKET_FLOW_MORE_HOLES,
 } from './basketChangeAdjustment.js';
@@ -25,5 +26,18 @@ export function runBasketChangeAdjustmentTests() {
     BASKET_FLOW_FEWER_HOLES
   );
   assert.notDeepEqual(coarser.recommendedSetting, rec.recommendedSetting);
+
+  const basis = buildBasketAdjustmentBasisRec(null, SETTE_GRINDER_ID, {
+    hasBeanShotsForGrinder: false,
+    initialGrindSetting: { macro: 17, micro: 'F' },
+  });
+  const immediate = applyBasketChangeToRecommendation(
+    basis,
+    SETTE_GRINDER_ID,
+    BASKET_FLOW_MORE_HOLES
+  );
+  assert.equal(immediate.recommendedSetting.macro, 17);
+  assert.equal(immediate.recommendedSetting.micro, 'D');
+
   console.log('Basket change adjustment tests passed.');
 }

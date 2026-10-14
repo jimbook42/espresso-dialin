@@ -7,6 +7,7 @@ import {
   isPresetGrinderModel,
   isCustomGrinderModel,
   adjustSette,
+  parseGrindForShotSave,
 } from '../grinders/grinderRegistry.js';
 import { adjustPresetGrind } from '../grinders/presetGrinders/dial.js';
 import { getPresetGrinderSpec } from '../grinders/presetGrinders/catalog.js';
@@ -69,6 +70,63 @@ function shiftQuantitativeSetting(grinderModel, setting, direction, settings) {
   }
 
   return setting;
+}
+
+export function recommendedSettingFromInitialGrind(grinderModel, initialSetting) {
+  if (!initialSetting || !grinderModel) return null;
+  if (isSetteGrinderModel(grinderModel)) {
+    return { macro: initialSetting.macro, micro: initialSetting.micro };
+  }
+  if (isSunbeamGrinderModel(grinderModel)) {
+    return { setting: initialSetting.setting };
+  }
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return { nicheZeroSetting: initialSetting.nicheZeroSetting };
+  }
+  if (initialSetting.customGrindValue != null && initialSetting.customGrindValue !== '') {
+    return { customGrindValue: initialSetting.customGrindValue };
+  }
+  return null;
+}
+
+export function recommendedSettingFromGrindControls(grinderModel, grindFields, settings = null) {
+  const parsed = parseGrindForShotSave(grinderModel, grindFields, settings);
+  if (!parsed.ok) return null;
+  if (isSetteGrinderModel(grinderModel)) {
+    return { macro: parsed.setteMacro, micro: parsed.setteMicro };
+  }
+  if (isSunbeamGrinderModel(grinderModel)) {
+    return { setting: parsed.sunbeamSetting };
+  }
+  if (isNicheZeroGrinderModel(grinderModel)) {
+    return { nicheZeroSetting: parsed.nicheZeroSetting };
+  }
+  if (parsed.customGrindValue != null && parsed.customGrindValue !== '') {
+    return { customGrindValue: parsed.customGrindValue };
+  }
+  return null;
+}
+
+/** Recommendation currently shown on the card — basis for an immediate basket shift. */
+export function buildBasketAdjustmentBasisRec(
+  dynamicRec,
+  grinderModel,
+  { initialGrindSetting = null, hasBeanShotsForGrinder = true, grindFields = null, settings = null } = {}
+) {
+  if (dynamicRec?.recommendedSetting) return dynamicRec;
+  if (!hasBeanShotsForGrinder && initialGrindSetting) {
+    const recommendedSetting = recommendedSettingFromInitialGrind(grinderModel, initialGrindSetting);
+    if (recommendedSetting) {
+      return { recommendedSetting, reason: dynamicRec?.reason || 'KEEP GRIND' };
+    }
+  }
+  if (grindFields) {
+    const recommendedSetting = recommendedSettingFromGrindControls(grinderModel, grindFields, settings);
+    if (recommendedSetting) {
+      return { recommendedSetting, reason: dynamicRec?.reason || 'KEEP GRIND' };
+    }
+  }
+  return null;
 }
 
 /**

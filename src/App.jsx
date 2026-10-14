@@ -128,6 +128,7 @@ import {
 import { SHOT_YIELD_SETTLE_MS } from './scales/scaleShotStopSettle.js';
 import {
   applyBasketChangeToRecommendation,
+  buildBasketAdjustmentBasisRec,
   BASKET_FLOW_FEWER_HOLES,
   BASKET_FLOW_MORE_HOLES,
 } from './utils/basketChangeAdjustment.js';
@@ -1634,18 +1635,6 @@ export default function App() {
             originalReason: liveQuantitativeRec.reason,
           }
         : ageAdjustedRec;
-  const displayDynamicRec =
-    pendingBasketAdjustment && dynamicRec?.recommendedSetting
-      ? applyBasketChangeToRecommendation(
-          dynamicRec,
-          grinderModel,
-          pendingBasketAdjustment,
-          appSettings
-        )
-      : dynamicRec;
-  const grindRecommendationSummary = displayDynamicRec?.recommendedSetting
-    ? formatGrindRecommendationSummary(grinderModel, displayDynamicRec, appSettings)
-    : null;
   const nicheLearningBlocksEvidence =
     isNicheZeroGrinderModel(grinderModel)
     && Boolean(dynamicRec?.nicheLearningNote)
@@ -1715,6 +1704,31 @@ export default function App() {
     },
     appSettings
   );
+
+  const basketAdjustmentBasis = buildBasketAdjustmentBasisRec(dynamicRec, grinderModel, {
+    initialGrindSetting,
+    hasBeanShotsForGrinder: beanShotsForGrinder.length > 0,
+    grindFields: {
+      setteMacro,
+      setteMicro,
+      sunbeamSetting,
+      nicheZeroSetting,
+      customGrindValue: effectiveCustomGrindValue,
+    },
+    settings: appSettings,
+  });
+  const displayDynamicRec =
+    pendingBasketAdjustment && basketAdjustmentBasis?.recommendedSetting
+      ? applyBasketChangeToRecommendation(
+          basketAdjustmentBasis,
+          grinderModel,
+          pendingBasketAdjustment,
+          appSettings
+        )
+      : dynamicRec;
+  const grindRecommendationSummary = displayDynamicRec?.recommendedSetting
+    ? formatGrindRecommendationSummary(grinderModel, displayDynamicRec, appSettings)
+    : null;
 
   const initialGrindHint = (() => {
     if (!initialGrindHintSource) return null;
@@ -1892,8 +1906,8 @@ export default function App() {
   })();
 
   const recommendedGrindDisplay = (() => {
-    if (appliedRecommendationDisplay) return appliedRecommendationDisplay;
-    if (lastLearningShot && lastLearningShot.grinderModel === grinderModel && displayDynamicRec?.recommendedSetting) {
+    if (appliedRecommendationDisplay && !pendingBasketAdjustment) return appliedRecommendationDisplay;
+    if (displayDynamicRec?.recommendedSetting && grinderModel) {
       return formatRecommendedGrindDisplay(grinderModel, displayDynamicRec.recommendedSetting, appSettings);
     }
     return currentGrindLabel;
@@ -2423,6 +2437,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => {
+                          setAppliedRecommendationDisplay(null);
                           setPendingBasketAdjustment(BASKET_FLOW_MORE_HOLES);
                           setBasketChangePromptOpen(false);
                         }}
@@ -2434,6 +2449,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => {
+                          setAppliedRecommendationDisplay(null);
                           setPendingBasketAdjustment(BASKET_FLOW_FEWER_HOLES);
                           setBasketChangePromptOpen(false);
                         }}
