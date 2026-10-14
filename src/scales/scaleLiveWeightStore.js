@@ -1,4 +1,4 @@
-/** @typedef {'shot' | 'stale' | 'hidden'} ShotWeightReadoutMode */
+/** @typedef {'shot' | 'stale' | 'settling' | 'frozen' | 'hidden'} ShotWeightReadoutMode */
 
 /**
  * @typedef {{
@@ -47,6 +47,8 @@ export function resetScaleLiveWeightStore() {
  *   liveRelativeWeightG: number,
  *   liveWeightG: number,
  *   isConnected: boolean,
+ *   yieldSettleActive?: boolean,
+ *   frozenYieldG?: number | null,
  * }} input
  * @returns {{ visible: boolean, grams: number, mode: ShotWeightReadoutMode }}
  */
@@ -56,9 +58,21 @@ export function resolveShotWeightReadout({
   liveRelativeWeightG,
   liveWeightG,
   isConnected,
+  yieldSettleActive = false,
+  frozenYieldG = null,
 }) {
   if (!isConnected) {
     return { visible: false, grams: 0, mode: 'hidden' };
+  }
+  const frozen = Number(frozenYieldG);
+  if (Number.isFinite(frozen) && frozen > 0) {
+    return { visible: true, grams: frozen, mode: 'frozen' };
+  }
+  if (yieldSettleActive) {
+    const grams = Number.isFinite(liveRelativeWeightG) && liveRelativeWeightG > 0
+      ? liveRelativeWeightG
+      : liveWeightG;
+    return { visible: true, grams, mode: 'settling' };
   }
   const show =
     timerRunning || (Number.isFinite(liveWeightG) && liveWeightG > 0);

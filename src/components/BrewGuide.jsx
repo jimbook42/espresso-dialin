@@ -268,6 +268,7 @@ export function BrewGuide({
     countdownActive: false,
     countdownHandoffPending: false,
     yieldSettleActive: false,
+    frozenShotWeightG: null,
     label: '0:00.0',
     usePreInfusion: false,
     preInfusionPhase: false,
@@ -750,6 +751,8 @@ export function BrewGuide({
                 variant="brew-guide"
                 timerRunning={extractPhase === BREW_EXTRACT_RUNNING && timer.running}
                 ui={ui}
+                yieldSettleActive={timer.yieldSettleActive}
+                frozenYieldG={timer.frozenShotWeightG}
               />
             )}
             <p className={`text-base leading-relaxed text-center ${ui.sub}`}>{timerHint}</p>

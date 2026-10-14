@@ -184,6 +184,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
   const grinder = summary.grinder || 'your grinder';
   const bean = summary.bean || 'your coffee';
   const flairEnabled = Boolean(dial.flairEnabled);
+  const scaleConnected = Boolean(dial.scaleConnected);
   const grinderIsSunbeamMachine = isSunbeamGrinderModel(grinder);
   const { grindSettingLabel, changedGrindPurgeExtraLine } = getBrewGuideGrindConfig(grinder);
   const changed = grindSettingChanged(dial);
@@ -452,7 +453,9 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
         : `Lock in, cup on the scale. Brew toward ${yieldG}g.`,
     note: flairEnabled
       ? 'Flair is a manual lever — you control pressure and flow, not a pump timer.'
-      : 'The timer does not read the scale.',
+      : scaleConnected
+        ? 'Live weight from your scale appears below the timer while you pull.'
+        : 'The timer does not read the scale.',
   }));
 
   steps.push(step({

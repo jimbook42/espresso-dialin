@@ -350,6 +350,12 @@ export function runBrewGuideTests() {
     .find((step) => step.id === 'extract');
   assert.match(flairExtract.instruction, /pressure profile/i);
 
+  const extractNoScale = buildBrewSteps(none(), DIAL).find((step) => step.id === 'extract');
+  assert.match(extractNoScale.note, /does not read the scale/i);
+  const extractWithScale = buildBrewSteps(none(), { ...DIAL, scaleConnected: true }).find((step) => step.id === 'extract');
+  assert.match(extractWithScale.note, /Live weight from your scale/i);
+  assert.doesNotMatch(extractWithScale.note, /does not read the scale/i);
+
   const setteGrind = buildBrewSteps(none(), { ...DIAL, grinderModel: 'Sette 270Wi' })
     .find((step) => step.id === 'grindSetting');
   assert.match(setteGrind.instruction, /your grinder/i);

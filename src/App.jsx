@@ -308,6 +308,7 @@ export default function App() {
   const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
   const shotCountdownStartOptsRef = useRef(null);
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
+  const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
   const yieldSettleUserEditedRef = useRef(false);
   const yieldSettleTimerRef = useRef(null);
   const [basketChangePromptOpen, setBasketChangePromptOpen] = useState(false);
@@ -613,6 +614,7 @@ export default function App() {
     if (fromBrewGuide) syncBrewGuideTimerActive(true);
     else syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
+    setFrozenShotWeightG(null);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     if (timemoreScale.isConnected) {
@@ -714,8 +716,13 @@ export default function App() {
       const { yieldG, metrics } = timemoreScale.finalizeShotYieldSettle();
       if (!yieldSettleUserEditedRef.current && yieldG != null && yieldG > 0) {
         setActualYieldG(String(yieldG));
+        setFrozenShotWeightG(yieldG);
+      } else {
+        setFrozenShotWeightG(null);
       }
       setScaleShotMetrics(metrics);
+    } else {
+      setFrozenShotWeightG(null);
     }
     yieldSettleUserEditedRef.current = false;
   }, [clearYieldSettleTimer, timemoreScale]);
@@ -759,6 +766,7 @@ export default function App() {
     cancelShotCountdown();
     clearYieldSettleTimer();
     setYieldSettleActive(false);
+    setFrozenShotWeightG(null);
     yieldSettleUserEditedRef.current = false;
     scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
@@ -772,6 +780,7 @@ export default function App() {
 
   const handleResetTimer = () => {
     cancelShotCountdown();
+    setFrozenShotWeightG(null);
     scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
@@ -2158,6 +2167,8 @@ export default function App() {
                 timerRunning={timerRunning}
                 showFlow={scaleShowFlow}
                 instantFlowGs={timemoreScale.instantFlowGs}
+                yieldSettleActive={yieldSettleActive}
+                frozenYieldG={frozenShotWeightG}
               />
             )}
             <p className="text-[13px] text-[#6b6457] mt-4 text-center">
@@ -2565,7 +2576,7 @@ export default function App() {
                     <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <p className={`text-[10px] uppercase tracking-widest ${ui.muted} mb-2`}>Live shot timer</p>
-                        <span className="text-4xl font-black font-mono text-[#f5f2eb] tabular-nums">{formatTime(timerSeconds)}</span>
+                        <span className={`text-4xl font-black font-mono tabular-nums ${ui.text}`}>{formatTime(timerSeconds)}</span>
                         {scaleShowLiveReadout && (
                           <ShotTimerWeightReadout
                             variant="dial-inline"
@@ -2574,6 +2585,8 @@ export default function App() {
                             instantFlowGs={timemoreScale.instantFlowGs}
                             darkMode={darkMode}
                             ui={ui}
+                            yieldSettleActive={yieldSettleActive}
+                            frozenYieldG={frozenShotWeightG}
                           />
                         )}
                       </div>
@@ -2830,6 +2843,7 @@ export default function App() {
               countdownActive: brewGuideExtractCountdownActive,
               countdownHandoffPending,
               yieldSettleActive,
+              frozenShotWeightG,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
               usePreInfusion,
               preInfusionPhase,
@@ -2845,6 +2859,7 @@ export default function App() {
               grindLabel: recommendedGrindDisplay || currentGrindLabel,
               previousGrindLabel,
               flairEnabled,
+              scaleConnected: scaleFeatureEnabled && timemoreScale.isConnected,
             })}
           />
         )}

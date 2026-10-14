@@ -62,5 +62,28 @@ export function runScaleLiveWeightReadoutTests() {
     'disconnected must not show live weight'
   );
 
+  assert.equal(
+    resolveShotWeightReadout({
+      timerRunning: false,
+      weightTriggersPrimed: true,
+      liveRelativeWeightG: 35.2,
+      liveWeightG: 35.2,
+      isConnected: true,
+      yieldSettleActive: true,
+    }).mode,
+    'settling'
+  );
+
+  assert.deepEqual(
+    resolveShotWeightReadout({
+      timerRunning: false,
+      liveRelativeWeightG: 99,
+      liveWeightG: 99,
+      isConnected: true,
+      frozenYieldG: 36.4,
+    }),
+    { visible: true, grams: 36.4, mode: 'frozen' }
+  );
+
   console.log('Scale live weight readout tests passed.');
 }

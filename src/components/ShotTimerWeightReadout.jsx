@@ -20,7 +20,9 @@ function formatGrams(g) {
  *   showFlow?: boolean,
  *   instantFlowGs?: number | null,
  *   darkMode?: boolean,
- *   ui?: { accentText?: string, muted?: string },
+ *   ui?: { accentText?: string, muted?: string, text?: string },
+ *   yieldSettleActive?: boolean,
+ *   frozenYieldG?: number | null,
  * }} props
  */
 function ShotTimerWeightReadoutInner({
@@ -30,6 +32,8 @@ function ShotTimerWeightReadoutInner({
   instantFlowGs = null,
   darkMode = true,
   ui,
+  yieldSettleActive = false,
+  frozenYieldG = null,
 }) {
   const snap = useSyncExternalStore(subscribeScaleLiveWeight, getScaleLiveWeightSnapshot);
   const { visible, grams, mode } = resolveShotWeightReadout({
@@ -38,11 +42,15 @@ function ShotTimerWeightReadoutInner({
     liveRelativeWeightG: snap.liveRelativeWeightG,
     liveWeightG: snap.liveWeightG,
     isConnected: snap.isConnected,
+    yieldSettleActive,
+    frozenYieldG,
   });
 
   if (!visible) return null;
 
-  const isLiveShot = mode === 'shot';
+  const isLiveShot = mode === 'shot' || mode === 'frozen' || mode === 'settling';
+  const showSettlingLabel = mode === 'stale';
+  const showReadingFinalLabel = mode === 'settling';
   const flowSuffix =
     showFlow && instantFlowGs != null
       ? ` · ${instantFlowGs.toFixed(2)} g/s`
@@ -60,8 +68,11 @@ function ShotTimerWeightReadoutInner({
           {formatGrams(grams)}
           <span className="text-[0.42em] font-semibold align-baseline ml-1 text-[#c88a4b]/90">g</span>
         </p>
-        {!isLiveShot && (
+        {showSettlingLabel && (
           <p className="text-[10px] uppercase tracking-[0.14em] text-[#6b6457] mt-2">Scale settling</p>
+        )}
+        {showReadingFinalLabel && (
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[#8a9d72] mt-2">Reading final weight…</p>
         )}
         {flowSuffix && isLiveShot && (
           <p className="text-[15px] text-[#8a9d72] font-medium tabular-nums mt-2">{flowSuffix.replace(/^ · /, '')}</p>
@@ -82,8 +93,11 @@ function ShotTimerWeightReadoutInner({
         >
           {formatGrams(grams)}g
         </p>
-        {!isLiveShot && (
+        {showSettlingLabel && (
           <p className={`text-[10px] uppercase tracking-wide mt-1 ${staleClass}`}>Scale settling</p>
+        )}
+        {showReadingFinalLabel && (
+          <p className={`text-[10px] uppercase tracking-wide mt-1 ${liveClass}`}>Reading final weight…</p>
         )}
       </div>
     );
@@ -101,8 +115,13 @@ function ShotTimerWeightReadoutInner({
           </span>
         )}
       </p>
-      {!isLiveShot && (
+      {showSettlingLabel && (
         <p className={`text-[10px] uppercase tracking-wide mt-1 ${ui?.muted ?? 'text-[#6b6457]'}`}>Scale settling</p>
+      )}
+      {showReadingFinalLabel && (
+        <p className={`text-[10px] uppercase tracking-wide mt-1 ${ui?.accentText ?? 'text-[#c88a4b]'}`}>
+          Reading final weight…
+        </p>
       )}
     </div>
   );
