@@ -51,6 +51,7 @@ import { runPresetGrindersTests } from './src/grinders/presetGrinders/presetGrin
 import { runFreshBeanPresetIntegrationTests } from './src/grinders/presetGrinders/freshBeanPresetIntegration.test.js';
 import { runGrindDial617IntegrationTests } from './src/grinders/grindDial617.integration.test.js';
 import { runNicheEligibilityTests } from './src/grinders/nicheEligibility.test.js';
+import { runPresetGrinderShiftSanity618Tests } from './src/grinders/presetGrinderShiftSanity618.test.js';
 import { runAcaiaProtocolTests } from './src/scales/protocols/acaia.test.js';
 import { runBookooMiniProtocolTests } from './src/scales/protocols/bookooMini.test.js';
 import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
@@ -587,6 +588,7 @@ async function runTests() {
   runFreshBeanPresetIntegrationTests();
   runGrindDial617IntegrationTests();
   runNicheEligibilityTests();
+  runPresetGrinderShiftSanity618Tests();
   runAcaiaProtocolTests();
   runBookooMiniProtocolTests();
   runOnboardingGateTests();

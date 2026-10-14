@@ -1,5 +1,6 @@
 import assert from 'assert';
-import { buildNicheEligibilityCompactCounts } from './nicheEligibility.js';
+import { buildNicheEligibilityCompactCounts, diagnoseNicheLearningEligibility } from './nicheEligibility.js';
+import { EUREKA_ZERO_GRINDER_ID } from './presetGrinders/catalog.js';
 import { formatGrinderMatchedShotCount } from './grinderRegistry.js';
 import {
   EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
@@ -31,6 +32,50 @@ export function runNicheEligibilityTests() {
 
   const nicheCounts = buildNicheEligibilityCompactCounts(eligibility, NICHE_ZERO_GRINDER_ID);
   assert.match(nicheCounts, /^25 Niche Zero shots ·/);
+
+  const RECIPE = {
+    targetTimeMinS: 27,
+    targetTimeMaxS: 32,
+    targetDoseG: 18,
+    targetYieldG: 36,
+  };
+  const decimalShots = [
+    {
+      id: 'e1',
+      beanId: 'b',
+      grinderModel: EUREKA_ZERO_GRINDER_ID,
+      customGrindValue: 25.5,
+      actualTimeS: 30,
+      actualYieldG: 36,
+      targetDoseG: 18,
+      targetYieldG: 36,
+      targetTimeMinS: 27,
+      targetTimeMaxS: 32,
+      wasPurged: true,
+      timestamp: '2026-01-01',
+    },
+    {
+      id: 'e2',
+      beanId: 'b',
+      grinderModel: EUREKA_ZERO_GRINDER_ID,
+      customGrindValue: 23.5,
+      actualTimeS: 28,
+      actualYieldG: 36,
+      targetDoseG: 18,
+      targetYieldG: 36,
+      targetTimeMinS: 27,
+      targetTimeMaxS: 32,
+      wasPurged: true,
+      timestamp: '2026-01-02',
+    },
+  ];
+  const spreadDiag = diagnoseNicheLearningEligibility({
+    shots: decimalShots,
+    beanId: 'b',
+    grinderModel: EUREKA_ZERO_GRINDER_ID,
+    recipe: RECIPE,
+  });
+  assert.equal(spreadDiag.dialSpread, 2);
 
   console.log('Niche eligibility tests passed.');
 }

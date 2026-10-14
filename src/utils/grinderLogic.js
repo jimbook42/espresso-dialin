@@ -57,6 +57,8 @@ import {
   buildOutlierRecommendationReason,
   applyGrindShiftDamping,
   proportionalGrindShiftFromTimeDelta,
+  capQuantitativeGrindShift,
+  effectiveQuantitativeSensitivity,
   detectLikelyShotOutlier,
   filterComparableShotsForNicheLearning,
   grindNumericFromShotData,
@@ -1290,7 +1292,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     sensitivityConfidence = confidence;
     sensitivityUsedEmpiricalSlope = usedEmpiricalSlope;
     sensitivityIsDefault = !reliableLearnedSensitivity || !usedEmpiricalSlope;
-    effectiveSensitivity = secondsPerStep || grinderProfile.sensitivity;
+    effectiveSensitivity = secondsPerStep || effectiveQuantitativeSensitivity(grinderProfile);
     const sensitivity = effectiveSensitivity;
     const dampingOptions = {
       isOutlier: false,
@@ -1308,6 +1310,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
 
     dampingOptions.isOutlier = outlierCheck.isOutlier;
     shift = proportionalGrindShiftFromTimeDelta(timeDelta, sensitivity, dampingOptions);
+    shift = capQuantitativeGrindShift(shift, grinderProfile);
 
     const secOff = Math.abs(Math.round(timeDelta));
     const dialReason = formatDialShiftReasonParts(grinderProfile, customGrindValue, shift);

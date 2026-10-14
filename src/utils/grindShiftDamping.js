@@ -55,3 +55,23 @@ export function applyGrindShiftDamping(rawShift, options = {}) {
   }
   return sign * rounded;
 }
+
+/** Max engine-step move for one quantitative recommendation (fraction of dial range). */
+export function maxQuantitativeShiftSteps(grinderProfile) {
+  const profile = grinderProfile?.customProfile;
+  if (!profile) {
+    if (grinderProfile?.controlType === 'sette') return 7;
+    if (grinderProfile?.controlType === 'sunbeam') return 3;
+    return 6;
+  }
+  const rangeSteps = (profile.max - profile.min) / profile.step;
+  if (!Number.isFinite(rangeSteps) || rangeSteps <= 0) return 6;
+  return Math.max(2, Math.min(12, Math.ceil(rangeSteps * 0.18)));
+}
+
+export function capQuantitativeGrindShift(shift, grinderProfile) {
+  if (!shift || !grinderProfile?.customProfile) return shift;
+  const max = maxQuantitativeShiftSteps(grinderProfile);
+  const sign = shift < 0 ? -1 : 1;
+  return sign * Math.min(Math.abs(shift), max);
+}

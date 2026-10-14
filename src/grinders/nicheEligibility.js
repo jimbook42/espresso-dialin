@@ -4,7 +4,8 @@
  */
 
 import { formatGrinderMatchedShotCount } from './grinderRegistry.js';
-import { parseNicheZeroSetting } from './nicheZero.js';
+import { readShotLearningDial } from './learningDialFromShot.js';
+import { mapShotsForReferenceLearning, resolveReferenceLearningDialIO } from './referenceLearningDial.js';
 import {
   recommendNicheZeroFromEvidence,
   buildNicheLearningTransparencyNote,
@@ -40,8 +41,8 @@ const VERDICT_FROM_REASON = {
   boundary: 'filtering_excluded',
 };
 
-function learningFieldReason(shot) {
-  const dial = parseNicheZeroSetting(shot?.nicheZeroSetting);
+function learningFieldReason(shot, grinderModel, settings = null) {
+  const dial = readShotLearningDial(shot, grinderModel, settings);
   const timeS = Number(shot?.actualTimeS ?? shot?.actualTime ?? NaN);
   if (dial === null) return 'missing_dial';
   if (!Number.isFinite(timeS)) return 'missing_time';
@@ -51,13 +52,13 @@ function learningFieldReason(shot) {
 /**
  * @returns {null | string} exclusion reason for this shot in the learning funnel
  */
-export function nicheShotLearningExclusionReason(shot, { grinderModel, recipe, flairEnabled }) {
+export function nicheShotLearningExclusionReason(shot, { grinderModel, recipe, flairEnabled, settings = null }) {
   if (!shot) return 'missing_shot';
   if (shot.excludeFromLearning === true) return 'excluded_from_learning';
   if (!shotMatchesGrinderForLearning(shot, grinderModel)) return 'wrong_grinder';
   const recipeReason = shotRecipeMismatchReason(shot, recipe, flairEnabled);
   if (recipeReason) return recipeReason;
-  const fieldReason = learningFieldReason(shot);
+  const fieldReason = learningFieldReason(shot, grinderModel, settings);
   if (fieldReason) return fieldReason;
   return null;
 }
@@ -72,6 +73,7 @@ export function diagnoseNicheLearningEligibility({
   recipe,
   flairEnabled = false,
   currentObservation = null,
+  settings = null,
 }) {
   const beanShots = beanId ? shots.filter((s) => s.beanId === beanId) : [...shots];
 
@@ -106,7 +108,7 @@ export function diagnoseNicheLearningEligibility({
     recipeMatched += 1;
     if (isPersistedLearningShot(shot)) loggedRecipeMatched += 1;
 
-    const fieldReason = learningFieldReason(shot);
+    const fieldReason = learningFieldReason(shot, grinderModel, settings);
     if (fieldReason) {
       shotExclusions.push({ shotKey: shot.id || shot.timestamp, reasonCode: fieldReason });
       continue;
@@ -117,12 +119,21 @@ export function diagnoseNicheLearningEligibility({
   const comparableShots = grinderPool.filter((s) => {
     const recipeReason = shotRecipeMismatchReason(s, recipe, flairEnabled);
     if (recipeReason) return false;
-    return learningFieldReason(s) === null;
+    return learningFieldReason(s, grinderModel, settings) === null;
   });
+
+  const refIO = resolveReferenceLearningDialIO(grinderModel, settings);
+  const comparableForEmpirical = refIO
+    ? mapShotsForReferenceLearning(comparableShots, refIO)
+    : comparableShots;
 
   const currentDial =
     currentObservation?.nicheZeroSetting != null
-      ? parseNicheZeroSetting(currentObservation.nicheZeroSetting)
+      ? readShotLearningDial(
+          { nicheZeroSetting: currentObservation.nicheZeroSetting },
+          grinderModel,
+          settings
+        )
       : null;
   const currentTime = currentObservation?.actualTimeS;
 
@@ -134,7 +145,7 @@ export function diagnoseNicheLearningEligibility({
     tasteProfile: 'sour',
     severeChoke: false,
     isTimeInRange: true,
-    comparableShots: [...comparableShots].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
+    comparableShots: [...comparableForEmpirical].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
     currentObservation: currentObservation
       ? {
           nicheZeroSetting: currentDial,
