@@ -3,6 +3,8 @@ import 'fake-indexeddb/auto';
 import { db } from './grinderLogic.js';
 import {
   nextActiveBeanIdAfterFinish,
+  partitionBeansByFinished,
+  persistBeanActive,
   persistBeanFinished,
   restoreBeanFromSnapshot,
   snapshotBeanRecord,
@@ -71,5 +73,41 @@ describe('bean finish undo', () => {
     await persistBeanFinished(db, 'bean-b');
     const updated = await db.beans.toArray();
     expect(nextActiveBeanIdAfterFinish(updated, 'bean-a')).toBe('');
+  });
+});
+
+describe('partitionBeansByFinished', () => {
+  it('splits active and finished beans with correct count', () => {
+    const beans = [
+      { id: '1', isFinished: false },
+      { id: '2', isFinished: true },
+      { id: '3', isFinished: false },
+      { id: '4', isFinished: true },
+    ];
+    const { activeBeans, finishedBeans, finishedCount } = partitionBeansByFinished(beans);
+    expect(activeBeans.map((b) => b.id)).toEqual(['1', '3']);
+    expect(finishedBeans.map((b) => b.id)).toEqual(['2', '4']);
+    expect(finishedCount).toBe(2);
+  });
+});
+
+describe('persistBeanActive', () => {
+  beforeEach(async () => {
+    await db.open();
+    await db.transaction('rw', db.beans, async () => {
+      await db.beans.clear();
+      await db.beans.bulkAdd([BEAN_A, BEAN_B]);
+    });
+  });
+
+  it('sets only isFinished to false and leaves other fields unchanged', async () => {
+    await persistBeanFinished(db, 'bean-a');
+    const finished = await db.beans.get('bean-a');
+    expect(finished.isFinished).toBe(true);
+
+    await persistBeanActive(db, 'bean-a');
+    const reactivated = await db.beans.get('bean-a');
+    expect(reactivated.isFinished).toBe(false);
+    expect(reactivated).toEqual({ ...finished, isFinished: false });
   });
 });

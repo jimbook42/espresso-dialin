@@ -30,6 +30,28 @@ export async function persistBeanFinished(database, beanId) {
 
 /**
  * @param {import('dexie').Dexie} database
+ * @param {string} beanId
+ */
+export async function persistBeanActive(database, beanId) {
+  await database.beans.update(beanId, { isFinished: false });
+}
+
+/**
+ * @param {BeanRecord[]} beans
+ * @returns {{ activeBeans: BeanRecord[], finishedBeans: BeanRecord[], finishedCount: number }}
+ */
+export function partitionBeansByFinished(beans) {
+  const activeBeans = [];
+  const finishedBeans = [];
+  for (const bean of beans) {
+    if (bean?.isFinished) finishedBeans.push(bean);
+    else activeBeans.push(bean);
+  }
+  return { activeBeans, finishedBeans, finishedCount: finishedBeans.length };
+}
+
+/**
+ * @param {import('dexie').Dexie} database
  * @param {BeanRecord} snapshot
  */
 export async function restoreBeanFromSnapshot(database, snapshot) {
