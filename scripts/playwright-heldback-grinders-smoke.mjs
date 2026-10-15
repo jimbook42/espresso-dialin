@@ -1,13 +1,8 @@
-import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { setTimeout as delay } from 'node:timers/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, '..');
 const PREVIEW_PORT = 4174;
-const PREVIEW_URL = `http://127.0.0.1:${PREVIEW_PORT}/`;
 
 const BARISTA_EXPRESS_ID = 'Breville Barista Express (BES870/875)';
 const BARISTA_PRO_ID = 'Breville Barista Pro (BES878)';
@@ -42,19 +37,6 @@ const GRINDERS = [
     fieldLabel: null,
   },
 ];
-
-async function waitForServer(url, attempts = 60) {
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // retry
-    }
-    await delay(250);
-  }
-  throw new Error(`Server not ready at ${url}`);
-}
 
 async function seedOnboardingComplete(page) {
   await page.evaluate(() => {
@@ -178,29 +160,15 @@ async function selectPrimaryGrinder(page, grinderId) {
 }
 
 async function main() {
-  const preview = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(PREVIEW_PORT), '--strictPort'], {
-    cwd: ROOT,
-    stdio: 'pipe',
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-
-  let previewPid = preview.pid;
-  const killPreview = () => {
-    if (previewPid) {
-      try {
-        process.kill(previewPid, 'SIGTERM');
-      } catch {
-        // already exited
-      }
-      previewPid = null;
-    }
-  };
+  const preview = startPreviewServer(PREVIEW_PORT);
+  let browser;
+  let exitCode = 0;
 
   try {
-    await waitForServer(PREVIEW_URL);
-    const browser = await chromium.launch();
+    await waitForServer(preview.url);
+    browser = await chromium.launch();
     const page = await browser.newPage();
-    await page.goto(PREVIEW_URL, { waitUntil: 'domcontentloaded' });
+    await page.goto(preview.url, { waitUntil: 'domcontentloaded' });
     await seedOnboardingComplete(page);
     await page.reload({ waitUntil: 'networkidle' });
 
@@ -243,12 +211,10 @@ async function main() {
       await delay(100);
     }
 
-    // Barista Express / Pro / Touch: type 11, blur → error and revert
     for (const id of [BARISTA_EXPRESS_ID, BARISTA_PRO_ID, BARISTA_TOUCH_ID]) {
       await assertUpperBurrRejectsEleven(id);
     }
 
-    // DF64: zero 20 saved
     await grinderSelect.selectOption(DF64_ID);
     const zeroInput = panel.locator('input[placeholder="e.g. 0"]');
     await zeroInput.click();
@@ -306,14 +272,18 @@ async function main() {
       }
     }
 
-    await browser.close();
     console.log('Playwright held-back grinder smoke passed.');
+  } catch (err) {
+    console.error(err);
+    exitCode = 1;
   } finally {
-    killPreview();
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+    await preview.kill();
   }
+
+  process.exit(exitCode);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main();
