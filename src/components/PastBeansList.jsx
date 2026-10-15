@@ -1,6 +1,7 @@
 import { CheckCircle, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react';
 import { partitionBeansByFinished } from '../utils/beanFinishActions.js';
 import { beanIsDecaf } from '../utils/grinderLogic';
+import { formatBeanDisplayName, formatBeanRoasterRoastLine } from '../utils/beanDisplayName.js';
 
 function BeanListRow({
   bean,
@@ -58,9 +59,9 @@ function BeanListRow({
           <Trash2 className="w-4 h-4" />
         </button>
         <div>
-          <span className={`font-bold ${ui.text} block`}>{bean.name}</span>
+          <span className={`font-bold ${ui.text} block`}>{formatBeanDisplayName(bean)}</span>
           <span className={`text-[10px] ${subTextClass}`}>
-            {bean.roaster} • {bean.roastType} Roast ({bean.storageType})
+            {formatBeanRoasterRoastLine(bean)}{bean.storageType ? ` (${bean.storageType})` : ''}
             {beanIsDecaf(bean) ? ' • Decaf' : ''}
           </span>
         </div>

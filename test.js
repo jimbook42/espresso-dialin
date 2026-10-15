@@ -1436,7 +1436,7 @@ function runSevereDeviationTests() {
 
   const inRangeShort = calculateRecommendation(setteShot(28, 'good', 32.5), recipe, [], false);
   assert.equal(inRangeShort.reason, 'KEEP GRIND — Balanced and in range.');
-  assert.match(inRangeShort.warning, /hit target time but under-yielded/);
+  assert.match(inRangeShort.warning, /under-yielded/);
   assert.ok(!outsideYieldWarning.test(inRangeShort.warning));
   assert.equal(inRangeShort.shotOutcome.isDialledIn, false);
 

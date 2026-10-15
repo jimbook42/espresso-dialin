@@ -920,9 +920,9 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
   const severeChoke = shotIsSevereChoke(actualTime, actualYield, targetMin, targetMax, targetYield);
   if (isTimeInRange && Math.abs(yieldDelta) >= MATERIAL_YIELD_DELTA_G) {
     if (yieldDelta < 0) {
-      warning = warning ? warning + " Shot hit target time but under-yielded." : "Shot hit target time but under-yielded (restricted flow).";
+      warning = warning ? warning + ' On time but under-yielded.' : 'On time, under-yielded (restricted flow).';
     } else {
-      warning = warning ? warning + " Shot hit target time but over-yielded." : "Shot hit target time but over-yielded (high flow / channeling).";
+      warning = warning ? warning + ' On time but over-yielded.' : 'On time, over-yielded (fast flow / channeling).';
     }
   } else if (!isTimeInRange && !severeChoke && Math.abs(yieldDelta) >= MATERIAL_YIELD_DELTA_G) {
     const outsideYieldWarning = "Shot was far outside the target time and yield. Check that the shot was stopped at the intended yield and puck preparation was normal before relying heavily on this result.";

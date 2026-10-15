@@ -47,6 +47,11 @@ import { PressureProfileChart } from './components/PressureProfileChart';
 import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx';
 import { GrinderGrindControls } from './components/GrindControls';
 import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
+import { formatBeanDisplayName, formatBeanRoasterRoastLine } from './utils/beanDisplayName.js';
+import {
+  formatHistoryShotUserNoteLine,
+  formatLastShotUserNoteSuffix,
+} from './utils/shotNotesDisplay.js';
 import { buildAppDefaultInitialGrindHint } from './utils/initialGrindHint.js';
 import {
   CUSTOM_GRINDER_PICKER_ID,
@@ -2411,7 +2416,7 @@ export default function App() {
                   >
                     {activeBeansList.map(b => (
                       <option key={b.id} value={b.id} className="bg-[#1a1815]">
-                        {b.name} ({b.roaster}){beanIsDecaf(b) ? ' · Decaf' : ''}{b.rating ? ` [${Number(b.rating).toFixed(1)}]` : ''}
+                        {formatBeanDisplayName(b)}{beanIsDecaf(b) ? ' · Decaf' : ''}{b.rating ? ` [${Number(b.rating).toFixed(1)}]` : ''}
                       </option>
                     ))}
                   </select>
@@ -2579,9 +2584,9 @@ export default function App() {
                     </div>
                   )}
                   {dynamicRec?.warning && (
-                    <div className="flex items-start gap-2 bg-[rgba(180,60,60,0.08)] border border-[rgba(180,60,60,0.2)] p-3 rounded-xl text-xs text-[#d08080]">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <span>{dynamicRec.warning}</span>
+                    <div className="flex items-start gap-1.5 bg-[rgba(180,60,60,0.08)] border border-[rgba(180,60,60,0.2)] p-2 rounded-lg text-[10px] leading-snug text-[#d08080]">
+                      <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                      <span className="min-w-0">{dynamicRec.warning}</span>
                     </div>
                   )}
                   {dynamicRec?.subRecommendation && (
@@ -2600,7 +2605,7 @@ export default function App() {
                       className={`text-xs ${ui.muted} min-w-0 w-full leading-snug`}
                     >
                       {lastLoggedShot
-                        ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${tasteProfileDisplayLabel(lastLoggedShot.tasteProfile)})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ` · kept in history, not used for learning${lastLoggedShot.knownIssueReason ? ` (${knownIssueReasonLabel(lastLoggedShot.knownIssueReason)})` : ''}` : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
+                        ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${tasteProfileDisplayLabel(lastLoggedShot.tasteProfile)})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ` · kept in history, not used for learning${lastLoggedShot.knownIssueReason ? ` (${knownIssueReasonLabel(lastLoggedShot.knownIssueReason)})` : ''}` : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''}${formatLastShotUserNoteSuffix(lastLoggedShot.notes)} · logging ${currentGrindLabel}`
                         : `Logging grind ${currentGrindLabel}`}
                     </p>
                     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -3378,7 +3383,7 @@ export default function App() {
               >
                 <option value="all">All Coffees</option>
                 {beans.map(b => (
-                  <option key={b.id} value={b.id}>{b.name} {b.isFinished ? '(Finished)' : ''}</option>
+                  <option key={b.id} value={b.id}>{formatBeanDisplayName(b)} {b.isFinished ? '(Finished)' : ''}</option>
                 ))}
               </select>
             </div>
@@ -3395,27 +3400,42 @@ export default function App() {
                 const preSec = preInfusionFromNotes(s.notes);
                 const peakBar = s.flairProfile?.peakPressure;
                 const shotOutcome = classifyShotOutcome(s, recipeContextForShot(s, recipeForShot || {}));
+                const historyUserNote = formatHistoryShotUserNoteLine(s.notes);
                 return (
-                  <div key={s.id} className={`${ui.card} p-4 rounded-2xl space-y-3`}>
+                  <div key={s.id} className={`${ui.card} p-4 rounded-2xl space-y-3`} data-testid="history-shot-card">
                     <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <span className={`text-sm font-bold ${ui.accentText}`}>
-                          {bean ? `${bean.name} [${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown bean'}
+                          {bean ? `${formatBeanDisplayName(bean)} [${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown bean'}
                         </span>
                         {shotOutcome.statusLabel && (
                           <span className={`ml-2 text-[9px] font-bold uppercase tracking-wide ${shotOutcome.isDialledIn ? ui.accentText : ui.muted}`}>
                             {shotOutcome.statusLabel}
                           </span>
                         )}
-                        <p className={`text-[10px] ${ui.muted} mt-0.5`}>
-                          {formatShotWhen(s.timestamp)} • <span className={`${ui.strong} font-mono`}>{grindStr}</span>
-                          {s.recommendationFollowed === false && <span className="text-rose-400 font-bold ml-2">Rec not followed</span>}
-                          {s.excludeFromLearning && (
-                            <span className={`${ui.chip} font-semibold ml-2 px-1.5 py-0.5 rounded`}>
-                              Not used for learning
-                            </span>
+                        <p className={`text-[10px] ${ui.muted} mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5`}>
+                          <span className="whitespace-nowrap">{formatShotWhen(s.timestamp)}</span>
+                          <span aria-hidden="true">•</span>
+                          <span className={`${ui.strong} font-mono whitespace-nowrap`}>{grindStr}</span>
+                          {s.recommendationFollowed === false && (
+                            <span className="text-rose-400 font-bold whitespace-nowrap">Rec not followed</span>
                           )}
                         </p>
+                        {s.excludeFromLearning && (
+                          <p className="mt-1">
+                            <span
+                              data-testid="history-learning-excluded-tag"
+                              className={`${ui.chip} inline-block font-semibold px-1.5 py-0.5 rounded whitespace-nowrap text-[10px]`}
+                            >
+                              Not used for learning
+                            </span>
+                          </p>
+                        )}
+                        {historyUserNote && (
+                          <p className={`text-[10px] ${ui.sub} mt-0.5`} data-testid="history-shot-user-note">
+                            {historyUserNote}
+                          </p>
+                        )}
                         {s.excludeFromLearning && s.knownIssueReason && (
                           <p className={`text-[10px] ${ui.sub} mt-0.5`}>{knownIssueReasonLabel(s.knownIssueReason)}</p>
                         )}
@@ -3456,16 +3476,23 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-4 gap-2 text-xs">
+                    <div className="grid grid-cols-4 gap-2 text-xs" data-testid="history-shot-metric-tiles">
                       {[
-                        { label: 'Grind', value: grindStr, tone: ui.text },
-                        { label: 'Dose/Yield', value: `${s.actualDoseG || 0}/${s.actualYieldG || 0}g`, tone: ui.text },
-                        { label: 'Time', value: `${s.actualTimeS || 0}s`, tone: shotTimeTone(s.actualTimeS, minT, maxT) },
-                        { label: 'Taste', value: tasteProfileDisplayLabel(s.tasteProfile), tone: `${ui.sub} capitalize` },
+                        { label: 'Grind', value: grindStr, tone: ui.text, compact: false },
+                        { label: 'Dose/Yield', value: `${s.actualDoseG || 0}/${s.actualYieldG || 0}g`, tone: ui.text, compact: false },
+                        { label: 'Time', value: `${s.actualTimeS || 0}s`, tone: shotTimeTone(s.actualTimeS, minT, maxT), compact: false },
+                        { label: 'Taste', value: tasteProfileDisplayLabel(s.tasteProfile), tone: `${ui.sub} capitalize`, compact: true },
                       ].map((cell) => (
-                        <div key={cell.label} className={`${ui.metricCell} text-center`}>
-                          <span className={`block text-[8px] uppercase tracking-wider ${ui.muted} mb-1`}>{cell.label}</span>
-                          <strong className={`font-black text-sm ${cell.tone}`}>{cell.value}</strong>
+                        <div
+                          key={cell.label}
+                          className={`${ui.metricCell} flex flex-col items-center justify-center text-center px-1.5 py-2 min-h-[3.25rem]`}
+                        >
+                          <span className={`block text-[8px] uppercase tracking-wider ${ui.muted} mb-1 w-full`}>{cell.label}</span>
+                          <strong
+                            className={`font-black leading-tight max-w-full break-words ${cell.compact ? 'text-[10px]' : 'text-sm'} ${cell.tone}`}
+                          >
+                            {cell.value}
+                          </strong>
                         </div>
                       ))}
                     </div>
@@ -3658,7 +3685,7 @@ export default function App() {
                           <span className={`font-black ${ui.accentText} shrink-0`}>#{idx + 1}</span>
                           <div className="min-w-0">
                             <span className={`font-bold ${ui.text} block truncate`}>{b.name}</span>
-                            <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast</span>
+                            <span className={`text-[10px] ${subTextClass}`}>{formatBeanRoasterRoastLine(b)}</span>
                           </div>
                         </div>
                         <span className={`text-sm font-black ${ui.badge} px-2.5 py-1 rounded-lg shrink-0`}>
