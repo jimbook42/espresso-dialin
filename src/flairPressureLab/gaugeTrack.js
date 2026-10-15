@@ -5,6 +5,7 @@ import {
   FLAIR_CANONICAL_DIAL_PROFILE,
   FLAIR_CANONICAL_FACE_PROFILE,
 } from './canonicalDial.js';
+import { getOpenCvSync } from './opencvRuntime.js';
 
 /**
  * Gauge pose for the pressure lab.
@@ -445,8 +446,11 @@ function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needl
 }
 
 function discoverySizePrior(faceRadius, scaledMin) {
+  const rMin = scaledMin * 0.03;
+  const rMax = scaledMin * 0.5;
+  if (faceRadius < rMin || faceRadius > rMax) return 0;
   const ideal = scaledMin * 0.11;
-  const spread = scaledMin * 0.035;
+  const spread = scaledMin * 0.08;
   const t = (faceRadius - ideal) / spread;
   return Math.exp(-0.5 * t * t);
 }
@@ -471,6 +475,117 @@ function rankDiscoveryCandidate({
   return rim * sizePrior * (0.15 + 0.85 * face) * (0.25 + 0.75 * canonical);
 }
 
+function discoverGaugeWithOpenCv(image, cv) {
+  const { width, height, data } = image;
+  if (!width || !height || !data || !cv?.Mat) return null;
+
+  const minDim = Math.min(width, height);
+  const maxOutput = 240;
+  const scale = Math.min(1, maxOutput / minDim);
+  const sw = Math.max(16, Math.round(width * scale));
+  const sh = Math.max(16, Math.round(height * scale));
+  const scaledMin = minDim * scale;
+
+  const small = new Uint8ClampedArray(sw * sh * 4);
+  for (let y = 0; y < sh; y += 1) {
+    for (let x = 0; x < sw; x += 1) {
+      const sx = Math.min(width - 1, Math.floor(x / scale));
+      const sy = Math.min(height - 1, Math.floor(y / scale));
+      const src = (sy * width + sx) * 4;
+      const dst = (y * sw + x) * 4;
+      small[dst] = data[src];
+      small[dst + 1] = data[src + 1];
+      small[dst + 2] = data[src + 2];
+      small[dst + 3] = 255;
+    }
+  }
+
+  const edges = prepareEdges({ data: small, width: sw, height: sh }, { contrastRadius: 3 }).edges;
+
+  let srcMat = null;
+  let gray = null;
+  let circles = null;
+  try {
+    srcMat = cv.matFromImageData({ data: small, width: sw, height: sh });
+    gray = new cv.Mat();
+    cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 1.2, 1.2, cv.BORDER_DEFAULT);
+
+    circles = new cv.Mat();
+    const rMin = Math.max(6, scaledMin * 0.03);
+    const rMax = scaledMin * 0.5;
+    const minDist = Math.max(14, scaledMin * 0.12);
+    cv.HoughCircles(
+      gray,
+      circles,
+      cv.HOUGH_GRADIENT,
+      1.2,
+      minDist,
+      110,
+      28,
+      Math.round(rMin),
+      Math.round(rMax),
+    );
+
+    let best = { score: -1, rim: 0, cx: 0, cy: 0, radius: 0 };
+
+    const consider = (cx, cy, faceRadius) => {
+      if (faceRadius < 6) return;
+      const rimRadius = faceRadius * 1.02;
+      if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) return;
+      const rankScore = rankDiscoveryCandidate({
+        edges,
+        data: small,
+        width: sw,
+        height: sh,
+        cx,
+        cy,
+        faceRadius,
+        scaledMin,
+      });
+      const rim = scoreRim(edges, sw, sh, cx, cy, rimRadius);
+      if (rankScore > best.score) best = { score: rankScore, rim, cx, cy, radius: faceRadius };
+    };
+
+    for (let i = 0; i < circles.cols; i += 1) {
+      const cx = circles.floatAt(0, i * 3);
+      const cy = circles.floatAt(0, i * 3 + 1);
+      const r = circles.floatAt(0, i * 3 + 2);
+      const faceRadius = r / 1.02;
+      consider(cx, cy, faceRadius);
+      consider(cx, cy, faceRadius * 0.96);
+      consider(cx, cy, faceRadius * 1.04);
+    }
+
+    if (best.score <= 0) return null;
+
+    const rimR = best.radius * 1.02;
+    const off = offsetScore(edges, sw, sh, best.cx, best.cy, rimR);
+    const confidence = best.rim > 1e-3 && off != null
+      ? clamp((best.rim - off) / best.rim, 0, 1)
+      : 0;
+    const faceAtBest = scoreDialFaceInterior(small, sw, sh, best.cx, best.cy, best.radius);
+    const rankAtBest = best.score;
+    const ok = best.rim > 1e-3 && faceAtBest >= 0.2 && (
+      confidence >= CONFIDENCE_MIN
+      || (faceAtBest >= 0.35 && rankAtBest > best.rim * 0.12)
+    );
+
+    return {
+      ok,
+      confidence,
+      cx: best.cx / scale,
+      cy: best.cy / scale,
+      radius: best.radius / scale,
+      source: 'opencv-hough',
+    };
+  } finally {
+    if (circles) circles.delete();
+    if (gray) gray.delete();
+    if (srcMat) srcMat.delete();
+  }
+}
+
 /**
  * Whole-frame rim search on a downscaled frame (no prior / guide seed).
  * Returns centre and radius in the same pixel space as `image`.
@@ -478,6 +593,11 @@ function rankDiscoveryCandidate({
 export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   const { width, height, data } = image;
   if (!width || !height || !data) return null;
+  const cv = getOpenCvSync();
+  if (cv) {
+    const opencvHit = discoverGaugeWithOpenCv(image, cv);
+    if (opencvHit?.ok) return opencvHit;
+  }
   const minDim = Math.min(width, height);
   const scale = Math.min(1, maxOutput / minDim);
   const sw = Math.max(16, Math.round(width * scale));
@@ -497,8 +617,8 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   }
   const edges = prepareEdges({ data: small, width: sw, height: sh }, { contrastRadius: 3 }).edges;
   const scaledMin = minDim * scale;
-  const rMin = scaledMin * 0.08;
-  const rMax = scaledMin * 0.2;
+  const rMin = scaledMin * 0.03;
+  const rMax = scaledMin * 0.5;
   const coarseStep = Math.max(4, Math.round(scaledMin / 24));
   let best = { score: -1, rim: 0, cx: 0, cy: 0, radius: 0 };
   const consider = (cx, cy, faceRadius) => {

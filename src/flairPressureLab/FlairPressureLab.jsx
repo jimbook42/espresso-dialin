@@ -36,6 +36,8 @@ import {
   resetPressureReplaySession,
 } from './replaySessionExport.js';
 import { classifyReplayGaugeFrame } from './replayGaugeSemantics.js';
+import { FLAIR_STATELESS_SESSION } from './canonicalDial.js';
+import { loadOpenCv } from './opencvRuntime.js';
 
 const STATUS_STYLES = {
   CALIBRATING: 'bg-amber-500/15 text-amber-100 border-amber-500/40',
@@ -169,6 +171,7 @@ export function FlairPressureLab() {
   const [trace, setTrace] = useState([]);
   const [copyNote, setCopyNote] = useState('');
   const [reportFallback, setReportFallback] = useState('');
+  const [opencvReady, setOpencvReady] = useState(false);
 
   const frameRef = useCallback((node) => {
     resizeObserverRef.current?.disconnect();
@@ -194,6 +197,20 @@ export function FlairPressureLab() {
     installPressureReplayHook();
     return () => {
       if (typeof window !== 'undefined') delete window.__pressureLabReplay;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadOpenCv()
+      .then(() => {
+        if (!cancelled) setOpencvReady(true);
+      })
+      .catch((err) => {
+        console.error('OpenCV.js failed to load', err);
+      });
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -286,7 +303,7 @@ export function FlairPressureLab() {
   };
 
   useEffect(() => {
-    if (status !== 'live') return undefined;
+    if (status !== 'live' || !opencvReady) return undefined;
     const canvas = qualityCanvasRef.current || document.createElement('canvas');
     qualityCanvasRef.current = canvas;
     let raf = 0;
@@ -532,15 +549,13 @@ export function FlairPressureLab() {
           return;
         }
         const next = {
-          zeroAngleDeg: reading.relativeAngleDeg,
-          ...FLAIR_58_SCALE,
+          ...FLAIR_STATELESS_SESSION,
           sweepDeg: sweepRef.current,
         };
         sessionRef.current = next;
         setSession(next);
-        lastAngleRef.current = reading.relativeAngleDeg;
+        lastAngleRef.current = null;
         angleTrackerRef.current.reset();
-        angleTrackerRef.current.push(reading.relativeAngleDeg);
         pressureRef.current.reset();
         jitterRef.current.reset();
         thresholdRef.current.reset();
@@ -692,7 +707,7 @@ export function FlairPressureLab() {
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [status, videoRef]);
+  }, [status, videoRef, opencvReady]);
 
   const stability = stabilityStats(trace);
   const formatPair = (step, spread, digits, unit) => {

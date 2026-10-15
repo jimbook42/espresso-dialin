@@ -62,6 +62,7 @@ export default defineConfig(({ mode }) => ({
       injectManifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: ['**/flair-pressure-lab/opencv.js'],
       },
     }),
   ].filter(Boolean),

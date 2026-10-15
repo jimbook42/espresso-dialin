@@ -8,6 +8,7 @@
       "expectedBar": 0,
       "expectedPeakBar": null,
       "tolerance": 0.5,
+      "scoringCentre": { "x": 240, "y": 355, "tolerancePx": 45 },
       "notes": "Needle at 0 bar throughout"
     },
     {
@@ -17,6 +18,7 @@
       "expectedBar": 0,
       "expectedPeakBar": null,
       "tolerance": 0.5,
+      "scoringCentre": { "x": 240, "y": 355, "tolerancePx": 45 },
       "notes": "Needle at 0 bar throughout"
     },
     {
@@ -26,6 +28,7 @@
       "expectedBar": 0,
       "expectedPeakBar": null,
       "tolerance": 0.5,
+      "scoringCentre": { "x": 240, "y": 355, "tolerancePx": 45 },
       "notes": "Needle at 0 bar throughout"
     },
     {
@@ -35,6 +38,7 @@
       "expectedBar": 0,
       "expectedPeakBar": null,
       "tolerance": 0.5,
+      "scoringCentre": { "x": 240, "y": 355, "tolerancePx": 45 },
       "notes": "Needle at 0 bar throughout"
     },
     {

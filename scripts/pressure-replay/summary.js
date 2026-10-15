@@ -99,6 +99,17 @@ export function summarizeClipFrames(frames, clip) {
   const processMsMedian = percentile(processMs, 50);
   const processMsP95 = percentile(processMs, 95);
 
+  let centreAtTruePct = null;
+  if (clip.scoringCentre && withGauge.length) {
+    const { x, y, tolerancePx } = clip.scoringCentre;
+    const tol = tolerancePx ?? 45;
+    const atTrue = withGauge.filter(
+      (f) => finite(f.centreX) && finite(f.centreY)
+        && Math.hypot(f.centreX - x, f.centreY - y) <= tol,
+    );
+    centreAtTruePct = (atTrue.length / withGauge.length) * 100;
+  }
+
   const passGaugeTracked = gaugeTrackedPct >= 80;
   const passTolerance = withinTolerancePct >= 80;
   const passConfidentWrong = confidentButWrongPct <= 5;
@@ -116,6 +127,7 @@ export function summarizeClipFrames(frames, clip) {
     barStabilityStdDev: barStabilityStd,
     barStabilityMaxJump,
     centreRange,
+    centreAtTruePct,
     barRange,
     processMsMedian,
     processMsP95,

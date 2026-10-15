@@ -85,7 +85,15 @@ async function runPlaywrightClip({ y4mPath, durationS }) {
       else resolve(Buffer.concat(chunks).toString('utf8'));
     });
   });
-  return JSON.parse(out);
+  const parsed = JSON.parse(out);
+  if (Array.isArray(parsed)) {
+    return { frames: parsed, privacy: null, timing: null };
+  }
+  return {
+    frames: parsed.frames ?? [],
+    privacy: parsed.privacy ?? null,
+    timing: parsed.timing ?? null,
+  };
 }
 
 function diagnoseReferenceCapture(frames) {
@@ -149,10 +157,13 @@ async function processClip(clip, replayDir) {
   if (!fs.existsSync(mp4)) throw new Error(`missing clip ${mp4}`);
   const durationS = probeDurationS(mp4);
   const y4m = await ensureY4m(mp4);
-  const frames = await runPlaywrightClip({ y4mPath: y4m, durationS });
+  const { frames, privacy, timing } = await runPlaywrightClip({ y4mPath: y4m, durationS });
   const summary = {
     ...summarizeClipFrames(frames, clip),
     ...diagnoseReferenceCapture(frames),
+    privacy,
+    processMsThrottled4xMedian: timing?.throttled4xMedian ?? null,
+    processMsThrottled4xP95: timing?.throttled4xP95 ?? null,
   };
   const outDir = path.join(OUT_ROOT, clip.id);
   fs.mkdirSync(outDir, { recursive: true });
