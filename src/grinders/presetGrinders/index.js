@@ -21,6 +21,8 @@ export {
   DF64_GEN2_GRINDER_ID,
   DF54_GRINDER_ID,
   TIMEMORE_SCULPTOR_064S_GRINDER_ID,
+  HELDBACK_ESTIMATED_PRESET_IDS,
+  isHeldbackEstimatedPresetId,
 } from './catalog.js';
 
 const definitions = PRESET_GRINDER_SPECS.map((spec) => buildPresetGrinderDefinition(spec));

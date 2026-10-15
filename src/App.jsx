@@ -61,9 +61,13 @@ import {
   BCG820_GRINDER_ID,
   ENCORE_ESP_GRINDER_ID,
   getPresetGrinderSpec,
+  isHeldbackEstimatedPresetId,
 } from './grinders/presetGrinders/index.js';
 import { PresetGrinderAuxFields } from './components/PresetGrinderAuxFields.jsx';
-import { defaultPresetGrindValue } from './grinders/presetGrinders/dial.js';
+import {
+  defaultPresetGrindValue,
+  resolveEffectiveZeroOffsetPresetDial,
+} from './grinders/presetGrinders/dial.js';
 import {
   getGrindUiForBeanGrinder,
   grindUiSnapshotFromControls,
@@ -969,9 +973,16 @@ export default function App() {
       const spec = getPresetGrinderSpec(model);
       const persisted = getGrindUiForBeanGrinder(currentSettings, activeBean.id, model);
       if (spec) {
-        setCustomGrindValue(
-          persisted?.customGrindValue ?? defaultPresetGrindValue(spec)
-        );
+        const defaultVal = defaultPresetGrindValue(spec, currentSettings);
+        const persistedVal = persisted?.customGrindValue ?? defaultVal;
+        const nextVal =
+          resolveEffectiveZeroOffsetPresetDial(
+            persistedVal,
+            spec,
+            currentSettings,
+            false
+          ) ?? persistedVal;
+        setCustomGrindValue(nextVal);
       }
     }
     if (typeof flairChoice === 'boolean') setFlairEnabled(flairChoice);
@@ -1113,7 +1124,27 @@ export default function App() {
   };
 
   const patchBrewGuidanceSettings = async (patch) => {
-    await patchGlobalSettings(db, patch);
+    const merged = await patchGlobalSettings(db, patch);
+    const touchesZeroOffset =
+      patch
+      && typeof patch === 'object'
+      && (Object.prototype.hasOwnProperty.call(patch, 'df64Gen2ZeroOffset')
+        || Object.prototype.hasOwnProperty.call(patch, 'df54ZeroOffset'));
+    if (touchesZeroOffset && isPresetGrinderModel(grinderModel) && activeBean) {
+      const spec = getPresetGrinderSpec(grinderModel);
+      const beanShots = shots.filter(
+        (s) => s.beanId === activeBean.id && s.grinderModel === grinderModel
+      );
+      if (spec?.zeroStartOffset && beanShots.length === 0) {
+        const resolved = resolveEffectiveZeroOffsetPresetDial(
+          customGrindValue,
+          spec,
+          merged,
+          false
+        );
+        if (resolved !== null) setCustomGrindValue(resolved);
+      }
+    }
   };
 
   const rememberSelectedBeanId = async (beanId) => {
@@ -1735,6 +1766,16 @@ export default function App() {
   })();
 
   const effectiveCustomGrindValue = (() => {
+    if (isPresetGrinderModel(grinderModel)) {
+      const spec = getPresetGrinderSpec(grinderModel);
+      const resolved = resolveEffectiveZeroOffsetPresetDial(
+        customGrindValue,
+        spec,
+        appSettings,
+        beanShotsForGrinder.length > 0
+      );
+      if (resolved !== null) return resolved;
+    }
     if (customGrindValue !== null && customGrindValue !== '') return customGrindValue;
     if (isPresetGrinderModel(grinderModel)) {
       const spec = getPresetGrinderSpec(grinderModel);
@@ -1970,6 +2011,11 @@ export default function App() {
   })();
 
   const grinderBadgeLabel = getUiGrinderPresentation(grinderModel, appSettings).shortBadgeLabel;
+  const showHeldbackEstimatedStartingCard =
+    !dynamicRec
+    && beanShotsForGrinder.length === 0
+    && initialGrindHintSource === 'app-default'
+    && isHeldbackEstimatedPresetId(grinderModel);
 
   const formatShotWhen = (timestamp) => {
     const d = new Date(timestamp);
@@ -2399,6 +2445,13 @@ export default function App() {
                     <p className={`text-5xl sm:text-6xl font-black font-mono leading-none ${ui.text}`}>{recommendedGrindDisplay}</p>
                     <div className="flex flex-col gap-1.5 mb-1">
                       <span className={`text-[10px] ${ui.cardInset} px-2.5 py-1 rounded-lg font-semibold ${ui.sub}`}>{grinderBadgeLabel}</span>
+                      {showHeldbackEstimatedStartingCard && (
+                        <span
+                          className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md text-center ${ui.cardInset} ${ui.accentText}`}
+                        >
+                          Estimated
+                        </span>
+                      )}
                       {lastShotOutcome?.statusLabel && (
                         <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md text-center ${lastShotOutcome.isDialledIn ? ui.badge : `${ui.cardInset} ${ui.muted}`}`}>
                           {lastShotOutcome.statusLabel}
@@ -2643,7 +2696,7 @@ export default function App() {
                       settings={appSettings}
                       inputClass={inputClass}
                       ui={ui}
-                      onPatchSettings={(patch) => { void patchBrewGuidanceSettings(patch); }}
+                      onPatchSettings={(patch) => patchBrewGuidanceSettings(patch)}
                     />
 
                     <div className="mt-4 flex items-center justify-between pt-3 border-t border-[#2e2b26]">
@@ -3673,7 +3726,7 @@ export default function App() {
                     settings={settingsSetting}
                     inputClass={inputClass}
                     ui={ui}
-                    onPatchSettings={(patch) => { void patchBrewGuidanceSettings(patch); }}
+                    onPatchSettings={(patch) => patchBrewGuidanceSettings(patch)}
                   />
                   {settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID && (
                     <div className="space-y-2">

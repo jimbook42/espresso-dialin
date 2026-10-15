@@ -77,3 +77,26 @@ export function defaultPresetGrindValue(spec, settings = null) {
   }
   return roundToCustomStep(spec.defaultSetting, profile);
 }
+
+/**
+ * When burr-touch zero is set, replace the implicit-zero default dial with zero+N.
+ * @returns {number|null} resolved dial, or null if not a zero-offset preset / has shots
+ */
+export function resolveEffectiveZeroOffsetPresetDial(
+  customGrindValue,
+  spec,
+  settings,
+  hasBeanShotsForGrinder = false
+) {
+  if (!spec?.zeroStartOffset || hasBeanShotsForGrinder) return null;
+  const defaultVal = defaultPresetGrindValue(spec, settings);
+  const parsed = parsePresetGrindValue(customGrindValue, spec);
+  if (parsed === null || customGrindValue === null || customGrindValue === '') {
+    return defaultVal;
+  }
+  const implicitZeroDefault = defaultPresetGrindValue(spec, null);
+  if (getPresetZeroOffset(settings, spec) !== null && parsed === implicitZeroDefault) {
+    return defaultVal;
+  }
+  return parsed;
+}

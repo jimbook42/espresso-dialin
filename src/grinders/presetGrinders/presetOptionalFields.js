@@ -99,18 +99,31 @@ export function presetZeroPlusOffset(absoluteDial, spec, settings = null) {
   return relative;
 }
 
+function formatAbsoluteDialNumber(parsed, spec) {
+  if (spec.step >= 1) return String(Math.round(parsed));
+  const stepped = Math.round(parsed / spec.step) * spec.step;
+  return String(Number(stepped.toFixed(2)));
+}
+
 export function formatPresetZeroPlusDisplay(absoluteDial, spec, settings = null) {
-  const relative = presetZeroPlusOffset(absoluteDial, spec, settings);
+  const parsed = finiteNumber(absoluteDial);
+  if (parsed === null) return '';
+  const relative = presetZeroPlusOffset(parsed, spec, settings);
   if (relative === null) return '';
   const rounded =
     spec.step >= 1
       ? Math.round(relative)
       : Math.round(relative / spec.step) * spec.step;
-  const display =
+  const relativeDisplay =
     spec.step >= 1 && Number.isInteger(rounded)
       ? String(rounded)
       : String(Number(rounded.toFixed(2)));
-  return `zero + ${display}`;
+  const zero = getPresetZeroOffset(settings, spec);
+  const relativePart = `zero + ${relativeDisplay}`;
+  if (zero !== null) {
+    return `${relativePart} (dial ${formatAbsoluteDialNumber(parsed, spec)})`;
+  }
+  return relativePart;
 }
 
 export function absoluteDialFromZeroPlus(relativeN, spec, settings = null) {

@@ -19,6 +19,18 @@ export const DF64_GEN2_GRINDER_ID = 'DF64 Gen 2';
 export const DF54_GRINDER_ID = 'DF54';
 export const TIMEMORE_SCULPTOR_064S_GRINDER_ID = 'Timemore Sculptor 064S';
 
+/** Ticket 6.23 held-back presets (Tier 1 QA). */
+export const HELDBACK_ESTIMATED_PRESET_IDS = Object.freeze([
+  BARISTA_EXPRESS_GRINDER_ID,
+  DF64_GEN2_GRINDER_ID,
+  DF54_GRINDER_ID,
+  TIMEMORE_SCULPTOR_064S_GRINDER_ID,
+]);
+
+export function isHeldbackEstimatedPresetId(grinderModel) {
+  return HELDBACK_ESTIMATED_PRESET_IDS.includes(grinderModel);
+}
+
 /** @type {readonly string[]} */
 export const PRESET_GRINDER_IDS = Object.freeze([
   BCG820_GRINDER_ID,

@@ -5,11 +5,13 @@ import {
   DF64_GEN2_GRINDER_ID,
   TIMEMORE_SCULPTOR_064S_GRINDER_ID,
   getPresetGrinderSpec,
+  isHeldbackEstimatedPresetId,
 } from './catalog.js';
 import {
   defaultPresetGrindValue,
   formatPresetGrindDisplay,
   parsePresetGrindValue,
+  resolveEffectiveZeroOffsetPresetDial,
 } from './dial.js';
 import { getPresetGrinderDefinition } from './index.js';
 import { getRecommendationGrinderProfile } from '../grinderRegistry.js';
@@ -35,6 +37,13 @@ describe('Ticket 6.23 held-back grinder presets', () => {
     expect(getPresetGrinderDefinition(BARISTA_EXPRESS_GRINDER_ID).recommendationIsEstimated).toBe(true);
   });
 
+  it('resolveEffectiveZeroOffsetPresetDial upgrades implicit default when zero is set', () => {
+    const spec = getPresetGrinderSpec(DF64_GEN2_GRINDER_ID);
+    const withZero = { df64Gen2ZeroOffset: 20 };
+    expect(resolveEffectiveZeroOffsetPresetDial(12, spec, withZero, false)).toBe(32);
+    expect(resolveEffectiveZeroOffsetPresetDial(25, spec, withZero, false)).toBe(25);
+  });
+
   it('DF64 Gen 2: zero+N default and with calibrated zero', () => {
     const spec = getPresetGrinderSpec(DF64_GEN2_GRINDER_ID);
     expect(spec.zeroStartOffset).toBe(12);
@@ -42,7 +51,7 @@ describe('Ticket 6.23 held-back grinder presets', () => {
     expect(formatPresetGrindDisplay(12, spec)).toBe('zero + 12');
     const withZero = { df64Gen2ZeroOffset: 20 };
     expect(defaultPresetGrindValue(spec, withZero)).toBe(32);
-    expect(formatPresetGrindDisplay(32, spec, withZero)).toBe('zero + 12');
+    expect(formatPresetGrindDisplay(32, spec, withZero)).toBe('zero + 12 (dial 32)');
     expect(presetZeroPlusOffset(32, spec, withZero)).toBe(12);
   });
 
@@ -108,6 +117,27 @@ describe('Ticket 6.23 held-back grinder presets', () => {
     );
     expect(summary).toMatch(/Estimated/i);
     expect(summary).toMatch(/zero \+ 12/);
+  });
+
+  it('held-back preset ids are flagged for starting-card Estimated label', () => {
+    expect(isHeldbackEstimatedPresetId(BARISTA_EXPRESS_GRINDER_ID)).toBe(true);
+    expect(isHeldbackEstimatedPresetId('Baratza Encore ESP')).toBe(false);
+  });
+
+  it('zero offset set shows absolute dial in parentheses; unset does not', () => {
+    const spec = getPresetGrinderSpec(DF64_GEN2_GRINDER_ID);
+    expect(formatPresetGrindDisplay(32, spec)).toBe('zero + 32');
+    expect(formatPresetGrindDisplay(32, spec, { df64Gen2ZeroOffset: 20 })).toBe(
+      'zero + 12 (dial 32)'
+    );
+    expect(formatGrindRecommendationSummary(
+      DF64_GEN2_GRINDER_ID,
+      {
+        reason: 'ESTIMATED — Grind finer',
+        recommendedSetting: { customGrindValue: 32 },
+      },
+      { df64Gen2ZeroOffset: 20 }
+    )).toMatch(/zero \+ 12 \(dial 32\)/);
   });
 
   it('formatPresetZeroPlusDisplay rounds stepped zero-offset grinders to whole numbers', () => {
