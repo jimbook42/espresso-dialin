@@ -198,6 +198,14 @@ describe('pressure CV units', () => {
     expect(angleToBar(CANONICAL_ZERO_BAR_ANGLE_DEG + 45, FLAIR_STATELESS_SESSION)).toBeCloseTo(2, 0.5);
   });
 
+  it('reads bar from needle minus registered scale rotation (no first-frame zero)', () => {
+    const dialRotationDeg = 32;
+    const needleImageDeg = CANONICAL_ZERO_BAR_ANGLE_DEG + dialRotationDeg;
+    const relativeNeedle = ((needleImageDeg - dialRotationDeg) % 360 + 360) % 360;
+    expect(angleToBar(relativeNeedle, FLAIR_STATELESS_SESSION)).toBeCloseTo(0, 0.5);
+    expect(angleToBar(relativeNeedle + 90, FLAIR_STATELESS_SESSION)).toBeCloseTo(4, 0.5);
+  });
+
   it('prefers the real Flair dial over a left-side clutter arc (406×720)', () => {
     const frame = syntheticFlairReplayFrame();
     expect(scoreDialFaceInterior(frame.data, frame.width, frame.height, 240, 355, 45))
