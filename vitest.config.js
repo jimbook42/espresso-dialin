@@ -3,6 +3,6 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.vitest.js'],
+    include: ['src/**/*.vitest.js', 'scripts/pressure-replay/**/*.vitest.js'],
   },
 });

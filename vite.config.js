@@ -40,6 +40,9 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_ENABLE_PRESSURE_LAB': JSON.stringify(
       mode === 'flairlab' || process.env.VITE_ENABLE_PRESSURE_LAB === 'true' ? 'true' : 'false'
     ),
+    'import.meta.env.VITE_PRESSURE_REPLAY': JSON.stringify(
+      process.env.VITE_PRESSURE_REPLAY === 'true' ? 'true' : 'false'
+    ),
     'import.meta.env.VITE_ENABLE_SCALE': JSON.stringify(
       process.env.VITE_ENABLE_SCALE === 'false' ? 'false' : 'true'
     ),

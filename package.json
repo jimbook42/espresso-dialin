@@ -15,7 +15,8 @@
     "test:vitest": "vitest run",
     "test:playwright-heldback": "node scripts/playwright-heldback-grinders-smoke.mjs",
     "test:playwright-bean-finish-undo": "node scripts/playwright-bean-finish-undo-smoke.mjs",
-    "test:playwright-bean-reactivate": "node scripts/playwright-bean-reactivate-smoke.mjs"
+    "test:playwright-bean-reactivate": "node scripts/playwright-bean-reactivate-smoke.mjs",
+    "replay:pressure": "node scripts/pressure-replay/run-replay.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

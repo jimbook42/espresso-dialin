@@ -28,6 +28,12 @@ import {
   createRestCalibration,
   createRisingThreshold,
 } from './smoothPressure';
+import { isPressureReplayBuild } from '../config/pressureReplayFlag.js';
+import {
+  installPressureReplayHook,
+  pushPressureReplayFrame,
+  resetPressureReplaySession,
+} from './replaySessionExport.js';
 
 const STATUS_STYLES = {
   CALIBRATING: 'bg-amber-500/15 text-amber-100 border-amber-500/40',
@@ -39,6 +45,7 @@ const STATUS_STYLES = {
 const INITIAL_REGION = { nx: 0.5, ny: 0.5, nr: 0.28 };
 const PRESSURE_LAB_BUILD = import.meta.env.VITE_PRESSURE_LAB_BUILD || 'dev';
 const TRACE_PUBLISH_MS = 500;
+const REPLAY_BUILD = isPressureReplayBuild();
 
 const EMPTY_LIVE = {
   tracking: 'CALIBRATING',
@@ -129,7 +136,7 @@ function clamp(value, min, max) {
 export function FlairPressureLab() {
   const ui = getAppTheme(true);
   const { videoRef, start, stop, status, error, trackInfo } = useFrontCameraStream();
-  const [mirrorPreview, setMirrorPreview] = useState(true);
+  const [mirrorPreview, setMirrorPreview] = useState(!REPLAY_BUILD);
   const [sweepDeg, setSweepDeg] = useState(FLAIR_58_SCALE.sweepDeg);
   const [frameBox, setFrameBox] = useState({ w: 0, h: 0 });
   const [videoSize, setVideoSize] = useState(null);
@@ -152,7 +159,9 @@ export function FlairPressureLab() {
   const thresholdRef = useRef(createRisingThreshold(EXTRACTION_START_BAR));
   const calibRef = useRef(createRestCalibration());
   const trackerRef = useRef(createGaugeTracker());
-  const historyRef = useRef(createDiagnosticHistory());
+  const historyRef = useRef(createDiagnosticHistory(
+    REPLAY_BUILD ? { durationMs: 600_000 } : undefined,
+  ));
   const poseAgeRef = useRef(0);
   const tracePublishRef = useRef(0);
   const resizeObserverRef = useRef(null);
@@ -180,6 +189,15 @@ export function FlairPressureLab() {
     clearTimeout(copyTimerRef.current);
   }, []);
 
+  useEffect(() => {
+    if (!REPLAY_BUILD) return undefined;
+    installPressureReplayHook();
+    return () => {
+      if (typeof window !== 'undefined') delete window.__pressureLabReplay;
+    };
+  }, []);
+
+
   const resetReading = useCallback(({ clearHistory = false, clearTracker = true } = {}) => {
     sessionRef.current = null;
     lastAngleRef.current = null;
@@ -200,8 +218,24 @@ export function FlairPressureLab() {
 
   const handleStart = async () => {
     resetReading({ clearHistory: true, clearTracker: true });
+    resetPressureReplaySession();
     await start();
   };
+
+  useEffect(() => {
+    if (!REPLAY_BUILD) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      resetReading({ clearHistory: true, clearTracker: true });
+      resetPressureReplaySession();
+      void start();
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [resetReading, start]);
 
   const handleStop = () => {
     stop();
@@ -308,14 +342,52 @@ export function FlairPressureLab() {
     let windowStart = performance.now();
     let fps = 0;
 
+    const pushReplayFrame = (partial, sampleTime) => {
+      if (!REPLAY_BUILD) return;
+      pushPressureReplayFrame({
+        t: sampleTime,
+        gaugeFound: partial.gaugeFound === true,
+        centreX: partial.centreX ?? null,
+        centreY: partial.centreY ?? null,
+        radius: partial.radius ?? null,
+        gaugeRotationDeg: partial.gaugeRotationDeg ?? null,
+        needleAngleDeg: partial.needleAngleDeg ?? null,
+        bar: partial.bar ?? null,
+        confidence: partial.confidence ?? null,
+        flags: partial.flags ?? '',
+        tracking: partial.tracking ?? null,
+      });
+    };
+
     const tick = (now) => {
       raf = requestAnimationFrame(tick);
       if (now - last < PROCESS_INTERVAL_MS) return;
       last = now;
       const video = videoRef.current;
       if (!video || video.readyState < 2 || adjustingRef.current) return;
-      const reading = readTrackedGauge(video, canvas, regionRef.current, trackerRef.current);
-      if (!reading?.gauge) return;
+      let reading;
+      try {
+        reading = readTrackedGauge(video, canvas, regionRef.current, trackerRef.current);
+      } catch (err) {
+        if (REPLAY_BUILD) {
+          pushReplayFrame({
+            gaugeFound: false,
+            flags: `error:${err?.message || 'read'}`,
+            tracking: 'LOST',
+          }, now);
+        }
+        return;
+      }
+      if (!reading?.gauge) {
+        if (REPLAY_BUILD) {
+          pushReplayFrame({
+            gaugeFound: false,
+            flags: 'no-gauge',
+            tracking: 'LOST',
+          }, now);
+        }
+        return;
+      }
 
       processed += 1;
       if (now - windowStart >= 1000) {
@@ -490,6 +562,20 @@ export function FlairPressureLab() {
             candidateJump: null,
             poseAge: poseAgeRef.current,
           });
+          if (REPLAY_BUILD) {
+            pushReplayFrame({
+              gaugeFound: true,
+              centreX: gauge.cx,
+              centreY: gauge.cy,
+              radius: gauge.radius,
+              gaugeRotationDeg: gauge.rotationDeg,
+              needleAngleDeg: null,
+              bar: null,
+              confidence: reading.quality,
+              flags: `CALIBRATING|${result.count}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}`,
+              tracking: 'CALIBRATING',
+            }, now);
+          }
           setLive({
             ...EMPTY_LIVE,
             ...gaugeFields,
@@ -590,6 +676,24 @@ export function FlairPressureLab() {
         poseAge: poseAgeRef.current,
         jitterDeg: jitter,
       });
+      if (REPLAY_BUILD) {
+        const flagParts = [tracking, needleDecision].filter(Boolean);
+        if (gauge.held) flagParts.push('gauge-held');
+        if (weak) flagParts.push('weak-needle');
+        pushReplayFrame({
+          gaugeFound: true,
+          centreX: gauge.cx,
+          centreY: gauge.cy,
+          radius: gauge.radius,
+          gaugeRotationDeg: gauge.rotationDeg,
+          needleAngleDeg: tracked.angle,
+          bar: pressureMeasured ? rawBar : pressureBar,
+          confidence: reading.quality,
+          flags: flagParts.join('|'),
+          tracking,
+        }, now);
+      }
+
       setLive({
         tracking,
         displayBar: tracking === 'TRACKING' || tracking === 'UNCERTAIN' ? pressureBar : null,

@@ -16,7 +16,10 @@ npm run lint
 npm test             # node integration test suite
 timeout 10m npx vitest run
 node scripts/playwright-heldback-grinders-smoke.mjs  # after build + preview deps
+flock -w 900 /tmp/box-test.lock npm run replay:pressure   # flair pressure-lab clip replay QA
 ```
+
+Pressure replay harness (`scripts/pressure-replay/`): runs the real `#/flair-pressure-lab` pipeline in Chromium with fake camera capture over clips in `FLAIR_REPLAY_DIR` (default `/workspace/flair-replay/720`). Manifest expected values are scoring-only. Optional: `PRESSURE_REPLAY_CLIP=20261015_225219 npm run replay:pressure`. Outputs land in `/workspace/flair-replay/out/`.
 
 Install Playwright browsers once per environment: `npx playwright install chromium`.
 
