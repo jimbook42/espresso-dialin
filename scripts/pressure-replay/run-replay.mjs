@@ -9,6 +9,7 @@ import { summarizeClipFrames } from './summary.js';
 import { framesToCsv } from './framesCsv.js';
 import { writeAnnotatedFrames } from './annotate.mjs';
 import { ROOT } from '../lib/previewServer.mjs';
+import { ffmpegCropFilter, framedMp4Path, loadReplayCropSpec } from './replayCrop.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PREVIEW_PORT = Number(process.env.PRESSURE_REPLAY_PORT || 4176);
@@ -54,16 +55,27 @@ function probeDurationS(videoPath) {
   return Number(out) || 15;
 }
 
-function y4mPathFor(mp4Path) {
-  return mp4Path.replace(/\.mp4$/i, '.y4m');
+function y4mPathFor(framedMp4Path) {
+  return framedMp4Path.replace(/\.framed\.mp4$/i, '.framed.y4m');
 }
 
-async function ensureY4m(mp4Path) {
-  const y4m = y4mPathFor(mp4Path);
+async function ensureFramedMp4(mp4Path, cropSpec) {
+  const framed = framedMp4Path(mp4Path);
+  if (fs.existsSync(framed)) return framed;
+  await waitForMemory();
+  const vf = ffmpegCropFilter(cropSpec);
+  await runUnderFlock('ffmpeg', [
+    '-y', '-i', mp4Path, '-vf', vf, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', framed,
+  ]);
+  return framed;
+}
+
+async function ensureY4m(framedMp4) {
+  const y4m = y4mPathFor(framedMp4);
   if (fs.existsSync(y4m)) return y4m;
   await waitForMemory();
   await runUnderFlock('ffmpeg', [
-    '-y', '-i', mp4Path, '-pix_fmt', 'yuv420p', '-an', y4m,
+    '-y', '-i', framedMp4, '-pix_fmt', 'yuv420p', '-an', y4m,
   ]);
   return y4m;
 }
@@ -88,6 +100,40 @@ async function runPlaywrightClip({ y4mPath, durationS }) {
   return JSON.parse(out);
 }
 
+function diagnoseReferenceCapture(frames) {
+  const rims = [];
+  const likes = [];
+  let refYes = 0;
+  for (const frame of frames) {
+    const flags = frame.flags || '';
+    if (flags.includes('ref:yes')) refYes += 1;
+    const rim = flags.match(/rim:([\d.]+)/);
+    const like = flags.match(/like:([\d.]+)/);
+    if (rim) rims.push(Number(rim[1]));
+    if (like && like[1] !== 'na') likes.push(Number(like[1]));
+  }
+  const maxRim = rims.length ? Math.max(...rims) : null;
+  const maxLike = likes.length ? Math.max(...likes) : null;
+  let failure = null;
+  if (!refYes) {
+    if (maxLike != null && maxLike < 0.4) {
+      failure = `needleLikeness peaked at ${maxLike.toFixed(3)} (< NEEDLE_LIKENESS_GATE 0.4)`;
+    } else if (maxRim != null && maxRim < 0.3) {
+      failure = `rimConfidence peaked at ${maxRim.toFixed(3)} (< CONFIDENCE_MIN 0.3)`;
+    } else {
+      failure = 'reference gate never met on the same frame (rim ≥ 0.3 and likeness ≥ 0.4)';
+    }
+  } else if (frames.every((f) => !f.bar && f.tracking === 'CALIBRATING')) {
+    failure = 'reference captured but REST_STABLE_SAMPLES (6) rest calibration did not complete';
+  }
+  return {
+    referenceCapturedFramePct: frames.length ? (refYes / frames.length) * 100 : 0,
+    maxRimConfidence: maxRim,
+    maxNeedleLikeness: maxLike,
+    referenceCaptureFailure: failure,
+  };
+}
+
 function writeReportTable(summaries) {
   const header = [
     '| Clip | Tracked % | Within ±tol % | Confident-wrong % | First valid (s) | No-read % | Bar σ | Max jump | Pass |',
@@ -100,13 +146,17 @@ function writeReportTable(summaries) {
   return `${header.concat(rows).join('\n')}\n`;
 }
 
-async function processClip(clip, replayDir) {
+async function processClip(clip, replayDir, cropSpec) {
   const mp4 = resolveClipPath(clip, replayDir);
   if (!fs.existsSync(mp4)) throw new Error(`missing clip ${mp4}`);
-  const durationS = probeDurationS(mp4);
-  const y4m = await ensureY4m(mp4);
+  const framed = await ensureFramedMp4(mp4, cropSpec);
+  const durationS = probeDurationS(framed);
+  const y4m = await ensureY4m(framed);
   const frames = await runPlaywrightClip({ y4mPath: y4m, durationS });
-  const summary = summarizeClipFrames(frames, clip);
+  const summary = {
+    ...summarizeClipFrames(frames, clip),
+    ...diagnoseReferenceCapture(frames),
+  };
   const outDir = path.join(OUT_ROOT, clip.id);
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'frames.csv'), framesToCsv(frames));
@@ -114,7 +164,7 @@ async function processClip(clip, replayDir) {
   const annotated = await writeAnnotatedFrames({
     frames,
     expectedBar: clip.expectedBar,
-    videoPath: mp4,
+    videoPath: framed,
     outDir,
   });
   return { id: clip.id, summary, annotated, outDir };
@@ -137,18 +187,34 @@ async function main() {
     });
   }
 
+  const cropSpecPath = path.join(__dirname, 'replayCrop.json');
+  if (!fs.existsSync(cropSpecPath)) {
+    await waitForMemory();
+    await runUnderFlock(process.execPath, [path.join(__dirname, 'computeReplayCrop.mjs')]);
+  }
+  const cropSpec = loadReplayCropSpec(cropSpecPath);
+
   const results = [];
   for (const clip of clips) {
     process.stderr.write(`\n=== Replay ${clip.id} ===\n`);
-    results.push(await processClip(clip, process.env.FLAIR_REPLAY_DIR));
+    results.push(await processClip(clip, process.env.FLAIR_REPLAY_DIR, cropSpec));
   }
 
   const reportPath = path.join(OUT_ROOT, 'REPORT.md');
+  const refNotes = fs.readFileSync(path.join(__dirname, 'REFERENCE_CAPTURE.md'), 'utf8');
   const intro = `# Pressure lab video replay — ${new Date().toISOString()}\n\n`;
   const isolation = [
     '## Harness isolation',
     '',
     'Expected bar values exist only in `scripts/pressure-replay/manifest.json` and are applied in Node after capture via `summarizeClipFrames`. The Vite replay build sets `VITE_PRESSURE_REPLAY` for export hooks only; manifest data is never sent to the browser or CV modules.',
+    '',
+    '## Replay framing',
+    '',
+    `Single ffmpeg crop for all clips (from reference frame geometry): crop ${cropSpec.crop.w}×${cropSpec.crop.h} at (${cropSpec.crop.x},${cropSpec.crop.y}) → ${cropSpec.output.w}×${cropSpec.output.h}. Source gauge estimate: (${cropSpec.sourceGauge.cx}, ${cropSpec.sourceGauge.cy}) r=${cropSpec.sourceGauge.radius}px.`,
+    '',
+    '## Reference capture requirement (live app)',
+    '',
+    refNotes.split('\n').slice(2).join('\n'),
     '',
   ].join('\n');
   fs.writeFileSync(reportPath, `${intro}${isolation}\n${writeReportTable(results)}`);

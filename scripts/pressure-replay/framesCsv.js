@@ -1,6 +1,7 @@
 const CSV_COLUMNS = [
   'timeS',
   'gaugeFound',
+  'centreFromGuide',
   'centreX',
   'centreY',
   'radius',

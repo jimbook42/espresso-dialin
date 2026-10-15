@@ -1,0 +1,33 @@
+import { describe, expect, it } from 'vitest';
+import { classifyReplayGaugeFrame } from './replayGaugeSemantics.js';
+
+describe('replayGaugeSemantics', () => {
+  const region = { nx: 0.5, ny: 0.5, nr: 0.28 };
+  const w = 406;
+  const h = 720;
+
+  it('marks guide-default centre before reference', () => {
+    const out = classifyReplayGaugeFrame({
+      gauge: { cx: 203, cy: 360, radius: 113, confidence: 0.25, rawCx: 203, rawCy: 360 },
+      videoWidth: w,
+      videoHeight: h,
+      region,
+      referenceCaptured: false,
+      likeness: 0.1,
+    });
+    expect(out.centreFromGuide).toBe(true);
+    expect(out.gaugeFound).toBe(false);
+  });
+
+  it('accepts rim lock after reference', () => {
+    const out = classifyReplayGaugeFrame({
+      gauge: { cx: 203, cy: 360, radius: 113, confidence: 0.5, rawCx: 203, rawCy: 360 },
+      videoWidth: w,
+      videoHeight: h,
+      region,
+      referenceCaptured: true,
+      likeness: 0.5,
+    });
+    expect(out.gaugeFound).toBe(true);
+  });
+});

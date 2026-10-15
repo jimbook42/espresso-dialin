@@ -23,9 +23,9 @@ describe('pressure replay summary math', () => {
 
   it('computes time to first valid reading and no-reading rate', () => {
     const frames = [
-      { timeS: 0, gaugeFound: true, bar: null, tracking: 'CALIBRATING', confidence: 0.05 },
-      { timeS: 0.5, gaugeFound: true, bar: 0.1, tracking: 'TRACKING', confidence: 0.25 },
-      { timeS: 1, gaugeFound: false, bar: null, tracking: 'LOST', confidence: null },
+      { timeS: 0, gaugeFound: false, centreFromGuide: true, bar: null, tracking: 'CALIBRATING', confidence: 0.05 },
+      { timeS: 0.5, gaugeFound: true, centreFromGuide: false, bar: 0.1, tracking: 'TRACKING', confidence: 0.25 },
+      { timeS: 1, gaugeFound: false, centreFromGuide: false, bar: null, tracking: 'LOST', confidence: null },
     ];
     const summary = summarizeClipFrames(frames, clip);
     expect(summary.timeToFirstValidReadingS).toBe(0.5);
@@ -34,8 +34,8 @@ describe('pressure replay summary math', () => {
 
   it('flags confident-but-wrong separately from low confidence', () => {
     const frames = [
-      { timeS: 0, gaugeFound: true, bar: 2, tracking: 'TRACKING', confidence: 0.3 },
-      { timeS: 1, gaugeFound: true, bar: 0, tracking: 'UNCERTAIN', confidence: 0.1 },
+      { timeS: 0, gaugeFound: true, centreFromGuide: false, bar: 2, tracking: 'TRACKING', confidence: 0.3 },
+      { timeS: 1, gaugeFound: true, centreFromGuide: false, bar: 0, tracking: 'UNCERTAIN', confidence: 0.1 },
     ];
     expect(isHighConfidence(frames[0])).toBe(true);
     expect(isValidReading(frames[1])).toBe(true);

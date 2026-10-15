@@ -1,0 +1,26 @@
+{
+  "sourceGauge": {
+    "cx": 231,
+    "cy": 354,
+    "radius": 50
+  },
+  "frame": {
+    "w": 406,
+    "h": 720
+  },
+  "crop": {
+    "x": 48,
+    "y": 176,
+    "w": 358,
+    "h": 358
+  },
+  "output": {
+    "w": 406,
+    "h": 720
+  },
+  "targetNr": 0.28,
+  "targetRadiusPx": 113.68,
+  "source": "/workspace/flair-replay/720/20261015_225219.mp4",
+  "rimScore": 19.041666666666668,
+  "notes": "Single crop for all replay clips; geometry from reference frame only."
+}

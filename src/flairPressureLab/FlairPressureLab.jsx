@@ -34,6 +34,7 @@ import {
   pushPressureReplayFrame,
   resetPressureReplaySession,
 } from './replaySessionExport.js';
+import { classifyReplayGaugeFrame } from './replayGaugeSemantics.js';
 
 const STATUS_STYLES = {
   CALIBRATING: 'bg-amber-500/15 text-amber-100 border-amber-500/40',
@@ -347,6 +348,7 @@ export function FlairPressureLab() {
       pushPressureReplayFrame({
         t: sampleTime,
         gaugeFound: partial.gaugeFound === true,
+        centreFromGuide: partial.centreFromGuide === true,
         centreX: partial.centreX ?? null,
         centreY: partial.centreY ?? null,
         radius: partial.radius ?? null,
@@ -357,6 +359,18 @@ export function FlairPressureLab() {
         flags: partial.flags ?? '',
         tracking: partial.tracking ?? null,
       });
+    };
+
+    const replayGaugeLabels = (gauge, videoWidth, videoHeight, likeness) => {
+      const labels = classifyReplayGaugeFrame({
+        gauge,
+        videoWidth,
+        videoHeight,
+        region: regionRef.current,
+        referenceCaptured: gauge.referenceCaptured === true,
+        likeness,
+      });
+      return labels;
     };
 
     const tick = (now) => {
@@ -372,6 +386,7 @@ export function FlairPressureLab() {
         if (REPLAY_BUILD) {
           pushReplayFrame({
             gaugeFound: false,
+            centreFromGuide: false,
             flags: `error:${err?.message || 'read'}`,
             tracking: 'LOST',
           }, now);
@@ -382,6 +397,7 @@ export function FlairPressureLab() {
         if (REPLAY_BUILD) {
           pushReplayFrame({
             gaugeFound: false,
+            centreFromGuide: false,
             flags: 'no-gauge',
             tracking: 'LOST',
           }, now);
@@ -563,16 +579,18 @@ export function FlairPressureLab() {
             poseAge: poseAgeRef.current,
           });
           if (REPLAY_BUILD) {
+            const labels = replayGaugeLabels(gauge, reading.videoWidth, reading.videoHeight, reading.likeness);
             pushReplayFrame({
-              gaugeFound: true,
+              gaugeFound: labels.gaugeFound,
+              centreFromGuide: labels.centreFromGuide,
               centreX: gauge.cx,
               centreY: gauge.cy,
               radius: gauge.radius,
               gaugeRotationDeg: gauge.rotationDeg,
               needleAngleDeg: null,
               bar: null,
-              confidence: reading.quality,
-              flags: `CALIBRATING|${result.count}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}`,
+              confidence: gauge.confidence,
+              flags: `CALIBRATING|${result.count}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}`,
               tracking: 'CALIBRATING',
             }, now);
           }
@@ -677,19 +695,21 @@ export function FlairPressureLab() {
         jitterDeg: jitter,
       });
       if (REPLAY_BUILD) {
+        const labels = replayGaugeLabels(gauge, reading.videoWidth, reading.videoHeight, reading.likeness);
         const flagParts = [tracking, needleDecision].filter(Boolean);
         if (gauge.held) flagParts.push('gauge-held');
         if (weak) flagParts.push('weak-needle');
         pushReplayFrame({
-          gaugeFound: true,
+          gaugeFound: labels.gaugeFound,
+          centreFromGuide: labels.centreFromGuide,
           centreX: gauge.cx,
           centreY: gauge.cy,
           radius: gauge.radius,
           gaugeRotationDeg: gauge.rotationDeg,
           needleAngleDeg: tracked.angle,
           bar: pressureMeasured ? rawBar : pressureBar,
-          confidence: reading.quality,
-          flags: flagParts.join('|'),
+          confidence: gauge.confidence,
+          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}`,
           tracking,
         }, now);
       }
