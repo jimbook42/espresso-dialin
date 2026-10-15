@@ -20,4 +20,4 @@ From `gaugeTrack.js` `trackOrientation` (lines ~939–960) and `FlairPressureLab
 
 ## Harness implication
 
-Replay must **frame the clip** so the real gauge sits where a user would put the default ring (centre, `nr = 0.28`), then use the same **Start front camera** path as production. No manifest bar values enter the CV pipeline.
+Replay uses the **Start front camera** path as production on unmodified 720p clips. The user must align the guide ring on a live device; the harness does not crop or assume dial position. No manifest bar values enter the CV pipeline.

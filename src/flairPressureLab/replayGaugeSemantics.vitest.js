@@ -19,7 +19,7 @@ describe('replayGaugeSemantics', () => {
     expect(out.gaugeFound).toBe(false);
   });
 
-  it('rejects guide-default centre even after reference', () => {
+  it('treats applied pose at guide seed as guide-default even after reference', () => {
     const out = classifyReplayGaugeFrame({
       gauge: { cx: 203, cy: 360, radius: 113, confidence: 0.5, rawCx: 203, rawCy: 360 },
       videoWidth: w,
@@ -28,8 +28,8 @@ describe('replayGaugeSemantics', () => {
       referenceCaptured: true,
       likeness: 0.5,
     });
-    expect(out.centreFromGuide).toBe(false);
-    expect(out.gaugeFound).toBe(true);
+    expect(out.centreFromGuide).toBe(true);
+    expect(out.gaugeFound).toBe(false);
   });
 
   it('accepts detected rim away from guide seed', () => {

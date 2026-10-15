@@ -15,9 +15,7 @@ export function classifyReplayGaugeFrame({
   const distApplied = Math.hypot(gauge.cx - seedCx, gauge.cy - seedCy);
   const hasRaw = gauge.rawCx != null && gauge.rawCy != null;
   const distRaw = hasRaw ? Math.hypot(gauge.rawCx - seedCx, gauge.rawCy - seedCy) : null;
-  const centreFromGuide = !referenceCaptured
-    && distApplied < 8
-    && (distRaw == null || distRaw < 10);
+  const centreFromGuide = distApplied < 8 && (distRaw == null || distRaw < 10);
   const rimDetected = (gauge.confidence ?? 0) >= RIM_CONFIDENCE_MIN;
   const gaugeFound = rimDetected && !centreFromGuide;
   return { gaugeFound, centreFromGuide, rimDetected };
