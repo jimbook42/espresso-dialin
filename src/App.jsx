@@ -29,6 +29,13 @@ import {
 import { useLiveQuery } from 'dexie-react-hooks';
 import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag } from 'lucide-react';
 import { HowItWorksModal } from './components/HowItWorksModal';
+import { FinishBeanToast, TOAST_DURATION_MS } from './components/FinishBeanToast.jsx';
+import {
+  nextActiveBeanIdAfterFinish,
+  persistBeanFinished,
+  restoreBeanFromSnapshot,
+  snapshotBeanRecord,
+} from './utils/beanFinishActions.js';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx';
@@ -327,6 +334,8 @@ export default function App() {
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
+  const [finishUndoToast, setFinishUndoToast] = useState(null);
+  const finishUndoTimerRef = useRef(null);
   
   // Timer State
   const [timerRunning, setTimerRunning] = useState(false);
@@ -1350,14 +1359,57 @@ export default function App() {
     await db.beans.update(beanId, { rating: sanitized !== '' ? sanitized : null });
   };
 
+  const clearFinishUndoToast = useCallback(() => {
+    if (finishUndoTimerRef.current) {
+      clearTimeout(finishUndoTimerRef.current);
+      finishUndoTimerRef.current = null;
+    }
+    setFinishUndoToast(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (finishUndoTimerRef.current) clearTimeout(finishUndoTimerRef.current);
+  }, []);
+
+  const scheduleFinishUndoToast = useCallback((payload) => {
+    if (finishUndoTimerRef.current) clearTimeout(finishUndoTimerRef.current);
+    setFinishUndoToast(payload);
+    finishUndoTimerRef.current = setTimeout(() => {
+      finishUndoTimerRef.current = null;
+      setFinishUndoToast(null);
+    }, TOAST_DURATION_MS);
+  }, []);
+
+  const handleUndoMarkFinished = async () => {
+    if (!finishUndoToast?.snapshot) return;
+    const { snapshot, wasSelected } = finishUndoToast;
+    clearFinishUndoToast();
+    await restoreBeanFromSnapshot(db, snapshot);
+    if (wasSelected) {
+      setSelectedBeanId(snapshot.id);
+      void rememberSelectedBeanId(snapshot.id);
+    }
+  };
+
   const handleToggleFinished = async (beanId, currentStatus) => {
-    await db.beans.update(beanId, { isFinished: !currentStatus });
-    if (!currentStatus && effectiveBeanId === beanId) {
-      const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
-      const nextId = remaining.length > 0 ? remaining[0].id : '';
+    clearFinishUndoToast();
+    if (currentStatus) {
+      await db.beans.update(beanId, { isFinished: false });
+      return;
+    }
+
+    const bean = beans.find((b) => b.id === beanId);
+    const snapshot = snapshotBeanRecord(bean);
+    if (!snapshot) return;
+
+    const wasSelected = effectiveBeanId === beanId;
+    await persistBeanFinished(db, beanId);
+    if (wasSelected) {
+      const nextId = nextActiveBeanIdAfterFinish(beans, beanId);
       setSelectedBeanId(nextId);
       void rememberSelectedBeanId(nextId);
     }
+    scheduleFinishUndoToast({ snapshot, wasSelected });
   };
 
   const handleDeleteBean = async (beanId) => {
@@ -2284,7 +2336,13 @@ export default function App() {
       )}
 
       {/* Main scrollable content — padded for fixed bottom nav (+ log bar on dial) */}
-      <div className={`max-w-xl mx-auto px-4 pt-5 ${activeTab === 'dial' && activeBeansList.length > 0 ? 'pb-40' : 'pb-24'}`}>
+      <div className={`max-w-xl mx-auto px-4 pt-5 ${
+        activeTab === 'dial' && activeBeansList.length > 0
+          ? 'pb-40'
+          : activeTab === 'beans'
+            ? 'pb-32'
+            : 'pb-24'
+      }`}>
         
         <header className={`flex items-center justify-between pb-5 mb-6 border-b ${ui.headerBorder}`}>
           <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick} title="Espresso Dial-In">
@@ -2351,18 +2409,21 @@ export default function App() {
                           <RotateCcw className="w-3 h-3" /> Undo thaw
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
-                        className={`text-[11px] font-bold px-3 py-2 rounded-lg border min-h-[40px] shrink-0 ${
-                          activeBean.isFinished
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                            : `${ui.secondaryBtn}`
-                        }`}
-                      >
-                        {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
-                      </button>
                     </div>
+                  </div>
+                  <div className={`pt-3 mt-1 border-t ${ui.modalDivider}`}>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
+                      data-testid="mark-bean-finished"
+                      className={`w-full text-[11px] font-semibold px-3 py-2.5 rounded-lg border min-h-[44px] ${
+                        activeBean.isFinished
+                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                          : `border-dashed opacity-90 ${ui.secondaryBtn}`
+                      }`}
+                    >
+                      {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
+                    </button>
                   </div>
 
                   {activeRecipe && (
@@ -3983,6 +4044,14 @@ export default function App() {
         </footer>
 
       </div>
+
+      {finishUndoToast?.snapshot && (
+        <FinishBeanToast
+          beanName={finishUndoToast.snapshot.name || 'Bean'}
+          onUndo={() => void handleUndoMarkFinished()}
+          ui={ui}
+        />
+      )}
 
       {/* Fixed bottom tab bar */}
       <nav className={`fixed bottom-0 left-0 right-0 z-50 ${ui.nav} backdrop-blur safe-area-pb`}>
