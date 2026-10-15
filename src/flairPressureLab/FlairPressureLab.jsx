@@ -20,7 +20,6 @@ import { DiagnosticTrace } from './DiagnosticTrace';
 import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
-import { FLAIR_STATELESS_SESSION } from './canonicalDial.js';
 import { assessFrameQuality, createReadingBridge } from './frameQuality.js';
 import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
 import {
@@ -532,7 +531,11 @@ export function FlairPressureLab() {
           });
           return;
         }
-        const next = { ...FLAIR_STATELESS_SESSION, sweepDeg: sweepRef.current };
+        const next = {
+          zeroAngleDeg: reading.relativeAngleDeg,
+          ...FLAIR_58_SCALE,
+          sweepDeg: sweepRef.current,
+        };
         sessionRef.current = next;
         setSession(next);
         lastAngleRef.current = reading.relativeAngleDeg;

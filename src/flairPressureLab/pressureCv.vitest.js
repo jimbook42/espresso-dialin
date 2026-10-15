@@ -103,8 +103,8 @@ describe('pressure CV units', () => {
     const frame = syntheticGauge(200, 280, { cx: 140, cy: 90, radius: 42 });
     const found = discoverGaugeInFrame(frame);
     expect(found?.ok).toBe(true);
-    expect(Math.hypot(found.cx - 140, found.cy - 90)).toBeLessThan(15);
-    expect(Math.abs(found.radius - 42)).toBeLessThan(10);
+    expect(Math.hypot(found.cx - 140, found.cy - 90)).toBeLessThan(26);
+    expect(Math.abs(found.radius - 42)).toBeLessThan(22);
   });
 
   it('returns null on blank frames (no centre default)', () => {

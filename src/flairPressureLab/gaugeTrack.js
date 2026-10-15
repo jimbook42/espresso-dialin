@@ -444,6 +444,13 @@ function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needl
   return rim.confidence * (0.55 + 0.45 * agree);
 }
 
+function discoverySizePrior(faceRadius, scaledMin) {
+  const ideal = scaledMin * 0.11;
+  const spread = scaledMin * 0.035;
+  const t = (faceRadius - ideal) / spread;
+  return Math.exp(-0.5 * t * t);
+}
+
 function rankDiscoveryCandidate({
   edges,
   data,
@@ -453,12 +460,15 @@ function rankDiscoveryCandidate({
   cy,
   faceRadius,
   needleDeg = null,
+  scaledMin,
 }) {
   const rim = scoreRim(edges, width, height, cx, cy, faceRadius * 1.02);
   if (rim <= 0) return 0;
+  const sizePrior = discoverySizePrior(faceRadius, scaledMin);
+  if (sizePrior < 0.08) return 0;
   const face = scoreDialFaceInterior(data, width, height, cx, cy, faceRadius);
   const canonical = scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg);
-  return rim * (0.15 + 0.85 * face) * (0.25 + 0.75 * canonical);
+  return rim * sizePrior * (0.15 + 0.85 * face) * (0.25 + 0.75 * canonical);
 }
 
 /**
@@ -487,8 +497,8 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   }
   const edges = prepareEdges({ data: small, width: sw, height: sh }, { contrastRadius: 3 }).edges;
   const scaledMin = minDim * scale;
-  const rMin = scaledMin * 0.06;
-  const rMax = scaledMin * 0.44;
+  const rMin = scaledMin * 0.08;
+  const rMax = scaledMin * 0.2;
   const coarseStep = Math.max(4, Math.round(scaledMin / 24));
   let best = { score: -1, rim: 0, cx: 0, cy: 0, radius: 0 };
   const consider = (cx, cy, faceRadius) => {
@@ -503,6 +513,7 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
       cx,
       cy,
       faceRadius,
+      scaledMin,
     });
     const rim = scoreRim(edges, sw, sh, cx, cy, rimRadius);
     if (rank > best.score) best = { score: rank, rim, cx, cy, radius: faceRadius };
