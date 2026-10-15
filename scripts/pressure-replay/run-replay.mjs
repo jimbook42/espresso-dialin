@@ -9,11 +9,11 @@ import { summarizeClipFrames } from './summary.js';
 import { framesToCsv } from './framesCsv.js';
 import { writeAnnotatedFrames } from './annotate.mjs';
 import { ROOT } from '../lib/previewServer.mjs';
+import { flockWrap } from './boxFlock.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PREVIEW_PORT = Number(process.env.PRESSURE_REPLAY_PORT || 4176);
 const OUT_ROOT = process.env.FLAIR_REPLAY_OUT || '/workspace/flair-replay/out';
-const LOCK = '/tmp/box-test.lock';
 const MIN_MEM_KB = 3 * 1024 * 1024;
 
 function memAvailableKb() {
@@ -31,8 +31,9 @@ async function waitForMemory() {
 }
 
 function runUnderFlock(cmd, args, opts = {}) {
+  const [wrappedCmd, wrappedArgs] = flockWrap(cmd, args);
   return new Promise((resolve, reject) => {
-    const child = spawn('flock', ['-w', '900', LOCK, cmd, ...args], {
+    const child = spawn(wrappedCmd, wrappedArgs, {
       stdio: 'inherit',
       cwd: opts.cwd || ROOT,
       env: opts.env || process.env,
@@ -73,11 +74,13 @@ async function runPlaywrightClip({ y4mPath, durationS }) {
   const browserScript = path.join(__dirname, 'run-clip-browser.mjs');
   const out = await new Promise((resolve, reject) => {
     const chunks = [];
-    const child = spawn(
-      'flock',
-      ['-w', '900', LOCK, process.execPath, browserScript, y4mPath, String(durationS), String(PREVIEW_PORT)],
-      { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] },
-    );
+    const [browserCmd, browserArgs] = flockWrap(process.execPath, [
+      browserScript,
+      y4mPath,
+      String(durationS),
+      String(PREVIEW_PORT),
+    ]);
+    const child = spawn(browserCmd, browserArgs, { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] });
     child.stdout.on('data', (buf) => chunks.push(buf));
     child.on('error', reject);
     child.on('exit', (code) => {

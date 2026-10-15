@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import { flockWrap } from './boxFlock.mjs';
 
 function pickAnnotationFrames(frames, expectedBar) {
   const withGauge = frames.filter((f) => f.gaugeFound);
@@ -57,11 +58,10 @@ function overlaySvg(frame, label) {
 
 function extractFramePng(videoPath, timeS, outPath) {
   const at = Number.isFinite(timeS) ? Math.max(0, timeS) : 0;
-  execFileSync(
-    'flock',
-    ['-w', '900', '/tmp/box-test.lock', 'ffmpeg', '-y', '-ss', String(at), '-i', videoPath, '-frames:v', '1', '-q:v', '2', outPath],
-    { stdio: 'pipe' },
-  );
+  const [ffmpegCmd, ffmpegArgs] = flockWrap('ffmpeg', [
+    '-y', '-ss', String(at), '-i', videoPath, '-frames:v', '1', '-q:v', '2', outPath,
+  ]);
+  execFileSync(ffmpegCmd, ffmpegArgs, { stdio: 'pipe' });
   if (!fs.existsSync(outPath)) {
     throw new Error(`ffmpeg did not create ${outPath}`);
   }
