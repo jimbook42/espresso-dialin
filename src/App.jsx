@@ -2402,45 +2402,47 @@ export default function App() {
             ) : (
               <>
                 {/* ── BEAN + RECIPE (top card) ─────────────────────────── */}
-                <div className={`${ui.card} p-4 rounded-2xl space-y-3`}>
-                  <div className="flex justify-between items-start gap-2 flex-wrap">
-                    <div className="flex-1 min-w-0">
-                      <select
-                        value={effectiveBeanId}
-                        onChange={(e) => selectActiveBean(e.target.value)}
-                        className={`bg-transparent ${ui.text} font-bold text-base focus:outline-none w-full truncate`}
-                      >
-                        {activeBeansList.map(b => (
-                          <option key={b.id} value={b.id} className="bg-[#1a1815]">
-                            {b.name} ({b.roaster}){beanIsDecaf(b) ? ' · Decaf' : ''}{b.rating ? ` [${Number(b.rating).toFixed(1)}]` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0 flex-nowrap justify-end" data-testid="dial-bean-actions">
+                <div className={`${ui.card} p-4 rounded-2xl space-y-3`} data-testid="dial-bean-card">
+                  <select
+                    data-testid="dial-bean-select"
+                    value={effectiveBeanId}
+                    onChange={(e) => selectActiveBean(e.target.value)}
+                    className={`bg-transparent ${ui.text} font-bold text-base focus:outline-none w-full truncate`}
+                  >
+                    {activeBeansList.map(b => (
+                      <option key={b.id} value={b.id} className="bg-[#1a1815]">
+                        {b.name} ({b.roaster}){beanIsDecaf(b) ? ' · Decaf' : ''}{b.rating ? ` [${Number(b.rating).toFixed(1)}]` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div
+                    className="flex items-center justify-between gap-2 min-w-0"
+                    data-testid="dial-bean-actions"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                       {activeBean?.storageType === 'frozen' && (
-                        <button type="button" onClick={handleThawNewBag} className={`text-[10px] ${ui.accentText} font-semibold hover:underline`}>
+                        <button type="button" onClick={handleThawNewBag} className={`text-[10px] ${ui.accentText} font-semibold hover:underline shrink-0`}>
                           Thaw new bag
                         </button>
                       )}
                       {activeBean?.storageType === 'frozen' && activeBean.thawHistory?.length > 0 && (
-                        <button type="button" onClick={handleReverseThaw} className={`text-[10px] ${ui.sub} flex items-center gap-1`}>
+                        <button type="button" onClick={handleReverseThaw} className={`text-[10px] ${ui.sub} flex items-center gap-1 shrink-0`}>
                           <RotateCcw className="w-3 h-3" /> Undo thaw
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
-                        data-testid="mark-bean-finished"
-                        className={`text-[11px] font-semibold px-3 py-2 rounded-lg border min-h-[40px] shrink-0 ${
-                          activeBean.isFinished
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                            : `${ui.secondaryBtn}`
-                        }`}
-                      >
-                        {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
-                      </button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
+                      data-testid="mark-bean-finished"
+                      className={`text-[11px] font-semibold px-3 py-2 rounded-lg border min-h-[40px] shrink-0 ${
+                        activeBean.isFinished
+                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                          : `${ui.secondaryBtn}`
+                      }`}
+                    >
+                      {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
+                    </button>
                   </div>
 
                   {activeRecipe && (

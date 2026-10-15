@@ -1,9 +1,10 @@
 import { chromium } from 'playwright';
 import { setTimeout as delay } from 'node:timers/promises';
-import { ROOT, startPreviewServer, waitForServer } from './lib/previewServer.mjs';
+import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
 
 const PREVIEW_PORT = 4177;
-const SCREENSHOT_PATH = '/workspace/tickets/6.27-dial-412.png';
+const SCREENSHOT_VIEWPORT_PATH = '/workspace/tickets/6.27-dial-412.png';
+const SCREENSHOT_FULL_PATH = '/workspace/tickets/6.27-dial-412-full.png';
 
 async function seedDialCompactSmoke(page) {
   await page.evaluate(() => {
@@ -108,6 +109,22 @@ async function main() {
     await page.getByRole('button', { name: 'Changed basket' }).waitFor();
     await page.getByRole('button', { name: /Apply rec/i }).waitFor();
 
+    const beanCard = page.getByTestId('dial-bean-card');
+    await beanCard.waitFor();
+    const beanSelect = page.getByTestId('dial-bean-select');
+    await beanSelect.waitFor();
+    const beanCardBox = await beanCard.boundingBox();
+    const beanSelectBox = await beanSelect.boundingBox();
+    if (!beanCardBox || !beanSelectBox) {
+      throw new Error('Could not measure bean card or bean select');
+    }
+    const beanSelectWidthRatio = beanSelectBox.width / beanCardBox.width;
+    if (beanSelectWidthRatio < 0.6) {
+      throw new Error(
+        `Bean select too narrow: ${(beanSelectWidthRatio * 100).toFixed(1)}% of bean card (need ≥60%)`
+      );
+    }
+
     const actions = page.getByTestId('dial-bean-actions');
     await actions.waitFor();
     const thawInRow = actions.getByRole('button', { name: 'Thaw new bag' });
@@ -115,8 +132,11 @@ async function main() {
     await thawInRow.waitFor();
     await markInRow.waitFor();
 
-    await page.screenshot({ path: SCREENSHOT_PATH, fullPage: true });
-    console.log(`Dial compact smoke passed (screenshot: ${SCREENSHOT_PATH}).`);
+    await page.screenshot({ path: SCREENSHOT_VIEWPORT_PATH, fullPage: false });
+    await page.screenshot({ path: SCREENSHOT_FULL_PATH, fullPage: true });
+    console.log(
+      `Dial compact smoke passed (screenshots: ${SCREENSHOT_VIEWPORT_PATH}, ${SCREENSHOT_FULL_PATH}).`
+    );
   } catch (err) {
     console.error(err);
     exitCode = 1;
