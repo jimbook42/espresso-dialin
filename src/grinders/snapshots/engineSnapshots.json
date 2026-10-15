@@ -1279,7 +1279,7 @@
         "statusLabel": "IN RANGE"
       },
       "subRecommendation": null,
-      "warning": "Shot hit target time but over-yielded (high flow / channeling)."
+      "warning": "On time, over-yielded (fast flow / channeling)."
     },
     "calculateRecommendation/sette/yield_in_range_under": {
       "engineStats": {
@@ -1313,7 +1313,7 @@
         "statusLabel": "IN RANGE"
       },
       "subRecommendation": null,
-      "warning": "Shot hit target time but under-yielded (restricted flow)."
+      "warning": "On time, under-yielded (restricted flow)."
     },
     "calculateRecommendation/sette/yield_out_fast_under": {
       "engineStats": {
@@ -2008,7 +2008,7 @@
         "statusLabel": "IN RANGE"
       },
       "subRecommendation": null,
-      "warning": "Shot hit target time but over-yielded (high flow / channeling)."
+      "warning": "On time, over-yielded (fast flow / channeling)."
     },
     "calculateRecommendation/sunbeam/yield_in_range_under": {
       "engineStats": {
@@ -2041,7 +2041,7 @@
         "statusLabel": "IN RANGE"
       },
       "subRecommendation": null,
-      "warning": "Shot hit target time but under-yielded (restricted flow)."
+      "warning": "On time, under-yielded (restricted flow)."
     },
     "calculateRecommendation/sunbeam/yield_out_fast_under": {
       "engineStats": {
