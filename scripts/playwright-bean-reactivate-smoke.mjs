@@ -1,27 +1,9 @@
-import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { setTimeout as delay } from 'node:timers/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, '..');
 const PREVIEW_PORT = 4176;
-const PREVIEW_URL = `http://127.0.0.1:${PREVIEW_PORT}/`;
 const FINISHED_SECTION_KEY = 'espresso-dialin.beans-finished-section-open';
-
-async function waitForServer(url, attempts = 60) {
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // retry
-    }
-    await delay(250);
-  }
-  throw new Error(`Server not ready at ${url}`);
-}
 
 async function seedBeansForSmoke(page) {
   await page.evaluate(() => {
@@ -107,30 +89,25 @@ async function readBeanFinished(page, beanId) {
   }, beanId);
 }
 
-async function main() {
-  const preview = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(PREVIEW_PORT), '--strictPort'], {
-    cwd: ROOT,
-    stdio: 'pipe',
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
+async function expectButtonText(locator, expected) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const text = (await locator.textContent())?.trim() ?? '';
+    if (text.includes(expected)) return;
+    await delay(100);
+  }
+  throw new Error(`Expected button to include "${expected}", got "${await locator.textContent()}"`);
+}
 
-  let previewPid = preview.pid;
-  const killPreview = () => {
-    if (previewPid) {
-      try {
-        process.kill(previewPid, 'SIGTERM');
-      } catch {
-        // already exited
-      }
-      previewPid = null;
-    }
-  };
+async function main() {
+  const preview = startPreviewServer(PREVIEW_PORT);
+  let browser;
+  let exitCode = 0;
 
   try {
-    await waitForServer(PREVIEW_URL);
-    const browser = await chromium.launch();
+    await waitForServer(preview.url);
+    browser = await chromium.launch();
     const page = await browser.newPage();
-    await page.goto(PREVIEW_URL, { waitUntil: 'domcontentloaded' });
+    await page.goto(preview.url, { waitUntil: 'domcontentloaded' });
     await seedBeansForSmoke(page);
     await page.reload({ waitUntil: 'networkidle' });
 
@@ -150,8 +127,23 @@ async function main() {
     const finishedToggle = page.getByTestId('beans-finished-section-toggle');
     await finishedToggle.waitFor();
     await expectButtonText(finishedToggle, 'Finished (1)');
+
+    const expandedBefore = await finishedToggle.getAttribute('aria-expanded');
+    if (expandedBefore !== 'false') {
+      throw new Error(`Expected aria-expanded="false" when collapsed, got "${expandedBefore}"`);
+    }
+
     await finishedToggle.click();
     await page.getByTestId('mark-bean-active').waitFor();
+
+    const expandedAfter = await finishedToggle.getAttribute('aria-expanded');
+    if (expandedAfter !== 'true') {
+      throw new Error(`Expected aria-expanded="true" when open, got "${expandedAfter}"`);
+    }
+    const controls = await finishedToggle.getAttribute('aria-controls');
+    if (controls !== 'beans-finished-section-panel') {
+      throw new Error(`Expected aria-controls="beans-finished-section-panel", got "${controls}"`);
+    }
 
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByRole('button', { name: 'Beans', exact: true }).click();
@@ -169,23 +161,18 @@ async function main() {
     }
     await page.getByTestId('bean-row-active').filter({ hasText: 'Smoke Alpha' }).waitFor();
 
-    await browser.close();
     console.log('Playwright bean reactivate smoke passed.');
+  } catch (err) {
+    console.error(err);
+    exitCode = 1;
   } finally {
-    killPreview();
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+    await preview.kill();
   }
+
+  process.exit(exitCode);
 }
 
-async function expectButtonText(locator, expected) {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const text = (await locator.textContent())?.trim() ?? '';
-    if (text.includes(expected)) return;
-    await delay(100);
-  }
-  throw new Error(`Expected button to include "${expected}", got "${await locator.textContent()}"`);
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main();

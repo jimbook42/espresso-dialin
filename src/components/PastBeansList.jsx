@@ -126,13 +126,15 @@ export function PastBeansList({
             type="button"
             onClick={onToggleFinishedSection}
             data-testid="beans-finished-section-toggle"
+            aria-expanded={finishedSectionOpen}
+            aria-controls="beans-finished-section-panel"
             className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border ${ui.chip} font-semibold text-xs`}
           >
             <span>Finished ({finishedCount})</span>
             {finishedSectionOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {finishedSectionOpen && (
-            <div className="space-y-3 mt-3">
+            <div id="beans-finished-section-panel" className="space-y-3 mt-3">
               {finishedBeans.map((b) => (
                 <BeanListRow key={b.id} bean={b} {...rowProps} />
               ))}

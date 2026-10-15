@@ -2391,7 +2391,7 @@ export default function App() {
         {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
 
         {activeTab === 'dial' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {activeBeansList.length === 0 ? (
               <div className={`${ui.card} p-10 rounded-2xl text-center space-y-4`}>
                 <p className="text-[#6b6457] text-sm">No active coffee bean profiles.</p>
@@ -2402,7 +2402,7 @@ export default function App() {
             ) : (
               <>
                 {/* ── BEAN + RECIPE (top card) ─────────────────────────── */}
-                <div className={`${ui.card} p-4 rounded-2xl space-y-4`}>
+                <div className={`${ui.card} p-4 rounded-2xl space-y-3`}>
                   <div className="flex justify-between items-start gap-2 flex-wrap">
                     <div className="flex-1 min-w-0">
                       <select
@@ -2417,7 +2417,7 @@ export default function App() {
                         ))}
                       </select>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                    <div className="flex items-center gap-1.5 shrink-0 flex-nowrap justify-end" data-testid="dial-bean-actions">
                       {activeBean?.storageType === 'frozen' && (
                         <button type="button" onClick={handleThawNewBag} className={`text-[10px] ${ui.accentText} font-semibold hover:underline`}>
                           Thaw new bag
@@ -2428,21 +2428,19 @@ export default function App() {
                           <RotateCcw className="w-3 h-3" /> Undo thaw
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
+                        data-testid="mark-bean-finished"
+                        className={`text-[11px] font-semibold px-3 py-2 rounded-lg border min-h-[40px] shrink-0 ${
+                          activeBean.isFinished
+                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                            : `${ui.secondaryBtn}`
+                        }`}
+                      >
+                        {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
+                      </button>
                     </div>
-                  </div>
-                  <div className={`pt-3 mt-1 border-t ${ui.modalDivider}`}>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
-                      data-testid="mark-bean-finished"
-                      className={`w-full text-[11px] font-semibold px-3 py-2.5 rounded-lg border min-h-[44px] ${
-                        activeBean.isFinished
-                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                          : `border-dashed opacity-90 ${ui.secondaryBtn}`
-                      }`}
-                    >
-                      {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
-                    </button>
                   </div>
 
                   {activeRecipe && (
@@ -2506,7 +2504,7 @@ export default function App() {
                 </div>
 
                 {/* ── GRIND ADJUSTMENT HERO ───────────────────────────── */}
-                <div ref={recommendationRef} className={`${ui.card} p-5 rounded-2xl space-y-4 shadow-[0_8px_28px_rgba(0,0,0,0.28)]`}>
+                <div ref={recommendationRef} data-testid="grind-adjustment-card" className={`${ui.card} p-4 rounded-2xl space-y-3 shadow-[0_8px_28px_rgba(0,0,0,0.28)]`}>
                   <div className="flex justify-between items-center">
                     <p className={`text-[10px] font-bold uppercase tracking-[0.22em] ${ui.accentText}`}>Grind adjustment</p>
                     <span className={`text-[10px] ${ui.muted} tabular-nums`}>
@@ -2594,13 +2592,16 @@ export default function App() {
                     </p>
                   )}
 
-                  <div className={`flex flex-wrap items-center justify-between gap-3 pt-3 border-t ${ui.headerBorder}`}>
-                    <p className={`text-xs ${ui.muted} min-w-0 flex-1`}>
+                  <div className={`space-y-2 pt-3 border-t ${ui.headerBorder}`}>
+                    <p
+                      data-testid="grind-card-last-shot-note"
+                      className={`text-xs ${ui.muted} min-w-0 w-full leading-snug`}
+                    >
                       {lastLoggedShot
                         ? `Last shot ${lastLoggedShot.actualTimeS || 0}s (${tasteProfileDisplayLabel(lastLoggedShot.tasteProfile)})${lastShotOutcome?.statusLabel ? ` · ${lastShotOutcome.statusLabel}` : ''}${lastLoggedShot.excludeFromLearning ? ` · kept in history, not used for learning${lastLoggedShot.knownIssueReason ? ` (${knownIssueReasonLabel(lastLoggedShot.knownIssueReason)})` : ''}` : ''}${lastLearningShot && lastLearningShot.id !== lastLoggedShot?.id ? ' · grind from earlier shot' : ''} · logging ${currentGrindLabel}`
                         : `Logging grind ${currentGrindLabel}`}
                     </p>
-                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => setBasketChangePromptOpen(true)}
@@ -2696,7 +2697,7 @@ export default function App() {
                 )}
 
                 {/* ── SHOT LOG FORM ─────────────────────────────────────── */}
-                <form onSubmit={handleLogShot} className="space-y-4">
+                <form onSubmit={handleLogShot} className="space-y-3">
 
                   {validationError && (
                     <div className="bg-[rgba(180,60,60,0.12)] border border-[rgba(180,60,60,0.3)] p-3 rounded-xl text-xs text-[#d08080] font-semibold flex items-center gap-2">
@@ -2705,10 +2706,10 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className={`${ui.card} p-5 rounded-2xl space-y-4`}>
+                  <div className={`${ui.card} p-4 rounded-2xl space-y-3`}>
                     <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0">
-                        <p className={`text-[10px] uppercase tracking-widest ${ui.muted} mb-2`}>Live shot timer</p>
+                        <p className={`text-[10px] uppercase tracking-widest ${ui.muted} mb-1.5`}>Live shot timer</p>
                         <span className={`text-4xl font-black font-mono tabular-nums ${ui.text}`}>{formatTime(timerSeconds)}</span>
                         {scaleShowLiveReadout && (
                           <ShotTimerWeightReadout

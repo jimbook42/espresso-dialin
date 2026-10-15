@@ -1,26 +1,8 @@
-import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { setTimeout as delay } from 'node:timers/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, '..');
 const PREVIEW_PORT = 4175;
-const PREVIEW_URL = `http://127.0.0.1:${PREVIEW_PORT}/`;
-
-async function waitForServer(url, attempts = 60) {
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // retry
-    }
-    await delay(250);
-  }
-  throw new Error(`Server not ready at ${url}`);
-}
 
 async function seedBeansForSmoke(page) {
   await page.evaluate(() => {
@@ -106,30 +88,24 @@ async function readBeanFinished(page, beanId) {
   }, beanId);
 }
 
-async function main() {
-  const preview = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', String(PREVIEW_PORT), '--strictPort'], {
-    cwd: ROOT,
-    stdio: 'pipe',
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
+async function expectSelectValue(locator, expected) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if ((await locator.inputValue()) === expected) return;
+    await delay(100);
+  }
+  throw new Error(`Expected select value "${expected}", got "${await locator.inputValue()}"`);
+}
 
-  let previewPid = preview.pid;
-  const killPreview = () => {
-    if (previewPid) {
-      try {
-        process.kill(previewPid, 'SIGTERM');
-      } catch {
-        // already exited
-      }
-      previewPid = null;
-    }
-  };
+async function main() {
+  const preview = startPreviewServer(PREVIEW_PORT);
+  let browser;
+  let exitCode = 0;
 
   try {
-    await waitForServer(PREVIEW_URL);
-    const browser = await chromium.launch();
+    await waitForServer(preview.url);
+    browser = await chromium.launch();
     const page = await browser.newPage();
-    await page.goto(PREVIEW_URL, { waitUntil: 'domcontentloaded' });
+    await page.goto(preview.url, { waitUntil: 'domcontentloaded' });
     await seedBeansForSmoke(page);
     await page.reload({ waitUntil: 'networkidle' });
 
@@ -159,22 +135,18 @@ async function main() {
       throw new Error('Bean should stay finished when toast dismissed without undo');
     }
 
-    await browser.close();
     console.log('Playwright bean finish undo smoke passed.');
+  } catch (err) {
+    console.error(err);
+    exitCode = 1;
   } finally {
-    killPreview();
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+    await preview.kill();
   }
+
+  process.exit(exitCode);
 }
 
-async function expectSelectValue(locator, expected) {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    if ((await locator.inputValue()) === expected) return;
-    await delay(100);
-  }
-  throw new Error(`Expected select value "${expected}", got "${await locator.inputValue()}"`);
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main();
