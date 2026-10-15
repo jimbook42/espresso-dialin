@@ -383,12 +383,12 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   const rMin = scaledMin * 0.06;
   const rMax = scaledMin * 0.44;
   const coarseStep = Math.max(4, Math.round(scaledMin / 24));
-  let best = { score: -1, cx: 0, cy: 0, radius: 0 };
+  let best = { score: -1, rim: 0, cx: 0, cy: 0, radius: 0 };
   const consider = (cx, cy, radius) => {
     if (radius < 8) return;
     if (cx - radius < 2 || cy - radius < 2 || cx + radius >= sw - 2 || cy + radius >= sh - 2) return;
-    const score = scoreRim(edges, sw, sh, cx, cy, radius);
-    if (score > best.score) best = { score, cx, cy, radius };
+    const rim = scoreRim(edges, sw, sh, cx, cy, radius);
+    if (rim > best.rim) best = { score: rim, rim, cx, cy, radius };
   };
   for (let cy = coarseStep; cy < sh - coarseStep; cy += coarseStep) {
     for (let cx = coarseStep; cx < sw - coarseStep; cx += coarseStep) {
@@ -417,10 +417,10 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
     }
   }
   const off = offsetScore(edges, sw, sh, best.cx, best.cy, best.radius);
-  const confidence = best.score > 1e-3 && off != null
-    ? clamp((best.score - off) / best.score, 0, 1)
+  const confidence = best.rim > 1e-3 && off != null
+    ? clamp((best.rim - off) / best.rim, 0, 1)
     : 0;
-  const ok = confidence >= CONFIDENCE_MIN && best.score > 1e-3;
+  const ok = confidence >= CONFIDENCE_MIN && best.rim > 1e-3;
   return {
     ok,
     confidence,
@@ -754,6 +754,20 @@ export function createGaugeTracker() {
       };
       let windowFraction;
       let found;
+      const withRimProfile = (fields) => {
+        if (fields.profile != null || !found?.edges) return fields;
+        return {
+          ...fields,
+          profile: measureRimProfile(
+            found.edges,
+            found.width,
+            found.height,
+            found.cx,
+            found.cy,
+            found.radius,
+          ),
+        };
+      };
       if (mode === 'searching') {
         const scout = locateGauge(image, localPrior, { priorOnly: true });
         if (scout.ok) {
@@ -782,13 +796,13 @@ export function createGaugeTracker() {
       if (mode === 'searching') {
         if (!found.ok) {
           noteSearchMiss();
-          return finish(windowFraction, {
+          return finish(windowFraction, withRimProfile({
             held: true,
             confidence: found.confidence,
             rawCx: mapping.originX + found.cx / mapping.scale,
             rawCy: mapping.originY + found.cy / mapping.scale,
             rawRadius: found.radius / mapping.scale,
-          });
+          }));
         }
         const video = toVideo(found, mapping);
         const wide = wideMatch(found);
@@ -796,22 +810,22 @@ export function createGaugeTracker() {
           return acceptCandidate(found, video, wide, mapping, windowFraction);
         }
         if (!searchCandidate) growSearch();
-        return finish(windowFraction, {
+        return finish(windowFraction, withRimProfile({
           held: true,
           confidence: found.confidence,
           rawCx: video.cx,
           rawCy: video.cy,
           rawRadius: video.radius,
-        });
+        }));
       }
       if (!found.ok) {
         recovering = true;
         noteLockedMiss();
-        return finish(windowFraction, {
+        return finish(windowFraction, withRimProfile({
           held: true,
           confidence: found.confidence,
           poseRejectReason: 'rim-weak',
-        });
+        }));
       }
       const video = toVideo(found, mapping);
       const dx = video.cx - pose.cx;
@@ -826,14 +840,14 @@ export function createGaugeTracker() {
           return acceptCandidate(found, video, wide, mapping, windowFraction);
         }
         beginSearch();
-        return finish(windowFraction, {
+        return finish(windowFraction, withRimProfile({
           held: true,
           confidence: found.confidence,
           rawCx: video.cx,
           rawCy: video.cy,
           rawRadius: video.radius,
           poseRejectReason: 'centre-rejected',
-        });
+        }));
       }
 
       let dial = null;
@@ -870,7 +884,7 @@ export function createGaugeTracker() {
         if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
           beginSearch();
         }
-        return finish(windowFraction, {
+        return finish(windowFraction, withRimProfile({
           held: true,
           confidence: found.confidence,
           rawCx: video.cx,
@@ -880,7 +894,7 @@ export function createGaugeTracker() {
           poseRejectReason: 'dial-unrecognized',
           posePending: true,
           poseDeltaPx: 0,
-        });
+        }));
       }
 
       let nextCx = pose.cx;
@@ -1003,7 +1017,7 @@ export function createGaugeTracker() {
         ...fields,
         referenceCaptured: reference != null,
       });
-      if (!pose || positionHeld || !profile || needleDeg == null) {
+      if (!pose || !profile || needleDeg == null) {
         rotationCandidate = null;
         pendingStepBins = null;
         return orientResult({
@@ -1014,25 +1028,45 @@ export function createGaugeTracker() {
       }
       if (!reference) {
         const identified = needleLikeness >= NEEDLE_LIKENESS_GATE && rimConfidence >= CONFIDENCE_MIN;
-        if (!identified) return orientResult({ held: false });
-        reference = profile.slice();
-        referenceFace = observedFace ? observedFace.slice() : null;
-        referenceNeedleDeg = needleDeg;
-        rememberNeedle();
+        if (identified) {
+          reference = profile.slice();
+          referenceFace = observedFace ? observedFace.slice() : null;
+          referenceNeedleDeg = needleDeg;
+          rememberNeedle();
+          rotationCandidate = null;
+          pendingStepBins = null;
+          anchorRotationDeg = 0;
+          anchorAccumDeg = 0;
+          pose = { ...pose, rotationDeg: 0 };
+          return orientResult({
+            rotationDeg: 0,
+            rawRotationDeg: 0,
+            confidence: 1,
+            captured: true,
+            poseQuality: 1,
+            poseDecision: 'commit',
+            anchorAccumDeg: 0,
+            storedBin: null,
+            pressureHold: positionHeld,
+            held: positionHeld,
+          });
+        }
+        if (positionHeld) {
+          return orientResult({
+            held: true,
+            pressureHold: true,
+            stableNeedleDeg: maskNeedleDeg,
+          });
+        }
+        return orientResult({ held: false });
+      }
+      if (positionHeld) {
         rotationCandidate = null;
         pendingStepBins = null;
-        anchorRotationDeg = 0;
-        anchorAccumDeg = 0;
-        pose = { ...pose, rotationDeg: 0 };
         return orientResult({
-          rotationDeg: 0,
-          rawRotationDeg: 0,
-          confidence: 1,
-          captured: true,
-          poseQuality: 1,
-          poseDecision: 'commit',
-          anchorAccumDeg: 0,
-          storedBin: null,
+          held: true,
+          pressureHold: true,
+          stableNeedleDeg: maskNeedleDeg,
         });
       }
       const needleStep = wrapDelta(maskNeedleDeg ?? needleDeg, needleDeg);

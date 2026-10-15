@@ -20,6 +20,12 @@ function maxAbsJump(values) {
   return max;
 }
 
+function percentile(sorted, p) {
+  if (!sorted.length) return null;
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[idx];
+}
+
 export function isHighConfidence(frame) {
   return finite(frame.confidence) && frame.confidence >= NEEDLE_TRACK_QUALITY;
 }
@@ -89,6 +95,10 @@ export function summarizeClipFrames(frames, clip) {
     ? { min: Math.min(...bars), max: Math.max(...bars) }
     : null;
 
+  const processMs = frames.map((f) => f.processMs).filter(finite).sort((a, b) => a - b);
+  const processMsMedian = percentile(processMs, 50);
+  const processMsP95 = percentile(processMs, 95);
+
   const passGaugeTracked = gaugeTrackedPct >= 80;
   const passTolerance = withinTolerancePct >= 80;
   const passConfidentWrong = confidentButWrongPct <= 5;
@@ -107,6 +117,8 @@ export function summarizeClipFrames(frames, clip) {
     barStabilityMaxJump,
     centreRange,
     barRange,
+    processMsMedian,
+    processMsP95,
     pass: {
       gaugeTracked: passGaugeTracked,
       withinTolerance: passTolerance,

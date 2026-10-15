@@ -200,7 +200,7 @@ async function main() {
     '',
     '## Scoring',
     '',
-    '`gaugeFound` is true only when rim confidence ≥ 0.3 **and** the applied centre is not the default guide seed (`centreFromGuide=false`). Guide-only poses never count as found.',
+    '`gaugeFound` is true when rim confidence ≥ 0.3 **and** the dial reference template has been captured (`referenceCaptured`). No guide-ring seed; poses come from whole-frame discovery + rim tracking.',
     '',
     '## Reference capture requirement (live app)',
     '',

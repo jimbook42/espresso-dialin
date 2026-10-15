@@ -308,6 +308,7 @@ export function FlairPressureLab() {
         needleAngleDeg: partial.needleAngleDeg ?? null,
         bar: partial.bar ?? null,
         confidence: partial.confidence ?? null,
+        processMs: partial.processMs ?? null,
         flags: partial.flags ?? '',
         tracking: partial.tracking ?? null,
       });
@@ -325,8 +326,11 @@ export function FlairPressureLab() {
       const video = videoRef.current;
       if (!video || video.readyState < 2) return;
       let reading;
+      let processMs = null;
       try {
+        const t0 = performance.now();
         reading = readTrackedGauge(video, canvas, null, trackerRef.current);
+        processMs = performance.now() - t0;
       } catch (err) {
         if (REPLAY_BUILD) {
           pushReplayFrame({
@@ -517,6 +521,7 @@ export function FlairPressureLab() {
               needleAngleDeg: null,
               bar: null,
               confidence: gauge.confidence,
+              processMs,
               flags: `CALIBRATING|${result.count}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}`,
               tracking: 'CALIBRATING',
             }, now);
@@ -663,6 +668,7 @@ export function FlairPressureLab() {
           needleAngleDeg: tracked.angle,
           bar: pressureMeasured ? rawBar : pressureBar,
           confidence: gauge.confidence,
+          processMs,
           flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}`,
           tracking,
         }, now);
