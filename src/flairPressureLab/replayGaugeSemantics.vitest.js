@@ -8,7 +8,7 @@ describe('replayGaugeSemantics', () => {
 
   it('marks guide-default centre before reference', () => {
     const out = classifyReplayGaugeFrame({
-      gauge: { cx: 203, cy: 360, radius: 113, confidence: 0.25, rawCx: 203, rawCy: 360 },
+      gauge: { cx: 203, cy: 360, radius: 113.68, confidence: 0.25, rawCx: 240, rawCy: 350 },
       videoWidth: w,
       videoHeight: h,
       region,
@@ -21,7 +21,7 @@ describe('replayGaugeSemantics', () => {
 
   it('treats applied pose at guide seed as guide-default even after reference', () => {
     const out = classifyReplayGaugeFrame({
-      gauge: { cx: 203, cy: 360, radius: 113, confidence: 0.5, rawCx: 203, rawCy: 360 },
+      gauge: { cx: 203, cy: 360, radius: 113.68, confidence: 0.5, rawCx: 203, rawCy: 360 },
       videoWidth: w,
       videoHeight: h,
       region,
