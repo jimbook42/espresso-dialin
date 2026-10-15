@@ -20,6 +20,7 @@ import { DiagnosticTrace } from './DiagnosticTrace';
 import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
+import { FLAIR_STATELESS_SESSION } from './canonicalDial.js';
 import { assessFrameQuality, createReadingBridge } from './frameQuality.js';
 import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
 import {
@@ -150,7 +151,7 @@ export function FlairPressureLab() {
   const mirrorRef = useRef(true);
   const videoSizeRef = useRef(null);
   const frameNodeRef = useRef(null);
-  const qualityBridgeRef = useRef(createReadingBridge());
+  const qualityBridgeRef = useRef(createReadingBridge(1000));
   const qualityCanvasRef = useRef(null);
   const lastAngleRef = useRef(null);
   const angleTrackerRef = useRef(createAngleTracker());
@@ -317,6 +318,7 @@ export function FlairPressureLab() {
     const replayGaugeLabels = (gauge) => classifyReplayGaugeFrame({
       gauge,
       referenceCaptured: gauge.referenceCaptured === true,
+      dialRegistered: gauge.dialRegistered === true,
     });
 
     const tick = (now) => {
@@ -485,14 +487,7 @@ export function FlairPressureLab() {
       };
 
       if (!sessionRef.current) {
-        const result = gauge.held || !gauge.referenceCaptured
-          ? { ready: false, count: calibRef.current.count() }
-          : calibRef.current.push({
-            angleDeg: reading.relativeAngleDeg,
-            quality: reading.quality,
-            likeness: reading.likeness,
-          });
-        if (!result.ready) {
+        if (!gauge.dialRegistered || gauge.held) {
           const uncertainty = record({
             tracking: 'CALIBRATING',
             smoothedAngle: null,
@@ -522,7 +517,7 @@ export function FlairPressureLab() {
               bar: null,
               confidence: gauge.confidence,
               processMs,
-              flags: `CALIBRATING|${result.count}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}`,
+              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}`,
               tracking: 'CALIBRATING',
             }, now);
           }
@@ -530,25 +525,20 @@ export function FlairPressureLab() {
             ...EMPTY_LIVE,
             ...gaugeFields,
             tracking: 'CALIBRATING',
-            calibCount: result.count,
+            calibCount: 0,
             needleDecision: 'calibrating',
             uncertainty,
             offScale: false,
           });
           return;
         }
-        const next = {
-          zeroAngleDeg: result.zeroAngleDeg,
-          ...FLAIR_58_SCALE,
-          sweepDeg: sweepRef.current,
-        };
+        const next = { ...FLAIR_STATELESS_SESSION, sweepDeg: sweepRef.current };
         sessionRef.current = next;
         setSession(next);
-        lastAngleRef.current = result.zeroAngleDeg;
+        lastAngleRef.current = reading.relativeAngleDeg;
         angleTrackerRef.current.reset();
-        angleTrackerRef.current.push(result.zeroAngleDeg);
+        angleTrackerRef.current.push(reading.relativeAngleDeg);
         pressureRef.current.reset();
-        pressureRef.current.push(0);
         jitterRef.current.reset();
         thresholdRef.current.reset();
       }

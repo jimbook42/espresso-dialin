@@ -4,8 +4,10 @@ const RIM_CONFIDENCE_MIN = 0.3;
 export function classifyReplayGaugeFrame({
   gauge,
   referenceCaptured = false,
+  dialRegistered = false,
 }) {
   const rimDetected = (gauge.confidence ?? 0) >= RIM_CONFIDENCE_MIN;
-  const gaugeFound = rimDetected && referenceCaptured;
+  const registered = dialRegistered || referenceCaptured;
+  const gaugeFound = rimDetected && registered;
   return { gaugeFound, centreFromGuide: false, rimDetected };
 }

@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { buildFlairCanonicalDialProfile } from './canonicalDial.js';
-import { discoverGaugeInFrame, matchGaugeRotation, scoreRim } from './gaugeTrack.js';
+import {
+  CANONICAL_ZERO_BAR_ANGLE_DEG,
+  FLAIR_STATELESS_SESSION,
+} from './canonicalDial.js';
+import {
+  discoverGaugeInFrame,
+  matchGaugeRotation,
+  registerDialRotationFromProfile,
+  scoreDialFaceInterior,
+  scoreRim,
+} from './gaugeTrack.js';
 import { prepareEdges } from './framePrep.js';
 import { assessFrameQuality, createReadingBridge, laplacianVariance } from './frameQuality.js';
 import { angleToBar } from './gaugeConfig.js';
@@ -32,6 +42,59 @@ function syntheticGauge(width, height, { cx, cy, radius, needleDeg = 40 }) {
       data[o + 2] = 15;
     }
   }
+  return { data, width, height };
+}
+
+/** Replay-like layout: real dial ~240,355 face r45; clutter arc left at ~190,355 r75. */
+function syntheticFlairReplayFrame() {
+  const width = 406;
+  const height = 720;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 18;
+    data[i + 1] = 18;
+    data[i + 2] = 20;
+    data[i + 3] = 255;
+  }
+  const paintDisc = (cx, cy, faceR, bezelR, { redBand = false, ticks = false } = {}) => {
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const d = Math.hypot(x - cx, y - cy);
+        const o = (y * width + x) * 4;
+        if (d > bezelR + 2) continue;
+        if (d >= faceR * 0.88 && d <= bezelR + 1.5) {
+          data[o] = 22;
+          data[o + 1] = 22;
+          data[o + 2] = 24;
+        } else if (d < faceR * 0.92) {
+          let v = 238;
+          if (redBand) {
+            const deg = ((Math.atan2(y - cy, x - cx) * 180) / Math.PI + 360) % 360;
+            if (deg >= 220 && deg <= 270) {
+              v = 40;
+              data[o] = 200;
+              data[o + 1] = 35;
+              data[o + 2] = 30;
+              continue;
+            }
+          }
+          data[o] = v;
+          data[o + 1] = v;
+          data[o + 2] = v;
+        }
+        if (ticks && d >= faceR * 0.94 && d <= bezelR) {
+          const deg = ((Math.atan2(y - cy, x - cx) * 180) / Math.PI + 360) % 360;
+          if (deg % 30 < 4) {
+            data[o] = 12;
+            data[o + 1] = 12;
+            data[o + 2] = 12;
+          }
+        }
+      }
+    }
+  };
+  paintDisc(190, 355, 62, 75, { ticks: false });
+  paintDisc(240, 355, 45, 55, { redBand: true, ticks: true });
   return { data, width, height };
 }
 
@@ -86,10 +149,33 @@ describe('pressure CV units', () => {
     expect(buildFlairCanonicalDialProfile().length).toBe(72);
   });
 
-  it('maps relative needle angle to bar after rest calibration', () => {
-    const session = { zeroAngleDeg: 40, sweepDeg: 270, minBar: 0, maxBar: 12, clockwise: true };
-    expect(angleToBar(40, session)).toBeCloseTo(0, 5);
-    expect(angleToBar(40 + 45, session)).toBeCloseTo(2, 0.5);
+  it('maps relative needle angle to bar with stateless canonical zero', () => {
+    expect(angleToBar(CANONICAL_ZERO_BAR_ANGLE_DEG, FLAIR_STATELESS_SESSION)).toBeCloseTo(0, 5);
+    expect(angleToBar(CANONICAL_ZERO_BAR_ANGLE_DEG + 45, FLAIR_STATELESS_SESSION)).toBeCloseTo(2, 0.5);
+  });
+
+  it('prefers the real Flair dial over a left-side clutter arc (406×720)', () => {
+    const frame = syntheticFlairReplayFrame();
+    expect(scoreDialFaceInterior(frame.data, frame.width, frame.height, 240, 355, 45))
+      .toBeGreaterThan(scoreDialFaceInterior(frame.data, frame.width, frame.height, 190, 355, 62));
+    const found = discoverGaugeInFrame(frame);
+    expect(found?.ok).toBe(true);
+    expect(Math.hypot(found.cx - 240, found.cy - 355)).toBeLessThan(20);
+    expect(Math.abs(found.radius - 45)).toBeLessThan(12);
+  });
+
+  it('registers dial rotation from a measured profile', () => {
+    const frame = syntheticGauge(180, 180, { cx: 90, cy: 90, radius: 40, needleDeg: 50 });
+    const edges = prepareEdges(frame, { contrastRadius: 3 }).edges;
+    const profile = new Float32Array(72);
+    for (let i = 0; i < 72; i += 1) {
+      const ang = (i / 72) * Math.PI * 2;
+      const x = Math.round(90 + 34 * Math.cos(ang));
+      const y = Math.round(90 + 34 * Math.sin(ang));
+      profile[i] = edges.mag[y * 180 + x];
+    }
+    const reg = registerDialRotationFromProfile(profile, 50);
+    expect(reg.confidence).toBeGreaterThan(0.05);
   });
 
   it('flags blur and bridges short gaps', () => {

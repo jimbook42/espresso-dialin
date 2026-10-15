@@ -1,3 +1,5 @@
+import { FLAIR_58_SCALE } from './gaugeConfig.js';
+
 /** Design-only Flair 58 dial signature (not loaded from photos or manifest). */
 const PROFILE_BINS = 72;
 
@@ -38,3 +40,14 @@ export function buildFlairCanonicalFaceProfile() {
 
 export const FLAIR_CANONICAL_DIAL_PROFILE = buildFlairCanonicalDialProfile();
 export const FLAIR_CANONICAL_FACE_PROFILE = buildFlairCanonicalFaceProfile();
+
+/**
+ * On the registered dial, needle angle (relative to dial) at 0 bar — from printed scale layout.
+ */
+export const CANONICAL_ZERO_BAR_ANGLE_DEG = 225;
+
+/** Stateless pressure session: zero from dial art, not rest calibration. */
+export const FLAIR_STATELESS_SESSION = {
+  zeroAngleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG,
+  ...FLAIR_58_SCALE,
+};

@@ -1,6 +1,10 @@
 import { TIP_INNER_RATIO, OUTER_RADIUS_RATIO, NEEDLE_LIKENESS_GATE, NEEDLE_TRACK_QUALITY, wrap360, wrapDelta } from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
+import {
+  FLAIR_CANONICAL_DIAL_PROFILE,
+  FLAIR_CANONICAL_FACE_PROFILE,
+} from './canonicalDial.js';
 
 /**
  * Gauge pose for the pressure lab.
@@ -354,6 +358,109 @@ function wholeBins(deltaDeg) {
   return Math.round(deltaDeg / PROFILE_BIN_DEG);
 }
 
+function sampleLum(data, width, height, x, y) {
+  const xi = Math.round(x);
+  const yi = Math.round(y);
+  if (xi < 0 || yi < 0 || xi >= width || yi >= height) return 0;
+  const o = (yi * width + xi) * 4;
+  return data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+}
+
+/** Bright disc interior + dark bezel; design geometry for Flair dials. */
+export function scoreDialFaceInterior(data, width, height, cx, cy, faceRadius) {
+  if (faceRadius < 10) return 0;
+  const inner = faceRadius * 0.28;
+  const mid = faceRadius * 0.62;
+  const bezelInner = faceRadius * 0.88;
+  const bezelOuter = faceRadius * 1.12;
+  let faceSum = 0;
+  let faceSq = 0;
+  let faceN = 0;
+  let bezelSum = 0;
+  let bezelN = 0;
+  let redHot = 0;
+  let redN = 0;
+  for (let a = 0; a < 36; a += 1) {
+    const ang = (a / 36) * Math.PI * 2;
+    const cos = Math.cos(ang);
+    const sin = Math.sin(ang);
+    const lumMid = sampleLum(data, width, height, cx + mid * cos, cy + mid * sin);
+    faceSum += lumMid;
+    faceSq += lumMid * lumMid;
+    faceN += 1;
+    for (let r = bezelInner; r <= bezelOuter; r += (bezelOuter - bezelInner) / 3) {
+      const xi = Math.round(cx + r * cos);
+      const yi = Math.round(cy + r * sin);
+      if (xi < 0 || yi < 0 || xi >= width || yi >= height) continue;
+      bezelSum += sampleLum(data, width, height, xi, yi);
+      bezelN += 1;
+    }
+    const deg = (a / 36) * 360;
+    if (deg >= 215 && deg <= 275) {
+      const xi = Math.round(cx + mid * cos);
+      const yi = Math.round(cy + mid * sin);
+      if (xi >= 0 && yi >= 0 && xi < width && yi < height) {
+        const off = (yi * width + xi) * 4;
+        const rv = data[off];
+        const gv = data[off + 1];
+        const bv = data[off + 2];
+        if (rv > 140 && rv > gv * 1.25 && rv > bv * 1.25) redHot += 1;
+        redN += 1;
+      }
+    }
+  }
+  if (!faceN || !bezelN) return 0;
+  const faceMean = faceSum / faceN;
+  const bezelMean = bezelSum / bezelN;
+  const contrast = (faceMean - bezelMean) / 255;
+  if (contrast < 0.08) return 0;
+  const variance = Math.max(0, faceSq / faceN - faceMean * faceMean);
+  const smooth = Math.exp(-variance / 1800);
+  const red = redN ? redHot / redN : 0;
+  return Math.min(1.6, (0.35 + contrast * 2.8) * smooth * (0.85 + red * 0.35));
+}
+
+function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg = null) {
+  if (!edges || faceRadius < 10) return 0;
+  const profile = measureRimProfile(edges, width, height, cx, cy, faceRadius * 1.02);
+  const faceProfile = measureRimProfile(edges, width, height, cx, cy, faceRadius * 0.55, {
+    innerRatio: 0.35,
+    outerRatio: 0.75,
+  });
+  const rim = matchGaugeRotation(FLAIR_CANONICAL_DIAL_PROFILE, profile, {
+    previousDeg: 0,
+    needleDeg,
+    maxShiftDeg: 360,
+  });
+  const face = matchGaugeRotation(FLAIR_CANONICAL_FACE_PROFILE, faceProfile, {
+    previousDeg: rim.estimateDeg ?? 0,
+    needleDeg,
+    maxShiftDeg: 24,
+  });
+  if (!rim.ok && rim.confidence < 0.2) return 0;
+  const agree = face.ok
+    ? 1 - Math.min(1, Math.abs(((rim.estimateDeg ?? 0) - (face.estimateDeg ?? 0) + 180) % 360 - 180) / 20)
+    : 0.65;
+  return rim.confidence * (0.55 + 0.45 * agree);
+}
+
+function rankDiscoveryCandidate({
+  edges,
+  data,
+  width,
+  height,
+  cx,
+  cy,
+  faceRadius,
+  needleDeg = null,
+}) {
+  const rim = scoreRim(edges, width, height, cx, cy, faceRadius * 1.02);
+  if (rim <= 0) return 0;
+  const face = scoreDialFaceInterior(data, width, height, cx, cy, faceRadius);
+  const canonical = scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg);
+  return rim * (0.15 + 0.85 * face) * (0.25 + 0.75 * canonical);
+}
+
 /**
  * Whole-frame rim search on a downscaled frame (no prior / guide seed).
  * Returns centre and radius in the same pixel space as `image`.
@@ -384,11 +491,21 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   const rMax = scaledMin * 0.44;
   const coarseStep = Math.max(4, Math.round(scaledMin / 24));
   let best = { score: -1, rim: 0, cx: 0, cy: 0, radius: 0 };
-  const consider = (cx, cy, radius) => {
-    if (radius < 8) return;
-    if (cx - radius < 2 || cy - radius < 2 || cx + radius >= sw - 2 || cy + radius >= sh - 2) return;
-    const rim = scoreRim(edges, sw, sh, cx, cy, radius);
-    if (rim > best.rim) best = { score: rim, rim, cx, cy, radius };
+  const consider = (cx, cy, faceRadius) => {
+    if (faceRadius < 8) return;
+    const rimRadius = faceRadius * 1.02;
+    if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) return;
+    const rank = rankDiscoveryCandidate({
+      edges,
+      data: small,
+      width: sw,
+      height: sh,
+      cx,
+      cy,
+      faceRadius,
+    });
+    const rim = scoreRim(edges, sw, sh, cx, cy, rimRadius);
+    if (rank > best.score) best = { score: rank, rim, cx, cy, radius: faceRadius };
   };
   for (let cy = coarseStep; cy < sh - coarseStep; cy += coarseStep) {
     for (let cx = coarseStep; cx < sw - coarseStep; cx += coarseStep) {
@@ -416,11 +533,17 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
       consider(fine.cx + dx, fine.cy + dy, fine.radius * 1.03);
     }
   }
-  const off = offsetScore(edges, sw, sh, best.cx, best.cy, best.radius);
+  const rimR = best.radius * 1.02;
+  const off = offsetScore(edges, sw, sh, best.cx, best.cy, rimR);
   const confidence = best.rim > 1e-3 && off != null
     ? clamp((best.rim - off) / best.rim, 0, 1)
     : 0;
-  const ok = confidence >= CONFIDENCE_MIN && best.rim > 1e-3;
+  const faceAtBest = scoreDialFaceInterior(small, sw, sh, best.cx, best.cy, best.radius);
+  const rankAtBest = best.score;
+  const ok = best.rim > 1e-3 && faceAtBest >= 0.2 && (
+    confidence >= CONFIDENCE_MIN
+    || (faceAtBest >= 0.35 && rankAtBest > best.rim * 0.12)
+  );
   return {
     ok,
     confidence,
@@ -734,6 +857,10 @@ export function createGaugeTracker() {
     },
     getPose() {
       return pose ? { ...pose } : null;
+    },
+    setRotationDeg(rotationDeg) {
+      if (!pose) return;
+      pose = { ...pose, rotationDeg: wrap360(rotationDeg) };
     },
     captureSpec() {
       if (mode !== 'searching') return { pad: 1.9, maxOutput: 188 };
@@ -1280,6 +1407,26 @@ function resampleCrop(image, crop, maxOutput) {
   return { image: { data, width: output, height: output }, scale };
 }
 
+const DIAL_REGISTER_MIN = 0.34;
+
+/** Per-frame dial rotation from canonical tick profile (no session template). */
+export function registerDialRotationFromProfile(profile, needleDeg = null, previousDeg = 0) {
+  if (!profile || profile.length < 8) {
+    return { ok: false, rotationDeg: previousDeg, confidence: 0 };
+  }
+  const rim = matchGaugeRotation(FLAIR_CANONICAL_DIAL_PROFILE, profile, {
+    previousDeg,
+    needleDeg,
+    maxShiftDeg: 360,
+  });
+  const ok = rim.ok && rim.confidence >= DIAL_REGISTER_MIN;
+  return {
+    ok,
+    rotationDeg: ok ? rim.estimateDeg : previousDeg,
+    confidence: rim.confidence,
+  };
+}
+
 function drawCrop(video, canvas, crop, maxOutput) {
   const output = Math.min(crop.size, maxOutput);
   const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -1300,6 +1447,7 @@ function completeReading({
   needleImage,
   needleCrop,
   needleScale,
+  canonicalDial = false,
 }) {
   const center = position.pose;
   const localRadius = center.radius * needleScale;
@@ -1310,12 +1458,34 @@ function completeReading({
     localRadius * TIP_INNER_RATIO,
     localRadius * OUTER_RADIUS_RATIO,
   );
-  const orientation = tracker.trackOrientation(position.profile, detection.angleDeg, {
-    positionHeld: position.held,
-    needleLikeness: detection.likeness,
-    rimConfidence: position.confidence,
-    needleQuality: detection.quality,
-  });
+  let orientation;
+  if (canonicalDial && position.profile) {
+    const priorRot = tracker.getPose()?.rotationDeg ?? 0;
+    const reg = registerDialRotationFromProfile(position.profile, detection.angleDeg, priorRot);
+    if (reg.ok) tracker.setRotationDeg(reg.rotationDeg);
+    const rotationDeg = tracker.getPose()?.rotationDeg ?? priorRot;
+    orientation = {
+      rotationDeg,
+      rawRotationDeg: reg.rotationDeg,
+      confidence: reg.confidence,
+      held: false,
+      pressureHold: Boolean(position.held),
+      referenceCaptured: reg.ok,
+      dialRegistered: reg.ok,
+      poseQuality: reg.confidence,
+      posePending: false,
+      poseRejectReason: reg.ok ? null : 'dial-register-weak',
+      stableNeedleDeg: detection.angleDeg,
+    };
+  } else {
+    orientation = tracker.trackOrientation(position.profile, detection.angleDeg, {
+      positionHeld: position.held,
+      needleLikeness: detection.likeness,
+      rimConfidence: position.confidence,
+      needleQuality: detection.quality,
+    });
+    orientation.dialRegistered = orientation.referenceCaptured === true;
+  }
   const settled = tracker.getPose() || center;
   const minDim = Math.min(videoWidth, videoHeight);
   const pressureHold = Boolean(position.held || orientation.pressureHold);
@@ -1365,7 +1535,8 @@ function completeReading({
       reacquireHits: position.reacquireHits ?? 0,
       reacquireRejectReason: position.reacquireRejectReason ?? null,
       reacquireAccepted: position.reacquireAccepted === true,
-      referenceCaptured: orientation.referenceCaptured === true,
+      referenceCaptured: orientation.dialRegistered === true,
+      dialRegistered: orientation.dialRegistered === true,
     },
   };
 }
@@ -1398,6 +1569,7 @@ export function analyzeGaugeImage(image, tracker) {
     needleImage: needle.image,
     needleCrop,
     needleScale: needle.scale,
+    canonicalDial: false,
   });
 }
 
@@ -1451,5 +1623,6 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     needleImage: needle.image,
     needleCrop,
     needleScale: needle.scale,
+    canonicalDial: true,
   });
 }
