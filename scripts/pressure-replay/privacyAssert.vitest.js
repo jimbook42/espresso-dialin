@@ -7,7 +7,7 @@ describe('pressure lab privacy assert', () => {
     const result = assessPressureLabPrivacy(
       [
         { url: `${origin}/assets/index.js`, method: 'GET', postBytes: 0 },
-        { url: `${origin}/assets/opencv.js`, method: 'GET', postBytes: 0 },
+        { url: `${origin}/flair-pressure-lab/opencv.js`, method: 'GET', postBytes: 0 },
       ],
       { localStorageWrites: 0, indexedDbWrites: 0 },
       origin,
