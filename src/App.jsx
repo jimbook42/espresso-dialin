@@ -81,6 +81,9 @@ import {
 } from './settings/firstLaunchRenderGate.js';
 import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
 import { writeCachedGlobalSettings } from './settings/settingsLocalCache.js';
+import { patchGlobalSettings } from './settings/patchGlobalSettings.js';
+import { grindSettingsRestoreDeps } from './settings/grindSettingsRestoreDeps.js';
+import { PwaInstallBanner } from './components/PwaInstallBanner.jsx';
 import {
   clearRecommendationCardDisplayHoldPatch,
   getRecommendationCardDisplayHold,
@@ -92,7 +95,8 @@ import {
   listSmartScalePickerOptions,
   normalizeSmartScaleDeviceId,
   SMART_SCALE_MANUAL_ID,
-  smartScaleChoiceSummary,
+  resolveSmartScalePickerValue,
+  smartScaleActiveSummary,
 } from './settings/scalePreference.js';
 import {
   capturePendingGrindState,
@@ -381,6 +385,7 @@ export default function App() {
   const flairPressureProfileRef = useRef(null);
   const pendingFocusFlairProfileRef = useRef(false);
   const pendingGrindByKeyRef = useRef({});
+  const lastSeenPersistedGrindByKeyRef = useRef({});
   const brewTempDefaultRef = useRef('');
   const syncedSettingsCustomGrinderRef = useRef('');
   const [validationError, setValidationError] = useState('');
@@ -406,6 +411,7 @@ export default function App() {
   const [setupSmartScaleDeviceId, setSetupSmartScaleDeviceId] = useState(SMART_SCALE_MANUAL_ID);
   const [settingsGrinderPickerValue, setSettingsGrinderPickerValue] = useState('');
   const [settingsCustomGrinderDraft, setSettingsCustomGrinderDraft] = useState(null);
+  const lastPersistedGrinderModelRef = useRef(null);
   const [brewAccessoriesOpenRequest, setBrewAccessoriesOpenRequest] = useState(0);
   const [brewAccessoriesReturnTo, setBrewAccessoriesReturnTo] = useState('brew');
 
@@ -424,21 +430,34 @@ export default function App() {
       } else if (settingsSetting.customGrinder) {
         setSettingsCustomGrinderDraft(settingsSetting.customGrinder);
       }
-      const resolvedGrinderModel = resolveActiveGrinderModel(settingsSetting);
-      const grinderModelFromSettings = settingsSetting.grinderModel || resolvedGrinderModel;
-      if (grinderModelFromSettings) {
-        setGrinderModel(grinderModelFromSettings);
-        if (!isEditingBean && brewTempDefaultRef.current !== grinderModelFromSettings) {
-          brewTempDefaultRef.current = grinderModelFromSettings;
-          const nextTemp = defaultBrewTemperatureForGrinder(grinderModelFromSettings);
-          setNewRecipe((prev) => {
-            const current = prev.brewTemperatureC;
-            const isUnset = current === '' || current === null || current === undefined;
-            const isFactoryDefault = current === 92 || current === 93;
-            if (!isUnset && !isFactoryDefault) return prev;
-            return current === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp };
-          });
+      const persistedGrinderModel = settingsSetting.grinderModel;
+      const grinderModelChanged =
+        lastPersistedGrinderModelRef.current === null
+        || persistedGrinderModel !== lastPersistedGrinderModelRef.current;
+      let grinderModelFromSettings =
+        grinderModel || resolveActiveGrinderModel(settingsSetting);
+      if (grinderModelChanged) {
+        lastPersistedGrinderModelRef.current = persistedGrinderModel;
+        grinderModelFromSettings =
+          persistedGrinderModel !== null
+          && persistedGrinderModel !== undefined
+          && persistedGrinderModel !== ''
+            ? persistedGrinderModel
+            : resolveActiveGrinderModel(settingsSetting);
+        if (grinderModelFromSettings) {
+          setGrinderModel(grinderModelFromSettings);
         }
+      }
+      if (grinderModelFromSettings && !isEditingBean && brewTempDefaultRef.current !== grinderModelFromSettings) {
+        brewTempDefaultRef.current = grinderModelFromSettings;
+        const nextTemp = defaultBrewTemperatureForGrinder(grinderModelFromSettings);
+        setNewRecipe((prev) => {
+          const current = prev.brewTemperatureC;
+          const isUnset = current === '' || current === null || current === undefined;
+          const isFactoryDefault = current === 92 || current === 93;
+          if (!isUnset && !isFactoryDefault) return prev;
+          return current === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp };
+        });
       }
       if (settingsSetting.flairEnabled !== undefined) setFlairEnabled(settingsSetting.flairEnabled);
       if (settingsSetting.preInfusionEnabled !== undefined) setUsePreInfusion(settingsSetting.preInfusionEnabled);
@@ -810,15 +829,9 @@ export default function App() {
 
   const persistGrindUiToSettings = async (model, uiSnapshot) => {
     if (!activeBean?.id || !model || !uiSnapshot) return;
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    const patch = patchGrindUiForBeanGrinder(
-      currentSettings,
-      activeBean.id,
-      model,
-      uiSnapshot
+    await patchGlobalSettings(db, (currentSettings) =>
+      patchGrindUiForBeanGrinder(currentSettings, activeBean.id, model, uiSnapshot)
     );
-    if (Object.keys(patch).length === 0) return;
-    await db.settings.put({ ...currentSettings, ...patch });
   };
 
   const handleSetteMacroChange = (value) => {
@@ -890,6 +903,7 @@ export default function App() {
     if (!activeBean || !grinderModel) return;
     const uiState = resolveGrindControlUiStateWithPending({
       pendingGrindByKey: pendingGrindByKeyRef.current,
+      lastSeenPersistedGrindByKey: lastSeenPersistedGrindByKeyRef.current,
       grinderModel,
       shots,
       activeBean,
@@ -914,7 +928,7 @@ export default function App() {
     flairEnabled,
     recipes,
     shots,
-    appSettings,
+    grindSettingsRestoreDeps(settingsSetting, effectiveBeanId, grinderModel),
   ]);
 
   const handleSaveGrinderSetup = async (modelOrPicker, options = {}) => {
@@ -949,7 +963,7 @@ export default function App() {
         return current === nextTemp ? prev : { ...prev, brewTemperatureC: nextTemp };
       });
     }
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
+    const currentSettings = (await db.settings.get('global')) || { id: 'global' };
     if (isPresetGrinderModel(model) && activeBean?.id) {
       const spec = getPresetGrinderSpec(model);
       const persisted = getGrindUiForBeanGrinder(currentSettings, activeBean.id, model);
@@ -961,25 +975,25 @@ export default function App() {
     }
     if (typeof flairChoice === 'boolean') setFlairEnabled(flairChoice);
     if (typeof preInfusionChoice === 'boolean') setUsePreInfusion(preInfusionChoice);
-    const nextSettings = {
-      ...currentSettings,
-      grinderModel: model,
-      grinderPickerSelection:
-        modelOrPicker === CUSTOM_GRINDER_PICKER_ID ? CUSTOM_GRINDER_PICKER_ID : undefined,
-      customGrinderSetupDraft:
-        modelOrPicker === CUSTOM_GRINDER_PICKER_ID ? customGrinderChoice ?? currentSettings.customGrinderSetupDraft : undefined,
-      ...customGrinderPatch,
-      ...(typeof brewGuideChoice === 'boolean' ? { brewGuideEnabled: brewGuideChoice } : {}),
-      ...(typeof flairChoice === 'boolean' ? { flairEnabled: flairChoice } : {}),
-      ...(typeof preInfusionChoice === 'boolean' ? { preInfusionEnabled: preInfusionChoice } : {}),
-      ...(smartScaleChoice !== undefined
-        ? { smartScaleDeviceId: normalizeSmartScaleDeviceId(smartScaleChoice) }
-        : {}),
-    };
-    if (nextSettings.customGrinder === undefined) {
-      delete nextSettings.customGrinder;
-    }
-    await db.settings.put(nextSettings);
+    await patchGlobalSettings(db, (row) => {
+      const patch = {
+        grinderModel: model,
+        grinderPickerSelection:
+          modelOrPicker === CUSTOM_GRINDER_PICKER_ID ? CUSTOM_GRINDER_PICKER_ID : undefined,
+        customGrinderSetupDraft:
+          modelOrPicker === CUSTOM_GRINDER_PICKER_ID
+            ? customGrinderChoice ?? row.customGrinderSetupDraft
+            : undefined,
+        ...customGrinderPatch,
+        ...(typeof brewGuideChoice === 'boolean' ? { brewGuideEnabled: brewGuideChoice } : {}),
+        ...(typeof flairChoice === 'boolean' ? { flairEnabled: flairChoice } : {}),
+        ...(typeof preInfusionChoice === 'boolean' ? { preInfusionEnabled: preInfusionChoice } : {}),
+        ...(smartScaleChoice !== undefined
+          ? { smartScaleDeviceId: normalizeSmartScaleDeviceId(smartScaleChoice) }
+          : {}),
+      };
+      return patch;
+    });
   };
 
   const handleFinishFirstLaunch = async () => {
@@ -996,19 +1010,20 @@ export default function App() {
   };
 
   const persistCustomGrinderSetupDraft = async (draft) => {
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    const patch = {
-      grinderPickerSelection: CUSTOM_GRINDER_PICKER_ID,
-      customGrinderSetupDraft: draft ?? null,
-    };
-    if (isCustomGrinderFormValid(draft)) {
-      const normalized = normalizeCustomGrinderSettingsPatch(draft);
-      if (normalized) {
-        Object.assign(patch, normalized);
-        setGrinderModel(normalized.grinderModel);
+    await patchGlobalSettings(db, () => {
+      const patch = {
+        grinderPickerSelection: CUSTOM_GRINDER_PICKER_ID,
+        customGrinderSetupDraft: draft ?? null,
+      };
+      if (isCustomGrinderFormValid(draft)) {
+        const normalized = normalizeCustomGrinderSettingsPatch(draft);
+        if (normalized) {
+          Object.assign(patch, normalized);
+          setGrinderModel(normalized.grinderModel);
+        }
       }
-    }
-    await db.settings.put({ ...currentSettings, ...patch });
+      return patch;
+    });
   };
 
   const handleSettingsCustomGrinderDraftChange = (draft) => {
@@ -1028,9 +1043,7 @@ export default function App() {
       await persistCustomGrinderSetupDraft(draft);
       return;
     }
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({
-      ...currentSettings,
+    await patchGlobalSettings(db, {
       grinderPickerSelection: undefined,
       customGrinderSetupDraft: undefined,
     });
@@ -1046,48 +1059,40 @@ export default function App() {
   };
 
   const handleSmartScaleDeviceChange = async (deviceId) => {
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({
-      ...currentSettings,
+    await patchGlobalSettings(db, {
       smartScaleDeviceId: normalizeSmartScaleDeviceId(deviceId),
     });
   };
 
   const handleToggleFlairSetting = async (val) => {
     setFlairEnabled(val);
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({ ...currentSettings, flairEnabled: val });
+    await patchGlobalSettings(db, { flairEnabled: val });
   };
 
   const handleTogglePreInfusion = async (val) => {
     setUsePreInfusion(val);
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({ ...currentSettings, preInfusionEnabled: val });
+    await patchGlobalSettings(db, { preInfusionEnabled: val });
   };
 
   const handleShotStartCountdownChange = async (value) => {
     const normalized = normalizeShotStartCountdown(value);
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({ ...currentSettings, shotStartCountdown: normalized });
+    await patchGlobalSettings(db, { shotStartCountdown: normalized });
   };
 
   const handleToggleDarkMode = async () => {
     const next = !darkMode;
     setDarkMode(next);
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({ ...currentSettings, darkMode: next });
+    await patchGlobalSettings(db, { darkMode: next });
   };
 
   const handleToggleBrewGuide = async (val) => {
     if (!val && activeTab === 'brew') setActiveTab('dial');
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({ ...currentSettings, brewGuideEnabled: val });
+    await patchGlobalSettings(db, { brewGuideEnabled: val });
   };
 
   const handleToggleStatsForNerds = async (val) => {
     if (!val) setExpandedShotStatsIds(new Set());
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({ ...currentSettings, statsForNerdsEnabled: val });
+    await patchGlobalSettings(db, { statsForNerdsEnabled: val });
   };
 
   const toggleShotEngineStats = (shotId) => {
@@ -1100,17 +1105,14 @@ export default function App() {
   };
 
   const handleSaveBrewAccessories = async (accessories) => {
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({
-      ...currentSettings,
+    await patchGlobalSettings(db, {
       brewGuideAccessories: normalizeBrewAccessories(accessories),
       brewGuideSetupComplete: true,
     });
   };
 
   const patchBrewGuidanceSettings = async (patch) => {
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-    await db.settings.put({ ...currentSettings, ...patch });
+    await patchGlobalSettings(db, patch);
   };
 
   const rememberSelectedBeanId = async (beanId) => {
@@ -1573,7 +1575,7 @@ export default function App() {
         logGrinderModel
       );
       if (Object.keys(displayHoldClear).length > 0) {
-        await db.settings.put({ ...appSettings, ...displayHoldClear });
+        await patchGlobalSettings(db, displayHoldClear);
       }
       await persistGrindUiToSettings(
         logGrinderModel,
@@ -1825,8 +1827,6 @@ export default function App() {
     const recSet = displayDynamicRec.recommendedSetting;
     const appliedLabel = formatRecommendedGrindDisplay(grinderModel, recSet, appSettings);
     
-    const currentSettings = await db.settings.get('global') || { id: 'global' };
-
     const applyGrinder = grinderModel;
     const uiState = uiStateFromRecommendedSetting(applyGrinder, recSet, appSettings);
     if (uiState) {
@@ -1843,22 +1843,20 @@ export default function App() {
         nicheZeroSetting: uiState.nicheZeroSetting ?? nicheZeroSetting,
         customGrindValue: uiState.customGrindValue ?? customGrindValue,
       });
-      const recPatch = persistedSettingsPatchFromRecommendation(
-        applyGrinder,
-        recSet,
-        currentSettings,
-        activeBean?.id
-      );
-      const displayHoldPatch = patchRecommendationCardDisplayHold(
-        currentSettings,
-        activeBean?.id,
-        applyGrinder,
-        appliedLabel
-      );
-      await db.settings.put({
-        ...currentSettings,
-        ...recPatch,
-        ...displayHoldPatch,
+      await patchGlobalSettings(db, (currentSettings) => {
+        const recPatch = persistedSettingsPatchFromRecommendation(
+          applyGrinder,
+          recSet,
+          currentSettings,
+          activeBean?.id
+        );
+        const displayHoldPatch = patchRecommendationCardDisplayHold(
+          currentSettings,
+          activeBean?.id,
+          applyGrinder,
+          appliedLabel
+        );
+        return { ...recPatch, ...displayHoldPatch };
       });
     }
 
@@ -2076,7 +2074,8 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${ui.page} relative`}>
-      
+      <PwaInstallBanner ui={ui} darkMode={darkMode} />
+
       {shotCountdownOverlayVisible && (
         <div className="fixed inset-0 z-[65] flex flex-col items-center justify-center bg-[#121212] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
           <p className="text-[11px] tracking-[0.2em] uppercase text-[#9a9690] mb-6">Get ready</p>
@@ -3681,7 +3680,10 @@ export default function App() {
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
                   <label className={`block ${ui.fieldLabel}`}>Smart scale</label>
                   <select
-                    value={normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId)}
+                    value={resolveSmartScalePickerValue(settingsSetting, {
+                      devUrlSimActive: devUrlSimScaleActive,
+                      scaleConnected: timemoreScale.isConnected,
+                    })}
                     onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
                     className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
                   >
@@ -3690,7 +3692,10 @@ export default function App() {
                     ))}
                   </select>
                   <p className={`text-[10px] ${ui.muted}`}>
-                    Active: {smartScaleChoiceSummary(settingsSetting)}. Manual shot logging always works.
+                    Active: {smartScaleActiveSummary(settingsSetting, {
+                      devUrlSimActive: devUrlSimScaleActive,
+                      scaleConnected: timemoreScale.isConnected,
+                    })}. Manual shot logging always works.
                   </p>
                 </div>
 

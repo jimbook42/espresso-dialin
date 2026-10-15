@@ -57,12 +57,15 @@ import { runCustomGrinderTests } from './src/grinders/customGrinder.test.js';
 import { runPresetGrindersTests } from './src/grinders/presetGrinders/presetGrinders.test.js';
 import { runFreshBeanPresetIntegrationTests } from './src/grinders/presetGrinders/freshBeanPresetIntegration.test.js';
 import { runGrindDial617IntegrationTests } from './src/grinders/grindDial617.integration.test.js';
+import { runPendingGrindSessionTwoTabTests } from './src/grinders/pendingGrindSession.test.js';
 import { runNicheEligibilityTests } from './src/grinders/nicheEligibility.test.js';
 import { runPresetGrinderShiftSanity618Tests } from './src/grinders/presetGrinderShiftSanity618.test.js';
 import { runGrind618Repair1Tests } from './src/grinders/grind618Repair1.test.js';
 import { runAcaiaProtocolTests } from './src/scales/protocols/acaia.test.js';
 import { runBookooMiniProtocolTests } from './src/scales/protocols/bookooMini.test.js';
 import { runOnboardingGateTests } from './src/settings/onboardingGate.test.js';
+import { runPatchGlobalSettingsTests } from './src/settings/patchGlobalSettings.test.js';
+import { runPwaInstallStateTests } from './src/pwa/pwaInstallState.test.js';
 import { runFirstLaunchRenderGateTests } from './src/settings/firstLaunchRenderGate.test.js';
 import { runAppEntryTests } from './src/appEntry.test.js';
 import { shouldShowFirstLaunchOnboarding } from './src/settings/onboardingGate.js';
@@ -577,6 +580,7 @@ async function runTests() {
 
   runGrindSwitchBackTests();
   runPendingGrindSessionTests();
+  runPendingGrindSessionTwoTabTests();
   runRecFollowedCsvTests();
   runCsvExportTests();
   runCsvTimestampTests();
@@ -601,6 +605,8 @@ async function runTests() {
   runAcaiaProtocolTests();
   runBookooMiniProtocolTests();
   runOnboardingGateTests();
+  await runPatchGlobalSettingsTests();
+  runPwaInstallStateTests();
   runFirstLaunchRenderGateTests();
   runAppEntryTests();
   runCustomGrinderRecommendationTests(recipe);
