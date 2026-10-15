@@ -62,6 +62,7 @@ import {
   ENCORE_ESP_GRINDER_ID,
   getPresetGrinderSpec,
 } from './grinders/presetGrinders/index.js';
+import { PresetGrinderAuxFields } from './components/PresetGrinderAuxFields.jsx';
 import { defaultPresetGrindValue } from './grinders/presetGrinders/dial.js';
 import {
   getGrindUiForBeanGrinder,
@@ -1737,7 +1738,7 @@ export default function App() {
     if (customGrindValue !== null && customGrindValue !== '') return customGrindValue;
     if (isPresetGrinderModel(grinderModel)) {
       const spec = getPresetGrinderSpec(grinderModel);
-      if (spec) return defaultPresetGrindValue(spec);
+      if (spec) return defaultPresetGrindValue(spec, appSettings);
     }
     if (isCustomGrinderModel(grinderModel, appSettings)) {
       const profile = normalizeCustomGrinderProfile(appSettings?.customGrinder);
@@ -2636,6 +2637,13 @@ export default function App() {
                       onCustomGrindChange={handleCustomGrindChange}
                       onNicheZeroChange={handleNicheZeroChange}
                       ui={ui}
+                    />
+                    <PresetGrinderAuxFields
+                      grinderModel={grinderModel}
+                      settings={appSettings}
+                      inputClass={inputClass}
+                      ui={ui}
+                      onPatchSettings={(patch) => { void patchBrewGuidanceSettings(patch); }}
                     />
 
                     <div className="mt-4 flex items-center justify-between pt-3 border-t border-[#2e2b26]">
@@ -3658,6 +3666,15 @@ export default function App() {
                       <p className={`text-[10px] ${ui.muted}`}>Each shim shifts the effective range by about five settings.</p>
                     </div>
                   )}
+                  <PresetGrinderAuxFields
+                    grinderModel={
+                      settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting)
+                    }
+                    settings={settingsSetting}
+                    inputClass={inputClass}
+                    ui={ui}
+                    onPatchSettings={(patch) => { void patchBrewGuidanceSettings(patch); }}
+                  />
                   {settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID && (
                     <div className="space-y-2">
                       <CustomGrinderForm
