@@ -45,6 +45,16 @@ export function videoRegionToPreview(region, videoW, videoH, boxW, boxH, mirrore
   };
 }
 
+/** Video pixel → preview position under object-cover (optional mirror). */
+export function videoPointToPreview(videoX, videoY, videoW, videoH, boxW, boxH, mirrored) {
+  const map = objectCoverMap(videoW, videoH, boxW, boxH);
+  if (!map) return null;
+  let x = map.offsetX + videoX * map.scale;
+  const y = map.offsetY + videoY * map.scale;
+  if (mirrored) x = boxW - x;
+  return { x, y, scale: map.scale };
+}
+
 /** Pointer position on the preview → unmirrored video fractions. */
 export function previewPointToVideo(screenX, screenY, videoW, videoH, boxW, boxH, mirrored) {
   const map = objectCoverMap(videoW, videoH, boxW, boxH);

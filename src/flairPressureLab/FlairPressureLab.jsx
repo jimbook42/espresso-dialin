@@ -19,7 +19,8 @@ import {
 import { DiagnosticTrace } from './DiagnosticTrace';
 import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { buildDiagnosticReport } from './diagnosticReport';
-import { objectCoverMap, previewAngleDeg, previewPointToVideo, videoRegionToPreview } from './geometry';
+import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
+import { assessFrameQuality, createReadingBridge } from './frameQuality.js';
 import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
 import {
   createAngleJitterTracker,
@@ -43,7 +44,6 @@ const STATUS_STYLES = {
   LOST: 'bg-rose-500/15 text-rose-200 border-rose-500/40',
 };
 
-const INITIAL_REGION = { nx: 0.5, ny: 0.5, nr: 0.28 };
 const PRESSURE_LAB_BUILD = import.meta.env.VITE_PRESSURE_LAB_BUILD || 'dev';
 const TRACE_PUBLISH_MS = 500;
 const REPLAY_BUILD = isPressureReplayBuild();
@@ -72,6 +72,7 @@ const EMPTY_LIVE = {
   gaugeHeld: false,
   gaugeX: null,
   gaugeY: null,
+  gaugeRadius: null,
   poseQuality: null,
   poseRejectReason: null,
   posePending: false,
@@ -141,18 +142,16 @@ export function FlairPressureLab() {
   const [sweepDeg, setSweepDeg] = useState(FLAIR_58_SCALE.sweepDeg);
   const [frameBox, setFrameBox] = useState({ w: 0, h: 0 });
   const [videoSize, setVideoSize] = useState(null);
-  const [region, setRegion] = useState(INITIAL_REGION);
   const [session, setSession] = useState(null);
   const [live, setLive] = useState(EMPTY_LIVE);
 
   const sessionRef = useRef(null);
-  const regionRef = useRef(INITIAL_REGION);
   const sweepRef = useRef(sweepDeg);
   const mirrorRef = useRef(true);
   const videoSizeRef = useRef(null);
   const frameNodeRef = useRef(null);
-  const adjustingRef = useRef(false);
-  const dragRef = useRef(null);
+  const qualityBridgeRef = useRef(createReadingBridge());
+  const qualityCanvasRef = useRef(null);
   const lastAngleRef = useRef(null);
   const angleTrackerRef = useRef(createAngleTracker());
   const pressureRef = useRef(createPressureSmoother());
@@ -209,6 +208,7 @@ export function FlairPressureLab() {
     thresholdRef.current.reset();
     poseAgeRef.current = 0;
     if (clearTracker) trackerRef.current.reset();
+    qualityBridgeRef.current.reset();
     if (clearHistory) {
       historyRef.current.reset();
       setTrace([]);
@@ -285,58 +285,10 @@ export function FlairPressureLab() {
     setSession(next);
   };
 
-  const pointerDown = (event, mode) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!videoSizeRef.current) return;
-    dragRef.current = { mode, pointerId: event.pointerId };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    adjustingRef.current = true;
-    resetReading({ clearHistory: true, clearTracker: true });
-  };
-
-  const pointerMove = (event) => {
-    const drag = dragRef.current;
-    const node = frameNodeRef.current;
-    const size = videoSizeRef.current;
-    if (!drag || !node || !size || event.pointerId !== drag.pointerId) return;
-    const bounds = node.getBoundingClientRect();
-    const x = event.clientX - bounds.left;
-    const y = event.clientY - bounds.top;
-    if (drag.mode === 'move') {
-      const point = previewPointToVideo(x, y, size.w, size.h, bounds.width, bounds.height, mirrorRef.current);
-      if (!point) return;
-      const next = {
-        ...regionRef.current,
-        nx: clamp(point.nx, 0.05, 0.95),
-        ny: clamp(point.ny, 0.05, 0.95),
-      };
-      regionRef.current = next;
-      setRegion(next);
-      return;
-    }
-    const preview = videoRegionToPreview(regionRef.current, size.w, size.h, bounds.width, bounds.height, mirrorRef.current);
-    const map = objectCoverMap(size.w, size.h, bounds.width, bounds.height);
-    if (!preview || !map) return;
-    const dist = Math.hypot(x - preview.cx, y - preview.cy);
-    const next = {
-      ...regionRef.current,
-      nr: clamp(dist / map.scale / Math.min(size.w, size.h), 0.12, 0.48),
-    };
-    regionRef.current = next;
-    setRegion(next);
-  };
-
-  const pointerUp = (event) => {
-    if (!dragRef.current || event.pointerId !== dragRef.current.pointerId) return;
-    dragRef.current = null;
-    adjustingRef.current = false;
-    calibRef.current.reset();
-  };
-
   useEffect(() => {
     if (status !== 'live') return undefined;
-    const canvas = document.createElement('canvas');
+    const canvas = qualityCanvasRef.current || document.createElement('canvas');
+    qualityCanvasRef.current = canvas;
     let raf = 0;
     let last = 0;
     let processed = 0;
@@ -361,27 +313,20 @@ export function FlairPressureLab() {
       });
     };
 
-    const replayGaugeLabels = (gauge, videoWidth, videoHeight, likeness) => {
-      const labels = classifyReplayGaugeFrame({
-        gauge,
-        videoWidth,
-        videoHeight,
-        region: regionRef.current,
-        referenceCaptured: gauge.referenceCaptured === true,
-        likeness,
-      });
-      return labels;
-    };
+    const replayGaugeLabels = (gauge) => classifyReplayGaugeFrame({
+      gauge,
+      referenceCaptured: gauge.referenceCaptured === true,
+    });
 
     const tick = (now) => {
       raf = requestAnimationFrame(tick);
       if (now - last < PROCESS_INTERVAL_MS) return;
       last = now;
       const video = videoRef.current;
-      if (!video || video.readyState < 2 || adjustingRef.current) return;
+      if (!video || video.readyState < 2) return;
       let reading;
       try {
-        reading = readTrackedGauge(video, canvas, regionRef.current, trackerRef.current);
+        reading = readTrackedGauge(video, canvas, null, trackerRef.current);
       } catch (err) {
         if (REPLAY_BUILD) {
           pushReplayFrame({
@@ -418,25 +363,6 @@ export function FlairPressureLab() {
         || (gauge.poseDeltaPx ?? 0) >= 1
         || Math.abs(gauge.poseDeltaRot ?? 0) >= 1;
       poseAgeRef.current = poseMoved ? 0 : poseAgeRef.current + 1;
-      if (!gauge.held) {
-        const nextRegion = {
-          nx: clamp(gauge.nx, 0.05, 0.95),
-          ny: clamp(gauge.ny, 0.05, 0.95),
-          nr: clamp(gauge.nr, 0.12, 0.48),
-        };
-        const prevRegion = regionRef.current;
-        const minDim = Math.min(reading.videoWidth, reading.videoHeight);
-        const movedPx = Math.hypot(
-          (nextRegion.nx - prevRegion.nx) * reading.videoWidth,
-          (nextRegion.ny - prevRegion.ny) * reading.videoHeight,
-        );
-        const grewPx = Math.abs(nextRegion.nr - prevRegion.nr) * minDim;
-        if (movedPx > 0.5 || grewPx > 0.5) {
-          regionRef.current = nextRegion;
-          setRegion(nextRegion);
-        }
-      }
-
       const candidateAngle = reading.relativeAngleDeg ?? null;
       const secondCandidateAngle = reading.secondAngleDeg == null
         ? null
@@ -540,6 +466,7 @@ export function FlairPressureLab() {
         gaugeHeld: gauge.held,
         gaugeX: gauge.cx,
         gaugeY: gauge.cy,
+        gaugeRadius: gauge.radius,
         poseQuality: gauge.poseQuality ?? null,
         poseRejectReason: gauge.poseRejectReason ?? null,
         posePending: gauge.posePending === true,
@@ -579,7 +506,7 @@ export function FlairPressureLab() {
             poseAge: poseAgeRef.current,
           });
           if (REPLAY_BUILD) {
-            const labels = replayGaugeLabels(gauge, reading.videoWidth, reading.videoHeight, reading.likeness);
+            const labels = replayGaugeLabels(gauge);
             pushReplayFrame({
               gaugeFound: labels.gaugeFound,
               centreFromGuide: labels.centreFromGuide,
@@ -627,8 +554,28 @@ export function FlairPressureLab() {
         oppositeScore: reading.oppositeScore,
         previousAngle: lastAngleRef.current,
       });
+      let frameQuality = { ok: true, flags: [] };
+      if (gauge.cx != null && gauge.cy != null && gauge.radius != null) {
+        const qctx = canvas.getContext('2d', { willReadFrequently: true });
+        const qw = Math.min(reading.videoWidth, 320);
+        const qh = Math.round(reading.videoHeight * (qw / reading.videoWidth));
+        canvas.width = qw;
+        canvas.height = qh;
+        qctx.drawImage(video, 0, 0, qw, qh);
+        const qdata = qctx.getImageData(0, 0, qw, qh).data;
+        const sx = qw / reading.videoWidth;
+        const sy = qh / reading.videoHeight;
+        frameQuality = assessFrameQuality(
+          qdata,
+          qw,
+          qh,
+          gauge.cx * sx,
+          gauge.cy * sy,
+          gauge.radius * Math.min(sx, sy),
+        );
+      }
       const weak = reading.quality == null || reading.quality < NEEDLE_LOST_QUALITY;
-      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak;
+      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || !frameQuality.ok;
       const candidateJump = lastAngleRef.current == null || choice.angleDeg == null
         ? null
         : wrapDelta(lastAngleRef.current, choice.angleDeg);
@@ -661,10 +608,16 @@ export function FlairPressureLab() {
         if (gauge.held) needleDecision = 'held-gauge';
         else if (gauge.pressureHold) needleDecision = 'held-pose';
         else if (choice.held) needleDecision = 'held-flip';
+        else if (!frameQuality.ok) needleDecision = `held-${frameQuality.flags.join('-') || 'quality'}`;
         else needleDecision = 'held-weak';
       }
       const jitter = jitterRef.current.push(tracked.accepted ? tracked.angle : lastAngleRef.current);
-      const pressureBar = pressureRef.current.get();
+      const bridged = qualityBridgeRef.current.publish(
+        pressureRef.current.get(),
+        !blockSample && tracked.accepted,
+        now,
+      );
+      const pressureBar = bridged.value;
       const tracking = classifyTrackingStatus({
         calibrated: true,
         quality: reading.quality,
@@ -695,10 +648,11 @@ export function FlairPressureLab() {
         jitterDeg: jitter,
       });
       if (REPLAY_BUILD) {
-        const labels = replayGaugeLabels(gauge, reading.videoWidth, reading.videoHeight, reading.likeness);
+        const labels = replayGaugeLabels(gauge);
         const flagParts = [tracking, needleDecision].filter(Boolean);
         if (gauge.held) flagParts.push('gauge-held');
         if (weak) flagParts.push('weak-needle');
+        if (!frameQuality.ok) flagParts.push(...frameQuality.flags);
         pushReplayFrame({
           gaugeFound: labels.gaugeFound,
           centreFromGuide: labels.centreFromGuide,
@@ -748,9 +702,11 @@ export function FlairPressureLab() {
     const right = spread == null ? '—' : Number(spread).toFixed(digits);
     return `${left} / ${right}${unit}`;
   };
-  const ring = videoSize && frameBox.w
-    ? videoRegionToPreview(region, videoSize.w, videoSize.h, frameBox.w, frameBox.h, mirrorPreview)
+  const detectedOverlay = videoSize && frameBox.w && live.gaugeX != null && live.gaugeY != null && live.gaugeRadius != null
+    ? videoPointToPreview(live.gaugeX, live.gaugeY, videoSize.w, videoSize.h, frameBox.w, frameBox.h, mirrorPreview)
     : null;
+  const overlayMap = videoSize && frameBox.w ? objectCoverMap(videoSize.w, videoSize.h, frameBox.w, frameBox.h) : null;
+  const overlayRadiusPx = overlayMap && live.gaugeRadius != null ? live.gaugeRadius * overlayMap.scale : null;
   const cameraLive = status === 'live';
   const showNeedle = cameraLive && Boolean(session) && live.displayAngle != null && (live.tracking === 'TRACKING' || live.tracking === 'UNCERTAIN');
   const needleAngle = previewAngleDeg(live.displayAngle, mirrorPreview);
@@ -758,7 +714,7 @@ export function FlairPressureLab() {
   const badge = cameraLive ? live.tracking : 'CALIBRATING';
   const pressureText = cameraLive && live.displayBar != null ? live.displayBar.toFixed(1) : '—';
   const caption = !cameraLive
-    ? 'Start the front camera, then drag the ring onto the gauge.'
+    ? 'Start the front camera with the whole gauge in frame.'
     : !session
       ? `At rest. Calibrating ${live.calibCount}/${REST_STABLE_SAMPLES}`
       : live.tracking === 'TRACKING'
@@ -796,8 +752,8 @@ export function FlairPressureLab() {
       <main className="flex-1 max-w-xl mx-auto w-full px-4 py-4 space-y-4 pb-10">
         <ol className={`text-sm ${ui.sub} space-y-1.5 list-decimal pl-5`}>
           <li>Put the phone where the whole gauge stays in frame. Beside the Flair is fine. Small movement is ok.</li>
-          <li>Drag the ring onto the gauge face. Drag the dot to resize it. That is the starting position.</li>
-          <li>At rest, calibration starts on its own once the needle is steady. The ring then follows the gauge.</li>
+          <li>The lab finds the dial automatically — no guide ring. The overlay shows the detected circle and needle.</li>
+          <li>At rest, calibration starts on its own once the needle is steady.</li>
         </ol>
         <p className={`text-xs ${ui.muted}`}>Nothing is saved. A large or sudden move drops tracking and holds the last pressure until the gauge is found again.</p>
 
@@ -816,18 +772,19 @@ export function FlairPressureLab() {
               setVideoSize(next);
             }}
           />
-          {ring && (
+          {detectedOverlay && overlayRadiusPx != null && overlayRadiusPx > 4 && (
             <div
-              className="absolute border-2 border-dashed border-[#c88a4b] rounded-full touch-none"
-              style={{ left: ring.left, top: ring.top, width: ring.width, height: ring.height }}
-              onPointerDown={(event) => pointerDown(event, 'move')}
-              onPointerMove={pointerMove}
-              onPointerUp={pointerUp}
-              onPointerCancel={pointerUp}
+              className="absolute pointer-events-none"
+              style={{
+                left: detectedOverlay.x - overlayRadiusPx,
+                top: detectedOverlay.y - overlayRadiusPx,
+                width: overlayRadiusPx * 2,
+                height: overlayRadiusPx * 2,
+              }}
             >
-              <div className="absolute left-1/2 top-1/2 w-1.5 h-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c88a4b] pointer-events-none" />
+              <div className="absolute inset-0 border-2 border-[#c88a4b]/90 rounded-full" />
               {showNeedle && (
-                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full pointer-events-none">
+                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
                   <line
                     x1="50"
                     y1="50"
@@ -839,18 +796,10 @@ export function FlairPressureLab() {
                   />
                 </svg>
               )}
-              <div
-                data-handle="resize"
-                className="absolute w-8 h-8 -right-2 top-1/2 -translate-y-1/2 rounded-full bg-[#c88a4b] border-2 border-[#121110]"
-                onPointerDown={(event) => pointerDown(event, 'resize')}
-                onPointerMove={pointerMove}
-                onPointerUp={pointerUp}
-                onPointerCancel={pointerUp}
-              />
             </div>
           )}
           <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] text-[#f5f2eb]/80 pointer-events-none">
-            {session ? 'Ring follows the gauge' : 'Drag the ring onto the gauge'}
+            {session ? 'Tracking detected dial' : 'Searching for gauge…'}
           </p>
         </div>
 
@@ -922,8 +871,8 @@ export function FlairPressureLab() {
             <dd className={ui.text}>{trackInfo?.facingMode || '—'}</dd>
             <dt>Processing FPS</dt>
             <dd className={ui.text}>{live.fps}</dd>
-            <dt>Ring center</dt>
-            <dd className={ui.text}>{region.nx.toFixed(2)}, {region.ny.toFixed(2)}</dd>
+            <dt>Gauge center</dt>
+            <dd className={ui.text}>{live.gaugeX != null ? `${formatNum(live.gaugeX, 0)}, ${formatNum(live.gaugeY, 0)} px` : '—'}</dd>
             <dt>Screen angle</dt>
             <dd className={ui.text}>{formatNum(live.screenAngle, 0)}°</dd>
             <dt>Relative angle</dt>

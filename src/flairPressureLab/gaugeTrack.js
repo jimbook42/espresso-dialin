@@ -354,6 +354,82 @@ function wholeBins(deltaDeg) {
   return Math.round(deltaDeg / PROFILE_BIN_DEG);
 }
 
+/**
+ * Whole-frame rim search on a downscaled frame (no prior / guide seed).
+ * Returns centre and radius in the same pixel space as `image`.
+ */
+export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
+  const { width, height, data } = image;
+  if (!width || !height || !data) return null;
+  const minDim = Math.min(width, height);
+  const scale = Math.min(1, maxOutput / minDim);
+  const sw = Math.max(16, Math.round(width * scale));
+  const sh = Math.max(16, Math.round(height * scale));
+  const small = new Uint8ClampedArray(sw * sh * 4);
+  for (let y = 0; y < sh; y += 1) {
+    for (let x = 0; x < sw; x += 1) {
+      const sx = Math.min(width - 1, Math.floor(x / scale));
+      const sy = Math.min(height - 1, Math.floor(y / scale));
+      const src = (sy * width + sx) * 4;
+      const dst = (y * sw + x) * 4;
+      small[dst] = data[src];
+      small[dst + 1] = data[src + 1];
+      small[dst + 2] = data[src + 2];
+      small[dst + 3] = 255;
+    }
+  }
+  const edges = prepareEdges({ data: small, width: sw, height: sh }, { contrastRadius: 3 }).edges;
+  const scaledMin = minDim * scale;
+  const rMin = scaledMin * 0.06;
+  const rMax = scaledMin * 0.44;
+  const coarseStep = Math.max(4, Math.round(scaledMin / 24));
+  let best = { score: -1, cx: 0, cy: 0, radius: 0 };
+  const consider = (cx, cy, radius) => {
+    if (radius < 8) return;
+    if (cx - radius < 2 || cy - radius < 2 || cx + radius >= sw - 2 || cy + radius >= sh - 2) return;
+    const score = scoreRim(edges, sw, sh, cx, cy, radius);
+    if (score > best.score) best = { score, cx, cy, radius };
+  };
+  for (let cy = coarseStep; cy < sh - coarseStep; cy += coarseStep) {
+    for (let cx = coarseStep; cx < sw - coarseStep; cx += coarseStep) {
+      const rStep = Math.max(3, Math.round(coarseStep * 0.85));
+      for (let r = rMin; r <= rMax; r += rStep) consider(cx, cy, r);
+    }
+  }
+  if (best.score <= 0) return null;
+  const midStep = Math.max(2, Math.round(coarseStep / 2));
+  const coarse = best;
+  for (let dy = -coarseStep; dy <= coarseStep; dy += midStep) {
+    for (let dx = -coarseStep; dx <= coarseStep; dx += midStep) {
+      consider(coarse.cx + dx, coarse.cy + dy, coarse.radius);
+      consider(coarse.cx + dx, coarse.cy + dy, coarse.radius * 0.94);
+      consider(coarse.cx + dx, coarse.cy + dy, coarse.radius * 1.06);
+    }
+  }
+  if (best.score <= 0) return null;
+  const refine = Math.max(2, midStep);
+  const fine = best;
+  for (let dy = -refine; dy <= refine; dy += 1) {
+    for (let dx = -refine; dx <= refine; dx += 1) {
+      consider(fine.cx + dx, fine.cy + dy, fine.radius);
+      consider(fine.cx + dx, fine.cy + dy, fine.radius * 0.97);
+      consider(fine.cx + dx, fine.cy + dy, fine.radius * 1.03);
+    }
+  }
+  const off = offsetScore(edges, sw, sh, best.cx, best.cy, best.radius);
+  const confidence = best.score > 1e-3 && off != null
+    ? clamp((best.score - off) / best.score, 0, 1)
+    : 0;
+  const ok = confidence >= CONFIDENCE_MIN && best.score > 1e-3;
+  return {
+    ok,
+    confidence,
+    cx: best.cx / scale,
+    cy: best.cy / scale,
+    radius: best.radius / scale,
+  };
+}
+
 export function createGaugeTracker() {
   let pose = null;
   let baseRadius = 0;
@@ -1291,17 +1367,30 @@ export function analyzeGaugeImage(image, tracker) {
   });
 }
 
+function drawFullFrame(video, canvas, maxOutput) {
+  const videoWidth = video.videoWidth;
+  const videoHeight = video.videoHeight;
+  const minDim = Math.min(videoWidth, videoHeight);
+  const scale = Math.min(1, maxOutput / minDim);
+  const outputW = Math.max(16, Math.round(videoWidth * scale));
+  const outputH = Math.max(16, Math.round(videoHeight * scale));
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  canvas.width = outputW;
+  canvas.height = outputH;
+  context.drawImage(video, 0, 0, outputW, outputH);
+  return context.getImageData(0, 0, outputW, outputH);
+}
+
 /** Crop around the tracked gauge, update its pose, then read the needle from that pose. */
 export function readTrackedGauge(video, canvas, region, tracker) {
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;
-  if (!videoWidth || !videoHeight || !region) return null;
+  if (!videoWidth || !videoHeight) return null;
   if (!tracker.getPose()) {
-    tracker.seed({
-      cx: region.nx * videoWidth,
-      cy: region.ny * videoHeight,
-      radius: region.nr * Math.min(videoWidth, videoHeight),
-    });
+    const frame = drawFullFrame(video, canvas, 280);
+    const found = discoverGaugeInFrame(frame);
+    if (!found?.ok) return null;
+    tracker.seed({ cx: found.cx, cy: found.cy, radius: found.radius });
   }
 
   const pose = tracker.getPose();
