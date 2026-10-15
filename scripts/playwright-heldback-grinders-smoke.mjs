@@ -10,12 +10,24 @@ const PREVIEW_PORT = 4174;
 const PREVIEW_URL = `http://127.0.0.1:${PREVIEW_PORT}/`;
 
 const BARISTA_EXPRESS_ID = 'Breville Barista Express (BES870/875)';
+const BARISTA_PRO_ID = 'Breville Barista Pro (BES878)';
+const BARISTA_TOUCH_ID = 'Breville Barista Touch (BES880)';
 const DF64_ID = 'DF64 Gen 2';
 
 const GRINDERS = [
   {
     id: BARISTA_EXPRESS_ID,
     fieldLabel: 'Upper burr position',
+  },
+  {
+    id: BARISTA_PRO_ID,
+    fieldLabel: 'Upper burr position',
+    expectedStartDial: '15',
+  },
+  {
+    id: BARISTA_TOUCH_ID,
+    fieldLabel: 'Upper burr position',
+    expectedStartDial: '14',
   },
   {
     id: DF64_ID,
@@ -210,13 +222,31 @@ async function main() {
       }
     }
 
-    // Barista Express: type 11, blur → error and revert (not clipped to 1)
-    await grinderSelect.selectOption(BARISTA_EXPRESS_ID);
-    const upperBurrInput = panel.getByPlaceholder('Factory default 6');
-    await upperBurrInput.fill('11');
-    await upperBurrInput.blur();
-    await panel.getByText('Upper burr must be between 1 and 10', { exact: false }).waitFor();
-    await waitForInputValue(upperBurrInput, '');
+    async function assertUpperBurrRejectsEleven(grinderId) {
+      await grinderSelect.selectOption(grinderId);
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        if ((await grinderSelect.inputValue()) === grinderId) break;
+        await delay(100);
+      }
+      const shiftNote =
+        grinderId === BARISTA_PRO_ID || grinderId === BARISTA_TOUCH_ID
+          ? 'adjust one burr number at a time'
+          : 'Older BES870UK units';
+      await panel.getByText(shiftNote, { exact: false }).waitFor({ timeout: 10_000 });
+      const upperBurrInput = panel.getByPlaceholder('Factory default 6');
+      await upperBurrInput.click();
+      await upperBurrInput.fill('11');
+      await upperBurrInput.press('Tab');
+      await panel.getByRole('alert').filter({ hasText: 'Upper burr must be between 1 and 10' }).waitFor();
+      await waitForInputValue(upperBurrInput, '');
+      await grinderSelect.focus().catch(() => {});
+      await delay(100);
+    }
+
+    // Barista Express / Pro / Touch: type 11, blur → error and revert
+    for (const id of [BARISTA_EXPRESS_ID, BARISTA_PRO_ID, BARISTA_TOUCH_ID]) {
+      await assertUpperBurrRejectsEleven(id);
+    }
 
     // DF64: zero 20 saved
     await grinderSelect.selectOption(DF64_ID);
@@ -261,6 +291,18 @@ async function main() {
       }
       if (!hero.includes('Start here, then log your first shot')) {
         throw new Error(`Expected fresh-bean starting copy for ${grinder.id}`);
+      }
+      if (grinder.expectedStartDial) {
+        const dialDisplay = page.locator('p.text-5xl').first();
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          if ((await dialDisplay.innerText()).trim() === grinder.expectedStartDial) break;
+          await delay(100);
+        }
+        if ((await dialDisplay.innerText()).trim() !== grinder.expectedStartDial) {
+          throw new Error(
+            `Expected starting dial ${grinder.expectedStartDial} for ${grinder.id}, got "${await dialDisplay.innerText()}"`
+          );
+        }
       }
     }
 

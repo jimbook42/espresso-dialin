@@ -15,6 +15,8 @@ export const EUREKA_ZERO_65_AP_GRINDER_ID = 'Eureka Mignon Zero 65 AP';
 export const EUREKA_ZERO_65_SPEEDY_GRINDER_ID = 'Eureka Mignon Zero 65 Speedy';
 export const ZERNO_Z1_GRINDER_ID = 'Zerno Z1';
 export const BARISTA_EXPRESS_GRINDER_ID = 'Breville Barista Express (BES870/875)';
+export const BARISTA_PRO_GRINDER_ID = 'Breville Barista Pro (BES878)';
+export const BARISTA_TOUCH_GRINDER_ID = 'Breville Barista Touch (BES880)';
 export const DF64_GEN2_GRINDER_ID = 'DF64 Gen 2';
 export const DF54_GRINDER_ID = 'DF54';
 export const TIMEMORE_SCULPTOR_064S_GRINDER_ID = 'Timemore Sculptor 064S';
@@ -22,6 +24,8 @@ export const TIMEMORE_SCULPTOR_064S_GRINDER_ID = 'Timemore Sculptor 064S';
 /** Ticket 6.23 held-back presets (Tier 1 QA). */
 export const HELDBACK_ESTIMATED_PRESET_IDS = Object.freeze([
   BARISTA_EXPRESS_GRINDER_ID,
+  BARISTA_PRO_GRINDER_ID,
+  BARISTA_TOUCH_GRINDER_ID,
   DF64_GEN2_GRINDER_ID,
   DF54_GRINDER_ID,
   TIMEMORE_SCULPTOR_064S_GRINDER_ID,
@@ -45,6 +49,8 @@ export const PRESET_GRINDER_IDS = Object.freeze([
   EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
   ZERNO_Z1_GRINDER_ID,
   BARISTA_EXPRESS_GRINDER_ID,
+  BARISTA_PRO_GRINDER_ID,
+  BARISTA_TOUCH_GRINDER_ID,
   DF64_GEN2_GRINDER_ID,
   DF54_GRINDER_ID,
   TIMEMORE_SCULPTOR_064S_GRINDER_ID,
@@ -228,6 +234,38 @@ export const PRESET_GRINDER_SPECS = [
     defaultSetting: 5,
     lowerIsFiner: true,
     sensitivity: 4,
+    optionalDialField: 'upperBurr',
+    defaultBrewTemperatureC: 93,
+  },
+  {
+    id: BARISTA_PRO_GRINDER_ID,
+    settingsSelectLabel: BARISTA_PRO_GRINDER_ID,
+    shortBadgeLabel: 'BES878',
+    setupCardHint:
+      'Outer dial 1–30 (lower = finer); set upper burr in Settings. Breville default grind size is 15.',
+    dialKind: 'stepped',
+    min: 1,
+    max: 30,
+    step: 1,
+    defaultSetting: 15,
+    lowerIsFiner: true,
+    sensitivity: 2,
+    optionalDialField: 'upperBurr',
+    defaultBrewTemperatureC: 93,
+  },
+  {
+    id: BARISTA_TOUCH_GRINDER_ID,
+    settingsSelectLabel: BARISTA_TOUCH_GRINDER_ID,
+    shortBadgeLabel: 'BES880',
+    setupCardHint:
+      'Outer dial 1–30 (lower = finer); set upper burr in Settings. Breville recommends starting around 14.',
+    dialKind: 'stepped',
+    min: 1,
+    max: 30,
+    step: 1,
+    defaultSetting: 14,
+    lowerIsFiner: true,
+    sensitivity: 2,
     optionalDialField: 'upperBurr',
     defaultBrewTemperatureC: 93,
   },

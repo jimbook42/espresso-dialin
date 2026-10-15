@@ -1,18 +1,29 @@
 import { useEffect, useState } from 'react';
 import {
   BARISTA_EXPRESS_GRINDER_ID,
+  BARISTA_PRO_GRINDER_ID,
+  BARISTA_TOUCH_GRINDER_ID,
   DF54_GRINDER_ID,
   DF64_GEN2_GRINDER_ID,
   getPresetGrinderSpec,
 } from '../grinders/presetGrinders/index.js';
 import {
   BARISTA_EXPRESS_UPPER_BURR_SHIFT_NOTE,
+  BARISTA_PRO_TOUCH_UPPER_BURR_SHIFT_NOTE,
   presetOptionalDialField,
   presetUpperBurrSettingsKey,
   presetZeroOffsetSettingsKey,
   validatePresetUpperBurrInput,
   validatePresetZeroOffsetInput,
 } from '../grinders/presetGrinders/presetOptionalFields.js';
+
+function upperBurrShiftNote(grinderModel) {
+  if (grinderModel === BARISTA_EXPRESS_GRINDER_ID) return BARISTA_EXPRESS_UPPER_BURR_SHIFT_NOTE;
+  if (grinderModel === BARISTA_PRO_GRINDER_ID || grinderModel === BARISTA_TOUCH_GRINDER_ID) {
+    return BARISTA_PRO_TOUCH_UPPER_BURR_SHIFT_NOTE;
+  }
+  return BARISTA_EXPRESS_UPPER_BURR_SHIFT_NOTE;
+}
 
 function committedUpperBurrToDraft(settings, key) {
   const committed = settings?.[key];
@@ -22,10 +33,7 @@ function committedUpperBurrToDraft(settings, key) {
 export function PresetGrinderAuxFields({ grinderModel, settings, onPatchSettings, ui, inputClass }) {
   const spec = getPresetGrinderSpec(grinderModel);
   const field = presetOptionalDialField(spec);
-  const upperBurrKey =
-    field === 'upperBurr' && grinderModel === BARISTA_EXPRESS_GRINDER_ID
-      ? presetUpperBurrSettingsKey(grinderModel)
-      : null;
+  const upperBurrKey = field === 'upperBurr' ? presetUpperBurrSettingsKey(grinderModel) : null;
 
   const zeroOffsetKey =
     field === 'zeroOffset' ? presetZeroOffsetSettingsKey(grinderModel) : null;
@@ -57,7 +65,7 @@ export function PresetGrinderAuxFields({ grinderModel, settings, onPatchSettings
 
   if (!field || !spec) return null;
 
-  if (field === 'upperBurr' && grinderModel === BARISTA_EXPRESS_GRINDER_ID) {
+  if (field === 'upperBurr' && upperBurrKey) {
     const key = upperBurrKey;
     const commitUpperBurrDraft = async (rawValue = upperBurrDraft) => {
       const next = validatePresetUpperBurrInput(rawValue);
@@ -96,7 +104,7 @@ export function PresetGrinderAuxFields({ grinderModel, settings, onPatchSettings
         {upperBurrWarning && !upperBurrError && (
           <p className={`text-[10px] text-[#d0a060]`} role="status">{upperBurrWarning}</p>
         )}
-        <p className={`text-[10px] ${ui.muted}`}>{BARISTA_EXPRESS_UPPER_BURR_SHIFT_NOTE}</p>
+        <p className={`text-[10px] ${ui.muted}`}>{upperBurrShiftNote(grinderModel)}</p>
       </div>
     );
   }

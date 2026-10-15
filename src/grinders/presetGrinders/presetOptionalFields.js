@@ -1,5 +1,7 @@
 import {
   BARISTA_EXPRESS_GRINDER_ID,
+  BARISTA_PRO_GRINDER_ID,
+  BARISTA_TOUCH_GRINDER_ID,
   DF54_GRINDER_ID,
   DF64_GEN2_GRINDER_ID,
 } from './catalog.js';
@@ -7,6 +9,8 @@ import {
 /** Global settings keys (free-form on settings row; no Dexie schema bump). */
 const UPPER_BURR_SETTINGS_KEY = {
   [BARISTA_EXPRESS_GRINDER_ID]: 'bes870UpperBurr',
+  [BARISTA_PRO_GRINDER_ID]: 'bes878UpperBurr',
+  [BARISTA_TOUCH_GRINDER_ID]: 'bes880UpperBurr',
 };
 
 const ZERO_OFFSET_SETTINGS_KEY = {
@@ -20,6 +24,9 @@ export const BARISTA_EXPRESS_UPPER_BURR_MAX = 10;
 
 export const BARISTA_EXPRESS_UPPER_BURR_SHIFT_NOTE =
   'Outer numbers shift with the upper burr; one burr step ≈ the whole outer range, so outer settings aren\'t comparable across burr settings. Older BES870UK units have no adjustable burr.';
+
+export const BARISTA_PRO_TOUCH_UPPER_BURR_SHIFT_NOTE =
+  'Outer numbers shift with the upper burr; adjust one burr number at a time.';
 
 function finiteNumber(raw) {
   if (raw === '' || raw === null || raw === undefined) return null;
