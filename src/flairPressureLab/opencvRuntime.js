@@ -73,3 +73,9 @@ export function resetOpenCvForTests() {
   cvInstance = null;
   loadPromise = null;
 }
+
+/** Vitest: inject a minimal OpenCV.js stub without loading the WASM build. */
+export function setOpenCvForTests(cv) {
+  cvInstance = cv;
+  loadPromise = cv ? Promise.resolve(cv) : null;
+}

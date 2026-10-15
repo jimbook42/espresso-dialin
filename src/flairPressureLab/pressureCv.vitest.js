@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { resetOpenCvForTests, setOpenCvForTests } from './opencvRuntime.js';
 import { buildFlairCanonicalDialProfile } from './canonicalDial.js';
 import {
   CANONICAL_ZERO_BAR_ANGLE_DEG,
@@ -98,7 +99,50 @@ function syntheticFlairReplayFrame() {
   return { data, width, height };
 }
 
+function mockOpenCvForCircles(circlesInScaledSpace) {
+  class Mat {
+    constructor() {
+      this.cols = 0;
+    }
+    delete() {}
+    floatAt(_row, col) {
+      const i = Math.floor(col / 3);
+      const part = col % 3;
+      const [cx, cy, r] = circlesInScaledSpace[i];
+      if (part === 0) return cx;
+      if (part === 1) return cy;
+      return r;
+    }
+  }
+  return {
+    Mat,
+    matFromImageData: () => new Mat(),
+    cvtColor: () => {},
+    GaussianBlur: () => {},
+    HoughCircles(_gray, circles) {
+      circles.cols = circlesInScaledSpace.length;
+    },
+    HOUGH_GRADIENT: 3,
+    COLOR_RGBA2GRAY: 0,
+    BORDER_DEFAULT: 0,
+    Size: class Size {},
+  };
+}
+
 describe('pressure CV units', () => {
+  afterEach(() => {
+    resetOpenCvForTests();
+  });
+
+  it('discovers via OpenCV HoughCircles when runtime is loaded', () => {
+    const frame = syntheticGauge(200, 280, { cx: 140, cy: 90, radius: 42 });
+    setOpenCvForTests(mockOpenCvForCircles([[140, 90, 42 * 1.02]]));
+    const found = discoverGaugeInFrame(frame);
+    expect(found?.ok).toBe(true);
+    expect(found?.source).toBe('opencv-hough');
+    expect(Math.hypot(found.cx - 140, found.cy - 90)).toBeLessThan(12);
+  });
+
   it('discovers an off-centre gauge circle', () => {
     const frame = syntheticGauge(200, 280, { cx: 140, cy: 90, radius: 42 });
     const found = discoverGaugeInFrame(frame);
