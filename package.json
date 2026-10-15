@@ -1,7 +1,7 @@
 {
   "name": "espresso-dialin",
   "private": true,
-  "version": "4.9.0",
+  "version": "4.10.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,9 @@
     "preview:scale": "VITE_SCALE_ALLOW_SIM=true vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test": "node test.js && node src/utils/recommendationTuning.test.js && node src/grinders/grinderRegistry.test.js && node src/grinders/engineSnapshots.test.js && node scripts/check-dist-manifest.mjs",
     "test:vitest": "vitest run",
-    "test:playwright-heldback": "node scripts/playwright-heldback-grinders-smoke.mjs"
+    "test:playwright-heldback": "node scripts/playwright-heldback-grinders-smoke.mjs",
+    "test:playwright-bean-finish-undo": "node scripts/playwright-bean-finish-undo-smoke.mjs",
+    "test:playwright-bean-reactivate": "node scripts/playwright-bean-reactivate-smoke.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

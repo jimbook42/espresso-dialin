@@ -29,6 +29,19 @@ import {
 import { useLiveQuery } from 'dexie-react-hooks';
 import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag } from 'lucide-react';
 import { HowItWorksModal } from './components/HowItWorksModal';
+import { FinishBeanToast, TOAST_DURATION_MS } from './components/FinishBeanToast.jsx';
+import {
+  nextActiveBeanIdAfterFinish,
+  persistBeanActive,
+  persistBeanFinished,
+  restoreBeanFromSnapshot,
+  snapshotBeanRecord,
+} from './utils/beanFinishActions.js';
+import {
+  readBeansFinishedSectionOpen,
+  writeBeansFinishedSectionOpen,
+} from './utils/beansFinishedSectionPrefs.js';
+import { PastBeansList } from './components/PastBeansList.jsx';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx';
@@ -291,7 +304,7 @@ export default function App() {
   const [chartType, setChartType] = useState('timeline');
 
   const [showPastBeans, setShowPastBeans] = useState(true);
-  const [showFinishedBeans, setShowFinishedBeans] = useState(false);
+  const [finishedSectionOpen, setFinishedSectionOpen] = useState(() => readBeansFinishedSectionOpen());
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [leaderboardFilter, setLeaderboardFilter] = useState('All');
 
@@ -327,6 +340,8 @@ export default function App() {
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
+  const [finishUndoToast, setFinishUndoToast] = useState(null);
+  const finishUndoTimerRef = useRef(null);
   
   // Timer State
   const [timerRunning, setTimerRunning] = useState(false);
@@ -1350,14 +1365,70 @@ export default function App() {
     await db.beans.update(beanId, { rating: sanitized !== '' ? sanitized : null });
   };
 
+  const clearFinishUndoToast = useCallback(() => {
+    if (finishUndoTimerRef.current) {
+      clearTimeout(finishUndoTimerRef.current);
+      finishUndoTimerRef.current = null;
+    }
+    setFinishUndoToast(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (finishUndoTimerRef.current) clearTimeout(finishUndoTimerRef.current);
+  }, []);
+
+  const scheduleFinishUndoToast = useCallback((payload) => {
+    if (finishUndoTimerRef.current) clearTimeout(finishUndoTimerRef.current);
+    setFinishUndoToast(payload);
+    finishUndoTimerRef.current = setTimeout(() => {
+      finishUndoTimerRef.current = null;
+      setFinishUndoToast(null);
+    }, TOAST_DURATION_MS);
+  }, []);
+
+  const handleUndoMarkFinished = async () => {
+    if (!finishUndoToast?.snapshot) return;
+    const { snapshot, wasSelected } = finishUndoToast;
+    clearFinishUndoToast();
+    await restoreBeanFromSnapshot(db, snapshot);
+    if (wasSelected) {
+      setSelectedBeanId(snapshot.id);
+      void rememberSelectedBeanId(snapshot.id);
+    }
+  };
+
+  const toggleFinishedSection = () => {
+    setFinishedSectionOpen((prev) => {
+      const next = !prev;
+      writeBeansFinishedSectionOpen(next);
+      return next;
+    });
+  };
+
+  const handleMarkActive = async (beanId) => {
+    clearFinishUndoToast();
+    await persistBeanActive(db, beanId);
+  };
+
   const handleToggleFinished = async (beanId, currentStatus) => {
-    await db.beans.update(beanId, { isFinished: !currentStatus });
-    if (!currentStatus && effectiveBeanId === beanId) {
-      const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
-      const nextId = remaining.length > 0 ? remaining[0].id : '';
+    clearFinishUndoToast();
+    if (currentStatus) {
+      await persistBeanActive(db, beanId);
+      return;
+    }
+
+    const bean = beans.find((b) => b.id === beanId);
+    const snapshot = snapshotBeanRecord(bean);
+    if (!snapshot) return;
+
+    const wasSelected = effectiveBeanId === beanId;
+    await persistBeanFinished(db, beanId);
+    if (wasSelected) {
+      const nextId = nextActiveBeanIdAfterFinish(beans, beanId);
       setSelectedBeanId(nextId);
       void rememberSelectedBeanId(nextId);
     }
+    scheduleFinishUndoToast({ snapshot, wasSelected });
   };
 
   const handleDeleteBean = async (beanId) => {
@@ -2284,7 +2355,13 @@ export default function App() {
       )}
 
       {/* Main scrollable content — padded for fixed bottom nav (+ log bar on dial) */}
-      <div className={`max-w-xl mx-auto px-4 pt-5 ${activeTab === 'dial' && activeBeansList.length > 0 ? 'pb-40' : 'pb-24'}`}>
+      <div className={`max-w-xl mx-auto px-4 pt-5 ${
+        activeTab === 'dial' && activeBeansList.length > 0
+          ? 'pb-40'
+          : activeTab === 'beans'
+            ? 'pb-32'
+            : 'pb-24'
+      }`}>
         
         <header className={`flex items-center justify-between pb-5 mb-6 border-b ${ui.headerBorder}`}>
           <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick} title="Espresso Dial-In">
@@ -2351,18 +2428,21 @@ export default function App() {
                           <RotateCcw className="w-3 h-3" /> Undo thaw
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
-                        className={`text-[11px] font-bold px-3 py-2 rounded-lg border min-h-[40px] shrink-0 ${
-                          activeBean.isFinished
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                            : `${ui.secondaryBtn}`
-                        }`}
-                      >
-                        {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
-                      </button>
                     </div>
+                  </div>
+                  <div className={`pt-3 mt-1 border-t ${ui.modalDivider}`}>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
+                      data-testid="mark-bean-finished"
+                      className={`w-full text-[11px] font-semibold px-3 py-2.5 rounded-lg border min-h-[44px] ${
+                        activeBean.isFinished
+                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                          : `border-dashed opacity-90 ${ui.secondaryBtn}`
+                      }`}
+                    >
+                      {activeBean.isFinished ? 'Mark beans as active' : 'Mark beans as finished'}
+                    </button>
                   </div>
 
                   {activeRecipe && (
@@ -3264,55 +3344,20 @@ export default function App() {
 
               {showPastBeans && (
                 <div className={`space-y-3 pt-2 border-t ${ui.modalDivider}`}>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className={subTextClass}>Show finished bags</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowFinishedBeans(!showFinishedBeans)}
-                      className={`px-2 py-1 rounded border font-semibold ${showFinishedBeans ? `${ui.primary} border-[#c88a4b]` : `${ui.chip}`}`}
-                    >
-                      {showFinishedBeans ? 'Hiding Finished' : 'Showing Active Only'}
-                    </button>
-                  </div>
-
-                  {beans.filter(b => showFinishedBeans || !b?.isFinished).length === 0 ? (
-                    <p className={`text-xs ${subTextClass}`}>No beans logged yet.</p>
-                  ) : (
-                    beans.filter(b => showFinishedBeans || !b?.isFinished).map(b => (
-                      <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl ${ui.inset} text-xs ${b.isFinished ? 'opacity-60' : ''}`}>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => startEditBean(b)} className={`${currentTheme.text} hover:opacity-70 p-1 bg-amber-500/10 rounded-md`} title="Edit Bean">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleToggleFinished(b.id, b.isFinished)} className={`p-1 rounded-md ${b.isFinished ? 'bg-emerald-500/20 text-emerald-400' : ui.chip}`} title={b.isFinished ? 'Mark Active' : 'Mark Finished'}>
-                            <CheckCircle className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDeleteBean(b.id)} className="text-rose-500 hover:opacity-70 p-1 bg-rose-500/10 rounded-md" title="Delete Bean Profile">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                          <div>
-                            <span className={`font-bold ${ui.text} block`}>
-                              {b.name} {b.isFinished && <span className={`text-[9px] ${ui.chip} px-1.5 py-0.5 rounded ml-1`}>Finished</span>}
-                            </span>
-                            <span className={`text-[10px] ${subTextClass}`}>{b.roaster} • {b.roastType} Roast ({b.storageType}){beanIsDecaf(b) ? ' • Decaf' : ''}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] uppercase font-bold ${ui.muted}`}>Rating:</span>
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="1.0"
-                            max="10.0"
-                            placeholder="e.g. 9.2"
-                            value={b.rating !== null && b.rating !== undefined ? b.rating : ''}
-                            onChange={(e) => handleUpdateBeanRating(b.id, e.target.value)}
-                            className={`w-16 ${inputClass} border rounded-lg p-1.5 text-center text-xs font-bold text-amber-500`}
-                          />
-                        </div>
-                      </div>
-                    ))
-                  )}
+                  <PastBeansList
+                    beans={beans}
+                    finishedSectionOpen={finishedSectionOpen}
+                    onToggleFinishedSection={toggleFinishedSection}
+                    ui={ui}
+                    subTextClass={subTextClass}
+                    inputClass={inputClass}
+                    currentTheme={currentTheme}
+                    onEdit={startEditBean}
+                    onToggleFinished={handleToggleFinished}
+                    onMarkActive={handleMarkActive}
+                    onDelete={handleDeleteBean}
+                    onUpdateRating={handleUpdateBeanRating}
+                  />
                 </div>
               )}
             </div>
@@ -3983,6 +4028,14 @@ export default function App() {
         </footer>
 
       </div>
+
+      {finishUndoToast?.snapshot && (
+        <FinishBeanToast
+          beanName={finishUndoToast.snapshot.name || 'Bean'}
+          onUndo={() => void handleUndoMarkFinished()}
+          ui={ui}
+        />
+      )}
 
       {/* Fixed bottom tab bar */}
       <nav className={`fixed bottom-0 left-0 right-0 z-50 ${ui.nav} backdrop-blur safe-area-pb`}>
