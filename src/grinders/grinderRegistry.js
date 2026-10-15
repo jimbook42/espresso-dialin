@@ -18,6 +18,8 @@ import {
   PRESET_GRINDER_DEFINITIONS,
 } from './presetGrinders/index.js';
 import { patchGrindUiForBeanGrinder } from './grindDialByBean.js';
+import { getPresetGrinderSpec } from './presetGrinders/catalog.js';
+import { formatPresetGrindDisplay } from './presetGrinders/dial.js';
 
 export { isPresetGrinderModel } from './presetGrinders/index.js';
 
@@ -437,6 +439,10 @@ export function formatShotGrindForHistory(shot, settings = null) {
 
 export function formatPreviousGrindLabel(grinderModel, shot, settings = null) {
   if (isPresetGrinderModel(grinderModel)) {
+    const spec = getPresetGrinderSpec(grinderModel);
+    if (spec && shot?.customGrindValue != null && shot.customGrindValue !== '') {
+      return formatPresetGrindDisplay(shot.customGrindValue, spec, settings);
+    }
     return getPresetGrinderDefinition(grinderModel).formatPreviousGrindLabel(shot);
   }
   if (isNicheZeroGrinderModel(grinderModel)) {
@@ -449,6 +455,9 @@ export function formatPreviousGrindLabel(grinderModel, shot, settings = null) {
 
 export function formatCurrentGrindLabel(grinderModel, grindState, settings = null) {
   if (isPresetGrinderModel(grinderModel)) {
+    const spec = getPresetGrinderSpec(grinderModel);
+    const formatted = formatPresetGrindDisplay(grindState?.customGrindValue, spec, settings);
+    if (formatted) return formatted;
     return getPresetGrinderDefinition(grinderModel).formatCurrentGrindLabel(grindState);
   }
   if (isNicheZeroGrinderModel(grinderModel)) {
@@ -460,6 +469,9 @@ export function formatCurrentGrindLabel(grinderModel, grindState, settings = nul
 
 export function formatRecommendedGrindDisplay(grinderModel, recommendedSetting, settings = null) {
   if (isPresetGrinderModel(grinderModel)) {
+    const spec = getPresetGrinderSpec(grinderModel);
+    const formatted = formatPresetGrindDisplay(recommendedSetting?.customGrindValue, spec, settings);
+    if (formatted) return formatted;
     return getPresetGrinderDefinition(grinderModel).formatRecommendedGrindDisplay(recommendedSetting);
   }
   if (isNicheZeroGrinderModel(grinderModel)) {
@@ -471,6 +483,9 @@ export function formatRecommendedGrindDisplay(grinderModel, recommendedSetting, 
 
 export function formatInitialGrindDisplay(grinderModel, initialSetting, settings = null) {
   if (isPresetGrinderModel(grinderModel)) {
+    const spec = getPresetGrinderSpec(grinderModel);
+    const formatted = formatPresetGrindDisplay(initialSetting?.customGrindValue, spec, settings);
+    if (formatted) return formatted;
     return getPresetGrinderDefinition(grinderModel).formatInitialGrindDisplay(initialSetting);
   }
   if (isNicheZeroGrinderModel(grinderModel)) {

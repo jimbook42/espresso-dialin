@@ -764,7 +764,7 @@ export function getInitialGrindRecommendation(
     // Presets use catalog defaults on a fresh bean — never cross-bean roast baselines
     // (averaged dial numbers from other beans collapse Eureka variants to the same high end).
     return {
-      customGrindValue: defaultPresetGrindValue(spec),
+      customGrindValue: defaultPresetGrindValue(spec, settings),
       initialSource: 'app-default',
     };
   }

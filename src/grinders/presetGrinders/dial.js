@@ -1,5 +1,9 @@
 import { getPresetGrinderSpec } from './catalog.js';
 import {
+  formatPresetZeroPlusDisplay,
+  getPresetZeroOffset,
+} from './presetOptionalFields.js';
+import {
   adjustCustomGrind,
   customValueToNumeric,
   defaultCustomGrindValue,
@@ -25,9 +29,14 @@ export function parsePresetGrindValue(raw, spec) {
   return parseCustomGrindValue(raw, profile);
 }
 
-export function formatPresetGrindDisplay(value, spec) {
+export function formatPresetGrindDisplay(value, spec, settings = null) {
   const profile = presetProfileFromSpec(spec);
-  const formatted = formatCustomGrindDisplay(value, profile);
+  const parsed = parseCustomGrindValue(value, profile);
+  if (parsed === null) return '';
+  if (spec.zeroStartOffset != null) {
+    return formatPresetZeroPlusDisplay(parsed, spec, settings);
+  }
+  const formatted = formatCustomGrindDisplay(parsed, profile);
   if (!formatted) return '';
   if (spec.id === 'Zerno Z1') return `${formatted} µm`;
   return formatted;
@@ -59,6 +68,35 @@ export function parsePresetGrindForModel(raw, grinderModel) {
   return parsePresetGrindValue(raw, spec);
 }
 
-export function defaultPresetGrindValue(spec) {
-  return roundToCustomStep(spec.defaultSetting, presetProfileFromSpec(spec));
+export function defaultPresetGrindValue(spec, settings = null) {
+  const profile = presetProfileFromSpec(spec);
+  if (spec.zeroStartOffset != null) {
+    const zero = getPresetZeroOffset(settings, spec);
+    const absolute = (zero ?? 0) + spec.zeroStartOffset;
+    return clampPresetGrind(absolute, spec);
+  }
+  return roundToCustomStep(spec.defaultSetting, profile);
+}
+
+/**
+ * When burr-touch zero is set, replace the implicit-zero default dial with zero+N.
+ * @returns {number|null} resolved dial, or null if not a zero-offset preset / has shots
+ */
+export function resolveEffectiveZeroOffsetPresetDial(
+  customGrindValue,
+  spec,
+  settings,
+  hasBeanShotsForGrinder = false
+) {
+  if (!spec?.zeroStartOffset || hasBeanShotsForGrinder) return null;
+  const defaultVal = defaultPresetGrindValue(spec, settings);
+  const parsed = parsePresetGrindValue(customGrindValue, spec);
+  if (parsed === null || customGrindValue === null || customGrindValue === '') {
+    return defaultVal;
+  }
+  const implicitZeroDefault = defaultPresetGrindValue(spec, null);
+  if (getPresetZeroOffset(settings, spec) !== null && parsed === implicitZeroDefault) {
+    return defaultVal;
+  }
+  return parsed;
 }

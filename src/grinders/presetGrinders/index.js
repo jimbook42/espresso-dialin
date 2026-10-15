@@ -17,6 +17,12 @@ export {
   EUREKA_ZERO_65_AP_GRINDER_ID,
   EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
   ZERNO_Z1_GRINDER_ID,
+  BARISTA_EXPRESS_GRINDER_ID,
+  DF64_GEN2_GRINDER_ID,
+  DF54_GRINDER_ID,
+  TIMEMORE_SCULPTOR_064S_GRINDER_ID,
+  HELDBACK_ESTIMATED_PRESET_IDS,
+  isHeldbackEstimatedPresetId,
 } from './catalog.js';
 
 const definitions = PRESET_GRINDER_SPECS.map((spec) => buildPresetGrinderDefinition(spec));

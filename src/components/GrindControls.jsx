@@ -17,6 +17,8 @@ import {
   formatCustomGrindDisplay,
   parseCustomGrindValue,
 } from '../grinders/customGrinder.js';
+import { getPresetGrinderSpec } from '../grinders/presetGrinders/catalog.js';
+import { formatPresetGrindDisplay } from '../grinders/presetGrinders/dial.js';
 import {
   adjustNicheZero,
   formatNicheZeroSetting,
@@ -262,12 +264,18 @@ export function GrinderGrindControls({
 }) {
   if (isPresetGrinderModel(grinderModel) || isCustomGrinderModel(grinderModel, settings)) {
     const def = getGrinderDefinitionById(grinderModel, settings);
+    const presetSpec = isPresetGrinderModel(grinderModel) ? getPresetGrinderSpec(grinderModel) : null;
+    const formatDisplay =
+      presetSpec
+        ? (value) => formatPresetGrindDisplay(value, presetSpec, settings)
+        : null;
     return (
       <CustomGrindControl
         setting={customGrindValue}
         profile={def.customProfile}
         label={def.dialFieldLabel}
         onChange={onCustomGrindChange}
+        formatDisplay={formatDisplay}
         ui={ui}
       />
     );
@@ -405,9 +413,11 @@ export function SunbeamGrindControl({ setting, onChange, ui }) {
   );
 }
 
-export function CustomGrindControl({ setting, profile, label, onChange, ui }) {
+export function CustomGrindControl({ setting, profile, label, onChange, formatDisplay = null, ui }) {
   const parsed = parseCustomGrindValue(setting, profile);
-  const display = formatCustomGrindDisplay(parsed ?? setting, profile);
+  const display =
+    (formatDisplay && (formatDisplay(parsed ?? setting) || formatDisplay(setting)))
+    || formatCustomGrindDisplay(parsed ?? setting, profile);
   const maxIndex = customDialMaxIndex(profile);
   const valueIndex = customDialValueIndex(parsed ?? setting, profile);
 
