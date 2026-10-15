@@ -74,6 +74,10 @@ export function resolveShotWeightReadout({
       : liveWeightG;
     return { visible: true, grams, mode: 'settling' };
   }
+  // Idle with primed triggers (post-shot cup weight, etc.) — never show stale/settling styling.
+  if (!timerRunning && weightTriggersPrimed) {
+    return { visible: false, grams: 0, mode: 'hidden' };
+  }
   if (!timerRunning && !weightTriggersPrimed) {
     return { visible: false, grams: 0, mode: 'hidden' };
   }

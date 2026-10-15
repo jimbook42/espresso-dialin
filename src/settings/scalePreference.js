@@ -33,3 +33,33 @@ export function smartScaleChoiceSummary(settings) {
   const device = SCALE_DEVICES.find((d) => d.id === id);
   return device?.label || 'Manual';
 }
+
+const SIM_SCALE_DEVICE_ID = 'timemore-dot';
+
+/**
+ * Settings picker value: URL simulator overrides persisted manual while connected.
+ * @param {object} [settings]
+ * @param {{ devUrlSimActive?: boolean, scaleConnected?: boolean }} [context]
+ */
+export function resolveSmartScalePickerValue(settings, context = {}) {
+  const { devUrlSimActive = false, scaleConnected = false } = context;
+  if (devUrlSimActive && scaleConnected) return SIM_SCALE_DEVICE_ID;
+  return normalizeSmartScaleDeviceId(settings?.smartScaleDeviceId);
+}
+
+/**
+ * @param {object} [settings]
+ * @param {{ devUrlSimActive?: boolean, scaleConnected?: boolean }} [context]
+ */
+export function smartScaleActiveSummary(settings, context = {}) {
+  const { devUrlSimActive = false, scaleConnected = false } = context;
+  if (devUrlSimActive && scaleConnected) {
+    const device = SCALE_DEVICES.find((d) => d.id === SIM_SCALE_DEVICE_ID);
+    return `Simulated scale (${device?.label || 'Timemore'})`;
+  }
+  const summary = smartScaleChoiceSummary(settings);
+  if (scaleConnected && isSmartScaleIntegrationActive(settings)) {
+    return `${summary} (connected)`;
+  }
+  return summary;
+}

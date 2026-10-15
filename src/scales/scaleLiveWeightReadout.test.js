@@ -98,5 +98,18 @@ export function runScaleLiveWeightReadoutTests() {
     'idle cup weight after shot must not show stale settling readout'
   );
 
+  assert.equal(
+    resolveShotWeightReadout({
+      timerRunning: false,
+      weightTriggersPrimed: true,
+      liveRelativeWeightG: 8.3,
+      liveWeightG: 42.5,
+      isConnected: true,
+      yieldSettleActive: false,
+    }).visible,
+    false,
+    'idle after logged shot with primed triggers must not show stale settling readout'
+  );
+
   console.log('Scale live weight readout tests passed.');
 }

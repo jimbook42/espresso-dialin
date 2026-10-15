@@ -95,7 +95,8 @@ import {
   listSmartScalePickerOptions,
   normalizeSmartScaleDeviceId,
   SMART_SCALE_MANUAL_ID,
-  smartScaleChoiceSummary,
+  resolveSmartScalePickerValue,
+  smartScaleActiveSummary,
 } from './settings/scalePreference.js';
 import {
   capturePendingGrindState,
@@ -3679,7 +3680,10 @@ export default function App() {
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-2`}>
                   <label className={`block ${ui.fieldLabel}`}>Smart scale</label>
                   <select
-                    value={normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId)}
+                    value={resolveSmartScalePickerValue(settingsSetting, {
+                      devUrlSimActive: devUrlSimScaleActive,
+                      scaleConnected: timemoreScale.isConnected,
+                    })}
                     onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
                     className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
                   >
@@ -3688,7 +3692,10 @@ export default function App() {
                     ))}
                   </select>
                   <p className={`text-[10px] ${ui.muted}`}>
-                    Active: {smartScaleChoiceSummary(settingsSetting)}. Manual shot logging always works.
+                    Active: {smartScaleActiveSummary(settingsSetting, {
+                      devUrlSimActive: devUrlSimScaleActive,
+                      scaleConnected: timemoreScale.isConnected,
+                    })}. Manual shot logging always works.
                   </p>
                 </div>
 
