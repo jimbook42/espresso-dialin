@@ -19,7 +19,7 @@ describe('replayGaugeSemantics', () => {
     expect(out.gaugeFound).toBe(false);
   });
 
-  it('accepts rim lock after reference', () => {
+  it('rejects guide-default centre even after reference', () => {
     const out = classifyReplayGaugeFrame({
       gauge: { cx: 203, cy: 360, radius: 113, confidence: 0.5, rawCx: 203, rawCy: 360 },
       videoWidth: w,
@@ -28,6 +28,20 @@ describe('replayGaugeSemantics', () => {
       referenceCaptured: true,
       likeness: 0.5,
     });
+    expect(out.centreFromGuide).toBe(false);
     expect(out.gaugeFound).toBe(true);
+  });
+
+  it('accepts detected rim away from guide seed', () => {
+    const out = classifyReplayGaugeFrame({
+      gauge: { cx: 240, cy: 350, radius: 55, confidence: 0.5, rawCx: 238, rawCy: 348 },
+      videoWidth: w,
+      videoHeight: h,
+      region,
+      referenceCaptured: false,
+      likeness: 0.2,
+    });
+    expect(out.gaugeFound).toBe(true);
+    expect(out.centreFromGuide).toBe(false);
   });
 });

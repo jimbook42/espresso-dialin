@@ -19,7 +19,6 @@ export function classifyReplayGaugeFrame({
     && distApplied < 8
     && (distRaw == null || distRaw < 10);
   const rimDetected = (gauge.confidence ?? 0) >= RIM_CONFIDENCE_MIN;
-  const gaugeFound = rimDetected
-    && (referenceCaptured || !centreFromGuide || (likeness ?? 0) >= NEEDLE_LIKENESS_GATE);
+  const gaugeFound = rimDetected && !centreFromGuide;
   return { gaugeFound, centreFromGuide, rimDetected };
 }

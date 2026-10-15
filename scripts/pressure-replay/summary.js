@@ -73,6 +73,22 @@ export function summarizeClipFrames(frames, clip) {
   const barStabilityStd = sampleSd(confidentBars);
   const barStabilityMaxJump = maxAbsJump(confidentBars);
 
+  const detected = frames.filter((f) => f.gaugeFound === true && finite(f.centreX) && finite(f.centreY));
+  const centreX = detected.map((f) => f.centreX);
+  const centreY = detected.map((f) => f.centreY);
+  const bars = frames.filter((f) => finite(f.bar)).map((f) => f.bar);
+  const centreRange = detected.length
+    ? {
+      minX: Math.min(...centreX),
+      maxX: Math.max(...centreX),
+      minY: Math.min(...centreY),
+      maxY: Math.max(...centreY),
+    }
+    : null;
+  const barRange = bars.length
+    ? { min: Math.min(...bars), max: Math.max(...bars) }
+    : null;
+
   const passGaugeTracked = gaugeTrackedPct >= 80;
   const passTolerance = withinTolerancePct >= 80;
   const passConfidentWrong = confidentButWrongPct <= 5;
@@ -89,6 +105,8 @@ export function summarizeClipFrames(frames, clip) {
     noReadingRatePct,
     barStabilityStdDev: barStabilityStd,
     barStabilityMaxJump,
+    centreRange,
+    barRange,
     pass: {
       gaugeTracked: passGaugeTracked,
       withinTolerance: passTolerance,
