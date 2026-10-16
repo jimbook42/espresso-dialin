@@ -34,10 +34,11 @@ import {
   createGaugeTracker,
   gaugeAllowsConfidentReading,
   gaugeAllowsReading,
+  primeReplayDiscovery,
   probeGaugeDiscoveryCandidates,
   readTrackedGauge,
 } from './gaugeTrack';
-import { warmDiscoveryWorker, whenDiscoverySettled, whenDiscoveryWarmed } from './discoveryClient.js';
+import { warmDiscoveryWorker, whenDiscoveryWarmed } from './discoveryClient.js';
 import {
   createAngleJitterTracker,
   createAngleTracker,
@@ -380,11 +381,12 @@ export function FlairPressureLab() {
       dialRegistered: gauge.dialRegistered === true,
     });
 
-    const processSample = (video, now, wallNow) => {
+    const processSample = async (video, now, wallNow, { replay = false } = {}) => {
       if (!video || video.readyState < 2) return;
       let reading;
       let processMs = null;
       try {
+        if (replay) await primeReplayDiscovery(video, trackerRef.current);
         const t0 = performance.now();
         reading = readTrackedGauge(video, canvas, null, trackerRef.current);
         processMs = performance.now() - t0;
@@ -758,11 +760,6 @@ export function FlairPressureLab() {
         now,
       );
       const pressureBar = rawBar;
-      const shotRunning = shotRunRef.current.push(rawBar);
-      const showGlareHint = glareSetupHintVisible({
-        glare: frameQuality.flags.includes('glare'),
-        shotRunning,
-      });
       const tracking = classifyTrackingStatus({
         calibrated: true,
         quality: reading.quality,
@@ -774,6 +771,11 @@ export function FlairPressureLab() {
       });
       const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
       const pressureMeasured = !predicted && !blockSample && rawBar != null && Boolean(tracked.accepted);
+      const shotRunning = shotRunRef.current.push(pressureMeasured ? rawBar : null);
+      const showGlareHint = glareSetupHintVisible({
+        glare: frameQuality.flags.includes('glare'),
+        shotRunning,
+      });
       const needleSure = (reading.quality ?? 0) >= NEEDLE_TRACK_QUALITY;
       // Half the hub samples is a tie, not a needle. A streak that only ties
       // the pivot check still gets a bar, at low confidence.
@@ -865,7 +867,7 @@ export function FlairPressureLab() {
       if (!video || video.readyState < 2) return;
       if (wallNow - last < PROCESS_INTERVAL_MS) return;
       last = wallNow;
-      processSample(video, wallNow, wallNow);
+      void processSample(video, wallNow, wallNow);
     };
 
     if (!REPLAY_BUILD) {
@@ -900,8 +902,6 @@ export function FlairPressureLab() {
           const name = String(fileIndex).padStart(4, '0');
           const img = await loadFrame(`${frameBase}${name}.png`);
           if (stopped) return;
-          await whenDiscoverySettled();
-          if (stopped) return;
           const snap = document.createElement('canvas');
           snap.width = img.naturalWidth;
           snap.height = img.naturalHeight;
@@ -909,7 +909,7 @@ export function FlairPressureLab() {
           snap.videoWidth = snap.width;
           snap.videoHeight = snap.height;
           snap.readyState = 4;
-          processSample(snap, Math.round(t * 1000), performance.now());
+          await processSample(snap, Math.round(t * 1000), performance.now(), { replay: true });
         }
         if (!stopped) window.__pressureReplayDrained = true;
       } catch (err) {

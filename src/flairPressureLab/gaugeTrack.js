@@ -16,7 +16,7 @@ import {
   FLAIR_CANONICAL_FACE_PROFILE,
 } from './canonicalDial.js';
 import { getOpenCvSync } from './opencvRuntime.js';
-import { requestVideoDiscovery, takeDiscoveryResult } from './discoveryClient.js';
+import { requestVideoDiscovery, takeDiscoveryResult, whenDiscoverySettled } from './discoveryClient.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
 
@@ -1323,20 +1323,22 @@ export function createGaugeTracker() {
       pose = { ...pose, cx, cy, radius };
       baseRadius = radius;
     },
-    needsRediscovery() {
-      if (!pose) {
-        const due = idleFrames % LOST_DISCOVERY_STRIDE === 0;
-      idleFrames += 1;
-      return due;
-    }
-    if (pendingJump) return true;
+    discoveryDueNow() {
+      if (!pose) return idleFrames % LOST_DISCOVERY_STRIDE === 0;
+      if (pendingJump) return true;
       if (lastFaceScore != null && lastFaceScore < DIAL_FACE_VERIFY_MIN) {
-        const due = idleFrames % LOST_DISCOVERY_STRIDE === 0;
-        idleFrames += 1;
-        return due;
+        return idleFrames % LOST_DISCOVERY_STRIDE === 0;
       }
-      idleFrames = 0;
       return framesSinceDiscovery >= REDISCOVER_EVERY_FRAMES;
+    },
+    needsRediscovery() {
+      const due = this.discoveryDueNow();
+      if (!pose) idleFrames += 1;
+      else if (pendingJump) {
+        // A jump is due immediately and does not advance the idle counter.
+      } else if (lastFaceScore != null && lastFaceScore < DIAL_FACE_VERIFY_MIN) idleFrames += 1;
+      else idleFrames = 0;
+      return due;
     },
     verificationState() {
       return {
@@ -2318,6 +2320,23 @@ function trackSettings(video) {
   }
 }
 
+let replayFrameSearched = false;
+
+/**
+ * Replay posts this frame to the worker and waits before the timed read.
+ * The circle is applied to the same frame. The wait is not part of processMs.
+ */
+export async function primeReplayDiscovery(video, tracker) {
+  replayFrameSearched = false;
+  if (!video?.videoWidth || !video?.videoHeight || !tracker?.discoveryDueNow) return;
+  const havePose = Boolean(tracker.getPose());
+  const due = !tracker.getScaleLock?.() && tracker.discoveryDueNow();
+  if ((!havePose || due) && requestVideoDiscovery(video)) {
+    await whenDiscoverySettled();
+    replayFrameSearched = true;
+  }
+}
+
 /** Crop around the tracked gauge, update its pose, then read the needle from that pose. */
 /**
  * Full-frame search stays off the thread that reads the needle.
@@ -2353,11 +2372,12 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   // A locked scale is the registration. Another full-frame search is what
   // made a rotating clip depend on worker timing, and it is the slow tail.
   const discoveryDue = !tracker.getScaleLock?.() && tracker.needsRediscovery();
-  // Discovery runs in the worker, including replay. The replay loop waits
-  // until the previous search has finished before the next sample, so the
-  // result always lands on the following frame and two runs match.
+  // Replay already waited for this frame's search. A null result is not a
+  // reason to run the same search again on the main thread.
+  const searched = replayFrameSearched;
+  replayFrameSearched = false;
   const asyncFound = takeDiscoveryResult();
-  const wantSearch = !asyncFound && (!havePose || discoveryDue);
+  const wantSearch = !searched && !asyncFound && (!havePose || discoveryDue);
   const handedToWorker = wantSearch && requestVideoDiscovery(video);
   const discoveryAction = mainThreadDiscoveryAction({
     havePose,
