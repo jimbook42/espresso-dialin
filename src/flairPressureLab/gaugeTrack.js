@@ -2335,6 +2335,14 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       relativeAngleDeg: heldReg.ok
         ? wrap360((cached.angleDeg ?? 0) - heldReg.rotationDeg)
         : cached.relativeAngleDeg,
+      frameQuality: assessFrameQuality(
+        tracked.image.data,
+        tracked.image.width,
+        tracked.image.height,
+        colorCx,
+        colorCy,
+        colorR,
+      ),
       videoWidth,
       videoHeight,
       gauge: {

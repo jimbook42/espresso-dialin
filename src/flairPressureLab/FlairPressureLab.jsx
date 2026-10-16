@@ -558,6 +558,7 @@ export function FlairPressureLab() {
           });
           if (REPLAY_BUILD) {
             const labels = replayGaugeLabels(gauge);
+            const qualityFlags = frameQualityForAnchor.ok ? '' : `|${frameQualityForAnchor.flags.join('|')}`;
             pushReplayFrame({
               gaugeFound: labels.gaugeFound,
               centreFromGuide: labels.centreFromGuide,
@@ -569,7 +570,7 @@ export function FlairPressureLab() {
               bar: null,
               confidence: gauge.confidence,
               processMs,
-              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}`,
+              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}`,
               tracking: 'CALIBRATING',
             }, now);
           }

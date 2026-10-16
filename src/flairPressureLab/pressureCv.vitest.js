@@ -27,7 +27,13 @@ import {
   scoreRim,
 } from './gaugeTrack.js';
 import { prepareEdges } from './framePrep.js';
-import { assessFrameQuality, BLUR_VARIANCE_MIN, createReadingBridge, laplacianVariance } from './frameQuality.js';
+import {
+  assessFrameQuality,
+  BLUR_SHARPNESS_MIN,
+  GLARE_FRACTION_MAX,
+  createReadingBridge,
+  laplacianVariance,
+} from './frameQuality.js';
 import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { createRestAnchor } from './restAnchor.js';
@@ -720,9 +726,83 @@ describe('pressure CV units', () => {
     }
     const sharpQ = assessFrameQuality(sharp, 90, 90, 45, 45, 30);
     const softQ = assessFrameQuality(soft, 90, 90, 45, 45, 30);
-    expect(sharpQ.blurVar).toBeGreaterThan(BLUR_VARIANCE_MIN);
+    expect(sharpQ.sharpness).toBeGreaterThan(BLUR_SHARPNESS_MIN);
     expect(sharpQ.flags).not.toContain('blur');
     expect(softQ.flags).toContain('blur');
+  });
+
+  function paintStripes(size, radius, lo, hi, smooth) {
+    const data = new Uint8ClampedArray(size * size * 4);
+    const cx = (size - 1) / 2;
+    const cy = cx;
+    const tone = (x) => {
+      if (!smooth) return (x % 2) === 0 ? hi : lo;
+      return lo + ((hi - lo) * x) / Math.max(1, size - 1);
+    };
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const o = (y * size + x) * 4;
+        const v = tone(x);
+        data[o] = data[o + 1] = data[o + 2] = v;
+        data[o + 3] = 255;
+      }
+    }
+    return { data, cx, cy, radius };
+  }
+
+  it('flags blur from contrast-normalised sharpness at two sizes and two gains', () => {
+    const sharpVals = [];
+    for (const size of [80, 160]) {
+      for (const gain of [1, 0.4]) {
+        const lo = 30 * gain;
+        const hi = 180 * gain;
+        const crisp = paintStripes(size, size * 0.34, lo, hi, false);
+        const soft = paintStripes(size, size * 0.34, lo, hi, true);
+        const crispQ = assessFrameQuality(crisp.data, size, size, crisp.cx, crisp.cy, crisp.radius);
+        const softQ = assessFrameQuality(soft.data, size, size, soft.cx, soft.cy, soft.radius);
+        expect(crispQ.flags, `sharp ${size} g${gain}`).not.toContain('blur');
+        expect(softQ.flags, `soft ${size} g${gain}`).toContain('blur');
+        expect(crispQ.sharpness).toBeGreaterThan(BLUR_SHARPNESS_MIN);
+        expect(softQ.sharpness).toBeLessThan(BLUR_SHARPNESS_MIN);
+        sharpVals.push(crispQ.sharpness);
+      }
+    }
+    const low = Math.min(...sharpVals);
+    const high = Math.max(...sharpVals);
+    expect(high / low).toBeLessThan(1.25);
+  });
+
+  it('flags a specular patch on the face and ignores a single bright pixel', () => {
+    for (const radius of [36, 72]) {
+      const size = radius * 3;
+      const cx = size / 2;
+      const cy = size / 2;
+      const data = new Uint8ClampedArray(size * size * 4);
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = data[i + 1] = data[i + 2] = 70;
+        data[i + 3] = 255;
+      }
+      const speck = assessFrameQuality(data, size, size, cx, cy, radius);
+      const sx = Math.round(cx + radius * 0.2);
+      const sy = Math.round(cy);
+      const o = (sy * size + sx) * 4;
+      data[o] = data[o + 1] = data[o + 2] = 255;
+      const one = assessFrameQuality(data, size, size, cx, cy, radius);
+      const patchR = Math.max(3, radius * 0.12);
+      for (let y = 0; y < size; y += 1) {
+        for (let x = 0; x < size; x += 1) {
+          if (Math.hypot(x - cx, y - cy) > patchR) continue;
+          const p = (y * size + x) * 4;
+          data[p] = data[p + 1] = data[p + 2] = 255;
+        }
+      }
+      const patch = assessFrameQuality(data, size, size, cx, cy, radius);
+      expect(speck.flags).not.toContain('glare');
+      expect(one.glare).toBeLessThanOrEqual(GLARE_FRACTION_MAX);
+      expect(one.flags).not.toContain('glare');
+      expect(patch.flags).toContain('glare');
+      expect(patch.glare).toBeGreaterThan(GLARE_FRACTION_MAX);
+    }
   });
 
   it('scores a circular rim', () => {

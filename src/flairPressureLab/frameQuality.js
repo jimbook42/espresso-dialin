@@ -1,17 +1,39 @@
 import { grayscale } from './framePrep.js';
 
-/** Laplacian variance on a dial crop — low ⇒ motion blur / defocus. */
+/**
+ * Face interior used for blur and glare.
+ * The bezel edge is sharp even when the printed face is not, so the window
+ * stays inside the face. The fraction is of the detected radius, so a larger
+ * crop does not change the test.
+ */
+const FACE_FRACTION = 0.55;
+
+function faceBounds(width, height, cx, cy, radius) {
+  const limit = Math.max(6, radius * FACE_FRACTION);
+  return {
+    limit,
+    x0: Math.max(1, Math.floor(cx - limit)),
+    y0: Math.max(1, Math.floor(cy - limit)),
+    x1: Math.min(width - 2, Math.ceil(cx + limit)),
+    y1: Math.min(height - 2, Math.ceil(cy + limit)),
+  };
+}
+
+function insideFace(x, y, cx, cy, limit) {
+  const dx = x - cx;
+  const dy = y - cy;
+  return dx * dx + dy * dy <= limit * limit;
+}
+
+/** Laplacian variance on the face interior. */
 export function laplacianVariance(gray, width, height, cx, cy, radius) {
-  const r = Math.max(8, radius * 0.55);
-  const x0 = Math.max(1, Math.floor(cx - r));
-  const y0 = Math.max(1, Math.floor(cy - r));
-  const x1 = Math.min(width - 2, Math.ceil(cx + r));
-  const y1 = Math.min(height - 2, Math.ceil(cy + r));
+  const { limit, x0, y0, x1, y1 } = faceBounds(width, height, cx, cy, radius);
   let sum = 0;
   let sumSq = 0;
   let n = 0;
   for (let y = y0; y <= y1; y += 1) {
     for (let x = x0; x <= x1; x += 1) {
+      if (!insideFace(x, y, cx, cy, limit)) continue;
       const i = y * width + x;
       const lap = (
         -4 * gray[i]
@@ -28,44 +50,97 @@ export function laplacianVariance(gray, width, height, cx, cy, radius) {
   return sumSq / n - mean * mean;
 }
 
-/** Fraction of near-saturated samples on the dial annulus. */
-export function glareFraction(data, width, height, cx, cy, radius) {
-  const inner = radius * 0.35;
-  const outer = radius * 0.95;
-  let hot = 0;
+/** Standard deviation of luma on the same face interior. */
+export function faceContrast(gray, width, height, cx, cy, radius) {
+  const { limit, x0, y0, x1, y1 } = faceBounds(width, height, cx, cy, radius);
+  let sum = 0;
+  let sumSq = 0;
   let n = 0;
-  for (let a = 0; a < 48; a += 1) {
-    const ang = (a / 48) * Math.PI * 2;
-    const cos = Math.cos(ang);
-    const sin = Math.sin(ang);
-    for (let r = inner; r <= outer; r += 2) {
-      const x = Math.round(cx + r * cos);
-      const y = Math.round(cy + r * sin);
-      if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      const o = (y * width + x) * 4;
-      const lum = data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      if (!insideFace(x, y, cx, cy, limit)) continue;
+      const value = gray[y * width + x];
+      sum += value;
+      sumSq += value * value;
       n += 1;
-      if (lum >= 248) hot += 1;
     }
   }
-  return n ? hot / n : 0;
+  if (n < 4) return 0;
+  const mean = sum / n;
+  return Math.sqrt(Math.max(0, sumSq / n - mean * mean));
 }
 
-/** A focused face on the full-resolution crop clears this. A defocused face does not. */
-export const BLUR_VARIANCE_MIN = 60;
-export const GLARE_FRACTION_MAX = 0.22;
+/**
+ * Laplacian variance divided by local contrast squared.
+ * A gain change scales both and leaves this number alone.
+ */
+export function normalizedSharpness(gray, width, height, cx, cy, radius) {
+  const contrast = faceContrast(gray, width, height, cx, cy, radius);
+  if (contrast < 1) return 0;
+  const lap = laplacianVariance(gray, width, height, cx, cy, radius);
+  return lap / (contrast * contrast);
+}
+
+/**
+ * Share of the face that is sensor-saturated or a specular outlier.
+ * The outlier test uses the dimmer bulk of the face, so a bright spot does
+ * not raise the bar it has to clear.
+ */
+export function glareFraction(data, width, height, cx, cy, radius) {
+  const { limit, x0, y0, x1, y1 } = faceBounds(width, height, cx, cy, radius);
+  const lumas = [];
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      if (!insideFace(x, y, cx, cy, limit)) continue;
+      const o = (y * width + x) * 4;
+      lumas.push(data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114);
+    }
+  }
+  const n = lumas.length;
+  if (n < 4) return 0;
+  const sorted = lumas.slice().sort((a, b) => a - b);
+  const coreCount = Math.max(4, Math.floor(n * 0.9));
+  const core = sorted.slice(0, coreCount);
+  const median = core[Math.floor(core.length / 2)];
+  let acc = 0;
+  for (let i = 0; i < core.length; i += 1) {
+    const d = core[i] - median;
+    acc += d * d;
+  }
+  const std = Math.sqrt(acc / core.length);
+  let hot = 0;
+  for (let i = 0; i < n; i += 1) {
+    const lum = lumas[i];
+    const saturated = lum >= 245;
+    const specular = lum > median + 3 * std && lum > median * 2.2;
+    if (saturated || specular) hot += 1;
+  }
+  return hot / n;
+}
+
+/**
+ * A focused printed face clears this. A defocused face, whose edges have
+ * been averaged away, stays below it. The number is contrast-normalised,
+ * so it is not a raw grey-level variance.
+ */
+export const BLUR_SHARPNESS_MIN = 0.85;
+/** A small specular patch on the face. A single pixel does not trip it. */
+export const GLARE_FRACTION_MAX = 0.008;
 
 export function assessFrameQuality(imageData, width, height, cx, cy, radius) {
   const gray = grayscale(imageData, width, height);
   const blurVar = laplacianVariance(gray, width, height, cx, cy, radius);
+  const sharpness = normalizedSharpness(gray, width, height, cx, cy, radius);
   const glare = glareFraction(imageData, width, height, cx, cy, radius);
-  const blurOk = blurVar >= BLUR_VARIANCE_MIN;
+  const blurOk = sharpness >= BLUR_SHARPNESS_MIN;
   const glareOk = glare <= GLARE_FRACTION_MAX;
   const ok = blurOk && glareOk;
   const flags = [];
   if (!blurOk) flags.push('blur');
   if (!glareOk) flags.push('glare');
-  return { ok, blurVar, glare, flags };
+  return {
+    ok, blurVar, sharpness, glare, flags,
+  };
 }
 
 /**
