@@ -500,7 +500,8 @@ export function scoreDiscoveryCandidate({
   const tickEnergy = inRange && rim > 0
     ? scoreTickRingEnergy(edges, width, height, cx, cy, faceRadius)
     : 0;
-  const face = Math.max(faceRaw, Math.min(0.42, tickEnergy * 0.14));
+  const tickBoost = Math.min(1, faceRadius / (scaledMin * 0.08));
+  const face = Math.max(faceRaw, Math.min(0.42, tickEnergy * 0.14 * tickBoost));
   const canonical = inRange && rim > 0
     ? scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg)
     : 0;
@@ -597,7 +598,7 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
       const r = circles.floatAt(0, i * 3 + 2);
       const variants = [r / 1.02, (r / 1.02) * 0.96, (r / 1.02) * 1.04];
       for (const faceRadius of variants) {
-        if (faceRadius < 6) continue;
+        if (faceRadius < scaledMin * 0.06) continue;
         const rimRadius = faceRadius * 1.02;
         if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) continue;
         const scored = scoreDiscoveryCandidate({
@@ -680,8 +681,9 @@ export function probeGaugeDiscoveryCandidates(image, cv = null) {
   };
 }
 
-function discoveryResultFromBest(best, scale) {
+function discoveryResultFromBest(best, scale, minDim) {
   if (!best || best.score <= 0) return null;
+  if (best.radius / scale < minDim * 0.055) return null;
   const rimR = best.radius * 1.02;
   const off = offsetScore(best.edges, best.sw, best.sh, best.cx, best.cy, rimR);
   const confidence = best.rim > 1e-3 && off != null
@@ -708,8 +710,9 @@ function discoveryResultFromBest(best, scale) {
 
 function discoverGaugeWithOpenCv(image, cv) {
   if (!image?.width || !image?.data || !cv?.Mat) return null;
+  const minDim = Math.min(image.width, image.height);
   const { chosen } = probeGaugeDiscoveryCandidates(image, cv);
-  if (!chosen) return null;
+  if (!chosen || chosen.radius < minDim * 0.055) return null;
   return {
     ok: chosen.ok === true,
     confidence: chosen.confidence ?? 0,
@@ -758,7 +761,7 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   const coarseStep = Math.max(4, Math.round(scaledMin / 24));
   let best = { score: -1, rim: 0, face: 0, canonical: 0, cx: 0, cy: 0, radius: 0, edges, sw, sh };
   const consider = (cx, cy, faceRadius) => {
-    if (faceRadius < 8) return;
+    if (faceRadius < scaledMin * 0.06) return;
     const rimRadius = faceRadius * 1.02;
     if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) return;
     const scored = scoreDiscoveryCandidate({
@@ -813,7 +816,7 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
       consider(fine.cx + dx, fine.cy + dy, fine.radius * 1.03);
     }
   }
-  return discoveryResultFromBest(best, scale);
+  return discoveryResultFromBest(best, scale, minDim);
 }
 
 export function createGaugeTracker() {
