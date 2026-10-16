@@ -27,17 +27,24 @@ export function minReadableDialRadiusPx() {
 }
 
 /**
- * Upscale for a crop whose dial is below the readable radius.
- * A dial with at least half a sample per pixel stays at its native scale.
- * A milder resample smears the ridge and the pointer score falls.
- * At half the readable radius the crop is doubled, and never past 4×.
+ * Scale that brings a crop to the radius the sampler can actually read.
+ * An unlocked circle with at least half a sample per pixel stays native:
+ * a mild resample smears a ridge the tracker has not accepted.
+ * A locked face under the readable radius, but still large enough to be a
+ * dial, is enlarged up to that radius and never past 4×.
+ * A face that is already large enough stays at its native scale.
  */
-export function needleZoomForRadius(radiusPx) {
+export function needleZoomForRadius(radiusPx, { locked = false } = {}) {
   if (!(radiusPx > 0)) return 1;
-  const factor = minReadableDialRadiusPx() / radiusPx;
-  if (factor < 2) return 1;
+  const need = minReadableDialRadiusPx();
+  const factor = need / radiusPx;
+  if (factor <= 1) return 1;
+  if (!locked && factor < 2) return 1;
+  // Below this the ridge is a speck. Resampling it does not recover a pointer.
+  if (locked && factor >= 1.45) return 1;
   return Math.min(4, factor);
 }
+
 /**
  * Share of the needle window that sits against the hub.
  * The window already starts outside the pivot (TIP_INNER_RATIO). A pointer
@@ -107,14 +114,18 @@ function twoSidedContrast(left, right, center) {
  * the ridge, and a wider offset is down-weighted.
  */
 function lateralProbes(span, stepDeg = ANGLE_STEP) {
-  const needlePx = Math.min(4, Math.max(2, Math.round(span / 18)));
+  const needlePx = Math.min(4, Math.max(1, Math.round(span / 18)));
   const radiusOverSpan = OUTER_RADIUS_RATIO / (OUTER_RADIUS_RATIO - TIP_INNER_RATIO);
   const halfStep = Math.sin((stepDeg * Math.PI) / 360);
   const missPx = Math.max(1, Math.round(span * radiusOverSpan * halfStep));
-  const comfortable = needlePx + missPx;
+  const comfortable = Math.max(needlePx, 2) + missPx;
   const far = Math.min(10, comfortable + 4);
+  // A face under about 48px has a pointer thinner than the old 2px probe.
+  // That probe steps over the ridge and the ray is refused. A wider face
+  // keeps the 2px start so a dry dial is scored the same way.
+  const minOffset = span < 30 ? 1 : 2;
   const offsets = [];
-  for (let offset = 2; offset <= far; offset += 1) offsets.push(offset);
+  for (let offset = minOffset; offset <= far; offset += 1) offsets.push(offset);
   return { offsets, comfortable };
 }
 
@@ -488,6 +499,8 @@ export function hubConnection(raw, width, height, cx, cy, angleDeg, innerR) {
   const r0 = faceR * HUB_INNER_FRACTION;
   const r1 = innerR;
   if (!(r1 > r0 + 1)) return 1;
+  const span = faceR * (OUTER_RADIUS_RATIO - TIP_INNER_RATIO);
+  const offsets = span < 30 ? [1, 2] : [2, 3];
   const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
@@ -501,7 +514,7 @@ export function hubConnection(raw, width, height, cx, cy, angleDeg, innerR) {
     const center = sample(raw, width, height, x, y);
     if (center == null) continue;
     let contrast = 0;
-    for (const offset of [2, 3]) {
+    for (const offset of offsets) {
       const left = sample(raw, width, height, x - sin * offset, y + cos * offset);
       const right = sample(raw, width, height, x + sin * offset, y - cos * offset);
       if (left == null || right == null) continue;

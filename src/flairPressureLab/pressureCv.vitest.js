@@ -24,6 +24,7 @@ import {
   REGISTRATION_PERIOD_MARGIN_MIN,
   mapCanvasDiscoveryToVideo,
   selectDiscoveryCandidate,
+  chooseReadableDiscovery,
   matchGaugeRotation,
   registerDialRotationFromProfile,
   scoreDialFaceInterior,
@@ -426,6 +427,32 @@ describe('pressure CV units', () => {
     expect(selectDiscoveryCandidate([strong])).toBeNull();
   });
 
+  it('replaces a coarse circle that fails the template on the original pixels', () => {
+    const hotspot = { cx: 40, cy: 50, radius: 30, rank: 20 };
+    const face = { cx: 90, cy: 20, radius: 48, rank: 14 };
+    const kept = chooseReadableDiscovery(hotspot, [
+      { candidate: hotspot, nativeOk: true, sharpness: 0.4, canonical: 0.3 },
+      { candidate: face, nativeOk: true, sharpness: 2, canonical: 0.4 },
+    ]);
+    expect(kept).toBe(hotspot);
+    const replaced = chooseReadableDiscovery(hotspot, [
+      { candidate: hotspot, nativeOk: false, sharpness: 0.4, canonical: 0.1 },
+      { candidate: face, nativeOk: true, sharpness: 1.4, canonical: 0.31 },
+      { candidate: { cx: 10, cy: 10, radius: 80 }, nativeOk: true, sharpness: 0.2, canonical: 0.5 },
+    ]);
+    expect(replaced).toBe(face);
+    expect(chooseReadableDiscovery(hotspot, [
+      { candidate: hotspot, nativeOk: false, sharpness: 0.2, canonical: 0.1 },
+    ])).toBe(hotspot);
+    expect(chooseReadableDiscovery(hotspot, [
+      { candidate: hotspot, nativeOk: true, blurry: true, sharpness: 0.4, canonical: 0.3 },
+    ])).toBe(hotspot);
+    expect(chooseReadableDiscovery(hotspot, [
+      { candidate: hotspot, nativeOk: true, blurry: true, sharpness: 0.4, canonical: 0.3 },
+      { candidate: face, nativeOk: true, blurry: false, sharpness: 1.6, canonical: 0.32 },
+    ])).toBe(face);
+  });
+
   it('searches a finer scale for a dial that is small on the coarse frame', () => {
     expect(TICK_READABLE_RADIUS_PX).toBeGreaterThan(16);
     const dry = discoveryOutputSizes(406);
@@ -554,6 +581,11 @@ describe('pressure CV units', () => {
     expect(needleZoomForRadius(minR)).toBe(1);
     expect(needleZoomForRadius(minR * 0.66)).toBe(1);
     expect(needleZoomForRadius(minR * 0.5)).toBeGreaterThanOrEqual(2);
+    expect(needleZoomForRadius(minR * 0.87, { locked: true })).toBeGreaterThan(1);
+    expect(needleZoomForRadius(minR * 0.87, { locked: true })).toBeLessThan(2);
+    expect(needleZoomForRadius(minR * 0.66, { locked: true })).toBe(1);
+    expect(needleZoomForRadius(minR * 1.5, { locked: true })).toBe(1);
+    expect(needleZoomForRadius(minR * 1.1, { locked: true })).toBe(1);
     expect(MOVE_CLOSER_HINT).toBe('Move closer — gauge too small');
     expect(gaugeTooSmallForNeedle(minR - 1, minR)).toBe(false);
     expect(gaugeTooSmallForNeedle(minR - 2, minR)).toBe(true);
