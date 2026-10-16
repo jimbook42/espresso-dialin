@@ -9,11 +9,20 @@ let inflight = false;
 let latest = null;
 let broken = false;
 let warmPromise = null;
+let inflightPromise = Promise.resolve();
+let settleResolve = null;
 const warmWaiters = [];
 
-/** Replay must not apply a discovery bitmap to a later frame. */
-export function replayDiscoveryIsSync() {
-  return import.meta.env?.VITE_PRESSURE_REPLAY === 'true';
+function finishInflight() {
+  inflight = false;
+  const resolve = settleResolve;
+  settleResolve = null;
+  if (resolve) resolve();
+}
+
+/** Resolves when the worker is not holding a frame. Replay awaits this between samples. */
+export function whenDiscoverySettled() {
+  return inflightPromise;
 }
 
 function ensureWorker() {
@@ -25,18 +34,19 @@ function ensureWorker() {
       waiters.forEach((resolve) => resolve(true));
       return;
     }
-    inflight = false;
     if (event.data?.failed) {
       broken = true;
       latest = null;
       console.error('discovery worker', event.data.message || 'failed');
+      finishInflight();
       return;
     }
     latest = event.data?.found ?? null;
+    finishInflight();
   };
   worker.onerror = () => {
-    inflight = false;
     latest = null;
+    finishInflight();
   };
   return worker;
 }
@@ -85,10 +95,14 @@ export function requestVideoDiscovery(video) {
   const width = video.videoWidth;
   const height = video.videoHeight;
   inflight = true;
+  inflightPromise = new Promise((resolve) => {
+    settleResolve = resolve;
+  });
   createImageBitmap(video).then((bitmap) => {
     ensureWorker().postMessage({ bitmap, width, height }, [bitmap]);
   }).catch(() => {
-    inflight = false;
+    latest = null;
+    finishInflight();
   });
   return true;
 }

@@ -33,11 +33,14 @@ import {
   assessFrameQuality,
   BLUR_SHARPNESS_MIN,
   GLARE_FRACTION_MAX,
+  GLARE_SETUP_HINT,
   createReadingBridge,
+  createShotRun,
+  glareSetupHintVisible,
   laplacianVariance,
 } from './frameQuality.js';
-import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
-import { createAngleTracker, createNeedleKalman } from './smoothPressure.js';
+import { angleToBar, wrap360, wrapDelta, EXTRACTION_START_BAR } from './gaugeConfig.js';
+import { createAngleTracker, createNeedleKalman, NEEDLE_COAST_MAX_MS } from './smoothPressure.js';
 import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { confidentAngleWindow, createRestAnchor } from './restAnchor.js';
@@ -303,6 +306,23 @@ describe('pressure CV units', () => {
     expect(held.bridged).toBe(true);
     expect(held.value).toBe(1.2);
     expect(first.qualityOk).toBe(true);
+  });
+
+  it('shows the glare setup hint only before a shot', () => {
+    expect(glareSetupHintVisible({ glare: true, shotRunning: false })).toBe(true);
+    expect(glareSetupHintVisible({ glare: true, shotRunning: true })).toBe(false);
+    expect(glareSetupHintVisible({ glare: false, shotRunning: false })).toBe(false);
+    expect(GLARE_SETUP_HINT).toBe('Glare on gauge — shift your phone a bit');
+    const shot = createShotRun();
+    expect(shot.push(0.2)).toBe(false);
+    expect(shot.push(null)).toBe(false);
+    expect(shot.push(EXTRACTION_START_BAR)).toBe(true);
+    expect(shot.push(null)).toBe(true);
+    expect(glareSetupHintVisible({ glare: true, shotRunning: shot.running() })).toBe(false);
+    expect(shot.push(0.2)).toBe(false);
+    expect(glareSetupHintVisible({ glare: true, shotRunning: shot.running() })).toBe(true);
+    shot.reset();
+    expect(shot.running()).toBe(false);
   });
 
   it('rejects a confident bar when scale registration is ambiguous', () => {
@@ -751,6 +771,13 @@ describe('pressure CV units', () => {
     const stillDown = stepScaleLock(null, { profile: farProfile, fullRegistration: null });
     expect(stillDown.mode).toBe('unlocked');
     expect(stillDown.registered).toBe(false);
+
+    const held = stepScaleLock(lock, { profile: farProfile, qualityHold: true });
+    expect(held.registered).toBe(true);
+    expect(held.mode).toBe('track');
+    expect(held.rotationDeg).toBeCloseTo(lock.rotationDeg, 5);
+    const glareAgain = stepScaleLock(held.lock, { profile: null, qualityHold: true });
+    expect(glareAgain.registered).toBe(true);
   });
 
   it('publishes a pending rest anchor and still blocks a conflict', () => {
@@ -782,6 +809,38 @@ describe('pressure CV units', () => {
     const gap = kalman.push(null, 900);
     expect(gap.gap).toBe(true);
     expect(gap.angle).toBeNull();
+  });
+
+  it('holds a hidden needle for about a second, then leaves a gap', () => {
+    expect(NEEDLE_COAST_MAX_MS).toBeGreaterThanOrEqual(1000);
+    expect(NEEDLE_COAST_MAX_MS).toBeLessThanOrEqual(1200);
+    const kalman = createNeedleKalman();
+    expect(kalman.push(10, 0, { confidence: 0.5, accept: true }).angle).toBeCloseTo(10, 5);
+    const hidden = kalman.push(80, 400, {
+      confidence: 0.02,
+      accept: false,
+      soft: true,
+      extend: false,
+    });
+    expect(hidden.gap).toBe(false);
+    expect(hidden.angle).toBeCloseTo(10, 5);
+    expect(hidden.lowConfidence).toBe(true);
+    const still = kalman.push(12, 900, {
+      confidence: 0.02,
+      accept: false,
+      soft: true,
+      extend: false,
+    });
+    expect(still.gap).toBe(false);
+    expect(Math.abs(wrapDelta(10, still.angle))).toBeLessThan(8);
+    const opened = kalman.push(12, 1100, {
+      confidence: 0.02,
+      accept: false,
+      soft: true,
+      extend: false,
+    });
+    expect(opened.gap).toBe(true);
+    expect(opened.angle).toBeNull();
   });
 
   it('picks the long pointer rather than the short tail', () => {

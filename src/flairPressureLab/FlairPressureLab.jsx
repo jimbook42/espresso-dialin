@@ -22,7 +22,12 @@ import { DiagnosticTrace } from './DiagnosticTrace';
 import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
-import { createReadingBridge } from './frameQuality.js';
+import {
+  GLARE_SETUP_HINT,
+  createReadingBridge,
+  createShotRun,
+  glareSetupHintVisible,
+} from './frameQuality.js';
 import { HUB_CONNECTION_MIN } from './needleFromFrame.js';
 import { REST_ANCHOR_MS, confidentAngleWindow, createRestAnchor, templateConflictDeg } from './restAnchor.js';
 import {
@@ -32,7 +37,7 @@ import {
   probeGaugeDiscoveryCandidates,
   readTrackedGauge,
 } from './gaugeTrack';
-import { warmDiscoveryWorker, whenDiscoveryWarmed } from './discoveryClient.js';
+import { warmDiscoveryWorker, whenDiscoverySettled, whenDiscoveryWarmed } from './discoveryClient.js';
 import {
   createAngleJitterTracker,
   createAngleTracker,
@@ -101,6 +106,7 @@ const EMPTY_LIVE = {
   likeness: null,
   referenceCaptured: false,
   offScale: false,
+  glareHint: null,
 };
 
 function exitLab() {
@@ -165,6 +171,7 @@ export function FlairPressureLab() {
   const videoSizeRef = useRef(null);
   const frameNodeRef = useRef(null);
   const qualityBridgeRef = useRef(createReadingBridge(1000));
+  const shotRunRef = useRef(createShotRun());
   const restAnchorRef = useRef(createRestAnchor());
   const agreeSamplesRef = useRef([]);
   const qualityCanvasRef = useRef(null);
@@ -253,6 +260,7 @@ export function FlairPressureLab() {
     poseAgeRef.current = 0;
     if (clearTracker) trackerRef.current.reset();
     qualityBridgeRef.current.reset();
+    shotRunRef.current.reset();
     restAnchorRef.current.reset();
     agreeSamplesRef.current = [];
     if (clearHistory) {
@@ -579,9 +587,14 @@ export function FlairPressureLab() {
             candidateJump: null,
             poseAge: poseAgeRef.current,
           });
+          const preShotGlare = glareSetupHintVisible({
+            glare: frameQualityForAnchor.flags.includes('glare'),
+            shotRunning: shotRunRef.current.running(),
+          });
           if (REPLAY_BUILD) {
             const labels = replayGaugeLabels(gauge);
             const qualityFlags = frameQualityForAnchor.ok ? '' : `|${frameQualityForAnchor.flags.join('|')}`;
+            const hintFlag = preShotGlare ? '|glare-hint' : '';
             pushReplayFrame({
               gaugeFound: labels.gaugeFound,
               centreFromGuide: labels.centreFromGuide,
@@ -594,7 +607,7 @@ export function FlairPressureLab() {
               confidence: gauge.confidence,
               processMs,
               conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
-              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}`,
+              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}`,
               tracking: 'CALIBRATING',
             }, now);
           }
@@ -606,6 +619,7 @@ export function FlairPressureLab() {
             needleDecision: 'calibrating',
             uncertainty,
             offScale: false,
+            glareHint: preShotGlare ? GLARE_SETUP_HINT : null,
           });
           return;
         }
@@ -637,6 +651,15 @@ export function FlairPressureLab() {
         && gauge.dialRegistered === true
         && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE * 0.5;
       const qualityBlocked = !frameQuality.ok;
+      const glareHidden = frameQuality.flags.includes('glare');
+      // A registered dial keeps its last bar through blur and glare even when
+      // the face score dips. A template conflict still publishes nothing.
+      const coastQuality = qualityBlocked
+        && gauge.dialRegistered === true
+        && restAnchorRef.current.status() !== 'conflict'
+        && !gauge.held
+        && !gauge.pressureHold
+        && !choice.held;
       const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || qualityBlocked
         || (!canRead && !softNeedle);
       const candidateJump = lastAngleRef.current == null || choice.angleDeg == null
@@ -698,18 +721,20 @@ export function FlairPressureLab() {
             needleDecision = 'coast';
           }
         }
-      } else if (!gauge.held && !gauge.pressureHold && !choice.held && canRead && (qualityBlocked || weak)) {
+      } else if (coastQuality || (!gauge.held && !gauge.pressureHold && !choice.held && canRead && weak)) {
         // Blur and a weak ray do not get to move the needle. A measurement
-        // that still agrees can nudge it. Anything else coasts, then gaps.
+        // that still agrees can hold the last angle. Glare does not refresh
+        // that hold: hidden for more than about a second is a gap.
         angleTrackerRef.current.push(null);
         const km = choice.angleDeg != null
           ? kalmanRef.current.push(choice.angleDeg, now, {
             confidence: reading.quality ?? 0,
             accept: false,
             soft: true,
+            extend: !glareHidden,
           })
           : kalmanRef.current.push(null, now);
-        if (applyKalmanBar(km)) {
+        if (applyKalmanBar(km) && !km.gap) {
           predicted = true;
           needleDecision = km.predicted ? 'coast' : 'soft';
         } else if (qualityBlocked) {
@@ -733,6 +758,11 @@ export function FlairPressureLab() {
         now,
       );
       const pressureBar = rawBar;
+      const shotRunning = shotRunRef.current.push(rawBar);
+      const showGlareHint = glareSetupHintVisible({
+        glare: frameQuality.flags.includes('glare'),
+        shotRunning,
+      });
       const tracking = classifyTrackingStatus({
         calibrated: true,
         quality: reading.quality,
@@ -786,6 +816,8 @@ export function FlairPressureLab() {
         if (gauge.held) flagParts.push('gauge-held');
         if (weak) flagParts.push('weak-needle');
         if (!frameQuality.ok) flagParts.push(...frameQuality.flags);
+        if (showGlareHint) flagParts.push('glare-hint');
+        if (shotRunning) flagParts.push('shot');
         pushReplayFrame({
           gaugeFound: labels.gaugeFound,
           centreFromGuide: labels.centreFromGuide,
@@ -823,6 +855,7 @@ export function FlairPressureLab() {
         uncertainty,
         offScale,
         corrected: choice.corrected,
+        glareHint: showGlareHint ? GLARE_SETUP_HINT : null,
       });
     };
 
@@ -866,6 +899,8 @@ export function FlairPressureLab() {
           const fileIndex = (index % frameCount) + 1;
           const name = String(fileIndex).padStart(4, '0');
           const img = await loadFrame(`${frameBase}${name}.png`);
+          if (stopped) return;
+          await whenDiscoverySettled();
           if (stopped) return;
           const snap = document.createElement('canvas');
           snap.width = img.naturalWidth;
@@ -997,6 +1032,11 @@ export function FlairPressureLab() {
         </div>
 
         <div className={`${ui.cardInset} rounded-2xl p-5 text-center`}>
+          {cameraLive && live.glareHint ? (
+            <p className="text-sm font-semibold text-amber-50 bg-amber-500/20 border border-amber-300/50 rounded-xl px-3 py-2 mb-3">
+              {live.glareHint}
+            </p>
+          ) : null}
           <p className={`text-[10px] uppercase tracking-widest ${ui.muted}`}>Pressure</p>
           <p className="text-5xl font-black tabular-nums text-[#e0c9a8] mt-1">
             {pressureText}

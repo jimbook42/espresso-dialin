@@ -105,6 +105,9 @@ export function summarizeClipFrames(frames, clip) {
   const flagText = (frame) => String(frame.flags || '');
   const blurPct = n ? (frames.filter((f) => flagText(f).split('|').includes('blur')).length / n) * 100 : 0;
   const glarePct = n ? (frames.filter((f) => flagText(f).split('|').includes('glare')).length / n) * 100 : 0;
+  const hasFlag = (frame, name) => flagText(frame).split('|').includes(name);
+  const glareHintPreShot = frames.filter((f) => hasFlag(f, 'glare-hint') && !hasFlag(f, 'shot')).length;
+  const glareHintDuringShot = frames.filter((f) => hasFlag(f, 'glare-hint') && hasFlag(f, 'shot')).length;
 
   let centreAtTruePct = null;
   if (clip.scoringCentre && withGauge.length) {
@@ -142,6 +145,8 @@ export function summarizeClipFrames(frames, clip) {
     conflictDegMax,
     blurPct,
     glarePct,
+    glareHintPreShot,
+    glareHintDuringShot,
     pass: {
       gaugeTracked: passGaugeTracked,
       withinTolerance: passTolerance,

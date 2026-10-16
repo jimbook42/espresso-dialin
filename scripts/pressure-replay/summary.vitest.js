@@ -56,6 +56,19 @@ describe('pressure replay summary math', () => {
     expect(summary.blurPct).toBeCloseTo(100 / 3, 5);
     expect(summary.glarePct).toBeCloseTo(100 / 3, 5);
     expect(summary.confidentButWrongPct).toBe(0);
+    expect(summary.glareHintPreShot).toBe(0);
+    expect(summary.glareHintDuringShot).toBe(0);
+  });
+
+  it('counts the glare setup hint before a shot and never during one', () => {
+    const frames = [
+      { timeS: 0, gaugeFound: true, bar: 0, tracking: 'TRACKING', confidence: 0.1, flags: 'TRACKING|glare|glare-hint' },
+      { timeS: 1, gaugeFound: true, bar: 3, tracking: 'TRACKING', confidence: 0.4, flags: 'TRACKING|glare|shot' },
+      { timeS: 2, gaugeFound: true, bar: 0, tracking: 'TRACKING', confidence: 0.2, flags: 'TRACKING|glare-hint' },
+    ];
+    const summary = summarizeClipFrames(frames, clip);
+    expect(summary.glareHintPreShot).toBe(2);
+    expect(summary.glareHintDuringShot).toBe(0);
   });
 
   it('treats two replays as the same run inside a small tolerance', () => {

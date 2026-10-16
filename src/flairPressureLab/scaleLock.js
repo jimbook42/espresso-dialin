@@ -89,7 +89,7 @@ function tracked(lock, extra = {}) {
  * @param {{ profile?: Float32Array|null, fullRegistration?: object|null|undefined }} measurement
  * `fullRegistration === undefined` means the caller has not tried a full search yet.
  */
-export function stepScaleLock(lock, { profile = null, fullRegistration } = {}) {
+export function stepScaleLock(lock, { profile = null, fullRegistration, qualityHold = false } = {}) {
   const unlocked = {
     mode: 'unlocked',
     registered: false,
@@ -99,6 +99,12 @@ export function stepScaleLock(lock, { profile = null, fullRegistration } = {}) {
     periodMargin: 0,
     lock: null,
   };
+  // Blur and glare wash the colour annulus out. Keep the last registration
+  // instead of unlocking and sending a full-frame search after the dial.
+  // A clean frame is what may move or replace the lock.
+  if (qualityHold && lock?.profile) {
+    return tracked({ ...lock, misses: lock.misses ?? 0 });
+  }
   if (lock?.profile && profile && lock.profile.length === profile.length) {
     const delta = estimateRotationDelta(lock.profile, profile);
     const step = Math.abs(delta.deltaDeg);

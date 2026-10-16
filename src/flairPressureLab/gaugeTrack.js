@@ -16,7 +16,7 @@ import {
   FLAIR_CANONICAL_FACE_PROFILE,
 } from './canonicalDial.js';
 import { getOpenCvSync } from './opencvRuntime.js';
-import { replayDiscoveryIsSync, requestVideoDiscovery, takeDiscoveryResult } from './discoveryClient.js';
+import { requestVideoDiscovery, takeDiscoveryResult } from './discoveryClient.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
 
@@ -527,13 +527,15 @@ export function shouldBridgeNeedle({
   radius = 0,
   hasBridge = false,
   discovering = false,
+  stableStride = 3,
 } = {}) {
+  const stride = stableStride > 1 ? stableStride : 3;
   return Boolean(
     reusePrior
     && hasBridge
     && !discovering
     && !held
-    && framesSinceDiscovery % 3 !== 0
+    && framesSinceDiscovery % stride !== 0
     && radius > 0
     && poseDeltaPx <= radius * 0.12
   );
@@ -1272,7 +1274,9 @@ export function createGaugeTracker() {
   const noteLockedMiss = () => {
     observed = null;
     lossStreak += 1;
-    if (lossStreak >= SEARCH_LOSS_FRAMES) {
+    // A printed-scale lock stays on the last pose through a blurry rim.
+    // Opening a search here is the full-frame hunt the worker is for.
+    if (lossStreak >= SEARCH_LOSS_FRAMES && !scaleLock) {
       beginSearch();
       reacquireReason = 'reacquire-none';
     }
@@ -1549,7 +1553,7 @@ export function createGaugeTracker() {
           return acceptCandidate(found, video, wide, mapping, windowFraction);
         }
         lossStreak += 1;
-        if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
+        if (!scaleLock && (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES)) {
           beginSearch();
         }
         return finish(windowFraction, withRimProfile({
@@ -2009,9 +2013,9 @@ export function registerDialRotationFromProfile(profile, needleDeg = null, previ
   };
 }
 
-function trackLockedScale(tracker, bands) {
+function trackLockedScale(tracker, bands, { qualityHold = false } = {}) {
   const profile = faceProfileFromBands(bands);
-  return stepScaleLock(tracker.getScaleLock?.() ?? null, { profile });
+  return stepScaleLock(tracker.getScaleLock?.() ?? null, { profile, qualityHold });
 }
 
 function commitScaleStep(tracker, stepped) {
@@ -2082,6 +2086,7 @@ function completeReading({
     Math.min(videoWidth, videoHeight) * needleScale,
   );
   let orientation;
+  let frameQuality = null;
   if (canonicalDial) {
     const bands = measureDialColorBands(
       needleImage,
@@ -2090,8 +2095,17 @@ function completeReading({
       localRadius,
       detection.angleDeg,
     );
-    let stepped = trackLockedScale(tracker, bands);
-    if (stepped.needsFull) {
+    frameQuality = assessFrameQuality(
+      needleImage.data,
+      needleImage.width,
+      needleImage.height,
+      localCx,
+      localCy,
+      localRadius,
+    );
+    const qualityHold = frameQuality.flags.includes('blur') || frameQuality.flags.includes('glare');
+    let stepped = trackLockedScale(tracker, bands, { qualityHold });
+    if (stepped.needsFull && !qualityHold) {
       const reg = registerDialFromColorBands(bands);
       // The printed face is the colour bands and the rim. A full search runs
       // only when the frame-to-frame lock has nothing to follow.
@@ -2132,14 +2146,16 @@ function completeReading({
     });
     orientation.dialRegistered = orientation.referenceCaptured === true;
   }
-  const frameQuality = assessFrameQuality(
-    needleImage.data,
-    needleImage.width,
-    needleImage.height,
-    localCx,
-    localCy,
-    localRadius,
-  );
+  if (!frameQuality) {
+    frameQuality = assessFrameQuality(
+      needleImage.data,
+      needleImage.width,
+      needleImage.height,
+      localCx,
+      localCy,
+      localRadius,
+    );
+  }
   const settled = tracker.getPose() || center;
   const minDim = Math.min(videoWidth, videoHeight);
   // A printed-face registration is the scale. The legacy rim search can stay
@@ -2337,12 +2353,12 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   // A locked scale is the registration. Another full-frame search is what
   // made a rotating clip depend on worker timing, and it is the slow tail.
   const discoveryDue = !tracker.getScaleLock?.() && tracker.needsRediscovery();
-  // Replay runs an unlocked search on this frame. A worker result from an
-  // earlier bitmap lands on a later video time.
-  const syncDiscovery = replayDiscoveryIsSync();
-  const asyncFound = syncDiscovery ? null : takeDiscoveryResult();
+  // Discovery runs in the worker, including replay. The replay loop waits
+  // until the previous search has finished before the next sample, so the
+  // result always lands on the following frame and two runs match.
+  const asyncFound = takeDiscoveryResult();
   const wantSearch = !asyncFound && (!havePose || discoveryDue);
-  const handedToWorker = !syncDiscovery && wantSearch && requestVideoDiscovery(video);
+  const handedToWorker = wantSearch && requestVideoDiscovery(video);
   const discoveryAction = mainThreadDiscoveryAction({
     havePose,
     discoveryDue,
@@ -2470,6 +2486,14 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     const colorCx = (poseNow.cx - trackCrop.originX) * tracked.scale;
     const colorCy = (poseNow.cy - trackCrop.originY) * tracked.scale;
     const colorR = poseNow.radius * tracked.scale;
+    const frameQuality = assessFrameQuality(
+      tracked.image.data,
+      tracked.image.width,
+      tracked.image.height,
+      colorCx,
+      colorCy,
+      colorR,
+    );
     const bands = measureDialColorBands(
       tracked.image,
       colorCx,
@@ -2477,7 +2501,8 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       colorR,
       cached.angleDeg,
     );
-    const stepped = trackLockedScale(tracker, bands);
+    const qualityHold = frameQuality.flags.includes('blur') || frameQuality.flags.includes('glare');
+    const stepped = trackLockedScale(tracker, bands, { qualityHold });
     // A bridge frame has no new needle. Only a lock that is already following
     // may keep the last relative angle. A dropped lock falls through to a
     // full read, which publishes nothing until registration returns.
@@ -2486,14 +2511,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       reading = {
         ...cached,
         relativeAngleDeg: cached.relativeAngleDeg,
-        frameQuality: assessFrameQuality(
-          tracked.image.data,
-          tracked.image.width,
-          tracked.image.height,
-          colorCx,
-          colorCy,
-          colorR,
-        ),
+        frameQuality,
         videoWidth,
         videoHeight,
         gauge: {

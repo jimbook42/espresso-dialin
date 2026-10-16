@@ -110,8 +110,8 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 
   };
 }
 
-/** A coast longer than this is a gap, not a reading. */
-export const NEEDLE_COAST_MAX_MS = 480;
+/** A coast longer than this is a gap, not a reading. About one second. */
+export const NEEDLE_COAST_MAX_MS = 1000;
 const COAST_VELOCITY_TAU_S = 0.2;
 const SOFT_INNOVATION_DEG = 18;
 
@@ -163,7 +163,7 @@ export function createNeedleKalman({
     reset() {
       clear();
     },
-    push(raw, now, { confidence = 1, accept = true, soft = false } = {}) {
+    push(raw, now, { confidence = 1, accept = true, soft = false, extend = true } = {}) {
       if (raw == null || now == null || Number.isNaN(raw)) return coast(now ?? lastT);
       if (angle == null) {
         if (!accept && !soft) return { angle: null, predicted: false, gap: true, lowConfidence: true };
@@ -178,16 +178,24 @@ export function createNeedleKalman({
           lowConfidence: !accept,
         };
       }
+      const hiddenTooLong = extend === false
+        && lastUpdateT != null
+        && now - lastUpdateT > maxGapMs;
+      if (hiddenTooLong) {
+        clear();
+        return { angle: null, predicted: false, gap: true, lowConfidence: true };
+      }
       const dt = Math.max(0.001, (now - (lastT ?? now)) / 1000);
       const predictedAngle = wrap360(angle + velocity * dt);
       const innovation = wrapDelta(predictedAngle, raw);
       const big = Math.abs(innovation) > maxInnovationDeg;
       const softAgree = soft && !accept && Math.abs(innovation) <= SOFT_INNOVATION_DEG;
       if (softAgree) {
-        // The blurry needle is still on the last angle. Extend the gap
-        // without walking the state into a confident-wrong bar.
+        // The blurry needle is still on the last angle. A real sighting
+        // extends the gap. Glare does not: a hidden needle becomes a gap
+        // about a second after the last good reading.
         lastT = now;
-        lastUpdateT = now;
+        if (extend !== false) lastUpdateT = now;
         velocity *= 0.5;
         return { angle, predicted: true, gap: false, lowConfidence: true };
       }

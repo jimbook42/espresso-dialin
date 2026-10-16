@@ -1,4 +1,5 @@
 import { grayscale } from './framePrep.js';
+import { EXTRACTION_START_BAR } from './gaugeConfig.js';
 
 /**
  * Face interior used for blur and glare.
@@ -140,6 +141,43 @@ export function assessFrameQuality(imageData, width, height, cx, cy, radius) {
   if (!glareOk) flags.push('glare');
   return {
     ok, blurVar, sharpness, glare, flags,
+  };
+}
+
+/** Shown before a shot when the dial face is glaring. Hidden for the whole shot. */
+export const GLARE_SETUP_HINT = 'Glare on gauge — shift your phone a bit';
+
+/**
+ * Pre-shot setup hint.
+ * A running shot hides it even when the face is still glaring.
+ * `shotRunning` stays latched across gaps; only a resting bar clears it.
+ */
+export function glareSetupHintVisible({ glare = false, shotRunning = false } = {}) {
+  return glare === true && shotRunning !== true;
+}
+
+/**
+ * A shot starts when pressure crosses the extraction threshold and ends
+ * when it returns to rest. A missing bar does not start or end one.
+ */
+export function createShotRun({
+  startBar = EXTRACTION_START_BAR,
+  restBar = 0.5,
+} = {}) {
+  let running = false;
+  return {
+    reset() {
+      running = false;
+    },
+    running() {
+      return running;
+    },
+    push(bar) {
+      if (bar == null || Number.isNaN(bar)) return running;
+      if (bar >= startBar) running = true;
+      else if (bar <= restBar) running = false;
+      return running;
+    },
   };
 }
 
