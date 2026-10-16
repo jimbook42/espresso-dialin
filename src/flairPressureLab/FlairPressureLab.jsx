@@ -684,12 +684,19 @@ export function FlairPressureLab() {
             signal = thresholdRef.current.push(smoothed, Date.now());
             signalPaused = false;
           }
-        } else if (tracked.heldReason === 'hub') {
-          // This frame's ray missed the pivot. Publish that angle on its own,
-          // at low confidence below, and leave the smoothed needle where it was.
-          rawBar = angleToBar(choice.angleDeg, sessionRef.current);
-          if (rawBar == null) offScale = true;
-          predicted = true;
+        } else if (tracked.heldReason === 'hub' || !tracked.accepted) {
+          // A ray that misses the pivot, or a jump that is not confirmed,
+          // may keep the last angle when it still agrees. It does not publish
+          // its own angle.
+          const km = kalmanRef.current.push(choice.angleDeg, now, {
+            confidence: reading.quality ?? 0,
+            accept: false,
+            soft: true,
+          });
+          if (applyKalmanBar(km)) {
+            predicted = true;
+            needleDecision = km.gap ? 'hub' : 'coast';
+          }
         } else {
           const km = kalmanRef.current.push(null, now);
           if (applyKalmanBar(km) && km.predicted) {

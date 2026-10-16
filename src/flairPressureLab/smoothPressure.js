@@ -113,7 +113,7 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 
 /** A coast longer than this is a gap, not a reading. */
 export const NEEDLE_COAST_MAX_MS = 480;
 const COAST_VELOCITY_TAU_S = 0.2;
-const SOFT_INNOVATION_DEG = 8;
+const SOFT_INNOVATION_DEG = 18;
 
 /**
  * Constant-velocity needle angle.
@@ -166,12 +166,17 @@ export function createNeedleKalman({
     push(raw, now, { confidence = 1, accept = true, soft = false } = {}) {
       if (raw == null || now == null || Number.isNaN(raw)) return coast(now ?? lastT);
       if (angle == null) {
-        if (!accept) return { angle: null, predicted: false, gap: true, lowConfidence: true };
+        if (!accept && !soft) return { angle: null, predicted: false, gap: true, lowConfidence: true };
         angle = wrap360(raw);
         velocity = 0;
         lastT = now;
         lastUpdateT = now;
-        return { angle, predicted: false, gap: false, lowConfidence: false };
+        return {
+          angle,
+          predicted: !accept,
+          gap: false,
+          lowConfidence: !accept,
+        };
       }
       const dt = Math.max(0.001, (now - (lastT ?? now)) / 1000);
       const predictedAngle = wrap360(angle + velocity * dt);

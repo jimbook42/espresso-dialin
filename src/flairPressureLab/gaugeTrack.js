@@ -2095,7 +2095,11 @@ function completeReading({
       const reg = registerDialFromColorBands(bands);
       // The printed face is the colour bands and the rim. A full search runs
       // only when the frame-to-frame lock has nothing to follow.
+      // A red blob with no needle must not lock: the tracker would then
+      // refuse to leave that circle.
+      const needleOk = (detection.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
       const registered = reg.ok
+        && needleOk
         && dialFaceScore >= DIAL_FACE_VERIFY_MIN
         && position.confidence >= CONFIDENCE_MIN;
       stepped = stepScaleLock(null, {
@@ -2329,11 +2333,12 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let trackMs = 0;
   let needleDrawMs = 0;
   let needleMs = 0;
-  const discoveryDue = tracker.needsRediscovery();
   const havePose = Boolean(tracker.getPose());
-  // Replay runs discovery on this frame. A worker result from an earlier
-  // bitmap lands on a later video time, and a rotating clip then diverges
-  // from run to run. Live keeps the worker for periodic search.
+  // A locked scale is the registration. Another full-frame search is what
+  // made a rotating clip depend on worker timing, and it is the slow tail.
+  const discoveryDue = !tracker.getScaleLock?.() && tracker.needsRediscovery();
+  // Replay runs an unlocked search on this frame. A worker result from an
+  // earlier bitmap lands on a later video time.
   const syncDiscovery = replayDiscoveryIsSync();
   const asyncFound = syncDiscovery ? null : takeDiscoveryResult();
   const wantSearch = !asyncFound && (!havePose || discoveryDue);
@@ -2560,6 +2565,9 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     });
     if (!bridged) tracker.rememberBridge?.(reading);
   }
+  // An unregistered circle is not a pose. Keeping it blocks the next search
+  // from taking the real dial.
+  if (!reading.gauge?.dialRegistered && !tracker.getScaleLock?.()) tracker.reset();
   const after = tracker.snapshot?.() ?? null;
   pushVideoTrace({
     t: roundTrace(video.currentTime),
