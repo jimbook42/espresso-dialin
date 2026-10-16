@@ -59,10 +59,10 @@ function twoSidedContrast(left, right, center) {
  * those distances: each sample keeps the smallest offset that already shows
  * the ridge, and a wider offset is down-weighted.
  */
-function lateralProbes(span) {
+function lateralProbes(span, stepDeg = ANGLE_STEP) {
   const needlePx = Math.min(4, Math.max(2, Math.round(span / 18)));
   const radiusOverSpan = OUTER_RADIUS_RATIO / (OUTER_RADIUS_RATIO - TIP_INNER_RATIO);
-  const halfStep = Math.sin((ANGLE_STEP * Math.PI) / 360);
+  const halfStep = Math.sin((stepDeg * Math.PI) / 360);
   const missPx = Math.max(1, Math.round(span * radiusOverSpan * halfStep));
   const comfortable = needlePx + missPx;
   const far = Math.min(10, comfortable + 4);
@@ -86,7 +86,7 @@ function widthWeight(offset, comfortable) {
  * test on its own. A one-sided step therefore contributes nothing.
  * Circumferential gradients contribute nothing either.
  */
-function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR) {
+function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR, stepDeg = ANGLE_STEP) {
   const samples = new Float32Array(SAMPLE_COUNT);
   const probeAt = new Float32Array(SAMPLE_COUNT);
   const span = outerR - innerR;
@@ -94,7 +94,7 @@ function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outer
   const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const { offsets, comfortable } = lateralProbes(span);
+  const { offsets, comfortable } = lateralProbes(span, stepDeg);
   const contrasts = new Float32Array(offsets.length);
   for (let i = 0; i < SAMPLE_COUNT; i += 1) {
     const r = innerR + span * ((i + 0.5) / SAMPLE_COUNT);
@@ -355,21 +355,45 @@ function startRadiusOf(startIndex, innerR, outerR) {
   return radius / gaugeRadius;
 }
 
-export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
+const HINT_HALF_DEG = 32;
+const HINT_STEP_DEG = 4;
+const SPARSE_STEP_DEG = 20;
+
+/**
+ * Full circle on a cold start. After that, a window around the last angle
+ * and its opposite, plus a sparse ring so the face median still sees the dial.
+ */
+function scanAngles(hintDeg) {
+  if (!Number.isFinite(hintDeg)) {
+    const angles = [];
+    for (let deg = 0; deg < 360; deg += ANGLE_STEP) angles.push(deg);
+    return { angles, probeStep: ANGLE_STEP, hinted: false };
+  }
+  const chosen = new Set();
+  const add = (deg) => {
+    chosen.add(((Math.round(deg) % 360) + 360) % 360);
+  };
+  for (let deg = 0; deg < 360; deg += SPARSE_STEP_DEG) add(deg);
+  for (const origin of [hintDeg, hintDeg + 180]) {
+    for (let delta = -HINT_HALF_DEG; delta <= HINT_HALF_DEG; delta += HINT_STEP_DEG) add(origin + delta);
+  }
+  return { angles: [...chosen], probeStep: HINT_STEP_DEG, hinted: true };
+}
+
+export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hintDeg = null) {
   if (!(outerR > innerR + 1)) return emptyDetection();
   const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
   const { gray, edges, width, height } = prepareEdges(image, { contrastRadius });
   if (sink) sink.edges = edges;
-  const rayCount = 360 / ANGLE_STEP;
-  const evidence = new Array(rayCount);
-  for (let i = 0; i < rayCount; i += 1) {
-    evidence[i] = rayEvidence(gray, edges, width, height, cx, cy, i * ANGLE_STEP, innerR, outerR);
-  }
+  const scan = scanAngles(hintDeg);
+  const evidence = scan.angles.map((deg) => (
+    rayEvidence(gray, edges, width, height, cx, cy, deg, innerR, outerR, scan.probeStep)
+  ));
 
   const medianProfile = new Float32Array(SAMPLE_COUNT);
-  const column = new Float32Array(rayCount);
+  const column = new Float32Array(evidence.length);
   for (let s = 0; s < SAMPLE_COUNT; s += 1) {
-    for (let i = 0; i < rayCount; i += 1) column[i] = evidence[i].samples[s];
+    for (let i = 0; i < evidence.length; i += 1) column[i] = evidence[i].samples[s];
     medianProfile[s] = median(column);
   }
 
@@ -388,8 +412,9 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
   let best = 0;
   let bestProfile = emptyProfile();
   bestProfile.score = -1;
-  for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
-    const scored = scoreAngle(deg, evidence[deg / ANGLE_STEP]);
+  for (let i = 0; i < scan.angles.length; i += 1) {
+    const deg = scan.angles[i];
+    const scored = scoreAngle(deg, evidence[i]);
     raw[deg] = scored.score;
     if (scored.score > bestProfile.score) {
       bestProfile = scored;
@@ -404,10 +429,12 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
   // lying between the 2° samples could then lose to an on-grid face mark
   // and never be measured. Each competing coarse peak is measured at 1°.
   const measured = [];
+  const refineRadius = scan.hinted ? 2 : 1;
   for (const peak of coarsePeaks(raw, raw[best])) {
     let peakScore = raw[peak];
     let peakAngle = peak;
-    for (let step = -1; step <= 1; step += 2) {
+    for (let step = -refineRadius; step <= refineRadius; step += 1) {
+      if (step === 0) continue;
       const wrapped = (peak + step + 360) % 360;
       const scored = scoreAngle(wrapped, null);
       if (scored.score > peakScore) {
@@ -423,7 +450,8 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
   }
 
   const opposite = (best + 180) % 360;
-  const oppositeProfile = scoreAngle(opposite, opposite % ANGLE_STEP === 0 ? evidence[opposite / ANGLE_STEP] : null);
+  const oppositeIndex = scan.angles.indexOf(opposite);
+  const oppositeProfile = scoreAngle(opposite, oppositeIndex >= 0 ? evidence[oppositeIndex] : null);
   const chosenEnd = selectPointerEnd(bestProfile, oppositeProfile);
   if (chosenEnd.takeOpposite) {
     best = opposite;

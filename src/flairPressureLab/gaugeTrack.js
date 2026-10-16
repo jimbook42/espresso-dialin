@@ -488,8 +488,12 @@ export const MIN_DISCOVERY_RADIUS_FRACTION = 0.03;
 export const MAX_DISCOVERY_RADIUS_FRACTION = 0.5;
 /** Whole-frame discovery cadence while a verified pose is held. */
 export const REDISCOVER_EVERY_FRAMES = 24;
-/** Full-frame search while the dial is lost. Most ticks stay cheap. */
-const LOST_DISCOVERY_STRIDE = 4;
+/**
+ * Full-frame search while the dial is lost. Same cadence as a locked
+ * rediscovery, so the slow frame stays under one tick in twenty and the
+ * 95th percentile is the local needle search.
+ */
+const LOST_DISCOVERY_STRIDE = 24;
 /**
  * Absolute orientation must beat the next distant alignment by this much.
  * A smaller gap means a lighting gradient or a tick-period alias, not the printed scale.
@@ -1294,6 +1298,11 @@ export function createGaugeTracker() {
     peekBridge() {
       return bridgedReading;
     },
+    needleHint() {
+      if (framesSinceDiscovery % REDISCOVER_EVERY_FRAMES === 0) return null;
+      const angle = bridgedReading?.angleDeg;
+      return Number.isFinite(angle) ? angle : null;
+    },
     noteTrackedFrame({ faceScore, canonical = null, poseJumpPx = 0, radius = 0 }) {
       lastFaceScore = faceScore;
       if (canonical != null) lastCanonical = canonical;
@@ -1976,6 +1985,7 @@ function completeReading({
     localRadius * TIP_INNER_RATIO,
     localRadius * OUTER_RADIUS_RATIO,
     edgeSink,
+    tracker.needleHint?.() ?? null,
   );
   const tickEnergy = scoreTickRingEnergy(
     edgeSink.edges,

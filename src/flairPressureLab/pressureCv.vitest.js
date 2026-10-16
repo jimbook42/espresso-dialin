@@ -640,6 +640,9 @@ describe('pressure CV units', () => {
     const pointer = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + rotationDeg);
     expect(Math.abs(wrapDelta(found.angleDeg, pointer))).toBeLessThan(12);
     expect(found.needleEnd).toBe('long');
+    const hinted = detectNeedleAngle(frame, 90, 90, 58 * 0.24, 58 * 0.86, null, pointer);
+    expect(Math.abs(wrapDelta(hinted.angleDeg, pointer))).toBeLessThan(6);
+    expect(hinted.needleEnd).toBe('long');
   });
 
   it('keeps the long end when noise past the tail outruns the tip', () => {
