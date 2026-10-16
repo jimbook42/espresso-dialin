@@ -28,30 +28,33 @@ export function shotHasSmartScaleLoggedData(shot) {
  */
 export function buildShotEngineStatsRows(stats, shot, formatSensitivity) {
   const rows = [
-    { label: 'Time delta (vs midpoint)', value: formatSigned(stats.timeDelta, 's') },
-    { label: 'Yield delta (vs target)', value: formatSigned(stats.yieldDelta, 'g') },
+    { label: 'Time vs target middle', value: formatSigned(stats.timeDelta, 's') },
+    { label: 'Yield vs target', value: formatSigned(stats.yieldDelta, 'g') },
     {
-      label: 'Sensitivity',
+      label: 'Grind sensitivity',
       value: formatSensitivity(stats.sensitivity, {
         confidence: stats.sensitivityConfidence,
         usedEmpiricalSlope: stats.sensitivityUsedEmpiricalSlope,
         isDefaultSensitivity: stats.sensitivityIsDefault,
       }),
     },
-    { label: 'Applied shift', value: stats.shiftSummary },
-    { label: 'Age / freshness', value: stats.ageOffsetNote || '—' },
-    { label: 'Baseline history', value: stats.evidenceContext || 'No prior recipe-matched shots in context' },
+    { label: 'Grind change applied', value: stats.shiftSummary },
+    { label: 'Bean age at log', value: stats.ageOffsetNote || '—' },
+    {
+      label: 'Learning from prior shots',
+      value: stats.evidenceContext || 'No prior recipe-matched shots in context',
+    },
   ];
 
   if (shotHasSmartScaleLoggedData(shot)) {
     const measuredYield = shot.actualYieldG ?? shot.actualYield;
     rows.splice(2, 0, {
-      label: 'Scale measured yield',
+      label: 'Measured yield (scale)',
       value: formatYieldG(measuredYield),
     });
     if (shot.scaleFlowRateGs != null && Number.isFinite(Number(shot.scaleFlowRateGs))) {
       rows.splice(3, 0, {
-        label: 'Scale avg flow',
+        label: 'Average flow (scale)',
         value: `${Number(shot.scaleFlowRateGs).toFixed(2)} g/s`,
       });
     }

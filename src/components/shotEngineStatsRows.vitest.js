@@ -4,6 +4,13 @@ import {
   shotHasSmartScaleLoggedData,
 } from './shotEngineStatsRows.js';
 import { formatSecondsPerStepDisplay } from '../utils/grinderSensitivityDisplay.js';
+import { getShotEngineStats } from '../utils/grinderLogic.js';
+import {
+  SETTE_GRINDER_ID,
+  SUNBEAM_GRINDER_ID,
+} from '../grinders/grinderRegistry.js';
+import { DF64_GEN2_GRINDER_ID } from '../grinders/presetGrinders/catalog.js';
+import { getPresetGrinderSpec } from '../grinders/presetGrinders/catalog.js';
 
 const baseStats = {
   timeDelta: -2,
@@ -16,6 +23,8 @@ const baseStats = {
   ageOffsetNote: null,
   evidenceContext: null,
 };
+
+const recipe = { targetTimeMinS: 27, targetTimeMaxS: 32, targetYieldG: 36 };
 
 describe('shotEngineStatsRows', () => {
   it('does not treat a shot without scale fields as scale-logged', () => {
@@ -35,14 +44,14 @@ describe('shotEngineStatsRows', () => {
       formatSecondsPerStepDisplay
     );
     expect(rows.map((r) => r.label)).toEqual([
-      'Time delta (vs midpoint)',
-      'Yield delta (vs target)',
-      'Sensitivity',
-      'Applied shift',
-      'Age / freshness',
-      'Baseline history',
+      'Time vs target middle',
+      'Yield vs target',
+      'Grind sensitivity',
+      'Grind change applied',
+      'Bean age at log',
+      'Learning from prior shots',
     ]);
-    expect(rows.some((r) => r.label.startsWith('Scale'))).toBe(false);
+    expect(rows.some((r) => r.label.includes('scale'))).toBe(false);
   });
 
   it('inserts scale yield and flow rows when scale metrics exist', () => {
@@ -56,17 +65,17 @@ describe('shotEngineStatsRows', () => {
       formatSecondsPerStepDisplay
     );
     expect(rows.map((r) => r.label)).toEqual([
-      'Time delta (vs midpoint)',
-      'Yield delta (vs target)',
-      'Scale measured yield',
-      'Scale avg flow',
-      'Sensitivity',
-      'Applied shift',
-      'Age / freshness',
-      'Baseline history',
+      'Time vs target middle',
+      'Yield vs target',
+      'Measured yield (scale)',
+      'Average flow (scale)',
+      'Grind sensitivity',
+      'Grind change applied',
+      'Bean age at log',
+      'Learning from prior shots',
     ]);
-    expect(rows.find((r) => r.label === 'Scale measured yield')?.value).toBe('35.2g');
-    expect(rows.find((r) => r.label === 'Scale avg flow')?.value).toBe('1.85 g/s');
+    expect(rows.find((r) => r.label === 'Measured yield (scale)')?.value).toBe('35.2g');
+    expect(rows.find((r) => r.label === 'Average flow (scale)')?.value).toBe('1.85 g/s');
   });
 
   it('shows scale yield without flow row when only the curve was stored', () => {
@@ -75,7 +84,42 @@ describe('shotEngineStatsRows', () => {
       { actualYieldG: 40, scaleFlowCurve: [{ t: 0, g: 0 }] },
       formatSecondsPerStepDisplay
     );
-    expect(rows.map((r) => r.label)).toContain('Scale measured yield');
-    expect(rows.map((r) => r.label)).not.toContain('Scale avg flow');
+    expect(rows.map((r) => r.label)).toContain('Measured yield (scale)');
+    expect(rows.map((r) => r.label)).not.toContain('Average flow (scale)');
+  });
+
+  it('getShotEngineStats sensitivity follows shot grinder when engineStats is missing', () => {
+    const shotBase = { actualTimeS: 29.5, actualYieldG: 36 };
+    const sette = getShotEngineStats({ ...shotBase, grinderModel: SETTE_GRINDER_ID }, recipe);
+    const sunbeam = getShotEngineStats({ ...shotBase, grinderModel: SUNBEAM_GRINDER_ID }, recipe);
+    const df64 = getShotEngineStats({ ...shotBase, grinderModel: DF64_GEN2_GRINDER_ID }, recipe);
+    expect(sette.sensitivity).toBe(1.25);
+    expect(sunbeam.sensitivity).toBe(4.5);
+    expect(df64.sensitivity).toBe(getPresetGrinderSpec(DF64_GEN2_GRINDER_ID).sensitivity);
+  });
+
+  it('getShotEngineStats uses stored sensitivity from recommendation when present', () => {
+    const learned = 2.1;
+    const stats = getShotEngineStats(
+      {
+        grinderModel: SUNBEAM_GRINDER_ID,
+        actualTimeS: 30,
+        actualYieldG: 36,
+        recommendation: {
+          engineStats: {
+            sensitivity: learned,
+            sensitivityConfidence: 0.9,
+            sensitivityUsedEmpiricalSlope: true,
+            sensitivityIsDefault: false,
+            timeDelta: 0,
+            yieldDelta: 0,
+            targetMid: 29.5,
+            targetYield: 36,
+          },
+        },
+      },
+      recipe
+    );
+    expect(stats.sensitivity).toBe(learned);
   });
 });
