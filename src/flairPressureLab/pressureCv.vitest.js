@@ -26,7 +26,7 @@ import {
   scoreDiscoveryCandidate,
   scoreRim,
 } from './gaugeTrack.js';
-import { prepareEdges } from './framePrep.js';
+import { grayscale, prepareEdges } from './framePrep.js';
 import {
   assessFrameQuality,
   BLUR_SHARPNESS_MIN,
@@ -37,7 +37,7 @@ import {
 import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { createRestAnchor } from './restAnchor.js';
-import { detectNeedleAngle, selectPointerEnd } from './needleFromFrame.js';
+import { HUB_CONNECTION_MIN, detectNeedleAngle, hubConnection, selectPointerEnd } from './needleFromFrame.js';
 import {
   BAND_INNER_FRACTION,
   BAND_OUTER_FRACTION,
@@ -645,6 +645,46 @@ describe('pressure CV units', () => {
     expect(hinted.needleEnd).toBe('long');
   });
 
+  it('rejects a face streak that does not reach the pivot', () => {
+    const rotationDeg = 15;
+    const frame = syntheticPrintedDial({
+      size: 180,
+      cx: 90,
+      cy: 90,
+      radius: 70,
+      rotationDeg,
+      needleHalfDeg: 1.6,
+    });
+    const pointer = wrap360(barToDialAngle(0) + rotationDeg);
+    const streak = wrap360(pointer + 22);
+    for (let y = 0; y < frame.height; y += 1) {
+      for (let x = 0; x < frame.width; x += 1) {
+        const dx = x - 90;
+        const dy = y - 90;
+        const dist = Math.hypot(dx, dy);
+        const imageDeg = wrap360((Math.atan2(dy, dx) * 180) / Math.PI);
+        if (Math.abs(wrapDelta(streak, imageDeg)) < 1.4 && dist > 70 * 0.36 && dist < 70 * 0.9) {
+          const o = (y * frame.width + x) * 4;
+          frame.data[o] = 0;
+          frame.data[o + 1] = 0;
+          frame.data[o + 2] = 0;
+        }
+      }
+    }
+    const raw = grayscale(frame.data, frame.width, frame.height);
+    const inner = 70 * 0.24;
+    expect(hubConnection(raw, frame.width, frame.height, 90, 90, streak, inner)).toBeLessThan(0.5);
+    expect(hubConnection(raw, frame.width, frame.height, 90, 90, pointer, inner)).toBeGreaterThanOrEqual(0.5);
+    const found = detectNeedleAngle(frame, 90, 90, inner, 70 * 0.86);
+    const onStreak = Math.abs(wrapDelta(found.angleDeg, streak)) < 8;
+    if (onStreak) {
+      expect(found.hub).toBeLessThan(HUB_CONNECTION_MIN);
+    } else {
+      expect(Math.abs(wrapDelta(found.angleDeg, pointer))).toBeLessThan(8);
+      expect(found.hub).toBeGreaterThanOrEqual(HUB_CONNECTION_MIN);
+    }
+  });
+
   it('keeps the long end when noise past the tail outruns the tip', () => {
     const n = 32;
     const leaderSamples = new Float32Array(n);
@@ -693,6 +733,10 @@ describe('pressure CV units', () => {
     conflict.push({ timeMs: 0, angleDeg: 140, usable: true });
     conflict.push({ timeMs: 250, angleDeg: 142, usable: true });
     expect(conflict.push({ timeMs: 500, angleDeg: 141, usable: true })).toBe('conflict');
+    const zero = CANONICAL_ZERO_BAR_ANGLE_DEG;
+    expect(conflict.push({ timeMs: 800, angleDeg: zero, usable: true })).toBe('pending');
+    conflict.push({ timeMs: 1000, angleDeg: zero + 1, usable: true });
+    expect(conflict.push({ timeMs: 1400, angleDeg: zero - 1, usable: true })).toBe('confirmed');
     expect(gaugeAllowsConfidentReading({
       dialRegistered: true,
       confidence: 0.6,

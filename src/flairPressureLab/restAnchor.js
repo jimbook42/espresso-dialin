@@ -12,6 +12,7 @@ const REST_ANCHOR_ZERO_DEG = 10;
  * that a needle which has been still for half a second lies on that template's
  * zero. It never runs on the first frame, and it never copies an angle in as zero.
  * Disagreement leaves the anchor in conflict so a confident bar is not published.
+ * A later still period on the printed zero may confirm. Confirmed does not revert.
  */
 /** Degrees between the registered needle and the template zero. Not a new zero. */
 export function templateConflictDeg(relativeAngleDeg) {
@@ -31,8 +32,15 @@ export function createRestAnchor() {
       status = 'pending';
     },
     push({ timeMs, angleDeg, usable }) {
-      if (status !== 'pending') return status;
+      if (status === 'confirmed') return status;
       if (!usable || angleDeg == null || timeMs == null) return status;
+      // One still period off the template blocks confident bars. It does not
+      // retire the session: a later still period on the printed zero can confirm.
+      // The template zero is never replaced by either period.
+      if (status === 'conflict') {
+        samples = [];
+        status = 'pending';
+      }
       samples.push({ timeMs, angleDeg });
       // Keep one process interval before the half-second mark. A sample that
       // opens the window would otherwise be dropped on the same tick the span

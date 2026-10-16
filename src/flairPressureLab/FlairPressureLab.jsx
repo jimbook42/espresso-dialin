@@ -7,6 +7,7 @@ import {
   FLAIR_58_SCALE,
   NEEDLE_LIKENESS_GATE,
   NEEDLE_LOST_QUALITY,
+  NEEDLE_TRACK_QUALITY,
   PROCESS_INTERVAL_MS,
   REST_STABLE_SAMPLES,
   angleToBar,
@@ -22,6 +23,7 @@ import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from '.
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
 import { createReadingBridge } from './frameQuality.js';
+import { HUB_CONNECTION_MIN } from './needleFromFrame.js';
 import { createRestAnchor, templateConflictDeg } from './restAnchor.js';
 import {
   createGaugeTracker,
@@ -662,6 +664,12 @@ export function FlairPressureLab() {
       });
       const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
       const pressureMeasured = Boolean(tracked.accepted) && !blockSample && rawBar != null;
+      const needleSure = (reading.quality ?? 0) >= NEEDLE_TRACK_QUALITY;
+      // A face streak that misses the pivot is still a number, but not a confident one.
+      const hubSure = reading.hub == null || reading.hub >= HUB_CONNECTION_MIN;
+      const publishedConfidence = pressureMeasured && needleSure && hubSure
+        ? gauge.confidence
+        : Math.min(gauge.confidence ?? 0, NEEDLE_LOST_QUALITY);
       const uncertainty = record({
         tracking,
         smoothedAngle: tracked.angle,
@@ -695,10 +703,10 @@ export function FlairPressureLab() {
           gaugeRotationDeg: gauge.rotationDeg,
           needleAngleDeg: tracked.angle,
           bar: pressureMeasured ? rawBar : pressureBar,
-          confidence: gauge.confidence,
+          confidence: publishedConfidence,
           processMs,
           conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
-          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}`,
+          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}|hub:${reading.hub == null ? 'na' : reading.hub.toFixed(2)}`,
           tracking,
         }, now);
       }

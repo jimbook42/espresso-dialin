@@ -1,5 +1,5 @@
 import { NEEDLE_LIKENESS_GATE, OUTER_RADIUS_RATIO, TIP_INNER_RATIO } from './gaugeConfig.js';
-import { prepareEdges } from './framePrep.js';
+import { grayscale, prepareEdges } from './framePrep.js';
 
 /**
  * Needle angle around a known hub.
@@ -358,6 +358,14 @@ function startRadiusOf(startIndex, innerR, outerR) {
 const HINT_HALF_DEG = 32;
 const HINT_STEP_DEG = 4;
 const SPARSE_STEP_DEG = 20;
+/**
+ * Share of hub samples that must be a dark two-sided ridge.
+ * A specular streak on the cover is dark on the face and bright at the pivot.
+ * When any ray does reach the pivot, a face-only streak cannot be the needle.
+ * When the pivot is unreadable, the face scores stand unchanged.
+ */
+export const HUB_CONNECTION_MIN = 0.5;
+const HUB_INNER_FRACTION = 0.12;
 
 /**
  * Full circle on a cold start. After that, a window around the last angle
@@ -380,10 +388,47 @@ function scanAngles(hintDeg) {
   return { angles: [...chosen], probeStep: HINT_STEP_DEG, hinted: true };
 }
 
+/**
+ * Dark ridge from just outside the screw to the start of the face window.
+ * Returns the fraction of those samples that are darker than both sides.
+ * A bright core (specular) contributes nothing.
+ */
+export function hubConnection(raw, width, height, cx, cy, angleDeg, innerR) {
+  const faceR = innerR / TIP_INNER_RATIO;
+  const r0 = faceR * HUB_INNER_FRACTION;
+  const r1 = innerR;
+  if (!(r1 > r0 + 1)) return 1;
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const steps = 6;
+  let hits = 0;
+  let n = 0;
+  for (let i = 0; i < steps; i += 1) {
+    const r = r0 + (r1 - r0) * ((i + 0.5) / steps);
+    const x = cx + r * cos;
+    const y = cy + r * sin;
+    const center = sample(raw, width, height, x, y);
+    if (center == null) continue;
+    let contrast = 0;
+    for (const offset of [2, 3]) {
+      const left = sample(raw, width, height, x - sin * offset, y + cos * offset);
+      const right = sample(raw, width, height, x + sin * offset, y - cos * offset);
+      if (left == null || right == null) continue;
+      contrast = Math.max(contrast, twoSidedContrast(left, right, center));
+    }
+    n += 1;
+    if (contrast >= 6) hits += 1;
+  }
+  if (n < 3) return 0;
+  return hits / n;
+}
+
 export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hintDeg = null) {
   if (!(outerR > innerR + 1)) return emptyDetection();
   const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
   const { gray, edges, width, height } = prepareEdges(image, { contrastRadius });
+  const rawLuma = grayscale(image.data, width, height);
   if (sink) sink.edges = edges;
   const scan = scanAngles(hintDeg);
   const evidence = scan.angles.map((deg) => (
@@ -449,6 +494,8 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     measured.push({ angle: peakAngle, score: peakScore });
   }
 
+  const hubOf = (deg) => hubConnection(rawLuma, width, height, cx, cy, deg, innerR);
+
   const opposite = (best + 180) % 360;
   const oppositeIndex = scan.angles.indexOf(opposite);
   const oppositeProfile = scoreAngle(opposite, oppositeIndex >= 0 ? evidence[oppositeIndex] : null);
@@ -499,6 +546,7 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     startRadius: startRadiusOf(bestProfile.startIndex, innerR, outerR),
     probePx: bestProfile.probePx,
     needleEnd: chosenEnd.needleEnd,
+    hub: hubOf(best),
   };
 }
 
