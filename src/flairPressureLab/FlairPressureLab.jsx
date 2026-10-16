@@ -24,11 +24,15 @@ import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
 import {
   GLARE_SETUP_HINT,
+  MOVE_CLOSER_HINT,
   createReadingBridge,
+  createReadingHold,
   createShotRun,
+  gaugeTooSmallForNeedle,
   glareSetupHintVisible,
+  moveCloserHintVisible,
 } from './frameQuality.js';
-import { HUB_CONNECTION_MIN } from './needleFromFrame.js';
+import { HUB_CONNECTION_MIN, minReadableDialRadiusPx } from './needleFromFrame.js';
 import { REST_ANCHOR_MS, confidentAngleWindow, createRestAnchor, templateConflictDeg } from './restAnchor.js';
 import {
   createGaugeTracker,
@@ -110,6 +114,7 @@ const EMPTY_LIVE = {
   referenceCaptured: false,
   offScale: false,
   glareHint: null,
+  moveCloserHint: null,
 };
 
 function exitLab() {
@@ -170,6 +175,7 @@ export function FlairPressureLab() {
   const videoSizeRef = useRef(null);
   const frameNodeRef = useRef(null);
   const qualityBridgeRef = useRef(createReadingBridge(1000));
+  const readingHoldRef = useRef(createReadingHold());
   const shotRunRef = useRef(createShotRun());
   const restAnchorRef = useRef(createRestAnchor());
   const agreeSamplesRef = useRef([]);
@@ -259,6 +265,7 @@ export function FlairPressureLab() {
     poseAgeRef.current = 0;
     if (clearTracker) trackerRef.current.reset();
     qualityBridgeRef.current.reset();
+    readingHoldRef.current.reset();
     shotRunRef.current.reset();
     restAnchorRef.current.reset();
     agreeSamplesRef.current = [];
@@ -637,9 +644,13 @@ export function FlairPressureLab() {
             glare: frameQualityForAnchor.flags.includes('glare'),
             shotRunning: shotRunRef.current.running(),
           });
+          const preShotClose = moveCloserHintVisible({
+            tooSmall: gaugeTooSmallForNeedle(gauge.radius, minReadableDialRadiusPx()),
+            shotRunning: shotRunRef.current.running(),
+          });
           const labels = REPLAY_BUILD ? replayGaugeLabels(gauge) : null;
           const qualityFlags = frameQualityForAnchor.ok ? '' : `|${frameQualityForAnchor.flags.join('|')}`;
-          const hintFlag = preShotGlare ? '|glare-hint' : '';
+          const hintFlag = `${preShotGlare ? '|glare-hint' : ''}${preShotClose ? '|move-closer' : ''}`;
           markCv();
           setLive({
             ...EMPTY_LIVE,
@@ -650,6 +661,7 @@ export function FlairPressureLab() {
             uncertainty,
             offScale: false,
             glareHint: preShotGlare ? GLARE_SETUP_HINT : null,
+            moveCloserHint: preShotClose ? MOVE_CLOSER_HINT : null,
           });
           if (REPLAY_BUILD) {
             pushReplayFrame({
@@ -813,7 +825,6 @@ export function FlairPressureLab() {
         !blockSample && tracked.accepted && !predicted,
         now,
       );
-      const pressureBar = rawBar;
       const tracking = classifyTrackingStatus({
         calibrated: true,
         quality: reading.quality,
@@ -825,9 +836,21 @@ export function FlairPressureLab() {
       });
       const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
       const pressureMeasured = !predicted && !blockSample && rawBar != null && Boolean(tracked.accepted);
+      const freshSighting = rawBar != null
+        && !gauge.held
+        && !choice.held
+        && !glareHidden
+        && reading.relativeAngleDeg != null
+        && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+      const gated = readingHoldRef.current.push({ bar: rawBar, fresh: freshSighting, now });
+      const pressureBar = gated.bar;
       const shotRunning = shotRunRef.current.push(pressureMeasured ? rawBar : null);
       const showGlareHint = glareSetupHintVisible({
         glare: frameQuality.flags.includes('glare'),
+        shotRunning,
+      });
+      const showMoveCloser = moveCloserHintVisible({
+        tooSmall: gaugeTooSmallForNeedle(gauge.radius, minReadableDialRadiusPx()),
         shotRunning,
       });
       const needleSure = (reading.quality ?? 0) >= NEEDLE_TRACK_QUALITY;
@@ -845,9 +868,12 @@ export function FlairPressureLab() {
         agreeSamplesRef.current = agreeSamplesRef.current.filter((sample) => sample.timeMs >= agreeCutoff);
       }
       const angleAgrees = confidentAngleWindow(agreeSamplesRef.current, now);
-      const publishedConfidence = !predicted && pressureMeasured && needleSure && hubSure && confidentDial && angleAgrees
+      let publishedConfidence = !predicted && pressureMeasured && needleSure && hubSure && confidentDial && angleAgrees
         ? gauge.confidence
         : Math.min(gauge.confidence ?? 0, NEEDLE_LOST_QUALITY);
+      if (gated.held || gated.gap) {
+        publishedConfidence = Math.min(publishedConfidence ?? 0, NEEDLE_LOST_QUALITY);
+      }
       const uncertainty = record({
         tracking,
         smoothedAngle: tracked.angle,
@@ -888,6 +914,7 @@ export function FlairPressureLab() {
         offScale,
         corrected: choice.corrected,
         glareHint: showGlareHint ? GLARE_SETUP_HINT : null,
+        moveCloserHint: showMoveCloser ? MOVE_CLOSER_HINT : null,
       });
       if (REPLAY_BUILD) {
         const labels = replayGaugeLabels(gauge);
@@ -896,6 +923,9 @@ export function FlairPressureLab() {
         if (weak) flagParts.push('weak-needle');
         if (!frameQuality.ok) flagParts.push(...frameQuality.flags);
         if (showGlareHint) flagParts.push('glare-hint');
+        if (showMoveCloser) flagParts.push('move-closer');
+        if (gated.held) flagParts.push('reading-held');
+        if (gated.expired) flagParts.push('reading-gap');
         if (shotRunning) flagParts.push('shot');
         pushReplayFrame({
           gaugeFound: labels.gaugeFound,
@@ -905,7 +935,8 @@ export function FlairPressureLab() {
           radius: gauge.radius,
           gaugeRotationDeg: gauge.rotationDeg,
           needleAngleDeg: tracked.angle,
-          bar: rawBar,
+          bar: pressureBar,
+          holdMs: gated.holdMs,
           confidence: publishedConfidence,
           conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
           flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}|hub:${reading.hub == null ? 'na' : reading.hub.toFixed(2)}`,
@@ -1211,6 +1242,11 @@ export function FlairPressureLab() {
         </div>
 
         <div className={`${ui.cardInset} rounded-2xl p-5 text-center`}>
+          {cameraLive && live.moveCloserHint ? (
+            <p className="text-sm font-semibold text-amber-50 bg-amber-500/20 border border-amber-300/50 rounded-xl px-3 py-2 mb-3">
+              {live.moveCloserHint}
+            </p>
+          ) : null}
           {cameraLive && live.glareHint ? (
             <p className="text-sm font-semibold text-amber-50 bg-amber-500/20 border border-amber-300/50 rounded-xl px-3 py-2 mb-3">
               {live.glareHint}

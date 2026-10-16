@@ -10,6 +10,8 @@ import {
   MIN_DISCOVERY_RADIUS_FRACTION,
   MAX_DISCOVERY_RADIUS_FRACTION,
   REDISCOVER_EVERY_FRAMES,
+  TICK_READABLE_RADIUS_PX,
+  discoveryOutputSizes,
   chooseDiscoveryUpdate,
   mainThreadDiscoveryAction,
   combineDialFaceScore,
@@ -34,9 +36,14 @@ import {
   BLUR_SHARPNESS_MIN,
   GLARE_FRACTION_MAX,
   GLARE_SETUP_HINT,
+  MOVE_CLOSER_HINT,
   createReadingBridge,
+  createReadingHold,
   createShotRun,
+  gaugeTooSmallForNeedle,
   glareSetupHintVisible,
+  moveCloserHintVisible,
+  READING_HOLD_MAX_MS,
   laplacianVariance,
 } from './frameQuality.js';
 import { angleToBar, wrap360, wrapDelta, EXTRACTION_START_BAR } from './gaugeConfig.js';
@@ -44,7 +51,7 @@ import { createAngleTracker, createNeedleKalman, NEEDLE_COAST_MAX_MS } from './s
 import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { confidentAngleWindow, createRestAnchor } from './restAnchor.js';
-import { HUB_CONNECTION_MIN, detectNeedleAngle, hubConnection, selectPointerEnd } from './needleFromFrame.js';
+import { HUB_CONNECTION_MIN, detectNeedleAngle, hubConnection, minReadableDialRadiusPx, needleZoomForRadius, selectPointerEnd } from './needleFromFrame.js';
 import {
   BAND_INNER_FRACTION,
   BAND_OUTER_FRACTION,
@@ -111,7 +118,6 @@ function syntheticFlairReplayFrame() {
           if (redBand) {
             const deg = ((Math.atan2(y - cy, x - cx) * 180) / Math.PI + 360) % 360;
             if (deg >= 220 && deg <= 270) {
-              v = 40;
               data[o] = 200;
               data[o + 1] = 35;
               data[o + 2] = 30;
@@ -406,16 +412,119 @@ describe('pressure CV units', () => {
     const weak = {
       cx: 90, cy: 20, radius: 12, rank: 13, ok: true, face: 0.5, canonical: 0.4, rim: 20,
     };
-    expect(selectDiscoveryCandidate([weak, strong])).toBeNull();
+    // A hotspot that fails the template does not hide the dial that passes it.
+    expect(selectDiscoveryCandidate([weak, strong])).toEqual(expect.objectContaining({ cx: 90, ok: true }));
     expect(selectDiscoveryCandidate([
       weak,
       { ...strong, rank: weak.rank + 1 },
-    ])).toBeNull();
+    ])).toEqual(expect.objectContaining({ cx: 90, ok: true }));
     expect(selectDiscoveryCandidate([
       { ...strong, ok: true, canonical: 0.4 },
       weak,
     ])?.cx).toBe(40);
     expect(selectDiscoveryCandidate([weak])).toEqual(expect.objectContaining({ cx: 90, ok: true }));
+    expect(selectDiscoveryCandidate([strong])).toBeNull();
+  });
+
+  it('searches a finer scale for a dial that is small on the coarse frame', () => {
+    expect(TICK_READABLE_RADIUS_PX).toBeGreaterThan(16);
+    const dry = discoveryOutputSizes(406);
+    expect(dry[0]).toBe(240);
+    const wide = discoveryOutputSizes(720);
+    expect(wide.length).toBeGreaterThan(1);
+    expect(wide[0]).toBe(240);
+    expect(wide[wide.length - 1]).toBeGreaterThan(240);
+    expect(wide[wide.length - 1]).toBeLessThanOrEqual(720);
+
+    const width = 1280;
+    const height = 720;
+    const dial = { cx: 1000, cy: 180, radius: 70 };
+    const frame = syntheticGauge(width, height, dial);
+    const seen = [];
+    let calls = 0;
+    setOpenCvForTests({
+      Mat: class Mat {
+        constructor() { this.cols = 0; }
+        delete() {}
+        floatAt(_row, col) {
+          const image = seen[seen.length - 1];
+          const scale = image.w / width;
+          const part = col % 3;
+          if (part === 0) return dial.cx * scale;
+          if (part === 1) return dial.cy * scale;
+          return dial.radius * 1.02 * scale;
+        }
+      },
+      matFromImageData: (image) => {
+        seen.push({ w: image.width, h: image.height });
+        return new (class {
+          delete() {}
+        })();
+      },
+      cvtColor: () => {},
+      GaussianBlur: () => {},
+      HoughCircles(_gray, circles) {
+        calls += 1;
+        circles.cols = calls === 1 ? 0 : 1;
+      },
+      HOUGH_GRADIENT: 3,
+      COLOR_RGBA2GRAY: 0,
+      BORDER_DEFAULT: 0,
+      Size: class Size {},
+    });
+    const found = discoverGaugeInFrame(frame);
+    expect(calls).toBeGreaterThan(1);
+    expect(seen[0].h).toBeLessThan(seen[1].h);
+    expect(found?.ok).toBe(true);
+    expect(found?.source).toBe('opencv-hough');
+    expect(Math.hypot(found.cx - dial.cx, found.cy - dial.cy)).toBeLessThan(24);
+  });
+
+  it('never holds a reading for more than a second', () => {
+    expect(READING_HOLD_MAX_MS).toBeLessThanOrEqual(1000);
+    expect(READING_HOLD_MAX_MS).toBeGreaterThanOrEqual(1000);
+    const hold = createReadingHold();
+    expect(hold.push({ bar: 2.2, fresh: true, now: 0 })).toMatchObject({ bar: 2.2, held: false, holdMs: 0 });
+    let maxHeld = 0;
+    for (let t = 125; t <= 1000; t += 125) {
+      const step = hold.push({ bar: 9, fresh: false, now: t });
+      expect(step.held).toBe(true);
+      expect(step.bar).toBeCloseTo(2.2, 5);
+      expect(step.holdMs).toBeLessThanOrEqual(1000);
+      maxHeld = Math.max(maxHeld, step.holdMs);
+    }
+    expect(maxHeld).toBe(1000);
+    const opened = hold.push({ bar: 9, fresh: false, now: 1001 });
+    expect(opened.held).toBe(false);
+    expect(opened.bar).toBeNull();
+    expect(opened.expired).toBe(true);
+    expect(opened.holdMs).toBe(0);
+    const again = hold.push({ bar: 1, fresh: true, now: 1500 });
+    expect(again.held).toBe(false);
+    expect(again.bar).toBe(1);
+    const late = hold.push({ bar: 8, fresh: false, now: 2600 });
+    expect(late.bar).toBeNull();
+    expect(late.held).toBe(false);
+  });
+
+  it('shows move closer only before a shot when the dial is below the needle radius', () => {
+    const minR = minReadableDialRadiusPx();
+    expect(minR).toBeGreaterThan(40);
+    expect(needleZoomForRadius(minR)).toBe(1);
+    expect(needleZoomForRadius(minR * 0.5)).toBeGreaterThan(1);
+    expect(MOVE_CLOSER_HINT).toBe('Move closer — gauge too small');
+    expect(gaugeTooSmallForNeedle(minR - 1, minR)).toBe(true);
+    expect(gaugeTooSmallForNeedle(minR, minR)).toBe(false);
+    expect(gaugeTooSmallForNeedle(0, minR)).toBe(false);
+    expect(moveCloserHintVisible({ tooSmall: true, shotRunning: false })).toBe(true);
+    expect(moveCloserHintVisible({ tooSmall: true, shotRunning: true })).toBe(false);
+    expect(moveCloserHintVisible({ tooSmall: false, shotRunning: false })).toBe(false);
+    const shot = createShotRun();
+    expect(shot.push(EXTRACTION_START_BAR)).toBe(true);
+    expect(moveCloserHintVisible({
+      tooSmall: gaugeTooSmallForNeedle(minR / 2, minR),
+      shotRunning: shot.running(),
+    })).toBe(false);
   });
 
   it('re-detects when the face fails, the pose jumps, or the interval elapses', () => {

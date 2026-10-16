@@ -242,7 +242,7 @@ function replayTwice(argv) {
 }
 
 async function main() {
-  const manifest = loadPressureReplayManifest();
+  const manifest = loadPressureReplayManifest(process.env.PRESSURE_REPLAY_MANIFEST || undefined);
   const filter = process.env.PRESSURE_REPLAY_CLIP || process.argv[2] || '';
   const clips = selectClips(manifest, filter || undefined);
   fs.mkdirSync(OUT_ROOT, { recursive: true });
@@ -328,6 +328,17 @@ async function main() {
     '| Clip | Pre-shot | During shot |',
     '| --- | ---: | ---: |',
     ...mergedResults.map(({ id, summary }) => `| ${id} | ${summary.glareHintPreShot ?? 0} | ${summary.glareHintDuringShot ?? 0} |`),
+    '',
+    '## Hold and move-closer',
+    '',
+    'Held bars are excluded from ±0.5 and conf-wrong. Max hold is the longest repeat of a last good bar. Move-closer is the pre-shot hint when the dial radius is below the needle sample need.',
+    '',
+    '| Clip | Max hold s | Gap % | Move-closer pre | Move-closer during | First reading s |',
+    '| --- | ---: | ---: | ---: | ---: | ---: |',
+    ...mergedResults.map(({ id, summary }) => {
+      const num = (value) => (value == null || Number.isNaN(value) ? '—' : Number(value).toFixed(2));
+      return `| ${id} | ${num(summary.maxHoldS)} | ${num(summary.gapPct)} | ${summary.moveCloserPreShot ?? 0} | ${summary.moveCloserDuringShot ?? 0} | ${num(summary.timeToFirstValidReadingS)} |`;
+    }),
     '',
     '## Determinism (two consecutive replays)',
     '',

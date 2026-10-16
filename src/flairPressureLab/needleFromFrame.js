@@ -15,6 +15,28 @@ import { prepareEdges } from './framePrep.js';
 
 const SAMPLE_COUNT = 32;
 const ANGLE_STEP = 2;
+
+/**
+ * Smallest dial radius, in source pixels, at which the pointer span still
+ * has one sample per pixel. Below this the ridge test is interpolating.
+ * The span is the same window the detector walks (inner tip to outer stop).
+ */
+export function minReadableDialRadiusPx() {
+  const spanRatio = OUTER_RADIUS_RATIO - TIP_INNER_RATIO;
+  return SAMPLE_COUNT / spanRatio;
+}
+
+/**
+ * Upscale for a crop whose dial is below the readable radius.
+ * A dial already within 15% of that radius is left at its native scale:
+ * resampling it would not add a sample.
+ */
+export function needleZoomForRadius(radiusPx) {
+  if (!(radiusPx > 0)) return 1;
+  const factor = minReadableDialRadiusPx() / radiusPx;
+  if (factor < 1.15) return 1;
+  return Math.min(4, factor);
+}
 /**
  * Share of the needle window that sits against the hub.
  * The window already starts outside the pivot (TIP_INNER_RATIO). A pointer

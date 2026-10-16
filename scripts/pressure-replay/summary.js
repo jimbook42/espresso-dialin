@@ -30,10 +30,24 @@ export function isHighConfidence(frame) {
   return finite(frame.confidence) && frame.confidence >= NEEDLE_TRACK_QUALITY;
 }
 
+function flagSet(frame) {
+  return String(frame.flags || '').split('|');
+}
+
+/** A repeated bar. It is not a measurement and is left out of the scores. */
+export function isReadingHeld(frame) {
+  return flagSet(frame).includes('reading-held');
+}
+
 export function isValidReading(frame) {
   return frame.gaugeFound === true
     && finite(frame.bar)
+    && !isReadingHeld(frame)
     && (frame.tracking === 'TRACKING' || frame.tracking === 'UNCERTAIN');
+}
+
+function scoredBar(frame) {
+  return finite(frame.bar) && !isReadingHeld(frame);
 }
 
 export function isNoReading(frame) {
@@ -53,19 +67,19 @@ export function summarizeClipFrames(frames, clip) {
   const gaugeTrackedPct = n ? (withGauge.length / n) * 100 : 0;
 
   const errors = frames
-    .filter((f) => finite(f.bar))
+    .filter((f) => scoredBar(f))
     .map((f) => Math.abs(f.bar - expected));
   const meanAbsErr = errors.length ? errors.reduce((s, e) => s + e, 0) / errors.length : null;
   const maxAbsErr = errors.length ? Math.max(...errors) : null;
 
-  const withinTol = frames.filter((f) => finite(f.bar) && Math.abs(f.bar - expected) <= tolerance);
+  const withinTol = frames.filter((f) => scoredBar(f) && Math.abs(f.bar - expected) <= tolerance);
   const withinTolerancePct = n ? (withinTol.length / n) * 100 : 0;
 
   const lowConf = frames.filter((f) => f.gaugeFound && (!finite(f.confidence) || f.confidence < NEEDLE_TRACK_QUALITY));
   const lowConfidencePct = n ? (lowConf.length / n) * 100 : 0;
 
   const confidentWrong = frames.filter(
-    (f) => isHighConfidence(f) && finite(f.bar) && Math.abs(f.bar - expected) > tolerance,
+    (f) => isHighConfidence(f) && scoredBar(f) && Math.abs(f.bar - expected) > tolerance,
   );
   const confidentButWrongPct = n ? (confidentWrong.length / n) * 100 : 0;
 
@@ -82,7 +96,7 @@ export function summarizeClipFrames(frames, clip) {
   const detected = frames.filter((f) => f.gaugeFound === true && finite(f.centreX) && finite(f.centreY));
   const centreX = detected.map((f) => f.centreX);
   const centreY = detected.map((f) => f.centreY);
-  const bars = frames.filter((f) => finite(f.bar)).map((f) => f.bar);
+  const bars = frames.filter((f) => scoredBar(f)).map((f) => f.bar);
   const centreRange = detected.length
     ? {
       minX: Math.min(...centreX),
@@ -102,12 +116,18 @@ export function summarizeClipFrames(frames, clip) {
   const conflict = frames.map((f) => f.conflictDeg).filter(finite).sort((a, b) => a - b);
   const conflictDegMedian = percentile(conflict, 50);
   const conflictDegMax = conflict.length ? conflict[conflict.length - 1] : null;
-  const flagText = (frame) => String(frame.flags || '');
-  const blurPct = n ? (frames.filter((f) => flagText(f).split('|').includes('blur')).length / n) * 100 : 0;
-  const glarePct = n ? (frames.filter((f) => flagText(f).split('|').includes('glare')).length / n) * 100 : 0;
-  const hasFlag = (frame, name) => flagText(frame).split('|').includes(name);
+  const hasFlag = (frame, name) => flagSet(frame).includes(name);
+  const blurPct = n ? (frames.filter((f) => hasFlag(f, 'blur')).length / n) * 100 : 0;
+  const glarePct = n ? (frames.filter((f) => hasFlag(f, 'glare')).length / n) * 100 : 0;
   const glareHintPreShot = frames.filter((f) => hasFlag(f, 'glare-hint') && !hasFlag(f, 'shot')).length;
   const glareHintDuringShot = frames.filter((f) => hasFlag(f, 'glare-hint') && hasFlag(f, 'shot')).length;
+  const moveCloserPreShot = frames.filter((f) => hasFlag(f, 'move-closer') && !hasFlag(f, 'shot')).length;
+  const moveCloserDuringShot = frames.filter((f) => hasFlag(f, 'move-closer') && hasFlag(f, 'shot')).length;
+  const gapPct = n ? (frames.filter((f) => hasFlag(f, 'reading-gap')).length / n) * 100 : 0;
+  let maxHoldMs = 0;
+  for (const frame of frames) {
+    if (finite(frame.holdMs)) maxHoldMs = Math.max(maxHoldMs, frame.holdMs);
+  }
 
   let centreAtTruePct = null;
   if (clip.scoringCentre && withGauge.length) {
@@ -147,6 +167,10 @@ export function summarizeClipFrames(frames, clip) {
     glarePct,
     glareHintPreShot,
     glareHintDuringShot,
+    moveCloserPreShot,
+    moveCloserDuringShot,
+    gapPct,
+    maxHoldS: maxHoldMs / 1000,
     pass: {
       gaugeTracked: passGaugeTracked,
       withinTolerance: passTolerance,

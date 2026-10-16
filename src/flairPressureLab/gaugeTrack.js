@@ -10,7 +10,7 @@ import {
 } from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
 import { assessFrameQuality } from './frameQuality.js';
-import { detectNeedleAngle } from './needleFromFrame.js';
+import { detectNeedleAngle, needleZoomForRadius } from './needleFromFrame.js';
 import {
   FLAIR_CANONICAL_DIAL_PROFILE,
   FLAIR_CANONICAL_FACE_PROFILE,
@@ -839,17 +839,45 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
 
 /**
  * Pick the circle to seed.
- * Rank is the continuous score (rim, face, canonical). Only the top-ranked
- * circle may be seeded, and only when it passes the full verification gate.
- * A lower circle that scrapes the gate while the leader misses it is rejected.
+ * Rank is rim × face × canonical template match. A bright hotspot, a hose,
+ * or a hand can outrank the dial on rim alone and still fail the template
+ * gate. Those misses do not hide a lower circle that does match the printed
+ * face. Among circles that pass, the highest rank wins.
  */
 export function selectDiscoveryCandidate(candidates) {
-  let bestRank = null;
+  let best = null;
   for (const candidate of candidates || []) {
-    if (!bestRank || (candidate.rank || 0) > (bestRank.rank || 0)) bestRank = candidate;
+    if (!candidate?.ok) continue;
+    if (!best || (candidate.rank || 0) > (best.rank || 0)) best = candidate;
   }
-  if (!bestRank?.ok) return null;
-  return bestRank;
+  return best;
+}
+
+/**
+ * Working-image radius at which the tick ring is a few pixels wide.
+ * A coarser hit below this is kept only when no finer scale verifies.
+ */
+export const TICK_READABLE_RADIUS_PX = 28;
+
+/**
+ * Coarse-to-fine working sizes for whole-frame search.
+ * The short side starts at the usual 240px budget. Another octave is added
+ * while the smallest dial the generic radius band allows is still smaller
+ * than the tick ring needs, and stops at the native short side.
+ */
+export function discoveryOutputSizes(minDim) {
+  const outputs = [];
+  if (!(minDim > 0)) return outputs;
+  let maxOutput = DISCOVERY_MAX_OUTPUT;
+  for (let level = 0; level < 3; level += 1) {
+    const capped = Math.max(16, Math.min(minDim, Math.round(maxOutput)));
+    if (!outputs.length || capped > outputs[outputs.length - 1] + 1) outputs.push(capped);
+    const scale = Math.min(1, capped / minDim);
+    const smallestWorking = minDim * MIN_DISCOVERY_RADIUS_FRACTION * scale;
+    if (smallestWorking >= TICK_READABLE_RADIUS_PX || capped >= minDim - 1) break;
+    maxOutput = capped * 2;
+  }
+  return outputs;
 }
 
 /**
@@ -902,11 +930,7 @@ function discoveryResultFromBest(best, scale, minDim) {
   };
 }
 
-function discoverGaugeWithOpenCv(image, cv) {
-  if (!image?.width || !image?.data || !cv?.Mat) return null;
-  const minDim = Math.min(image.width, image.height);
-  const { chosen } = probeGaugeDiscoveryCandidates(image, cv);
-  if (!chosen || chosen.radius < minDim * MIN_DISCOVERY_RADIUS_FRACTION) return null;
+function resultFromChosen(chosen) {
   return {
     ok: chosen.ok === true,
     confidence: chosen.confidence ?? 0,
@@ -917,6 +941,27 @@ function discoverGaugeWithOpenCv(image, cv) {
     canonicalScore: chosen.canonical,
     source: 'opencv-hough',
   };
+}
+
+function discoverGaugeWithOpenCv(image, cv) {
+  if (!image?.width || !image?.data || !cv?.Mat) return null;
+  const minDim = Math.min(image.width, image.height);
+  const outputs = discoveryOutputSizes(minDim);
+  let pending = null;
+  for (let level = 0; level < outputs.length; level += 1) {
+    const ctx = buildDiscoveryFrameContext(image, outputs[level]);
+    const candidates = [];
+    collectHoughCircleCandidates(ctx, cv, candidates);
+    const chosen = selectDiscoveryCandidate(candidates);
+    if (!chosen?.ok) continue;
+    if (chosen.radius < minDim * MIN_DISCOVERY_RADIUS_FRACTION) continue;
+    const workingRadius = chosen.radiusScaled ?? chosen.radius * ctx.scale;
+    const result = resultFromChosen(chosen);
+    const last = level === outputs.length - 1;
+    if (workingRadius >= TICK_READABLE_RADIUS_PX || last) return result;
+    pending = result;
+  }
+  return pending;
 }
 
 /**
@@ -1954,8 +1999,9 @@ function squareCrop(videoW, videoH, cx, cy, pad) {
   return { originX, originY, size };
 }
 
-function resampleCrop(image, crop, maxOutput) {
-  const output = Math.min(crop.size, maxOutput);
+function resampleCrop(image, crop, maxOutput, minOutput = 0) {
+  const natural = Math.min(crop.size, maxOutput);
+  const output = Math.min(maxOutput, Math.max(natural, minOutput > 0 ? minOutput : natural));
   const scale = output / crop.size;
   const data = new Uint8ClampedArray(output * output * 4);
   for (let y = 0; y < output; y += 1) {
@@ -2061,8 +2107,9 @@ function scratchCanvas(kind) {
   return trackSurface;
 }
 
-function drawCrop(video, canvas, crop, maxOutput) {
-  const output = Math.min(crop.size, maxOutput);
+function drawCrop(video, canvas, crop, maxOutput, minOutput = 0) {
+  const natural = Math.min(crop.size, maxOutput);
+  const output = Math.min(maxOutput, Math.max(natural, minOutput > 0 ? minOutput : natural));
   const context = canvas.getContext('2d', { willReadFrequently: true });
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   // Assigning width resets the bitmap even when the value is unchanged.
@@ -2639,7 +2686,9 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       return null;
     }
     const tNeedleDraw = stamp();
-    const needle = drawCrop(video, scratchCanvas('needle') || canvas, needleCrop, 420);
+    const zoom = needleZoomForRadius(center.radius);
+    const needleMin = zoom > 1 ? Math.round(needleCrop.size * zoom) : 0;
+    const needle = drawCrop(video, scratchCanvas('needle') || canvas, needleCrop, 420, needleMin);
     needleDrawMs = stamp() - tNeedleDraw;
     const tNeedle = stamp();
     reading = completeReading({

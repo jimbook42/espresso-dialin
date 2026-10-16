@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadPressureReplayManifest, selectClips } from './manifest.js';
-import { compareReplayRuns, isHighConfidence, isValidReading, summarizeClipFrames } from './summary.js';
+import { compareReplayRuns, isHighConfidence, isReadingHeld, isValidReading, summarizeClipFrames } from './summary.js';
 
 describe('pressure replay manifest', () => {
   it('loads all six clips with expected metadata', () => {
@@ -58,6 +58,33 @@ describe('pressure replay summary math', () => {
     expect(summary.confidentButWrongPct).toBe(0);
     expect(summary.glareHintPreShot).toBe(0);
     expect(summary.glareHintDuringShot).toBe(0);
+  });
+
+  it('does not score a held bar and reports the longest hold', () => {
+    const frames = [
+      { timeS: 0, gaugeFound: true, bar: 0.1, tracking: 'TRACKING', confidence: 0.4, flags: 'TRACKING', holdMs: 0 },
+      { timeS: 0.5, gaugeFound: true, bar: 4, tracking: 'UNCERTAIN', confidence: 0.4, flags: 'UNCERTAIN|reading-held', holdMs: 500 },
+      { timeS: 1.2, gaugeFound: true, bar: 4, tracking: 'UNCERTAIN', confidence: 0.4, flags: 'UNCERTAIN|reading-held', holdMs: 1000 },
+      { timeS: 1.4, gaugeFound: true, bar: null, tracking: 'LOST', confidence: 0.05, flags: 'LOST|reading-gap', holdMs: 0 },
+    ];
+    expect(isReadingHeld(frames[1])).toBe(true);
+    expect(isValidReading(frames[1])).toBe(false);
+    const summary = summarizeClipFrames(frames, clip);
+    expect(summary.withinTolerancePct).toBeCloseTo(25, 5);
+    expect(summary.confidentButWrongPct).toBe(0);
+    expect(summary.maxHoldS).toBeCloseTo(1, 5);
+    expect(summary.gapPct).toBeCloseTo(25, 5);
+  });
+
+  it('counts move-closer hint frames separately before and during a shot', () => {
+    const frames = [
+      { timeS: 0, gaugeFound: true, bar: 0, tracking: 'TRACKING', confidence: 0.1, flags: 'TRACKING|move-closer' },
+      { timeS: 1, gaugeFound: true, bar: 3, tracking: 'TRACKING', confidence: 0.2, flags: 'TRACKING|shot' },
+      { timeS: 2, gaugeFound: true, bar: 0, tracking: 'TRACKING', confidence: 0.2, flags: 'TRACKING|move-closer|shot' },
+    ];
+    const summary = summarizeClipFrames(frames, clip);
+    expect(summary.moveCloserPreShot).toBe(1);
+    expect(summary.moveCloserDuringShot).toBe(1);
   });
 
   it('counts the glare setup hint before a shot and never during one', () => {

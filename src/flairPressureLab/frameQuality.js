@@ -187,6 +187,59 @@ export function assessFrameQuality(imageData, width, height, cx, cy, radius, gra
 /** Shown before a shot when the dial face is glaring. Hidden for the whole shot. */
 export const GLARE_SETUP_HINT = 'Glare on gauge — shift your phone a bit';
 
+/** Shown before a shot when the detected dial is below the needle's pixel need. */
+export const MOVE_CLOSER_HINT = 'Move closer — gauge too small';
+
+/** True when a detected radius cannot feed the needle sampler a pixel per sample. */
+export function gaugeTooSmallForNeedle(radiusPx, minRadiusPx) {
+  return typeof radiusPx === 'number'
+    && radiusPx > 0
+    && typeof minRadiusPx === 'number'
+    && radiusPx < minRadiusPx;
+}
+
+/**
+ * Pre-shot setup hint for a dial that is too small to read.
+ * A running shot hides it, same latch as the glare hint.
+ */
+export function moveCloserHintVisible({ tooSmall = false, shotRunning = false } = {}) {
+  return tooSmall === true && shotRunning !== true;
+}
+
+/** Last good bar may be repeated for at most this long. Then the bar is a gap. */
+export const READING_HOLD_MAX_MS = 1000;
+
+/**
+ * Repeats the last fresh bar for at most `maxHoldMs`, then publishes null.
+ * A fresh measurement resets the clock. A held bar is never a new reading.
+ */
+export function createReadingHold(maxHoldMs = READING_HOLD_MAX_MS) {
+  let lastBar = null;
+  let lastAt = 0;
+  return {
+    reset() {
+      lastBar = null;
+      lastAt = 0;
+    },
+    push({ bar = null, fresh = false, now = 0 } = {}) {
+      const measured = fresh === true && bar != null && !Number.isNaN(bar);
+      if (measured) {
+        lastBar = bar;
+        lastAt = now;
+        return { bar, held: false, gap: false, expired: false, holdMs: 0 };
+      }
+      if (lastBar == null || now == null) {
+        return { bar: null, held: false, gap: true, expired: false, holdMs: 0 };
+      }
+      const elapsed = now - lastAt;
+      if (elapsed > maxHoldMs) {
+        return { bar: null, held: false, gap: true, expired: true, holdMs: 0 };
+      }
+      return { bar: lastBar, held: true, gap: false, expired: false, holdMs: elapsed };
+    },
+  };
+}
+
 /**
  * Pre-shot setup hint.
  * A running shot hides it even when the face is still glaring.
