@@ -2034,15 +2034,40 @@ function commitScaleStep(tracker, stepped) {
   return stepped;
 }
 
+let needleSurface = null;
+let trackSurface = null;
+
+function scratchCanvas(kind) {
+  if (typeof document === 'undefined') return null;
+  if (kind === 'needle') {
+    if (!needleSurface) needleSurface = document.createElement('canvas');
+    return needleSurface;
+  }
+  if (!trackSurface) trackSurface = document.createElement('canvas');
+  return trackSurface;
+}
+
 function drawCrop(video, canvas, crop, maxOutput) {
   const output = Math.min(crop.size, maxOutput);
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  canvas.width = output;
-  canvas.height = output;
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  // Assigning width resets the bitmap even when the value is unchanged.
+  if (canvas.width !== output || canvas.height !== output) {
+    canvas.width = output;
+    canvas.height = output;
+  }
+  const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
   context.drawImage(video, crop.originX, crop.originY, crop.size, crop.size, 0, 0, output, output);
+  const t2 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const image = context.getImageData(0, 0, output, output);
+  const t3 = typeof performance !== 'undefined' ? performance.now() : 0;
   return {
-    image: context.getImageData(0, 0, output, output),
+    image,
     scale: output / crop.size,
+    output,
+    resizeMs: t1 - t0,
+    blitMs: t2 - t1,
+    readMs: t3 - t2,
   };
 }
 
@@ -2480,8 +2505,12 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * capture.pad);
   if (!trackCrop) return null;
   const tTrackDraw = stamp();
-  const tracked = drawCrop(video, canvas, trackCrop, capture.maxOutput);
+  const tracked = drawCrop(video, scratchCanvas('track') || canvas, trackCrop, capture.maxOutput);
   trackDrawMs = stamp() - tTrackDraw;
+  const trackBlitMs = tracked.blitMs;
+  const trackReadMs = tracked.readMs;
+  const trackResizeMs = tracked.resizeMs;
+  const trackOutput = tracked.output;
   const tTrack = stamp();
   const priorState = tracker.verificationState?.() ?? {};
   const priorFace = priorState.faceScore ?? 0;
@@ -2573,7 +2602,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
     if (!needleCrop) return null;
     const tNeedleDraw = stamp();
-    const needle = drawCrop(video, canvas, needleCrop, 420);
+    const needle = drawCrop(video, scratchCanvas('needle') || canvas, needleCrop, 420);
     needleDrawMs = stamp() - tNeedleDraw;
     const tNeedle = stamp();
     reading = completeReading({
@@ -2660,5 +2689,16 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       needle: roundTrace(needleMs),
     },
   });
+  reading.stageMs = {
+    trackDraw: trackDrawMs,
+    track: trackMs,
+    needleDraw: needleDrawMs,
+    needle: needleMs,
+    discovery: discoveryMs,
+    trackBlit: trackBlitMs,
+    trackRead: trackReadMs,
+    trackResize: trackResizeMs,
+    trackOutput,
+  };
   return reading;
 }

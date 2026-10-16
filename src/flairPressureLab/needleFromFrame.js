@@ -36,6 +36,30 @@ function median(values) {
   return copy[Math.floor(copy.length / 2)];
 }
 
+/** kth smallest. Same value as sorting and indexing, and it mutates `arr`. */
+function selectNth(arr, k, len) {
+  let left = 0;
+  let right = len - 1;
+  while (left < right) {
+    const pivot = arr[right];
+    let store = left;
+    for (let i = left; i < right; i += 1) {
+      if (arr[i] < pivot) {
+        const tmp = arr[store];
+        arr[store] = arr[i];
+        arr[i] = tmp;
+        store += 1;
+      }
+    }
+    arr[right] = arr[store];
+    arr[store] = pivot;
+    if (store === k) return arr[k];
+    if (store < k) left = store + 1;
+    else right = store - 1;
+  }
+  return arr[left];
+}
+
 /**
  * Both faces of a needle match. A sleeve step is bright on one side only.
  * High-pass ringing can make the dark side barely positive; the darker side
@@ -115,18 +139,18 @@ function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outer
     const r = innerR + span * ((i + 0.5) / SAMPLE_COUNT);
     const x = cx + r * cos;
     const y = cy + r * sin;
-    const xi = Math.round(x);
-    const yi = Math.round(y);
+    const xi = (x + 0.5) | 0;
+    const yi = (y + 0.5) | 0;
     if (xi < 1 || yi < 1 || xi >= limitX || yi >= limitY) continue;
     const index = yi * width + xi;
     const center = gray[index];
     let peakContrast = 0;
     for (let k = 0; k < offsetCount; k += 1) {
       const offset = offsets[k];
-      const lxi = Math.round(x - sin * offset);
-      const lyi = Math.round(y + cos * offset);
-      const rxi = Math.round(x + sin * offset);
-      const ryi = Math.round(y - cos * offset);
+      const lxi = ((x - sin * offset) + 0.5) | 0;
+      const lyi = ((y + cos * offset) + 0.5) | 0;
+      const rxi = ((x + sin * offset) + 0.5) | 0;
+      const ryi = ((y - cos * offset) + 0.5) | 0;
       let contrast = 0;
       if (lxi >= 0 && lyi >= 0 && lxi < width && lyi < height && rxi >= 0 && ryi >= 0 && rxi < width && ryi < height) {
         const leftContrast = gray[lyi * width + lxi] - center;
@@ -472,9 +496,10 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
 
   const medianProfile = new Float32Array(SAMPLE_COUNT);
   const column = new Float32Array(evidence.length);
+  const mid = Math.floor(evidence.length / 2);
   for (let s = 0; s < SAMPLE_COUNT; s += 1) {
     for (let i = 0; i < evidence.length; i += 1) column[i] = evidence[i].samples[s];
-    medianProfile[s] = median(column);
+    medianProfile[s] = selectNth(column, mid, evidence.length);
   }
 
   const scratch = new Float32Array(SAMPLE_COUNT);
@@ -483,8 +508,11 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     for (let s = 0; s < SAMPLE_COUNT; s += 1) scratch[s] = Math.max(0, ray.samples[s] - medianProfile[s]);
     const profile = scoreProfile(scratch);
     profile.probePx = probeDistance(ray.probeAt, scratch);
+    profile.probeAt = ray.probeAt;
+    return profile;
+  };
+  const keepSamples = (profile) => {
     profile.samples = Float32Array.from(scratch);
-    profile.probeAt = Float32Array.from(ray.probeAt);
     return profile;
   };
 
@@ -497,7 +525,7 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     const scored = scoreAngle(deg, evidence[i]);
     raw[deg] = scored.score;
     if (scored.score > bestProfile.score) {
-      bestProfile = scored;
+      bestProfile = keepSamples(scored);
       best = deg;
     }
   }
@@ -522,7 +550,7 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
         peakAngle = wrapped;
       }
       if (scored.score > bestProfile.score) {
-        bestProfile = scored;
+        bestProfile = keepSamples(scored);
         best = wrapped;
       }
     }
@@ -533,7 +561,7 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
 
   const opposite = (best + 180) % 360;
   const oppositeIndex = scan.angles.indexOf(opposite);
-  const oppositeProfile = scoreAngle(opposite, oppositeIndex >= 0 ? evidence[oppositeIndex] : null);
+  const oppositeProfile = keepSamples(scoreAngle(opposite, oppositeIndex >= 0 ? evidence[oppositeIndex] : null));
   const chosenEnd = selectPointerEnd(bestProfile, oppositeProfile);
   if (chosenEnd.takeOpposite) {
     best = opposite;

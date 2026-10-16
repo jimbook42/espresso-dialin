@@ -367,6 +367,16 @@ export function FlairPressureLab() {
         processMs: partial.processMs ?? null,
         e2eMs: partial.e2eMs ?? null,
         mainThreadMs: partial.mainThreadMs ?? null,
+        cvMs: partial.cvMs ?? null,
+        stageTrack: partial.stageTrack ?? null,
+        stageTrackDraw: partial.stageTrackDraw ?? null,
+        stageNeedle: partial.stageNeedle ?? null,
+        stageNeedleDraw: partial.stageNeedleDraw ?? null,
+        stageDiscovery: partial.stageDiscovery ?? null,
+        stageTrackBlit: partial.stageTrackBlit ?? null,
+        stageTrackRead: partial.stageTrackRead ?? null,
+        stageTrackResize: partial.stageTrackResize ?? null,
+        stageTrackOutput: partial.stageTrackOutput ?? null,
         flags: partial.flags ?? '',
         tracking: partial.tracking ?? null,
         conflictDeg: partial.conflictDeg ?? null,
@@ -383,10 +393,14 @@ export function FlairPressureLab() {
       if (!video || video.readyState < 2) return;
       const grab = grabAt ?? performance.now();
       let discoveryWait = 0;
+      let cvDone = 0;
+      const markCv = () => {
+        cvDone = Math.max(0, performance.now() - grab - discoveryWait);
+      };
       const frameTiming = () => {
         const e2eMs = Math.max(0, performance.now() - grab);
         const mainThreadMs = Math.max(0, e2eMs - discoveryWait);
-        return { e2eMs, mainThreadMs, processMs: mainThreadMs };
+        return { e2eMs, mainThreadMs, processMs: mainThreadMs, cvMs: cvDone };
       };
       let reading;
       try {
@@ -603,6 +617,7 @@ export function FlairPressureLab() {
           const labels = REPLAY_BUILD ? replayGaugeLabels(gauge) : null;
           const qualityFlags = frameQualityForAnchor.ok ? '' : `|${frameQualityForAnchor.flags.join('|')}`;
           const hintFlag = preShotGlare ? '|glare-hint' : '';
+          markCv();
           setLive({
             ...EMPTY_LIVE,
             ...gaugeFields,
@@ -627,6 +642,15 @@ export function FlairPressureLab() {
               conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
               flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}`,
               tracking: 'CALIBRATING',
+              stageTrack: reading.stageMs?.track ?? null,
+              stageTrackDraw: reading.stageMs?.trackDraw ?? null,
+              stageNeedle: reading.stageMs?.needle ?? null,
+              stageNeedleDraw: reading.stageMs?.needleDraw ?? null,
+              stageDiscovery: reading.stageMs?.discovery ?? null,
+              stageTrackBlit: reading.stageMs?.trackBlit ?? null,
+              stageTrackRead: reading.stageMs?.trackRead ?? null,
+              stageTrackResize: reading.stageMs?.trackResize ?? null,
+              stageTrackOutput: reading.stageMs?.trackOutput ?? null,
               ...frameTiming(),
             }, now);
           }
@@ -819,6 +843,7 @@ export function FlairPressureLab() {
         poseAge: poseAgeRef.current,
         jitterDeg: jitter,
       });
+      markCv();
       setLive({
         tracking,
         displayBar: tracking === 'TRACKING' || tracking === 'UNCERTAIN' ? pressureBar : null,
@@ -862,6 +887,15 @@ export function FlairPressureLab() {
           conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
           flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}|hub:${reading.hub == null ? 'na' : reading.hub.toFixed(2)}`,
           tracking,
+          stageTrack: reading.stageMs?.track ?? null,
+          stageTrackDraw: reading.stageMs?.trackDraw ?? null,
+          stageNeedle: reading.stageMs?.needle ?? null,
+          stageNeedleDraw: reading.stageMs?.needleDraw ?? null,
+          stageDiscovery: reading.stageMs?.discovery ?? null,
+          stageTrackBlit: reading.stageMs?.trackBlit ?? null,
+          stageTrackRead: reading.stageMs?.trackRead ?? null,
+          stageTrackResize: reading.stageMs?.trackResize ?? null,
+          stageTrackOutput: reading.stageMs?.trackOutput ?? null,
           ...frameTiming(),
         }, now);
       }
@@ -889,7 +923,6 @@ export function FlairPressureLab() {
     const frameBase = window.__pressureReplayFrameBase || '';
     const untilS = Number(window.__pressureReplayUntilS) || 0;
     const slot = PROCESS_INTERVAL_MS / 1000;
-    const snap = document.createElement('canvas');
     const chart = document.createElement('canvas');
     chart.width = 280;
     chart.height = 72;
@@ -898,6 +931,8 @@ export function FlairPressureLab() {
     let lastChart = 0;
     let scaleTicks = 0;
     let longTasks = 0;
+    let longTaskMax = 0;
+    const longTaskDurations = [];
     let countLongTasks = false;
     let slots = 0;
     const drawChart = (now) => {
@@ -924,14 +959,26 @@ export function FlairPressureLab() {
       try {
         longTaskObserver = new PerformanceObserver((list) => {
           if (!countLongTasks) return;
-          longTasks += list.getEntries().length;
+          for (const entry of list.getEntries()) {
+            longTasks += 1;
+            if (entry.duration > longTaskMax) longTaskMax = entry.duration;
+            if (longTaskDurations.length < 8) longTaskDurations.push(Math.round(entry.duration));
+          }
         });
         longTaskObserver.observe({ type: 'longtask', buffered: false });
       } catch {
         longTaskObserver = null;
       }
     }
-    window.__pressureReplaySmoothness = () => ({ longTasks, scaleTicks, slots });
+    window.__pressureReplaySmoothness = () => ({
+      longTasks,
+      longTaskMax,
+      longTaskDurations,
+      scaleTicks,
+      slots,
+      cropBenchPre: window.__cropBenchPre || null,
+      cropBenchPost: window.__cropBenchPost || null,
+    });
     const loadFrame = (src) => new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
@@ -944,8 +991,8 @@ export function FlairPressureLab() {
         return;
       }
       try {
-        countLongTasks = true;
-        const snapCtx = snap.getContext('2d', { willReadFrequently: true });
+        const hold = document.createElement('canvas');
+        const stills = [];
         for (let index = 4; !stopped; index += 1) {
           const t = index * slot;
           if (t >= untilS) break;
@@ -953,18 +1000,40 @@ export function FlairPressureLab() {
           const name = String(fileIndex).padStart(4, '0');
           const img = await loadFrame(`${frameBase}${name}.png`);
           if (stopped) return;
-          const grabAt = performance.now();
-          if (snap.width !== img.naturalWidth || snap.height !== img.naturalHeight) {
-            snap.width = img.naturalWidth;
-            snap.height = img.naturalHeight;
+          if (hold.width !== img.naturalWidth || hold.height !== img.naturalHeight) {
+            hold.width = img.naturalWidth;
+            hold.height = img.naturalHeight;
           }
-          snapCtx.drawImage(img, 0, 0);
-          snap.videoWidth = snap.width;
-          snap.videoHeight = snap.height;
-          snap.readyState = 4;
+          const holdCtx = hold.getContext('2d', { willReadFrequently: true });
+          holdCtx.drawImage(img, 0, 0);
+          stills.push({
+            t,
+            pixels: holdCtx.getImageData(0, 0, hold.width, hold.height),
+          });
+        }
+        // Stills are the frames. The fake camera keeps decoding beside them
+        // and stalls the crop readback. Decoding the PNG stays outside the frame.
+        const liveVideo = videoRef.current;
+        liveVideo?.pause?.();
+        liveVideo?.srcObject?.getTracks?.().forEach((track) => track.stop());
+        const frame = document.createElement('canvas');
+        const first = stills[0]?.pixels;
+        if (first) {
+          frame.width = first.width;
+          frame.height = first.height;
+        }
+        frame.videoWidth = frame.width;
+        frame.videoHeight = frame.height;
+        frame.readyState = 4;
+        const frameCtx = frame.getContext('2d', { willReadFrequently: true });
+        countLongTasks = true;
+        for (const still of stills) {
+          if (stopped) return;
+          frameCtx.putImageData(still.pixels, 0, 0);
+          const grabAt = performance.now();
           slots += 1;
           window.__pressureReplaySlots = slots;
-          await processSample(snap, Math.round(t * 1000), performance.now(), { replay: true, grabAt });
+          await processSample(frame, Math.round(still.t * 1000), performance.now(), { replay: true, grabAt });
         }
         if (!stopped) window.__pressureReplayDrained = true;
       } catch (err) {
