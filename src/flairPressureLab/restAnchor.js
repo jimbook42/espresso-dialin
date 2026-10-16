@@ -1,5 +1,5 @@
 import { CANONICAL_ZERO_BAR_ANGLE_DEG } from './canonicalDial.js';
-import { wrap360, wrapDelta } from './gaugeConfig.js';
+import { PROCESS_INTERVAL_MS, wrap360, wrapDelta } from './gaugeConfig.js';
 
 /** How long the needle must sit still before it can confirm the printed zero. */
 export const REST_ANCHOR_MS = 500;
@@ -34,7 +34,10 @@ export function createRestAnchor() {
       if (status !== 'pending') return status;
       if (!usable || angleDeg == null || timeMs == null) return status;
       samples.push({ timeMs, angleDeg });
-      const cutoff = timeMs - REST_ANCHOR_MS;
+      // Keep one process interval before the half-second mark. A sample that
+      // opens the window would otherwise be dropped on the same tick the span
+      // reaches half a second, and the anchor would stay pending forever.
+      const cutoff = timeMs - REST_ANCHOR_MS - PROCESS_INTERVAL_MS;
       samples = samples.filter((sample) => sample.timeMs >= cutoff);
       if (samples.length < 3) return status;
       const span = samples[samples.length - 1].timeMs - samples[0].timeMs;

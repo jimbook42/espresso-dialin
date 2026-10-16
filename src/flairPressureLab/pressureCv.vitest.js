@@ -684,6 +684,11 @@ describe('pressure CV units', () => {
     expect(anchor.push({ timeMs: 0, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG, usable: true })).toBe('pending');
     expect(anchor.push({ timeMs: 200, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG + 2, usable: true })).toBe('pending');
     expect(anchor.push({ timeMs: 500, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG - 1, usable: true })).toBe('confirmed');
+    const paced = createRestAnchor();
+    for (const timeMs of [0, 133, 266, 400]) {
+      expect(paced.push({ timeMs, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG + 1, usable: true })).toBe('pending');
+    }
+    expect(paced.push({ timeMs: 533, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG + 2, usable: true })).toBe('confirmed');
     const conflict = createRestAnchor();
     conflict.push({ timeMs: 0, angleDeg: 140, usable: true });
     conflict.push({ timeMs: 250, angleDeg: 142, usable: true });
