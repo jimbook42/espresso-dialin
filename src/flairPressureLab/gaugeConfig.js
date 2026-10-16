@@ -1,14 +1,13 @@
 /**
  * Flair 58 session model.
- * The resting needle angle is measured during calibration.
- * The printed scale is 0–12 bar (Flair gauge). The arc length is an assumption
- * until a physical dial confirms it — it is not treated as a measured angle.
- * Angles: 0° = right, clockwise positive in the unmirrored camera frame (y down).
+ * The printed scale is 0–10 bar over 170°, measured on the design dial.
+ * 0 is the stop pin, 5 and 10 are the numbered ticks, and the arc past 10
+ * is the unnumbered STOP band. Angles: 0° = right, clockwise (y down).
  */
 export const FLAIR_58_SCALE = {
   minBar: 0,
-  maxBar: 12,
-  sweepDeg: 270,
+  maxBar: 10,
+  sweepDeg: 170,
   clockwise: true,
 };
 

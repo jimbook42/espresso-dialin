@@ -60,15 +60,15 @@ function makeNeedleFrame(size, angleDeg) {
 export function runFlairPressureLabTests() {
   const session = { ...FLAIR_58_SCALE, zeroAngleDeg: 20 };
   assert.equal(angleToBar(20, session), 0);
-  const mid = angleToBar(20 + 135, session);
-  assert.ok(Math.abs(mid - 6) < 0.02, `expected 6 bar, got ${mid}`);
+  const mid = angleToBar(20 + FLAIR_58_SCALE.sweepDeg / 2, session);
+  assert.ok(Math.abs(mid - FLAIR_58_SCALE.maxBar / 2) < 0.02, `expected half scale, got ${mid}`);
   assert.equal(angleToBar(15, session), 0);
   assert.equal(angleToBar(8, session), 0);
   assert.equal(angleToBar(7, session), null);
   assert.equal(angleToBar(wrap360(20 - 40), session), null);
-  assert.ok(Math.abs(angleToBar(20 + 270, session) - 12) < 0.02);
-  assert.ok(Math.abs(angleToBar(20 + 278, session) - 12) < 0.02);
-  assert.equal(angleToBar(20 + 300, session), null);
+  assert.ok(Math.abs(angleToBar(20 + FLAIR_58_SCALE.sweepDeg, session) - FLAIR_58_SCALE.maxBar) < 0.02);
+  assert.ok(Math.abs(angleToBar(20 + FLAIR_58_SCALE.sweepDeg + 8, session) - FLAIR_58_SCALE.maxBar) < 0.02);
+  assert.equal(angleToBar(20 + FLAIR_58_SCALE.sweepDeg + 40, session), null);
 
   assert.equal(
     classifyTrackingStatus({ calibrated: false, quality: 0.9, jitterDeg: 0, accepted: true }),
@@ -675,11 +675,12 @@ export function runFlairPressureLabTests() {
   const gaugeTurned = angleToBar(wrap360(50 - 10), { ...FLAIR_58_SCALE, zeroAngleDeg: 40 });
   const wrappedRest = angleToBar(wrap360(5 - 330), { ...FLAIR_58_SCALE, zeroAngleDeg: 35 });
   const lifted = angleToBar(wrap360(85 - 0), { ...FLAIR_58_SCALE, zeroAngleDeg: 40 });
+  const liftedExpected = (45 / FLAIR_58_SCALE.sweepDeg) * FLAIR_58_SCALE.maxBar;
   assert.equal(atRest, 0);
   assert.ok(Math.abs(gaugeTurned) < 1e-6, `rotation leaked into pressure ${gaugeTurned}`);
   assert.ok(Math.abs(wrapDelta(35, wrap360(5 - 330))) < 1e-6);
   assert.ok(Math.abs(wrappedRest) < 1e-6, `wrap rest ${wrappedRest}`);
-  assert.ok(Math.abs(lifted - 2) < 0.02, `lifted ${lifted}`);
+  assert.ok(Math.abs(lifted - liftedExpected) < 0.02, `lifted ${lifted}`);
 
   const stillTracker = createGaugeTracker();
   const stillImage = makeGaugeImage(180, { cx: 92, cy: 88, radius: 40, needleDeg: 47, rotationDeg: 0 });
@@ -1419,7 +1420,7 @@ export function runFlairPressureLabTests() {
   assert.ok(bare.includes('Camera resolution: N/A'));
   const blankReport = buildDiagnosticReport([], { timestamp: when, calibrationStatus: 'not calibrated' });
   assert.ok(blankReport.includes('No diagnostic samples in memory.'));
-  assert.ok(blankReport.includes('Pressure scale: 0-12 bar over 270° (provisional, not physically validated)'));
+  assert.ok(blankReport.includes(`Pressure scale: ${FLAIR_58_SCALE.minBar}-${FLAIR_58_SCALE.maxBar} bar over ${FLAIR_58_SCALE.sweepDeg}° (measured on the printed Flair face)`));
   const reasonReport = buildDiagnosticReport([
     { t: 1000, tracking: 'UNCERTAIN', pressure: 0, uncertaintyReason: 'off-scale' },
     { t: 1125, tracking: 'UNCERTAIN', pressure: 0, uncertaintyReason: 'gauge-held', gaugeHeld: true },
@@ -1432,7 +1433,7 @@ export function runFlairPressureLabTests() {
     maxBar: 12,
   });
   assert.ok(reasonReport.includes('Build: abc1234'));
-  assert.ok(reasonReport.includes('Pressure scale: 0-12 bar over 270° (provisional, not physically validated)'));
+  assert.ok(reasonReport.includes('Pressure scale: 0-12 bar over 270° (measured on the printed Flair face)'));
   assert.ok(reasonReport.includes('Last uncertainty reason: gauge-held'));
   assert.ok(reasonReport.includes('Off-scale samples: 1'));
   assert.ok(reasonReport.includes('Gauge-held samples: 1'));

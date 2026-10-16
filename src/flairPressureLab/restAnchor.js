@@ -4,7 +4,7 @@ import { wrap360, wrapDelta } from './gaugeConfig.js';
 /** How long the needle must sit still before it can confirm the printed zero. */
 export const REST_ANCHOR_MS = 500;
 const REST_ANCHOR_SPREAD_DEG = 8;
-/** 10° is inside half a bar on the 270° scale, and coarser than one profile bin. */
+/** About half a bar on the 170° scale, and coarser than one profile bin. */
 const REST_ANCHOR_ZERO_DEG = 10;
 
 /**

@@ -1,8 +1,10 @@
 import { wrap360, wrapDelta } from './gaugeConfig.js';
 import {
-  BAND_INNER_FRACTION,
-  BAND_OUTER_FRACTION,
+  DARK_BAND_INNER_FRACTION,
+  DARK_BAND_OUTER_FRACTION,
   ESPRESSO_SECTOR,
+  RED_BAND_INNER_FRACTION,
+  RED_BAND_OUTER_FRACTION,
   STOP_SECTOR,
 } from './dialFaceTemplate.js';
 
@@ -24,27 +26,17 @@ function nearRay(deg, needleDeg, half) {
     || Math.abs(wrapDelta(wrap360(needleDeg + 180), deg)) <= half;
 }
 
-/**
- * Angular histograms of red chroma and darkness on the face annulus.
- * Red uses a chroma ratio, so a gain change does not move the sector.
- * Darkness is relative to the annulus median, so a shadow does not paint the whole face black.
- */
-export function measureDialColorBands(image, cx, cy, radius, needleDeg = null) {
-  const red = new Float32Array(BINS);
-  const dark = new Float32Array(BINS);
+function sampleAnnulus(image, cx, cy, radius, inner, outer, needleDeg) {
   const { data, width, height } = image;
-  const lumas = [];
   const samples = [];
-  if (!(radius > 4)) {
-    return { red, dark, redMass: 0, darkMass: 0, samples: 0 };
-  }
-  for (let deg = 0; deg < 360; deg += 3) {
+  if (!(radius > 4)) return samples;
+  for (let deg = 0; deg < 360; deg += 2) {
     if (nearRay(deg, needleDeg, 14)) continue;
     const rad = (deg * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
     for (let t = 0; t <= 1; t += 0.34) {
-      const rf = BAND_INNER_FRACTION + (BAND_OUTER_FRACTION - BAND_INNER_FRACTION) * t;
+      const rf = inner + (outer - inner) * t;
       const x = Math.round(cx + radius * rf * cos);
       const y = Math.round(cy + radius * rf * sin);
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
@@ -52,31 +44,57 @@ export function measureDialColorBands(image, cx, cy, radius, needleDeg = null) {
       const r = data[o];
       const g = data[o + 1];
       const b = data[o + 2];
-      const chroma = chromaOf(r, g, b);
-      const lum = r * 0.299 + g * 0.587 + b * 0.114;
-      lumas.push(lum);
-      samples.push({ deg, chroma, lum });
+      samples.push({
+        deg,
+        chroma: chromaOf(r, g, b),
+        lum: r * 0.299 + g * 0.587 + b * 0.114,
+      });
     }
   }
-  if (!lumas.length) {
-    return { red, dark, redMass: 0, darkMass: 0, samples: 0 };
-  }
-  lumas.sort((a, b) => a - b);
-  const median = lumas[Math.floor(lumas.length / 2)];
-  const darkCut = median * 0.55;
+  return samples;
+}
+
+/**
+ * Angular histograms of red chroma and darkness.
+ * Red is the solid Espresso block (mid-face). Darkness is the outer STOP band.
+ * Red uses a chroma ratio, so a gain change does not move the sector.
+ * Darkness is relative to that annulus median, so a shadow does not paint the face black.
+ * The red Flair script is a second, smaller blob and is not the sector centroid.
+ */
+export function measureDialColorBands(image, cx, cy, radius, needleDeg = null) {
+  const red = new Float32Array(BINS);
+  const dark = new Float32Array(BINS);
+  const redSamples = sampleAnnulus(
+    image, cx, cy, radius, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, null,
+  );
+  const darkSamples = sampleAnnulus(
+    image, cx, cy, radius, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION, needleDeg,
+  );
   let redMass = 0;
-  let darkMass = 0;
-  for (const sample of samples) {
+  for (const sample of redSamples) {
+    if (sample.chroma < CHROMA_MIN) continue;
     const bin = Math.round(sample.deg / BIN_DEG) % BINS;
-    if (sample.chroma >= CHROMA_MIN) {
-      red[bin] += sample.chroma;
-      redMass += sample.chroma;
-    } else if (sample.lum <= darkCut) {
+    red[bin] += sample.chroma;
+    redMass += sample.chroma;
+  }
+  let darkMass = 0;
+  if (darkSamples.length) {
+    const lumas = darkSamples.map((sample) => sample.lum).sort((a, b) => a - b);
+    const darkCut = lumas[Math.floor(lumas.length / 2)] * 0.62;
+    for (const sample of darkSamples) {
+      if (sample.chroma >= CHROMA_MIN || sample.lum > darkCut) continue;
+      const bin = Math.round(sample.deg / BIN_DEG) % BINS;
       dark[bin] += 1;
       darkMass += 1;
     }
   }
-  return { red, dark, redMass, darkMass, samples: samples.length };
+  return {
+    red,
+    dark,
+    redMass,
+    darkMass,
+    samples: redSamples.length + darkSamples.length,
+  };
 }
 
 function sectorMidpoint(startDeg, endDeg) {
@@ -85,6 +103,47 @@ function sectorMidpoint(startDeg, endDeg) {
 
 const ESPRESSO_MID = sectorMidpoint(ESPRESSO_SECTOR.startDeg, ESPRESSO_SECTOR.endDeg);
 const STOP_MID = sectorMidpoint(STOP_SECTOR.startDeg, STOP_SECTOR.endDeg);
+
+/**
+ * Centroid of the heaviest contiguous red run.
+ * The Espresso block outweighs the Flair script, so the script does not move zero.
+ */
+function dominantRunCentroid(hist) {
+  let max = 0;
+  for (let i = 0; i < BINS; i += 1) if (hist[i] > max) max = hist[i];
+  if (max <= 0) return { mass: 0, deg: 0, concentration: 0 };
+  const floor = max * 0.22;
+  const active = [];
+  for (let i = 0; i < BINS; i += 1) active.push(hist[i] >= floor);
+  let origin = 0;
+  while (origin < BINS && active[origin]) origin += 1;
+  if (origin === BINS) return circularPeak(hist);
+  let best = null;
+  for (let k = 0; k < BINS; k += 1) {
+    const i = (origin + k) % BINS;
+    if (!active[i] || active[(i - 1 + BINS) % BINS]) continue;
+    let mass = 0;
+    let sin = 0;
+    let cos = 0;
+    for (let t = 0; t < BINS; t += 1) {
+      const j = (i + t) % BINS;
+      if (!active[j]) break;
+      const weight = hist[j];
+      const rad = ((j * BIN_DEG) * Math.PI) / 180;
+      sin += weight * Math.sin(rad);
+      cos += weight * Math.cos(rad);
+      mass += weight;
+    }
+    if (!best || mass > best.mass) {
+      best = {
+        mass,
+        deg: wrap360((Math.atan2(sin, cos) * 180) / Math.PI),
+        concentration: mass > 0 ? Math.hypot(sin, cos) / mass : 0,
+      };
+    }
+  }
+  return best || { mass: 0, deg: 0, concentration: 0 };
+}
 
 function circularPeak(hist) {
   let sin = 0;
@@ -115,7 +174,7 @@ function circularPeak(hist) {
 export function registerDialFromColorBands(bands) {
   const empty = { ok: false, rotationDeg: 0, confidence: 0, periodMargin: 0 };
   if (!bands || bands.redMass < 0.4) return empty;
-  const red = circularPeak(bands.red);
+  const red = dominantRunCentroid(bands.red);
   if (red.concentration < 0.45) {
     return { ...empty, confidence: red.concentration, periodMargin: red.concentration };
   }

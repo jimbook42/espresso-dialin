@@ -32,7 +32,15 @@ import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { createRestAnchor } from './restAnchor.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
-import { BAND_INNER_FRACTION, BAND_OUTER_FRACTION, ESPRESSO_SECTOR, STOP_SECTOR } from './dialFaceTemplate.js';
+import {
+  BAND_INNER_FRACTION,
+  BAND_OUTER_FRACTION,
+  DARK_BAND_INNER_FRACTION,
+  DARK_BAND_OUTER_FRACTION,
+  ESPRESSO_SECTOR,
+  STOP_SECTOR,
+  barToDialAngle,
+} from './dialFaceTemplate.js';
 
 function syntheticGauge(width, height, { cx, cy, radius, needleDeg = 40 }) {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -213,7 +221,8 @@ describe('pressure CV units', () => {
 
   it('maps relative needle angle to bar with stateless canonical zero', () => {
     expect(angleToBar(CANONICAL_ZERO_BAR_ANGLE_DEG, FLAIR_STATELESS_SESSION)).toBeCloseTo(0, 5);
-    expect(angleToBar(CANONICAL_ZERO_BAR_ANGLE_DEG + 45, FLAIR_STATELESS_SESSION)).toBeCloseTo(2, 0.5);
+    const five = barToDialAngle(5);
+    expect(angleToBar(five, FLAIR_STATELESS_SESSION)).toBeCloseTo(5, 1);
   });
 
   it('reads bar from needle minus registered scale rotation (no first-frame zero)', () => {
@@ -221,7 +230,8 @@ describe('pressure CV units', () => {
     const needleImageDeg = CANONICAL_ZERO_BAR_ANGLE_DEG + dialRotationDeg;
     const relativeNeedle = ((needleImageDeg - dialRotationDeg) % 360 + 360) % 360;
     expect(angleToBar(relativeNeedle, FLAIR_STATELESS_SESSION)).toBeCloseTo(0, 0.5);
-    expect(angleToBar(relativeNeedle + 90, FLAIR_STATELESS_SESSION)).toBeCloseTo(4, 0.5);
+    const halfSweep = FLAIR_STATELESS_SESSION.sweepDeg / 2;
+    expect(angleToBar(wrap360(relativeNeedle + halfSweep), FLAIR_STATELESS_SESSION)).toBeCloseTo(5, 1);
   });
 
   it('prefers the real Flair dial over a left-side clutter arc (406×720)', () => {
@@ -489,9 +499,10 @@ describe('pressure CV units', () => {
     gain = 1,
     bias = 0,
     shadow = 0,
+    needleBar = 0,
   }) {
     const data = new Uint8ClampedArray(size * size * 4);
-    const pointer = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + rotationDeg);
+    const pointer = wrap360(barToDialAngle(needleBar) + rotationDeg);
     const tail = wrap360(pointer + 180);
     const clampByte = (value) => Math.max(0, Math.min(255, Math.round(value)));
     for (let y = 0; y < size; y += 1) {
@@ -509,16 +520,16 @@ describe('pressure CV units', () => {
           g = 214;
           b = 214;
           const rf = dist / radius;
-          if (rf >= BAND_INNER_FRACTION && rf <= BAND_OUTER_FRACTION) {
-            if (inPrintedSector(dialDeg, ESPRESSO_SECTOR.startDeg, ESPRESSO_SECTOR.endDeg)) {
-              r = 186;
-              g = 42;
-              b = 48;
-            } else if (inPrintedSector(dialDeg, STOP_SECTOR.startDeg, STOP_SECTOR.endDeg)) {
-              r = 22;
-              g = 22;
-              b = 22;
-            }
+          if (rf >= BAND_INNER_FRACTION && rf <= BAND_OUTER_FRACTION
+            && inPrintedSector(dialDeg, ESPRESSO_SECTOR.startDeg, ESPRESSO_SECTOR.endDeg)) {
+            r = 186;
+            g = 42;
+            b = 48;
+          } else if (rf >= DARK_BAND_INNER_FRACTION && rf <= DARK_BAND_OUTER_FRACTION
+            && inPrintedSector(dialDeg, STOP_SECTOR.startDeg, STOP_SECTOR.endDeg)) {
+            r = 22;
+            g = 22;
+            b = 22;
           }
           const fromPointer = Math.abs(wrapDelta(pointer, imageDeg));
           const fromTail = Math.abs(wrapDelta(tail, imageDeg));
@@ -583,6 +594,28 @@ describe('pressure CV units', () => {
     )).ok).toBe(false);
   });
 
+  it('reads the measured zero and five on a dial built from the template', () => {
+    for (const bar of [0, 5]) {
+      const rotationDeg = 40;
+      const frame = syntheticPrintedDial({
+        size: 180,
+        cx: 90,
+        cy: 88,
+        radius: 62,
+        rotationDeg,
+        needleBar: bar,
+      });
+      const needle = wrap360(barToDialAngle(bar) + rotationDeg);
+      const reg = registerDialFromColorBands(measureDialColorBands(frame, 90, 88, 62, needle));
+      expect(reg.ok, `bar ${bar}`).toBe(true);
+      const found = detectNeedleAngle(frame, 90, 88, 62 * 0.24, 62 * 0.86);
+      const relative = wrap360(found.angleDeg - reg.rotationDeg);
+      const reading = angleToBar(relative, FLAIR_STATELESS_SESSION);
+      const slack = bar === 0 ? 0.1 : 0.2;
+      expect(Math.abs(reading - bar), `bar ${bar} read ${reading}`).toBeLessThanOrEqual(slack);
+    }
+  });
+
   it('picks the long pointer rather than the short tail', () => {
     const rotationDeg = 20;
     const frame = syntheticPrintedDial({
@@ -603,9 +636,9 @@ describe('pressure CV units', () => {
     expect(anchor.push({ timeMs: 200, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG + 2, usable: true })).toBe('pending');
     expect(anchor.push({ timeMs: 500, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG - 1, usable: true })).toBe('confirmed');
     const conflict = createRestAnchor();
-    conflict.push({ timeMs: 0, angleDeg: 40, usable: true });
-    conflict.push({ timeMs: 250, angleDeg: 42, usable: true });
-    expect(conflict.push({ timeMs: 500, angleDeg: 41, usable: true })).toBe('conflict');
+    conflict.push({ timeMs: 0, angleDeg: 140, usable: true });
+    conflict.push({ timeMs: 250, angleDeg: 142, usable: true });
+    expect(conflict.push({ timeMs: 500, angleDeg: 141, usable: true })).toBe('conflict');
     expect(gaugeAllowsConfidentReading({
       dialRegistered: true,
       confidence: 0.6,

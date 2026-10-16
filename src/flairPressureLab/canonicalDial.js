@@ -42,9 +42,11 @@ export const FLAIR_CANONICAL_DIAL_PROFILE = buildFlairCanonicalDialProfile();
 export const FLAIR_CANONICAL_FACE_PROFILE = buildFlairCanonicalFaceProfile();
 
 /**
- * On the registered dial, needle angle (relative to dial) at 0 bar — from printed scale layout.
+ * On the registered dial, needle angle at 0 bar.
+ * The design photo's stop pin, long end resting against it.
+ * 0° is to the right and angles increase clockwise.
  */
-export const CANONICAL_ZERO_BAR_ANGLE_DEG = 225;
+export const CANONICAL_ZERO_BAR_ANGLE_DEG = 47;
 
 /** Stateless pressure session: zero from dial art, not rest calibration. */
 export const FLAIR_STATELESS_SESSION = {

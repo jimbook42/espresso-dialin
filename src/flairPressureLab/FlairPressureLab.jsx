@@ -923,7 +923,7 @@ export function FlairPressureLab() {
             <dt>Build</dt>
             <dd className={ui.text}>{PRESSURE_LAB_BUILD}</dd>
             <dt>Scale</dt>
-            <dd className={ui.text}>{FLAIR_58_SCALE.minBar}-{FLAIR_58_SCALE.maxBar} bar / {sweepDeg}° provisional</dd>
+            <dd className={ui.text}>{FLAIR_58_SCALE.minBar}-{FLAIR_58_SCALE.maxBar} bar / {sweepDeg}°</dd>
             <dt>Uncertainty</dt>
             <dd className={ui.text}>{live.uncertainty || '—'}</dd>
             <dt>Pose age</dt>
@@ -1034,10 +1034,10 @@ export function FlairPressureLab() {
             The rising-edge line does not start a timer and is not saved.
           </p>
           <label className={`block text-sm ${ui.sub}`}>
-            Scale arc assumption: {sweepDeg}° from 0 to 12 bar
+            Printed scale: {sweepDeg}° from 0 to {FLAIR_58_SCALE.maxBar} bar
             <input
               type="range"
-              min="200"
+              min="140"
               max="320"
               step="1"
               value={sweepDeg}

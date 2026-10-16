@@ -270,7 +270,7 @@ export function buildDiagnosticReport(samples, context = {}) {
   const scaleMin = finite(context.minBar) ? context.minBar : FLAIR_58_SCALE.minBar;
   const scaleMax = finite(context.maxBar) ? context.maxBar : FLAIR_58_SCALE.maxBar;
   const scaleSweep = finite(context.sweepDeg) ? context.sweepDeg : FLAIR_58_SCALE.sweepDeg;
-  push(`Pressure scale: ${scaleMin}-${scaleMax} bar over ${scaleSweep}° (provisional, not physically validated)`);
+  push(`Pressure scale: ${scaleMin}-${scaleMax} bar over ${scaleSweep}° (measured on the printed Flair face)`);
   push('');
   push('PHYSICAL TEST CONTEXT');
   push('Physical movement is user-confirmed externally.');
