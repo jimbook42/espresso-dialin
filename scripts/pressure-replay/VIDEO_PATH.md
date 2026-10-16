@@ -75,3 +75,22 @@ High-pass of that angular profile (subtract a 5-bin circular mean) drops the sam
 Overlay of that frame, green rim and red pointer: `/tmp/632r1-overlay.png`.
 
 Discovery no longer accepts a circle by multiplying the canonical gate by 0.9. Only the top-ranked circle can be seeded, and only when it passes the full gate. A lower circle that scrapes the gate while the leader misses it is not locked. Discovery's 240px working image is the same scale on every frame so the Hough stays small; centres are scaled back to the input. Full-frame re-detect while the dial is held is every 24 tracked frames, and while it is lost every 4th tick, so a miss does not spend the whole frame budget on Hough.
+
+## Replay at b47b353
+
+Full six-clip run: `/workspace/flair-replay/out-6.32-repair3`. Privacy passed on every clip (0 external requests, 0 storage writes). `opencv.js` is 13298869 bytes raw, 3763644 bytes gzip. Annotated frames are `best.png`, `worst-error.png`, `lost-gauge.png`, and `low-confidence.png` under each clip directory. The pointer overlay for the registration diagnosis is `/tmp/632r1-overlay.png`.
+
+No frame published a bar. Confident-wrong is 0% on every clip. Gauge-found (rim ≥ 0.3 and a captured scale reference) is 0%. The printed arc is not visible enough on these frames for the arc and the ticks to agree, so the reader stays silent instead of inventing a pressure.
+
+| Clip | Pose x,y (all frames) | 4× med / p95 ms | Conf-wrong |
+| --- | --- | ---: | ---: |
+| 225219 | 366, 204 | 13.1 / 46.2 | 0 |
+| 225240 | 234–237, 351 | 15.6 / 47.8 | 0 |
+| 225254 | 232–327, 349–570 | 14.4 / 156.3 | 0 |
+| 225307 | 76–154, 412–502 | 70.5 / 91.7 | 0 |
+| 225324 | 194–243, 327–366 | 40.8 / 58.9 | 0 |
+| 225337 | 190–239, 337–356 | 42.1 / 167.6 | 0 |
+
+225240 stays on the dial for the whole clip and still publishes nothing. A separate one-clip run of 225219 sat on the dial (x 232–237, y 345–354, 4× 13.0 / 39.9 ms); the six-clip run seeded x 366, y 204 and held it. The first circle that passes the gate is kept, and that circle is not stable across runs. 225307 stays in the lower part of the frame. Blur and glare flags did not fire on 225324 or 225337 after quality moved onto the needle crop. 4× median is under 33 ms on the three clips that settle quickly. 225307, 225324, and 225337 stay above that because discovery still runs while the pose is untrusted.
+
+Compared with `out-6.32-pm` (d0cf6ac), the 3.8–11 bar confident readings are gone (that run's confident-wrong was 8.8 / 38.2 / 71.3 / 8.6 on 225240, 225254, 225324, 225337). Compared with `out-baseline` (also no readings) and `out-6.31-pm-r2` (found at the wrong place, 4× medians 50–98 ms), this run is silent and faster on the settled clips. `out-6.30-r2-cursor` reported found-percentages on clutter centres and no bars.
