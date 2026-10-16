@@ -558,6 +558,7 @@ export function chooseDiscoveryUpdate({
   confidence = 0,
   discovered = null,
   pose = null,
+  printedFace = false,
 } = {}) {
   const currentOk = hasPose && (faceScore == null || faceScore >= DIAL_FACE_VERIFY_MIN);
   const nextOk = discoveredVerifies(discovered);
@@ -578,6 +579,12 @@ export function chooseDiscoveryUpdate({
       && Math.hypot(discovered.cx - pose.cx, discovered.cy - pose.cy)
         > Math.max(pose.radius, discovered.radius) * REDISCOVERY_MOVE_FRACTION;
     if (!far) return { action: 'replace', reason: 'better' };
+    // A face that has never matched the printed dial must not keep a clearly
+    // better circle at a distance. A small edge still stays, so a decoy cannot
+    // steal a pose that is already as good. A printed-face lock does not jump.
+    if (!printedFace && nextScore > currentScore + 0.15) {
+      return { action: 'replace', reason: 'better-far' };
+    }
   }
   return { action: 'hold', reason: 'current-better' };
 }
@@ -969,12 +976,14 @@ export function createGaugeTracker() {
   let lastFaceScore = null;
   let lastCanonical = null;
   let pendingJump = false;
+  let printedFace = false;
 
   const clearVerification = () => {
     framesSinceDiscovery = 0;
     lastFaceScore = null;
     lastCanonical = null;
     pendingJump = false;
+    printedFace = false;
     bridgedReading = null;
     idleFrames = 0;
   };
@@ -1286,7 +1295,11 @@ export function createGaugeTracker() {
         confidence: 0,
         framesSinceDiscovery,
         pendingJump,
+        printedFace,
       };
+    },
+    notePrintedFace(ok) {
+      if (ok) printedFace = true;
     },
     markDiscovered() {
       framesSinceDiscovery = 0;
@@ -2016,7 +2029,10 @@ function completeReading({
       && dialFaceScore >= DIAL_FACE_VERIFY_MIN
       && position.confidence >= CONFIDENCE_MIN
       && (detection.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
-    if (registered) tracker.setRotationDeg(reg.rotationDeg);
+    if (registered) {
+      tracker.setRotationDeg(reg.rotationDeg);
+      tracker.notePrintedFace(true);
+    }
     const rotationDeg = registered ? reg.rotationDeg : priorRot;
     orientation = {
       rotationDeg,
@@ -2257,6 +2273,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       ...prior,
       discovered: foundVideo,
       pose: tracker.getPose(),
+      printedFace: prior.printedFace === true,
     });
     discoveryEvent = decision.reason;
     if (decision.action === 'replace') {

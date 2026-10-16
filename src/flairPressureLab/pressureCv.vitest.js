@@ -439,6 +439,27 @@ describe('pressure CV units', () => {
         ok: true, cx: 366, cy: 204, radius: 26, dialFaceScore: 0.42, canonicalScore: 0.5, confidence: 0.6,
       },
     })).toMatchObject({ action: 'hold', reason: 'current-better' });
+    const farBetter = {
+      ok: true, cx: 80, cy: 200, radius: 55, dialFaceScore: 0.72, canonicalScore: 0.55, confidence: 0.7,
+    };
+    expect(chooseDiscoveryUpdate({
+      hasPose: true,
+      faceScore: 0.42,
+      canonical: 0.28,
+      confidence: 0.48,
+      pose: { cx: 237, cy: 347, radius: 56 },
+      discovered: farBetter,
+      printedFace: false,
+    })).toMatchObject({ action: 'replace', reason: 'better-far' });
+    expect(chooseDiscoveryUpdate({
+      hasPose: true,
+      faceScore: 0.42,
+      canonical: 0.28,
+      confidence: 0.48,
+      pose: { cx: 237, cy: 347, radius: 56 },
+      discovered: farBetter,
+      printedFace: true,
+    })).toMatchObject({ action: 'hold', reason: 'current-better' });
 
     const tracker = createGaugeTracker();
     tracker.seed({ cx: 240, cy: 355, radius: 50 });
