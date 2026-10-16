@@ -74,4 +74,4 @@ High-pass of that angular profile (subtract a 5-bin circular mean) drops the sam
 
 Overlay of that frame, green rim and red pointer: `/tmp/632r1-overlay.png`.
 
-Discovery no longer accepts a circle by multiplying the canonical gate by 0.9. If the strongest circle fails the full gate and still outranks every verified circle, the frame is skipped. Discovery's 240px working image is the same scale on every frame so the Hough stays small; centres are scaled back to the input. Full-frame re-detect while the dial is held is every 24 tracked frames, and while it is lost every 4th tick, so a miss does not spend the whole frame budget on Hough.
+Discovery no longer accepts a circle by multiplying the canonical gate by 0.9. Only the top-ranked circle can be seeded, and only when it passes the full gate. A lower circle that scrapes the gate while the leader misses it is not locked. Discovery's 240px working image is the same scale on every frame so the Hough stays small; centres are scaled back to the input. Full-frame re-detect while the dial is held is every 24 tracked frames, and while it is lost every 4th tick, so a miss does not spend the whole frame budget on Hough.

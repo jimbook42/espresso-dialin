@@ -754,29 +754,19 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
   return houghCount;
 }
 
-/** Best rank must beat every verified alternative by this factor to override it. */
-const DISCOVERY_RANK_DOMINANCE = 1.25;
-
 /**
  * Pick the circle to seed.
- * Rank is the continuous score (rim, face, canonical). A circle that fails the
- * full verification gate is not accepted by loosening that gate. If that
- * failing circle still outranks every verified circle by a clear factor, the
- * frame is ambiguous: return null and try again, rather than locking the weaker one.
+ * Rank is the continuous score (rim, face, canonical). Only the top-ranked
+ * circle may be seeded, and only when it passes the full verification gate.
+ * A lower circle that scrapes the gate while the leader misses it is rejected.
  */
 export function selectDiscoveryCandidate(candidates) {
   let bestRank = null;
-  let bestOk = null;
   for (const candidate of candidates || []) {
     if (!bestRank || (candidate.rank || 0) > (bestRank.rank || 0)) bestRank = candidate;
-    if (candidate.ok && (!bestOk || (candidate.rank || 0) > (bestOk.rank || 0))) bestOk = candidate;
   }
-  if (!bestRank) return null;
-  if (bestOk && bestOk !== bestRank) {
-    const dominant = (bestRank.rank || 0) > (bestOk.rank || 0) * DISCOVERY_RANK_DOMINANCE;
-    if (dominant) return null;
-  }
-  return bestOk;
+  if (!bestRank?.ok) return null;
+  return bestRank;
 }
 
 /**

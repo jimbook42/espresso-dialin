@@ -364,6 +364,10 @@ describe('pressure CV units', () => {
     };
     expect(selectDiscoveryCandidate([weak, strong])).toBeNull();
     expect(selectDiscoveryCandidate([
+      weak,
+      { ...strong, rank: weak.rank + 1 },
+    ])).toBeNull();
+    expect(selectDiscoveryCandidate([
       { ...strong, ok: true, canonical: 0.4 },
       weak,
     ])?.cx).toBe(40);
