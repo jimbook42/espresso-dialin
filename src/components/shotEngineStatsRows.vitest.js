@@ -37,6 +37,23 @@ describe('shotEngineStatsRows', () => {
     expect(shotHasSmartScaleLoggedData({ scaleFlowRateGs: 1.2 })).toBe(true);
   });
 
+  it('row labels stay user-facing (no camelCase identifiers)', () => {
+    const rows = buildShotEngineStatsRows(
+      baseStats,
+      {
+        grinderModel: SUNBEAM_GRINDER_ID,
+        actualYieldG: 36,
+        scaleFlowCurve: [{ t: 0, g: 0 }],
+        scaleFlowRateGs: 1.1,
+      },
+      formatSecondsPerStepDisplay
+    );
+    const camelCase = /[a-z][A-Z]/;
+    for (const row of rows) {
+      expect(camelCase.test(row.label)).toBe(false);
+    }
+  });
+
   it('builds technical rows when no scale data was stored', () => {
     const rows = buildShotEngineStatsRows(
       baseStats,
