@@ -21,7 +21,12 @@ import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from '.
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
 import { assessFrameQuality, createReadingBridge } from './frameQuality.js';
-import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
+import {
+  createGaugeTracker,
+  gaugeAllowsConfidentReading,
+  probeGaugeDiscoveryCandidates,
+  readTrackedGauge,
+} from './gaugeTrack';
 import {
   createAngleJitterTracker,
   createAngleTracker,
@@ -208,6 +213,7 @@ export function FlairPressureLab() {
           setOpencvReady(true);
           if (REPLAY_BUILD && typeof window !== 'undefined') {
             window.__pressureLabOpenCvReady = true;
+            window.__pressureLabProbeDiscovery = (imageData) => probeGaugeDiscoveryCandidates(imageData);
           }
         }
       })
@@ -507,8 +513,15 @@ export function FlairPressureLab() {
         poseAge: poseAgeRef.current,
       };
 
+      const confidentDial = gaugeAllowsConfidentReading({
+        dialRegistered: gauge.dialRegistered,
+        confidence: gauge.confidence,
+        dialFaceScore: gauge.dialFaceScore,
+        needleLikeness: reading.likeness,
+      });
+
       if (!sessionRef.current) {
-        if (!gauge.dialRegistered || gauge.held) {
+        if (!confidentDial || gauge.held) {
           const uncertainty = record({
             tracking: 'CALIBRATING',
             smoothedAngle: null,
@@ -593,7 +606,7 @@ export function FlairPressureLab() {
         );
       }
       const weak = reading.quality == null || reading.quality < NEEDLE_LOST_QUALITY;
-      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || !frameQuality.ok;
+      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || !frameQuality.ok || !confidentDial;
       const candidateJump = lastAngleRef.current == null || choice.angleDeg == null
         ? null
         : wrapDelta(lastAngleRef.current, choice.angleDeg);

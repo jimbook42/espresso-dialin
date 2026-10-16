@@ -1,4 +1,13 @@
-import { TIP_INNER_RATIO, OUTER_RADIUS_RATIO, NEEDLE_LIKENESS_GATE, NEEDLE_TRACK_QUALITY, wrap360, wrapDelta } from './gaugeConfig.js';
+import {
+  TIP_INNER_RATIO,
+  OUTER_RADIUS_RATIO,
+  NEEDLE_LIKENESS_GATE,
+  NEEDLE_TRACK_QUALITY,
+  DIAL_FACE_VERIFY_MIN,
+  DIAL_CANONICAL_VERIFY_MIN,
+  wrap360,
+  wrapDelta,
+} from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
 import {
@@ -359,6 +368,23 @@ function wholeBins(deltaDeg) {
   return Math.round(deltaDeg / PROFILE_BIN_DEG);
 }
 
+/** Mean edge magnitude on the printed tick ring (generic dial cue). */
+function scoreTickRingEnergy(edges, width, height, cx, cy, faceRadius) {
+  if (!edges?.mag || faceRadius < 10) return 0;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < 48; i += 1) {
+    const ang = (i / 48) * Math.PI * 2;
+    const r = faceRadius * 0.95;
+    const x = Math.round(cx + r * Math.cos(ang));
+    const y = Math.round(cy + r * Math.sin(ang));
+    if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
+    sum += edges.mag[y * width + x];
+    n += 1;
+  }
+  return n ? sum / n : 0;
+}
+
 function sampleLum(data, width, height, x, y) {
   const xi = Math.round(x);
   const yi = Math.round(y);
@@ -367,13 +393,13 @@ function sampleLum(data, width, height, x, y) {
   return data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
 }
 
-/** Bright disc interior + dark bezel; design geometry for Flair dials. */
+/** Bright/low-texture face vs darker bezel; tolerates shadow without per-clip tuning. */
 export function scoreDialFaceInterior(data, width, height, cx, cy, faceRadius) {
   if (faceRadius < 10) return 0;
-  const inner = faceRadius * 0.28;
-  const mid = faceRadius * 0.62;
-  const bezelInner = faceRadius * 0.88;
-  const bezelOuter = faceRadius * 1.12;
+  const faceRadii = [faceRadius * 0.38, faceRadius * 0.55, faceRadius * 0.72];
+  const mid = faceRadius * 0.55;
+  const bezelInner = faceRadius * 0.9;
+  const bezelOuter = faceRadius * 1.14;
   let faceSum = 0;
   let faceSq = 0;
   let faceN = 0;
@@ -385,10 +411,12 @@ export function scoreDialFaceInterior(data, width, height, cx, cy, faceRadius) {
     const ang = (a / 36) * Math.PI * 2;
     const cos = Math.cos(ang);
     const sin = Math.sin(ang);
-    const lumMid = sampleLum(data, width, height, cx + mid * cos, cy + mid * sin);
-    faceSum += lumMid;
-    faceSq += lumMid * lumMid;
-    faceN += 1;
+    for (const fr of faceRadii) {
+      const lum = sampleLum(data, width, height, cx + fr * cos, cy + fr * sin);
+      faceSum += lum;
+      faceSq += lum * lum;
+      faceN += 1;
+    }
     for (let r = bezelInner; r <= bezelOuter; r += (bezelOuter - bezelInner) / 3) {
       const xi = Math.round(cx + r * cos);
       const yi = Math.round(cy + r * sin);
@@ -413,12 +441,14 @@ export function scoreDialFaceInterior(data, width, height, cx, cy, faceRadius) {
   if (!faceN || !bezelN) return 0;
   const faceMean = faceSum / faceN;
   const bezelMean = bezelSum / bezelN;
-  const contrast = (faceMean - bezelMean) / 255;
-  if (contrast < 0.08) return 0;
+  const signedContrast = (faceMean - bezelMean) / 255;
+  const contrast = Math.abs(signedContrast);
+  if (contrast < 0.05) return 0;
   const variance = Math.max(0, faceSq / faceN - faceMean * faceMean);
-  const smooth = Math.exp(-variance / 1800);
+  const smooth = Math.exp(-variance / 2200);
   const red = redN ? redHot / redN : 0;
-  return Math.min(1.6, (0.35 + contrast * 2.8) * smooth * (0.85 + red * 0.35));
+  const polarity = signedContrast >= 0 ? 1 : 0.78;
+  return Math.min(1.6, (0.32 + contrast * 2.6) * smooth * (0.85 + red * 0.35) * polarity);
 }
 
 function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg = null) {
@@ -445,17 +475,13 @@ function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needl
   return rim.confidence * (0.55 + 0.45 * agree);
 }
 
-function discoverySizePrior(faceRadius, scaledMin) {
+function discoveryRadiusInRange(faceRadius, scaledMin) {
   const rMin = scaledMin * 0.03;
   const rMax = scaledMin * 0.5;
-  if (faceRadius < rMin || faceRadius > rMax) return 0;
-  const ideal = scaledMin * 0.11;
-  const spread = scaledMin * 0.08;
-  const t = (faceRadius - ideal) / spread;
-  return Math.exp(-0.5 * t * t);
+  return faceRadius >= rMin && faceRadius <= rMax;
 }
 
-function rankDiscoveryCandidate({
+export function scoreDiscoveryCandidate({
   edges,
   data,
   width,
@@ -467,25 +493,55 @@ function rankDiscoveryCandidate({
   scaledMin,
 }) {
   const rim = scoreRim(edges, width, height, cx, cy, faceRadius * 1.02);
-  if (rim <= 0) return 0;
-  const sizePrior = discoverySizePrior(faceRadius, scaledMin);
-  if (sizePrior < 0.08) return 0;
-  const face = scoreDialFaceInterior(data, width, height, cx, cy, faceRadius);
-  const canonical = scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg);
-  return rim * sizePrior * (0.15 + 0.85 * face) * (0.25 + 0.75 * canonical);
+  const inRange = discoveryRadiusInRange(faceRadius, scaledMin);
+  const faceRaw = inRange && rim > 0
+    ? scoreDialFaceInterior(data, width, height, cx, cy, faceRadius)
+    : 0;
+  const tickEnergy = inRange && rim > 0
+    ? scoreTickRingEnergy(edges, width, height, cx, cy, faceRadius)
+    : 0;
+  const face = Math.max(faceRaw, Math.min(0.42, tickEnergy * 0.14));
+  const canonical = inRange && rim > 0
+    ? scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg)
+    : 0;
+  const rank = inRange && rim > 0
+    ? rim * (0.15 + 0.85 * face) * (0.12 + 0.88 * canonical)
+    : 0;
+  return { rim, face, faceRaw, tickEnergy, canonical, rank, inRange };
 }
 
-function discoverGaugeWithOpenCv(image, cv) {
-  const { width, height, data } = image;
-  if (!width || !height || !data || !cv?.Mat) return null;
+function rankDiscoveryCandidate(params) {
+  return scoreDiscoveryCandidate(params).rank;
+}
 
+function discoveryCandidateOk({ rimScore, confidence, faceScore, canonicalScore, rankScore }) {
+  if (rimScore <= 1e-3 || faceScore < DIAL_FACE_VERIFY_MIN) return false;
+  if (canonicalScore < DIAL_CANONICAL_VERIFY_MIN) return false;
+  return confidence >= CONFIDENCE_MIN
+    || (faceScore >= DIAL_FACE_VERIFY_MIN + 0.08 && rankScore > rimScore * 0.14);
+}
+
+export function gaugeAllowsConfidentReading({
+  dialRegistered,
+  confidence,
+  dialFaceScore,
+  needleLikeness,
+}) {
+  return dialRegistered === true
+    && (confidence ?? 0) >= CONFIDENCE_MIN
+    && (dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
+    && (needleLikeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+}
+
+const DISCOVERY_MAX_OUTPUT = 240;
+
+function buildDiscoveryFrameContext(image, maxOutput = DISCOVERY_MAX_OUTPUT) {
+  const { width, height, data } = image;
   const minDim = Math.min(width, height);
-  const maxOutput = 240;
   const scale = Math.min(1, maxOutput / minDim);
   const sw = Math.max(16, Math.round(width * scale));
   const sh = Math.max(16, Math.round(height * scale));
   const scaledMin = minDim * scale;
-
   const small = new Uint8ClampedArray(sw * sh * 4);
   for (let y = 0; y < sh; y += 1) {
     for (let x = 0; x < sw; x += 1) {
@@ -499,91 +555,171 @@ function discoverGaugeWithOpenCv(image, cv) {
       small[dst + 3] = 255;
     }
   }
-
   const edges = prepareEdges({ data: small, width: sw, height: sh }, { contrastRadius: 3 }).edges;
+  return { width, height, scale, sw, sh, scaledMin, small, edges };
+}
 
+function pushDiscoveryCandidate(candidates, entry) {
+  candidates.push(entry);
+}
+
+function collectHoughCircleCandidates(ctx, cv, candidates) {
+  const { sw, sh, scaledMin, small, edges, scale } = ctx;
   let srcMat = null;
   let gray = null;
   let circles = null;
+  let houghCount = 0;
   try {
     srcMat = cv.matFromImageData({ data: small, width: sw, height: sh });
     gray = new cv.Mat();
     cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 1.2, 1.2, cv.BORDER_DEFAULT);
+    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 1.4, 1.4, cv.BORDER_DEFAULT);
 
     circles = new cv.Mat();
     const rMin = Math.max(6, scaledMin * 0.03);
     const rMax = scaledMin * 0.5;
-    const minDist = Math.max(14, scaledMin * 0.12);
+    const minDist = Math.max(12, scaledMin * 0.08);
     cv.HoughCircles(
       gray,
       circles,
       cv.HOUGH_GRADIENT,
-      1.2,
+      1.1,
       minDist,
-      110,
-      28,
+      95,
+      22,
       Math.round(rMin),
       Math.round(rMax),
     );
-
-    let best = { score: -1, rim: 0, cx: 0, cy: 0, radius: 0 };
-
-    const consider = (cx, cy, faceRadius) => {
-      if (faceRadius < 6) return;
-      const rimRadius = faceRadius * 1.02;
-      if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) return;
-      const rankScore = rankDiscoveryCandidate({
-        edges,
-        data: small,
-        width: sw,
-        height: sh,
-        cx,
-        cy,
-        faceRadius,
-        scaledMin,
-      });
-      const rim = scoreRim(edges, sw, sh, cx, cy, rimRadius);
-      if (rankScore > best.score) best = { score: rankScore, rim, cx, cy, radius: faceRadius };
-    };
-
+    houghCount = circles.cols;
     for (let i = 0; i < circles.cols; i += 1) {
       const cx = circles.floatAt(0, i * 3);
       const cy = circles.floatAt(0, i * 3 + 1);
       const r = circles.floatAt(0, i * 3 + 2);
-      const faceRadius = r / 1.02;
-      consider(cx, cy, faceRadius);
-      consider(cx, cy, faceRadius * 0.96);
-      consider(cx, cy, faceRadius * 1.04);
+      const variants = [r / 1.02, (r / 1.02) * 0.96, (r / 1.02) * 1.04];
+      for (const faceRadius of variants) {
+        if (faceRadius < 6) continue;
+        const rimRadius = faceRadius * 1.02;
+        if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) continue;
+        const scored = scoreDiscoveryCandidate({
+          edges,
+          data: small,
+          width: sw,
+          height: sh,
+          cx,
+          cy,
+          faceRadius,
+          scaledMin,
+        });
+        const off = offsetScore(edges, sw, sh, cx, cy, rimRadius);
+        const confidence = scored.rim > 1e-3 && off != null
+          ? clamp((scored.rim - off) / scored.rim, 0, 1)
+          : 0;
+        const ok = discoveryCandidateOk({
+          rimScore: scored.rim,
+          confidence,
+          faceScore: scored.face,
+          canonicalScore: scored.canonical,
+          rankScore: scored.rank,
+        });
+        pushDiscoveryCandidate(candidates, {
+          source: 'hough',
+          cx: cx / scale,
+          cy: cy / scale,
+          radius: faceRadius / scale,
+          cxScaled: cx,
+          cyScaled: cy,
+          radiusScaled: faceRadius,
+          ...scored,
+          confidence,
+          ok,
+        });
+      }
     }
-
-    if (best.score <= 0) return null;
-
-    const rimR = best.radius * 1.02;
-    const off = offsetScore(edges, sw, sh, best.cx, best.cy, rimR);
-    const confidence = best.rim > 1e-3 && off != null
-      ? clamp((best.rim - off) / best.rim, 0, 1)
-      : 0;
-    const faceAtBest = scoreDialFaceInterior(small, sw, sh, best.cx, best.cy, best.radius);
-    const rankAtBest = best.score;
-    const ok = best.rim > 1e-3 && faceAtBest >= 0.2 && (
-      confidence >= CONFIDENCE_MIN
-      || (faceAtBest >= 0.35 && rankAtBest > best.rim * 0.12)
-    );
-
-    return {
-      ok,
-      confidence,
-      cx: best.cx / scale,
-      cy: best.cy / scale,
-      radius: best.radius / scale,
-      source: 'opencv-hough',
-    };
   } finally {
     if (circles) circles.delete();
     if (gray) gray.delete();
     if (srcMat) srcMat.delete();
   }
+  return houghCount;
+}
+
+function pickBestDiscoveryCandidate(candidates) {
+  let best = null;
+  for (const c of candidates) {
+    if (!c.ok) continue;
+    if (!best || c.rank > best.rank) best = c;
+  }
+  if (best) return best;
+  let fallback = null;
+  for (const c of candidates) {
+    if (!fallback || c.rank > fallback.rank) fallback = c;
+  }
+  return fallback;
+}
+
+/**
+ * Debug / harness: enumerate Hough + scored candidates in image pixel space.
+ * @returns {Promise<{ candidates: object[], chosen: object|null, houghCount: number, scale: number }>}
+ */
+export function probeGaugeDiscoveryCandidates(image, cv = null) {
+  const cvInst = cv ?? getOpenCvSync();
+  const ctx = buildDiscoveryFrameContext(image);
+  const candidates = [];
+  let houghCount = 0;
+  if (cvInst?.Mat) {
+    houghCount = collectHoughCircleCandidates(ctx, cvInst, candidates);
+  }
+  const chosen = pickBestDiscoveryCandidate(candidates);
+  return {
+    candidates,
+    chosen,
+    houghCount,
+    scale: ctx.scale,
+    scaledWidth: ctx.sw,
+    scaledHeight: ctx.sh,
+  };
+}
+
+function discoveryResultFromBest(best, scale) {
+  if (!best || best.score <= 0) return null;
+  const rimR = best.radius * 1.02;
+  const off = offsetScore(best.edges, best.sw, best.sh, best.cx, best.cy, rimR);
+  const confidence = best.rim > 1e-3 && off != null
+    ? clamp((best.rim - off) / best.rim, 0, 1)
+    : 0;
+  const ok = discoveryCandidateOk({
+    rimScore: best.rim,
+    confidence,
+    faceScore: best.face,
+    canonicalScore: best.canonical,
+    rankScore: best.score,
+  });
+  return {
+    ok,
+    confidence,
+    cx: best.cx / scale,
+    cy: best.cy / scale,
+    radius: best.radius / scale,
+    dialFaceScore: best.face,
+    canonicalScore: best.canonical,
+    source: best.source ?? 'rim-grid',
+  };
+}
+
+function discoverGaugeWithOpenCv(image, cv) {
+  if (!image?.width || !image?.data || !cv?.Mat) return null;
+  const { chosen } = probeGaugeDiscoveryCandidates(image, cv);
+  if (!chosen) return null;
+  return {
+    ok: chosen.ok === true,
+    confidence: chosen.confidence ?? 0,
+    cx: chosen.cx,
+    cy: chosen.cy,
+    radius: chosen.radius,
+    dialFaceScore: chosen.face,
+    canonicalScore: chosen.canonical,
+    source: 'opencv-hough',
+  };
 }
 
 /**
@@ -620,12 +756,12 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   const rMin = scaledMin * 0.03;
   const rMax = scaledMin * 0.5;
   const coarseStep = Math.max(4, Math.round(scaledMin / 24));
-  let best = { score: -1, rim: 0, cx: 0, cy: 0, radius: 0 };
+  let best = { score: -1, rim: 0, face: 0, canonical: 0, cx: 0, cy: 0, radius: 0, edges, sw, sh };
   const consider = (cx, cy, faceRadius) => {
     if (faceRadius < 8) return;
     const rimRadius = faceRadius * 1.02;
     if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) return;
-    const rank = rankDiscoveryCandidate({
+    const scored = scoreDiscoveryCandidate({
       edges,
       data: small,
       width: sw,
@@ -635,8 +771,21 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
       faceRadius,
       scaledMin,
     });
-    const rim = scoreRim(edges, sw, sh, cx, cy, rimRadius);
-    if (rank > best.score) best = { score: rank, rim, cx, cy, radius: faceRadius };
+    if (scored.rank > best.score) {
+      best = {
+        score: scored.rank,
+        rim: scored.rim,
+        face: scored.face,
+        canonical: scored.canonical,
+        cx,
+        cy,
+        radius: faceRadius,
+        edges,
+        sw,
+        sh,
+        source: 'rim-grid',
+      };
+    }
   };
   for (let cy = coarseStep; cy < sh - coarseStep; cy += coarseStep) {
     for (let cx = coarseStep; cx < sw - coarseStep; cx += coarseStep) {
@@ -664,24 +813,7 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
       consider(fine.cx + dx, fine.cy + dy, fine.radius * 1.03);
     }
   }
-  const rimR = best.radius * 1.02;
-  const off = offsetScore(edges, sw, sh, best.cx, best.cy, rimR);
-  const confidence = best.rim > 1e-3 && off != null
-    ? clamp((best.rim - off) / best.rim, 0, 1)
-    : 0;
-  const faceAtBest = scoreDialFaceInterior(small, sw, sh, best.cx, best.cy, best.radius);
-  const rankAtBest = best.score;
-  const ok = best.rim > 1e-3 && faceAtBest >= 0.2 && (
-    confidence >= CONFIDENCE_MIN
-    || (faceAtBest >= 0.35 && rankAtBest > best.rim * 0.12)
-  );
-  return {
-    ok,
-    confidence,
-    cx: best.cx / scale,
-    cy: best.cy / scale,
-    radius: best.radius / scale,
-  };
+  return discoveryResultFromBest(best, scale);
 }
 
 export function createGaugeTracker() {
@@ -1582,10 +1714,20 @@ function completeReading({
 }) {
   const center = position.pose;
   const localRadius = center.radius * needleScale;
+  const localCx = (center.cx - needleCrop.originX) * needleScale;
+  const localCy = (center.cy - needleCrop.originY) * needleScale;
+  const dialFaceScore = scoreDialFaceInterior(
+    needleImage.data,
+    needleImage.width,
+    needleImage.height,
+    localCx,
+    localCy,
+    localRadius,
+  );
   const detection = detectNeedleAngle(
     needleImage,
-    (center.cx - needleCrop.originX) * needleScale,
-    (center.cy - needleCrop.originY) * needleScale,
+    localCx,
+    localCy,
     localRadius * TIP_INNER_RATIO,
     localRadius * OUTER_RADIUS_RATIO,
   );
@@ -1593,7 +1735,11 @@ function completeReading({
   if (canonicalDial && position.profile) {
     const priorRot = tracker.getPose()?.rotationDeg ?? 0;
     const reg = registerDialRotationFromProfile(position.profile, detection.angleDeg, priorRot);
-    if (reg.ok) tracker.setRotationDeg(reg.rotationDeg);
+    const registered = reg.ok
+      && dialFaceScore >= DIAL_FACE_VERIFY_MIN
+      && position.confidence >= CONFIDENCE_MIN
+      && (detection.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+    if (registered) tracker.setRotationDeg(reg.rotationDeg);
     const rotationDeg = tracker.getPose()?.rotationDeg ?? priorRot;
     orientation = {
       rotationDeg,
@@ -1601,11 +1747,11 @@ function completeReading({
       confidence: reg.confidence,
       held: false,
       pressureHold: Boolean(position.held),
-      referenceCaptured: reg.ok,
-      dialRegistered: reg.ok,
+      referenceCaptured: registered,
+      dialRegistered: registered,
       poseQuality: reg.confidence,
       posePending: false,
-      poseRejectReason: reg.ok ? null : 'dial-register-weak',
+      poseRejectReason: registered ? null : 'dial-register-weak',
       stableNeedleDeg: detection.angleDeg,
     };
   } else {
@@ -1668,6 +1814,7 @@ function completeReading({
       reacquireAccepted: position.reacquireAccepted === true,
       referenceCaptured: orientation.dialRegistered === true,
       dialRegistered: orientation.dialRegistered === true,
+      dialFaceScore,
     },
   };
 }

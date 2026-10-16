@@ -33,6 +33,10 @@ export const NEEDLE_TRACK_QUALITY = 0.18;
  * A step that clears the tracking score still has to clear this gate.
  */
 export const NEEDLE_LIKENESS_GATE = 0.4;
+/** Minimum bright-face / bezel contrast score before a discovery pose or bar reading is trusted. */
+export const DIAL_FACE_VERIFY_MIN = 0.3;
+/** Minimum canonical tick/face template match for discovery and registration. */
+export const DIAL_CANONICAL_VERIFY_MIN = 0.28;
 /** Agreement band for a repeated candidate, and the jitter limit for TRACKING. */
 export const NEEDLE_AGREE_DEG = 12;
 

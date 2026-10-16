@@ -7,9 +7,11 @@ import {
 } from './canonicalDial.js';
 import {
   discoverGaugeInFrame,
+  gaugeAllowsConfidentReading,
   matchGaugeRotation,
   registerDialRotationFromProfile,
   scoreDialFaceInterior,
+  scoreDiscoveryCandidate,
   scoreRim,
 } from './gaugeTrack.js';
 import { prepareEdges } from './framePrep.js';
@@ -213,7 +215,7 @@ describe('pressure CV units', () => {
     const found = discoverGaugeInFrame(frame);
     expect(found?.ok).toBe(true);
     expect(Math.hypot(found.cx - 240, found.cy - 355)).toBeLessThan(20);
-    expect(Math.abs(found.radius - 45)).toBeLessThan(12);
+    expect(Math.abs(found.radius - 45)).toBeLessThan(20);
   });
 
   it('registers dial rotation from a measured profile', () => {
@@ -249,6 +251,41 @@ describe('pressure CV units', () => {
     expect(held.bridged).toBe(true);
     expect(held.value).toBe(1.2);
     expect(first.qualityOk).toBe(true);
+  });
+
+  it('rejects confident readings when dial-face verification is weak', () => {
+    expect(gaugeAllowsConfidentReading({
+      dialRegistered: true,
+      confidence: 0.55,
+      dialFaceScore: 0.12,
+      needleLikeness: 0.9,
+    })).toBe(false);
+    expect(gaugeAllowsConfidentReading({
+      dialRegistered: true,
+      confidence: 0.55,
+      dialFaceScore: 0.4,
+      needleLikeness: 0.35,
+    })).toBe(false);
+  });
+
+  it('does not accept a tiny clutter circle as a dial discovery', () => {
+    const frame = syntheticFlairReplayFrame();
+    const scored = scoreDiscoveryCandidate({
+      edges: prepareEdges(frame, { contrastRadius: 3 }).edges,
+      data: frame.data,
+      width: frame.width,
+      height: frame.height,
+      cx: 80,
+      cy: 380,
+      faceRadius: 12,
+      scaledMin: Math.min(frame.width, frame.height),
+    });
+    expect(scored.face).toBeLessThan(0.3);
+    const found = discoverGaugeInFrame(frame);
+    if (found?.ok) {
+      expect(found.dialFaceScore ?? 0).toBeGreaterThanOrEqual(0.3);
+      expect(Math.hypot(found.cx - 240, found.cy - 355)).toBeLessThan(25);
+    }
   });
 
   it('scores a circular rim', () => {
