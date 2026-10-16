@@ -17,9 +17,9 @@ import {
 } from './canonicalDial.js';
 import { getOpenCvSync } from './opencvRuntime.js';
 import {
-  requestImageDiscovery,
+  consumeDiscoveryResult,
+  requestCanvasDiscovery,
   requestVideoDiscovery,
-  takeDiscoveryResult,
   whenDiscoverySettled,
 } from './discoveryClient.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
@@ -743,24 +743,29 @@ function pushDiscoveryCandidate(candidates, entry) {
   candidates.push(entry);
 }
 
+// Face is capped at 1.6 and canonical at 1, so rank cannot exceed rim times this.
+const DISCOVERY_RANK_RIM_CEILING = (0.15 + 0.85 * 1.6) * (0.12 + 0.88 * 1) + 0.01;
+let houghBlurSize = null;
+let houghGray = null;
+
 function collectHoughCircleCandidates(ctx, cv, candidates) {
   const { sw, sh, scaledMin, small, edges, scale } = ctx;
   let srcMat = null;
-  let gray = null;
   let circles = null;
   let houghCount;
   try {
     srcMat = cv.matFromImageData({ data: small, width: sw, height: sh });
-    gray = new cv.Mat();
-    cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 1.4, 1.4, cv.BORDER_DEFAULT);
+    if (!houghGray) houghGray = new cv.Mat();
+    cv.cvtColor(srcMat, houghGray, cv.COLOR_RGBA2GRAY);
+    if (!houghBlurSize) houghBlurSize = new cv.Size(5, 5);
+    cv.GaussianBlur(houghGray, houghGray, houghBlurSize, 1.4, 1.4, cv.BORDER_DEFAULT);
 
     circles = new cv.Mat();
     const rMin = Math.max(6, scaledMin * MIN_DISCOVERY_RADIUS_FRACTION);
     const rMax = scaledMin * MAX_DISCOVERY_RADIUS_FRACTION;
     const minDist = Math.max(12, scaledMin * 0.08);
     cv.HoughCircles(
-      gray,
+      houghGray,
       circles,
       cv.HOUGH_GRADIENT,
       1.1,
@@ -771,6 +776,7 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
       Math.round(rMax),
     );
     houghCount = circles.cols;
+    const partials = [];
     for (let i = 0; i < circles.cols; i += 1) {
       const cx = circles.floatAt(0, i * 3);
       const cy = circles.floatAt(0, i * 3 + 1);
@@ -780,44 +786,52 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
         if (faceRadius < scaledMin * MIN_DISCOVERY_RADIUS_FRACTION) continue;
         const rimRadius = faceRadius * 1.02;
         if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) continue;
-        const scored = scoreDiscoveryCandidate({
-          edges,
-          data: small,
-          width: sw,
-          height: sh,
-          cx,
-          cy,
-          faceRadius,
-          scaledMin,
-        });
-        const off = offsetScore(edges, sw, sh, cx, cy, rimRadius);
-        const confidence = scored.rim > 1e-3 && off != null
-          ? clamp((scored.rim - off) / scored.rim, 0, 1)
-          : 0;
-        const ok = discoveryCandidateOk({
-          rimScore: scored.rim,
-          confidence,
-          faceScore: scored.face,
-          canonicalScore: scored.canonical,
-          rankScore: scored.rank,
-        });
-        pushDiscoveryCandidate(candidates, {
-          source: 'hough',
-          cx: cx / scale,
-          cy: cy / scale,
-          radius: faceRadius / scale,
-          cxScaled: cx,
-          cyScaled: cy,
-          radiusScaled: faceRadius,
-          ...scored,
-          confidence,
-          ok,
-        });
+        const rim = scoreRim(edges, sw, sh, cx, cy, rimRadius);
+        if (rim <= 1e-3) continue;
+        partials.push({ cx, cy, faceRadius, rimRadius, rim });
       }
+    }
+    partials.sort((a, b) => b.rim - a.rim);
+    let bestRank = 0;
+    for (const partial of partials) {
+      if (partial.rim * DISCOVERY_RANK_RIM_CEILING <= bestRank) break;
+      const scored = scoreDiscoveryCandidate({
+        edges,
+        data: small,
+        width: sw,
+        height: sh,
+        cx: partial.cx,
+        cy: partial.cy,
+        faceRadius: partial.faceRadius,
+        scaledMin,
+      });
+      if (scored.rank > bestRank) bestRank = scored.rank;
+      const off = offsetScore(edges, sw, sh, partial.cx, partial.cy, partial.rimRadius);
+      const confidence = scored.rim > 1e-3 && off != null
+        ? clamp((scored.rim - off) / scored.rim, 0, 1)
+        : 0;
+      const ok = discoveryCandidateOk({
+        rimScore: scored.rim,
+        confidence,
+        faceScore: scored.face,
+        canonicalScore: scored.canonical,
+        rankScore: scored.rank,
+      });
+      pushDiscoveryCandidate(candidates, {
+        source: 'hough',
+        cx: partial.cx / scale,
+        cy: partial.cy / scale,
+        radius: partial.faceRadius / scale,
+        cxScaled: partial.cx,
+        cyScaled: partial.cy,
+        radiusScaled: partial.faceRadius,
+        ...scored,
+        confidence,
+        ok,
+      });
     }
   } finally {
     if (circles) circles.delete();
-    if (gray) gray.delete();
     if (srcMat) srcMat.delete();
   }
   return houghCount;
@@ -2134,6 +2148,7 @@ function completeReading({
       localCx,
       localCy,
       localRadius,
+      edgeSink.luma,
     );
     let stepped = trackLockedScale(tracker, bands);
     if (stepped.needsFull) {
@@ -2185,6 +2200,7 @@ function completeReading({
       localCx,
       localCy,
       localRadius,
+      edgeSink.luma,
     );
   }
   const settled = tracker.getPose() || center;
@@ -2281,26 +2297,6 @@ export function analyzeGaugeImage(image, tracker) {
   });
 }
 
-function drawFullFrame(video, canvas, maxOutput) {
-  const videoWidth = video.videoWidth;
-  const videoHeight = video.videoHeight;
-  const minDim = Math.min(videoWidth, videoHeight);
-  const scale = Math.min(1, maxOutput / minDim);
-  const outputW = Math.max(16, Math.round(videoWidth * scale));
-  const outputH = Math.max(16, Math.round(videoHeight * scale));
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  canvas.width = outputW;
-  canvas.height = outputH;
-  context.drawImage(video, 0, 0, outputW, outputH);
-  return {
-    image: context.getImageData(0, 0, outputW, outputH),
-    canvasWidth: outputW,
-    canvasHeight: outputH,
-    scaleX: outputW / videoWidth,
-    scaleY: outputH / videoHeight,
-  };
-}
-
 function roundTrace(value) {
   return value == null || Number.isNaN(value) ? null : Math.round(value * 100) / 100;
 }
@@ -2350,44 +2346,65 @@ function trackSettings(video) {
 }
 
 let replayFrameSearched = false;
+let replayDiscoveryDrawn = null;
 export const lastReadProfile = { path: '', syncMs: 0, trackMs: 0, needleMs: 0 };
 
-/**
- * Replay posts this frame to the worker and waits before the timed read.
- * The circle is applied to the same frame. The wait is not part of processMs.
- */
-export async function primeReplayDiscovery(video, canvas, tracker) {
-  replayFrameSearched = false;
-  const empty = { waitMs: 0 };
-  if (!video?.videoWidth || !video?.videoHeight || !canvas || !tracker?.discoveryDueNow) return empty;
+function replayDiscoveryNeeded(video, canvas, tracker) {
+  if (!video?.videoWidth || !video?.videoHeight || !canvas || !tracker?.discoveryDueNow) return false;
   const havePose = Boolean(tracker.getPose());
   const due = !tracker.getScaleLock?.() && tracker.discoveryDueNow();
-  if (!havePose || due) {
-    // Same pixels the synchronous search used, so the worker sees this frame.
-    const tDraw = performance.now();
-    const drawn = drawFullFrame(video, canvas, Math.min(video.videoWidth, video.videoHeight));
-    const drawMs = performance.now() - tDraw;
-    if (!requestImageDiscovery(drawn.image)) return { waitMs: 0, drawMs };
+  return !havePose || due;
+}
+
+function postReplayDiscovery(video) {
+  const tDraw = performance.now();
+  // Full-frame bitmap. The worker point-samples it. A pre-scaled draw changed the circle.
+  replayDiscoveryDrawn = null;
+  const posted = requestCanvasDiscovery(video, video.videoWidth, video.videoHeight);
+  return { posted, drawMs: performance.now() - tDraw };
+}
+
+/**
+ * Start this frame's search before the timed read.
+ * The replay loop waits for it off the clock, then the read applies the circle.
+ */
+export function beginReplayDiscovery(video, canvas, tracker) {
+  replayFrameSearched = false;
+  if (!replayDiscoveryNeeded(video, canvas, tracker)) return { posted: false, drawMs: 0 };
+  const posted = postReplayDiscovery(video, canvas);
+  if (posted.posted) replayFrameSearched = true;
+  return posted;
+}
+
+/**
+ * Wait out whatever is left of the search started for this frame.
+ * Does not run Hough on the main thread. One search is in flight.
+ */
+export async function primeReplayDiscovery(video, canvas, tracker) {
+  if (!replayFrameSearched && replayDiscoveryNeeded(video, canvas, tracker)) {
+    const posted = postReplayDiscovery(video, canvas);
+    if (!posted.posted) return { waitMs: 0, drawMs: posted.drawMs };
+    replayFrameSearched = true;
     const tWait = performance.now();
     await whenDiscoverySettled();
-    replayFrameSearched = true;
-    return { waitMs: performance.now() - tWait, drawMs };
+    return { waitMs: performance.now() - tWait, drawMs: posted.drawMs };
   }
-  return empty;
+  if (!replayFrameSearched) return { waitMs: 0 };
+  const tWait = performance.now();
+  await whenDiscoverySettled();
+  return { waitMs: performance.now() - tWait, drawMs: 0 };
 }
 
 /** Crop around the tracked gauge, update its pose, then read the needle from that pose. */
 /**
  * Full-frame search stays off the thread that reads the needle.
- * `defer` means the worker has the frame (or is already busy): do not Hough here.
- * `sync` is only the fallback when no worker is available.
+ * A miss is `apply` of an empty result. The main thread never runs Hough.
  */
-export function mainThreadDiscoveryAction({ havePose, discoveryDue, hasAsyncResult, workerAccepted }) {
+export function mainThreadDiscoveryAction({ havePose, discoveryDue, hasAsyncResult }) {
   if (hasAsyncResult) return 'apply';
   const wantSearch = !havePose || discoveryDue;
   if (!wantSearch) return 'needle';
-  if (workerAccepted) return 'defer';
-  return 'sync';
+  return 'defer';
 }
 
 export function readTrackedGauge(video, canvas, region, tracker) {
@@ -2421,46 +2438,27 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   // A locked scale is the registration. Another full-frame search is what
   // made a rotating clip depend on worker timing, and it is the slow tail.
   const discoveryDue = !tracker.getScaleLock?.() && tracker.needsRediscovery();
-  // Replay already waited for this frame's search. A null result is not a
-  // reason to run the same search again on the main thread.
+  // Replay already waited for this frame's search. A null result is a miss,
+  // not a reason to run Hough on the main thread.
   const searched = replayFrameSearched;
   replayFrameSearched = false;
-  const asyncFound = takeDiscoveryResult();
-  const wantSearch = !searched && !asyncFound && (!havePose || discoveryDue);
+  const consumed = consumeDiscoveryResult();
+  const asyncFound = consumed.ready ? consumed.found : null;
+  const wantSearch = !searched && !consumed.ready && (!havePose || discoveryDue);
   const handedToWorker = wantSearch && requestVideoDiscovery(video);
   const discoveryAction = mainThreadDiscoveryAction({
     havePose,
     discoveryDue,
-    hasAsyncResult: Boolean(asyncFound),
+    hasAsyncResult: consumed.ready,
     workerAccepted: handedToWorker,
   });
-  const runSync = discoveryAction === 'sync';
-  if (asyncFound) foundVideo = asyncFound;
-  if (asyncFound || runSync) {
-    // Full video frame. discoverGaugeInFrame downscales internally and returns
-    // coordinates in this image, which are then mapped into video pixels.
-    // A coarser canvas (short side 280–320) changed which circle won.
+  if (asyncFound) {
+    foundVideo = replayDiscoveryDrawn
+      ? mapCanvasDiscoveryToVideo(asyncFound, replayDiscoveryDrawn, videoWidth, videoHeight)
+      : asyncFound;
+  }
+  if (discoveryAction === 'apply') {
     const tDisc = stamp();
-    if (!asyncFound) {
-      drawn = drawFullFrame(video, canvas, Math.min(videoWidth, videoHeight));
-      foundCanvas = discoverGaugeInFrame(drawn.image);
-      foundVideo = mapCanvasDiscoveryToVideo(foundCanvas, drawn, videoWidth, videoHeight);
-    }
-    if (drawn && Array.isArray(globalThis.__pressureLabVideoTrace) && globalThis.__pressureLabVideoTrace.length === 0) {
-      const probe = probeGaugeDiscoveryCandidates(drawn.image);
-      drawn.topCandidates = [...(probe.candidates || [])]
-        .sort((a, b) => (b.rank || 0) - (a.rank || 0))
-        .slice(0, 5)
-        .map((c) => ({
-          cx: roundTrace(c.cx),
-          cy: roundTrace(c.cy),
-          radius: roundTrace(c.radius),
-          rank: roundTrace(c.rank),
-          ok: c.ok === true,
-          face: roundTrace(c.face),
-          canonical: roundTrace(c.canonical),
-        }));
-    }
     const prior = tracker.verificationState();
     const decision = chooseDiscoveryUpdate({
       ...prior,

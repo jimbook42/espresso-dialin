@@ -519,7 +519,7 @@ describe('pressure CV units', () => {
       discoveryDue: true,
       hasAsyncResult: false,
       workerAccepted: false,
-    })).toBe('sync');
+    })).toBe('defer');
 
     const tracker = createGaugeTracker();
     tracker.seed({ cx: 240, cy: 355, radius: 50 });

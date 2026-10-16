@@ -128,8 +128,8 @@ export const BLUR_SHARPNESS_MIN = 0.85;
 /** A small specular patch on the face. A single pixel does not trip it. */
 export const GLARE_FRACTION_MAX = 0.008;
 
-export function assessFrameQuality(imageData, width, height, cx, cy, radius) {
-  const gray = grayscale(imageData, width, height);
+export function assessFrameQuality(imageData, width, height, cx, cy, radius, grayIn = null) {
+  const gray = grayIn || grayscale(imageData, width, height);
   const blurVar = laplacianVariance(gray, width, height, cx, cy, radius);
   const contrast = faceContrast(gray, width, height, cx, cy, radius);
   const sharpness = contrast < 1 ? 0 : blurVar / (contrast * contrast);

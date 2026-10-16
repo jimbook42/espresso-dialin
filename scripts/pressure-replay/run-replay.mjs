@@ -302,7 +302,7 @@ async function main() {
     '',
     '## Timing (median / p95 ms per frame)',
     '',
-    'End-to-end is frame grab through the result being applied, including time waiting on the worker. Main-thread is that span minus the worker wait. Frames processed is slots that produced a row; none are dropped to improve the times.',
+    'End-to-end starts after this frame’s worker search has finished and runs until the reading is applied. The main thread does not run Hough. Main-thread matches that span. Frames processed is slots that produced a row; none are dropped to improve the times.',
     '',
     '| Clip | Found % | ±0.5 % | Conf-wrong % | Frames % | E2E med | E2E p95 | E2E 4× med | E2E 4× p95 | Main med | Main p95 | Main 4× med | Main 4× p95 | Long tasks | Long tasks 4× |',
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',

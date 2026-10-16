@@ -1,5 +1,5 @@
 import { NEEDLE_LIKENESS_GATE, OUTER_RADIUS_RATIO, TIP_INNER_RATIO } from './gaugeConfig.js';
-import { grayscale, prepareEdges } from './framePrep.js';
+import { prepareEdges } from './framePrep.js';
 
 /**
  * Needle angle around a known hub.
@@ -478,9 +478,13 @@ export function hubConnection(raw, width, height, cx, cy, angleDeg, innerR) {
 export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hintDeg = null) {
   if (!(outerR > innerR + 1)) return emptyDetection();
   const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
-  const { gray, edges, width, height } = prepareEdges(image, { contrastRadius });
-  const rawLuma = grayscale(image.data, width, height);
-  if (sink) sink.edges = edges;
+  const prepared = prepareEdges(image, { contrastRadius });
+  const { gray, edges, width, height } = prepared;
+  const rawLuma = prepared.luma;
+  if (sink) {
+    sink.edges = edges;
+    sink.luma = rawLuma;
+  }
   const scan = scanAngles(hintDeg);
   const angleCount = scan.angles.length;
   const sampleSlab = new Float32Array(angleCount * SAMPLE_COUNT);

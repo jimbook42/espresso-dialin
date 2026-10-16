@@ -1,16 +1,18 @@
 /**
  * Full-frame dial search off the main thread.
- * The bitmap is transferred and closed. Nothing is stored or sent.
- * The worker is created on the first search and stays same-origin.
+ * One search is in flight. A newer frame replaces the one waiting, so the
+ * worker always continues from the latest pixels. Nothing is stored or sent.
  */
 
 let worker = null;
 let inflight = false;
-let latest = null;
 let broken = false;
 let warmPromise = null;
 let inflightPromise = Promise.resolve();
 let settleResolve = null;
+let pending = null;
+let completed = null;
+let videoSerial = 0;
 const warmWaiters = [];
 
 function finishInflight() {
@@ -20,9 +22,62 @@ function finishInflight() {
   if (resolve) resolve();
 }
 
-/** Resolves when the worker is not holding a frame. Replay awaits this between samples. */
+function armInflight() {
+  inflight = true;
+  inflightPromise = new Promise((resolve) => {
+    settleResolve = resolve;
+  });
+}
+
+/** Resolves when the worker is not holding a frame. */
 export function whenDiscoverySettled() {
   return inflightPromise;
+}
+
+function takePixels(image) {
+  const pixels = image.data;
+  const whole = pixels.byteOffset === 0 && pixels.byteLength === pixels.buffer.byteLength;
+  if (whole) return { kind: 'pixels', pixels, width: image.width, height: image.height };
+  const copy = new Uint8ClampedArray(pixels.length);
+  copy.set(pixels);
+  return { kind: 'pixels', pixels: copy, width: image.width, height: image.height };
+}
+
+function postPendingNow(item) {
+  armInflight();
+  try {
+    if (item.kind === 'bitmap') {
+      ensureWorker().postMessage({
+        bitmap: item.bitmap,
+        width: item.width,
+        height: item.height,
+      }, [item.bitmap]);
+      return true;
+    }
+    ensureWorker().postMessage({
+      pixels: item.pixels,
+      width: item.width,
+      height: item.height,
+    }, [item.pixels.buffer]);
+    return true;
+  } catch {
+    if (item.bitmap && typeof item.bitmap.close === 'function') item.bitmap.close();
+    completed = { found: null };
+    finishInflight();
+    return false;
+  }
+}
+
+function startPending() {
+  if (inflight || completed || !pending || broken) return;
+  const next = pending;
+  pending = null;
+  postPendingNow(next);
+}
+
+function publish(found) {
+  completed = { found: found ?? null };
+  finishInflight();
 }
 
 function ensureWorker() {
@@ -35,18 +90,14 @@ function ensureWorker() {
       return;
     }
     if (event.data?.failed) {
-      broken = true;
-      latest = null;
       console.error('discovery worker', event.data.message || 'failed');
-      finishInflight();
+      publish(null);
       return;
     }
-    latest = event.data?.found ?? null;
-    finishInflight();
+    publish(event.data?.found ?? null);
   };
   worker.onerror = () => {
-    latest = null;
-    finishInflight();
+    publish(null);
   };
   return worker;
 }
@@ -81,38 +132,66 @@ export function warmDiscoveryWorker() {
   void whenDiscoveryWarmed();
 }
 
-export function takeDiscoveryResult() {
-  const found = latest;
-  latest = null;
-  return found;
+/**
+ * A finished search, including a miss (`found: null`).
+ * `ready: false` means the worker has not finished one since the last take.
+ */
+export function consumeDiscoveryResult() {
+  if (!completed) return { ready: false, found: null };
+  const result = completed;
+  completed = null;
+  startPending();
+  return { ready: true, found: result.found };
 }
 
-/** Pixels already read on the main thread. The buffer is transferred. */
+export function takeDiscoveryResult() {
+  return consumeDiscoveryResult().found;
+}
+
+/** True while a search is running or a frame is still waiting on that search. */
+export function discoverySearchPending() {
+  return inflight || pending != null;
+}
+
+function park(item) {
+  if (pending?.bitmap && typeof pending.bitmap.close === 'function') pending.bitmap.close();
+  pending = item;
+}
+
+/** Pixels already read on the main thread. The buffer is transferred when the search starts. */
 export function requestImageDiscovery(image) {
   if (broken || typeof Worker === 'undefined') return false;
   if (!image?.data || !image.width || !image.height) return false;
-  if (inflight) return true;
-  inflight = true;
-  inflightPromise = new Promise((resolve) => {
-    settleResolve = resolve;
-  });
-  const pixels = image.data;
-  const whole = pixels.byteOffset === 0 && pixels.byteLength === pixels.buffer.byteLength;
-  const buffer = whole
-    ? pixels.buffer
-    : pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
-  const payload = whole ? pixels : buffer;
-  try {
-    ensureWorker().postMessage({
-      pixels: payload,
-      width: image.width,
-      height: image.height,
-    }, [buffer]);
-  } catch {
-    latest = null;
-    finishInflight();
-    return false;
+  const owned = takePixels(image);
+  if (inflight || completed) {
+    park(owned);
+    return true;
   }
+  if (pending) {
+    park(owned);
+    startPending();
+    return true;
+  }
+  return postPendingNow(owned);
+}
+
+/**
+ * Hand a canvas or video to the worker. The search starts before the bitmap is
+ * copied, so a waiter blocks until Hough finishes. The main thread does not read pixels.
+ */
+export function requestCanvasDiscovery(source, width, height) {
+  if (broken || typeof Worker === 'undefined' || typeof createImageBitmap !== 'function') return false;
+  if (!source || !width || !height) return false;
+  if (inflight || completed) return true;
+  armInflight();
+  createImageBitmap(source).then((bitmap) => {
+    try {
+      ensureWorker().postMessage({ bitmap, width, height }, [bitmap]);
+    } catch {
+      if (typeof bitmap.close === 'function') bitmap.close();
+      publish(null);
+    }
+  }).catch(() => publish(null));
   return true;
 }
 
@@ -120,18 +199,21 @@ export function requestImageDiscovery(image) {
 export function requestVideoDiscovery(video) {
   if (broken || typeof Worker === 'undefined' || typeof createImageBitmap !== 'function') return false;
   if (!video?.videoWidth || !video?.videoHeight) return false;
-  if (inflight) return true;
   const width = video.videoWidth;
   const height = video.videoHeight;
-  inflight = true;
-  inflightPromise = new Promise((resolve) => {
-    settleResolve = resolve;
-  });
+  const serial = ++videoSerial;
+  const busy = inflight || completed || pending;
   createImageBitmap(video).then((bitmap) => {
-    ensureWorker().postMessage({ bitmap, width, height }, [bitmap]);
+    if (serial !== videoSerial) {
+      bitmap.close?.();
+      return;
+    }
+    const item = { kind: 'bitmap', bitmap, width, height };
+    if (inflight || completed || pending) park(item);
+    else postPendingNow(item);
   }).catch(() => {
-    latest = null;
-    finishInflight();
+    if (serial !== videoSerial) return;
+    if (!busy) publish(null);
   });
   return true;
 }

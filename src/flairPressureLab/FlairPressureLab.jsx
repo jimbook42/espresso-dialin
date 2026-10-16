@@ -35,11 +35,12 @@ import {
   gaugeAllowsConfidentReading,
   gaugeAllowsReading,
   lastReadProfile,
+  beginReplayDiscovery,
   primeReplayDiscovery,
   probeGaugeDiscoveryCandidates,
   readTrackedGauge,
 } from './gaugeTrack';
-import { warmDiscoveryWorker, whenDiscoveryWarmed } from './discoveryClient.js';
+import { warmDiscoveryWorker, whenDiscoverySettled, whenDiscoveryWarmed } from './discoveryClient.js';
 import {
   createAngleJitterTracker,
   createAngleTracker,
@@ -1049,7 +1050,12 @@ export function FlairPressureLab() {
           const holdCtx = hold.getContext('2d', { willReadFrequently: true });
           holdCtx.drawImage(img, 0, 0);
           frameCtx.putImageData(holdCtx.getImageData(0, 0, hold.width, hold.height), 0, 0);
-          // Let the still install finish so it is not one task with the reading.
+          // Install and the search draw are separate tasks so neither is a long task.
+          await new Promise((resolve) => { setTimeout(resolve, 0); });
+          // The worker searches this still before the timed read. The main thread
+          // does not Hough. The clock starts when that circle is applied.
+          const kicked = beginReplayDiscovery(frame, canvas, trackerRef.current);
+          if (kicked.posted) await whenDiscoverySettled();
           await new Promise((resolve) => { setTimeout(resolve, 0); });
           const grabAt = performance.now();
           slots += 1;

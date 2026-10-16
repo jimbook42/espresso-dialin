@@ -103,27 +103,54 @@ export function boxMean(src, width, height, radius) {
 function boxMeanInto(src, width, height, radius, tmp, out) {
   const r = Math.max(1, radius | 0);
   const win = r * 2 + 1;
+  const xInnerEnd = width - r - 1;
   for (let y = 0; y < height; y += 1) {
     const row = y * width;
     let sum = 0;
     for (let x = -r; x <= r; x += 1) {
-      sum += src[row + Math.min(width - 1, Math.max(0, x))];
+      sum += src[row + (x < 0 ? 0 : (x >= width ? width - 1 : x))];
     }
-    for (let x = 0; x < width; x += 1) {
+    let x = 0;
+    for (; x < r && x < width; x += 1) {
       tmp[row + x] = sum / win;
-      sum -= src[row + Math.min(width - 1, Math.max(0, x - r))];
-      sum += src[row + Math.min(width - 1, Math.max(0, x + r + 1))];
+      sum -= src[row];
+      const add = x + r + 1;
+      sum += src[row + (add < width ? add : width - 1)];
+    }
+    for (; x < xInnerEnd; x += 1) {
+      tmp[row + x] = sum / win;
+      sum -= src[row + x - r];
+      sum += src[row + x + r + 1];
+    }
+    for (; x < width; x += 1) {
+      tmp[row + x] = sum / win;
+      sum -= src[row + x - r];
+      sum += src[row + width - 1];
     }
   }
+  const yInnerEnd = height - r - 1;
   for (let x = 0; x < width; x += 1) {
     let sum = 0;
     for (let y = -r; y <= r; y += 1) {
-      sum += tmp[Math.min(height - 1, Math.max(0, y)) * width + x];
+      const yy = y < 0 ? 0 : (y >= height ? height - 1 : y);
+      sum += tmp[yy * width + x];
     }
-    for (let y = 0; y < height; y += 1) {
+    let y = 0;
+    for (; y < r && y < height; y += 1) {
       out[y * width + x] = sum / win;
-      sum -= tmp[Math.min(height - 1, Math.max(0, y - r)) * width + x];
-      sum += tmp[Math.min(height - 1, Math.max(0, y + r + 1)) * width + x];
+      sum -= tmp[x];
+      const add = y + r + 1;
+      sum += tmp[(add < height ? add : height - 1) * width + x];
+    }
+    for (; y < yInnerEnd; y += 1) {
+      out[y * width + x] = sum / win;
+      sum -= tmp[(y - r) * width + x];
+      sum += tmp[(y + r + 1) * width + x];
+    }
+    for (; y < height; y += 1) {
+      out[y * width + x] = sum / win;
+      sum -= tmp[(y - r) * width + x];
+      sum += tmp[(height - 1) * width + x];
     }
   }
   return out;
@@ -223,6 +250,7 @@ export function prepareEdges(image, { contrastRadius } = {}) {
   sobelInto(contrast, width, height, slot.mag, slot.gx, slot.gy);
   return {
     gray: contrast,
+    luma: slot.gray,
     edges: { mag: slot.mag, gx: slot.gx, gy: slot.gy },
     width,
     height,

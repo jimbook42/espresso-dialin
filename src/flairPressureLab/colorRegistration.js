@@ -26,15 +26,23 @@ function nearRay(deg, needleDeg, half) {
     || Math.abs(wrapDelta(wrap360(needleDeg + 180), deg)) <= half;
 }
 
+const ANNULUS_COS = new Float64Array(180);
+const ANNULUS_SIN = new Float64Array(180);
+for (let i = 0; i < 180; i += 1) {
+  const rad = (i * 2 * Math.PI) / 180;
+  ANNULUS_COS[i] = Math.cos(rad);
+  ANNULUS_SIN[i] = Math.sin(rad);
+}
+
 function sampleAnnulus(image, cx, cy, radius, inner, outer, needleDeg) {
   const { data, width, height } = image;
   const samples = [];
   if (!(radius > 4)) return samples;
-  for (let deg = 0; deg < 360; deg += 2) {
+  for (let i = 0; i < 180; i += 1) {
+    const deg = i * 2;
     if (nearRay(deg, needleDeg, 14)) continue;
-    const rad = (deg * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
+    const cos = ANNULUS_COS[i];
+    const sin = ANNULUS_SIN[i];
     for (let t = 0; t <= 1; t += 0.34) {
       const rf = inner + (outer - inner) * t;
       const x = Math.round(cx + radius * rf * cos);
