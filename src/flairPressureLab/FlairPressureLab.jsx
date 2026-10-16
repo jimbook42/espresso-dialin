@@ -22,7 +22,7 @@ import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from '.
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
 import { createReadingBridge } from './frameQuality.js';
-import { createRestAnchor } from './restAnchor.js';
+import { createRestAnchor, templateConflictDeg } from './restAnchor.js';
 import {
   createGaugeTracker,
   gaugeAllowsConfidentReading,
@@ -347,6 +347,7 @@ export function FlairPressureLab() {
         processMs: partial.processMs ?? null,
         flags: partial.flags ?? '',
         tracking: partial.tracking ?? null,
+        conflictDeg: partial.conflictDeg ?? null,
       });
     };
 
@@ -570,6 +571,7 @@ export function FlairPressureLab() {
               bar: null,
               confidence: gauge.confidence,
               processMs,
+              conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
               flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}`,
               tracking: 'CALIBRATING',
             }, now);
@@ -695,6 +697,7 @@ export function FlairPressureLab() {
           bar: pressureMeasured ? rawBar : pressureBar,
           confidence: gauge.confidence,
           processMs,
+          conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
           flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}`,
           tracking,
         }, now);

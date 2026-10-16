@@ -146,11 +146,14 @@ function fmtBarRange(range) {
 
 function writeReportTable(summaries) {
   const header = [
-    '| Clip | Gauge found % | Centre range (detected) | Ref frames | First valid (s) | No-read % | Bar range | Low-conf % | Conf-wrong % |',
-    '| --- | ---: | --- | ---: | ---: | ---: | --- | ---: | ---: |',
+    '| Clip | Found % | Centre range | Within ±0.5 % | First (s) | No-read % | Bar range | Conflict med/max ° | Low-conf % | Blur % | Glare % | Conf-wrong % |',
+    '| --- | ---: | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |',
   ];
   const rows = summaries.map(({ id, summary }) => {
-    return `| ${id} | ${summary.gaugeTrackedPct.toFixed(1)} | ${fmtCentreRange(summary.centreRange)} | ${summary.referenceCapturedFrames ?? 0} | ${summary.timeToFirstValidReadingS?.toFixed(2) ?? '—'} | ${summary.noReadingRatePct.toFixed(1)} | ${fmtBarRange(summary.barRange)} | ${summary.lowConfidencePct.toFixed(1)} | ${summary.confidentButWrongPct.toFixed(1)} |`;
+    const conflict = summary.conflictDegMedian == null
+      ? '—'
+      : `${summary.conflictDegMedian.toFixed(1)} / ${summary.conflictDegMax.toFixed(1)}`;
+    return `| ${id} | ${summary.gaugeTrackedPct.toFixed(1)} | ${fmtCentreRange(summary.centreRange)} | ${summary.withinTolerancePct.toFixed(1)} | ${summary.timeToFirstValidReadingS?.toFixed(2) ?? '—'} | ${summary.noReadingRatePct.toFixed(1)} | ${fmtBarRange(summary.barRange)} | ${conflict} | ${summary.lowConfidencePct.toFixed(1)} | ${(summary.blurPct ?? 0).toFixed(1)} | ${(summary.glarePct ?? 0).toFixed(1)} | ${summary.confidentButWrongPct.toFixed(1)} |`;
   });
   return `${header.concat(rows).join('\n')}\n`;
 }

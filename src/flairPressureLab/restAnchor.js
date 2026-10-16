@@ -13,6 +13,12 @@ const REST_ANCHOR_ZERO_DEG = 10;
  * zero. It never runs on the first frame, and it never copies an angle in as zero.
  * Disagreement leaves the anchor in conflict so a confident bar is not published.
  */
+/** Degrees between the registered needle and the template zero. Not a new zero. */
+export function templateConflictDeg(relativeAngleDeg) {
+  if (relativeAngleDeg == null || Number.isNaN(relativeAngleDeg)) return null;
+  return Math.abs(wrapDelta(relativeAngleDeg, CANONICAL_ZERO_BAR_ANGLE_DEG));
+}
+
 export function createRestAnchor() {
   let samples = [];
   let status = 'pending';

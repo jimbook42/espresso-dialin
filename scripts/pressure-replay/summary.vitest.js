@@ -43,4 +43,18 @@ describe('pressure replay summary math', () => {
     expect(summary.confidentButWrongPct).toBe(50);
     expect(summary.lowConfidencePct).toBe(50);
   });
+
+  it('summarises template conflict and quality flags without using them as a zero', () => {
+    const frames = [
+      { timeS: 0, gaugeFound: true, bar: null, tracking: 'CALIBRATING', confidence: 0.4, conflictDeg: 4, flags: 'CALIBRATING|blur' },
+      { timeS: 1, gaugeFound: true, bar: null, tracking: 'CALIBRATING', confidence: 0.4, conflictDeg: 12, flags: 'CALIBRATING|glare' },
+      { timeS: 2, gaugeFound: true, bar: 0.1, tracking: 'TRACKING', confidence: 0.4, conflictDeg: 2, flags: 'TRACKING' },
+    ];
+    const summary = summarizeClipFrames(frames, clip);
+    expect(summary.conflictDegMedian).toBe(4);
+    expect(summary.conflictDegMax).toBe(12);
+    expect(summary.blurPct).toBeCloseTo(100 / 3, 5);
+    expect(summary.glarePct).toBeCloseTo(100 / 3, 5);
+    expect(summary.confidentButWrongPct).toBe(0);
+  });
 });

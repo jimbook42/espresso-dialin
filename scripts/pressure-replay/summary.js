@@ -99,6 +99,13 @@ export function summarizeClipFrames(frames, clip) {
   const processMsMedian = percentile(processMs, 50);
   const processMsP95 = percentile(processMs, 95);
 
+  const conflict = frames.map((f) => f.conflictDeg).filter(finite).sort((a, b) => a - b);
+  const conflictDegMedian = percentile(conflict, 50);
+  const conflictDegMax = conflict.length ? conflict[conflict.length - 1] : null;
+  const flagText = (frame) => String(frame.flags || '');
+  const blurPct = n ? (frames.filter((f) => flagText(f).split('|').includes('blur')).length / n) * 100 : 0;
+  const glarePct = n ? (frames.filter((f) => flagText(f).split('|').includes('glare')).length / n) * 100 : 0;
+
   let centreAtTruePct = null;
   if (clip.scoringCentre && withGauge.length) {
     const { x, y, tolerancePx } = clip.scoringCentre;
@@ -131,6 +138,10 @@ export function summarizeClipFrames(frames, clip) {
     barRange,
     processMsMedian,
     processMsP95,
+    conflictDegMedian,
+    conflictDegMax,
+    blurPct,
+    glarePct,
     pass: {
       gaugeTracked: passGaugeTracked,
       withinTolerance: passTolerance,

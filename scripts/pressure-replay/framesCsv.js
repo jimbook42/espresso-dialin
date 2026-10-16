@@ -10,6 +10,7 @@ const CSV_COLUMNS = [
   'bar',
   'confidence',
   'flags',
+  'conflictDeg',
 ];
 
 function escapeCsv(value) {
