@@ -6,8 +6,12 @@ import {
   FLAIR_STATELESS_SESSION,
 } from './canonicalDial.js';
 import {
+  MIN_DISCOVERY_RADIUS_FRACTION,
+  MAX_DISCOVERY_RADIUS_FRACTION,
   discoverGaugeInFrame,
   gaugeAllowsConfidentReading,
+  mapCanvasDiscoveryToVideo,
+  selectDiscoveryCandidate,
   matchGaugeRotation,
   registerDialRotationFromProfile,
   scoreDialFaceInterior,
@@ -286,6 +290,54 @@ describe('pressure CV units', () => {
       expect(found.dialFaceScore ?? 0).toBeGreaterThanOrEqual(0.3);
       expect(Math.hypot(found.cx - 240, found.cy - 355)).toBeLessThan(25);
     }
+  });
+
+  it('maps processing-canvas discovery into video pixels', () => {
+    const mapped = mapCanvasDiscoveryToVideo(
+      { cx: 160, cy: 244, radius: 34, ok: true, dialFaceScore: 0.4 },
+      { canvasWidth: 280, canvasHeight: 497 },
+      406,
+      720,
+    );
+    expect(mapped.cx).toBeCloseTo(160 * (406 / 280), 5);
+    expect(mapped.cy).toBeCloseTo(244 * (720 / 497), 5);
+    expect(mapped.radius).toBeCloseTo(34 * (406 / 280), 5);
+    expect(mapped.ok).toBe(true);
+    const identity = mapCanvasDiscoveryToVideo(
+      { cx: 232, cy: 355, radius: 51, ok: true },
+      { canvasWidth: 406, canvasHeight: 720 },
+      406,
+      720,
+    );
+    expect(identity.cx).toBeCloseTo(232, 5);
+    expect(identity.cy).toBeCloseTo(355, 5);
+    expect(identity.radius).toBeCloseTo(51, 5);
+  });
+
+  it('prefers a dominant near-verified dial over a weaker verified circle', () => {
+    const dial = {
+      cx: 235, cy: 351, radius: 52, rank: 18, ok: false, face: 0.42, canonical: 0.27, rim: 40,
+    };
+    const clutter = {
+      cx: 72, cy: 394, radius: 18, rank: 13, ok: true, face: 0.42, canonical: 0.32, rim: 20,
+    };
+    const chosen = selectDiscoveryCandidate([clutter, dial]);
+    expect(chosen?.ok).toBe(true);
+    expect(chosen?.cx).toBe(235);
+    expect(selectDiscoveryCandidate([
+      { ...dial, canonical: 0.05, rank: 18, ok: false },
+      clutter,
+    ])).toBeNull();
+    expect(selectDiscoveryCandidate([
+      { ...dial, ok: true, canonical: 0.3 },
+      clutter,
+    ])?.cx).toBe(235);
+  });
+
+  it('keeps the generic discovery radius band at 3%–50% of the short side', () => {
+    expect(MIN_DISCOVERY_RADIUS_FRACTION).toBeLessThanOrEqual(0.03);
+    expect(MAX_DISCOVERY_RADIUS_FRACTION).toBeGreaterThanOrEqual(0.5);
+    expect(MAX_DISCOVERY_RADIUS_FRACTION).toBeLessThanOrEqual(0.55);
   });
 
   it('scores a circular rim', () => {

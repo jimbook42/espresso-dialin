@@ -200,8 +200,12 @@ export function FlairPressureLab() {
   useEffect(() => {
     if (!REPLAY_BUILD) return undefined;
     installPressureReplayHook();
+    window.__pressureLabVideoTrace = [];
     return () => {
-      if (typeof window !== 'undefined') delete window.__pressureLabReplay;
+      if (typeof window !== 'undefined') {
+        delete window.__pressureLabReplay;
+        delete window.__pressureLabVideoTrace;
+      }
     };
   }, []);
 

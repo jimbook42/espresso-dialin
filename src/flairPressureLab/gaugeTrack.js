@@ -475,9 +475,13 @@ function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needl
   return rim.confidence * (0.55 + 0.45 * agree);
 }
 
+/** Generic dial size band as a fraction of the frame's short side. Not fitted to a clip. */
+export const MIN_DISCOVERY_RADIUS_FRACTION = 0.03;
+export const MAX_DISCOVERY_RADIUS_FRACTION = 0.5;
+
 function discoveryRadiusInRange(faceRadius, scaledMin) {
-  const rMin = scaledMin * 0.03;
-  const rMax = scaledMin * 0.5;
+  const rMin = scaledMin * MIN_DISCOVERY_RADIUS_FRACTION;
+  const rMax = scaledMin * MAX_DISCOVERY_RADIUS_FRACTION;
   return faceRadius >= rMin && faceRadius <= rMax;
 }
 
@@ -577,8 +581,8 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
     cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 1.4, 1.4, cv.BORDER_DEFAULT);
 
     circles = new cv.Mat();
-    const rMin = Math.max(6, scaledMin * 0.03);
-    const rMax = scaledMin * 0.5;
+    const rMin = Math.max(6, scaledMin * MIN_DISCOVERY_RADIUS_FRACTION);
+    const rMax = scaledMin * MAX_DISCOVERY_RADIUS_FRACTION;
     const minDist = Math.max(12, scaledMin * 0.08);
     cv.HoughCircles(
       gray,
@@ -598,7 +602,7 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
       const r = circles.floatAt(0, i * 3 + 2);
       const variants = [r / 1.02, (r / 1.02) * 0.96, (r / 1.02) * 1.04];
       for (const faceRadius of variants) {
-        if (faceRadius < scaledMin * 0.06) continue;
+        if (faceRadius < scaledMin * MIN_DISCOVERY_RADIUS_FRACTION) continue;
         const rimRadius = faceRadius * 1.02;
         if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) continue;
         const scored = scoreDiscoveryCandidate({
@@ -644,18 +648,32 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
   return houghCount;
 }
 
-function pickBestDiscoveryCandidate(candidates) {
-  let best = null;
-  for (const c of candidates) {
-    if (!c.ok) continue;
-    if (!best || c.rank > best.rank) best = c;
+/** Best rank must beat every verified alternative by this factor to override it. */
+const DISCOVERY_RANK_DOMINANCE = 1.25;
+
+/**
+ * Pick the circle to seed.
+ * A weaker circle that barely verifies must not replace a clearly stronger
+ * circle that sits just under the canonical gate. If that stronger circle is
+ * not even close, return null and try another frame instead of locking the weak one.
+ */
+export function selectDiscoveryCandidate(candidates) {
+  let bestRank = null;
+  let bestOk = null;
+  for (const candidate of candidates || []) {
+    if (!bestRank || (candidate.rank || 0) > (bestRank.rank || 0)) bestRank = candidate;
+    if (candidate.ok && (!bestOk || (candidate.rank || 0) > (bestOk.rank || 0))) bestOk = candidate;
   }
-  if (best) return best;
-  let fallback = null;
-  for (const c of candidates) {
-    if (!fallback || c.rank > fallback.rank) fallback = c;
+  if (!bestRank) return null;
+  if (bestOk && bestOk !== bestRank) {
+    const dominant = (bestRank.rank || 0) > (bestOk.rank || 0) * DISCOVERY_RANK_DOMINANCE;
+    const nearVerify = (bestRank.face || 0) >= DIAL_FACE_VERIFY_MIN
+      && (bestRank.canonical || 0) >= DIAL_CANONICAL_VERIFY_MIN * 0.9
+      && (bestRank.rim || 0) > 1e-3;
+    if (dominant && nearVerify) return { ...bestRank, ok: true };
+    if (dominant) return null;
   }
-  return fallback;
+  return bestOk;
 }
 
 /**
@@ -670,7 +688,7 @@ export function probeGaugeDiscoveryCandidates(image, cv = null) {
   if (cvInst?.Mat) {
     houghCount = collectHoughCircleCandidates(ctx, cvInst, candidates);
   }
-  const chosen = pickBestDiscoveryCandidate(candidates);
+  const chosen = selectDiscoveryCandidate(candidates);
   return {
     candidates,
     chosen,
@@ -683,7 +701,7 @@ export function probeGaugeDiscoveryCandidates(image, cv = null) {
 
 function discoveryResultFromBest(best, scale, minDim) {
   if (!best || best.score <= 0) return null;
-  if (best.radius / scale < minDim * 0.055) return null;
+  if (best.radius / scale < minDim * MIN_DISCOVERY_RADIUS_FRACTION) return null;
   const rimR = best.radius * 1.02;
   const off = offsetScore(best.edges, best.sw, best.sh, best.cx, best.cy, rimR);
   const confidence = best.rim > 1e-3 && off != null
@@ -712,7 +730,7 @@ function discoverGaugeWithOpenCv(image, cv) {
   if (!image?.width || !image?.data || !cv?.Mat) return null;
   const minDim = Math.min(image.width, image.height);
   const { chosen } = probeGaugeDiscoveryCandidates(image, cv);
-  if (!chosen || chosen.radius < minDim * 0.055) return null;
+  if (!chosen || chosen.radius < minDim * MIN_DISCOVERY_RADIUS_FRACTION) return null;
   return {
     ok: chosen.ok === true,
     confidence: chosen.confidence ?? 0,
@@ -733,9 +751,10 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   const { width, height, data } = image;
   if (!width || !height || !data) return null;
   const cv = getOpenCvSync();
-  if (cv) {
+  if (cv?.Mat) {
     const opencvHit = discoverGaugeWithOpenCv(image, cv);
     if (opencvHit?.ok) return opencvHit;
+    return null;
   }
   const minDim = Math.min(width, height);
   const scale = Math.min(1, maxOutput / minDim);
@@ -756,12 +775,12 @@ export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
   }
   const edges = prepareEdges({ data: small, width: sw, height: sh }, { contrastRadius: 3 }).edges;
   const scaledMin = minDim * scale;
-  const rMin = scaledMin * 0.03;
-  const rMax = scaledMin * 0.5;
+  const rMin = scaledMin * MIN_DISCOVERY_RADIUS_FRACTION;
+  const rMax = scaledMin * MAX_DISCOVERY_RADIUS_FRACTION;
   const coarseStep = Math.max(4, Math.round(scaledMin / 24));
   let best = { score: -1, rim: 0, face: 0, canonical: 0, cx: 0, cy: 0, radius: 0, edges, sw, sh };
   const consider = (cx, cy, faceRadius) => {
-    if (faceRadius < scaledMin * 0.06) return;
+    if (faceRadius < scaledMin * MIN_DISCOVERY_RADIUS_FRACTION) return;
     const rimRadius = faceRadius * 1.02;
     if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) return;
     const scored = scoreDiscoveryCandidate({
@@ -1123,6 +1142,21 @@ export function createGaugeTracker() {
     },
     getPose() {
       return pose ? { ...pose } : null;
+    },
+    snapshot() {
+      return {
+        mode,
+        lossStreak,
+        hasReference: reference != null,
+        pose: pose
+          ? {
+            cx: pose.cx,
+            cy: pose.cy,
+            radius: pose.radius,
+            rotationDeg: pose.rotationDeg,
+          }
+          : null,
+      };
     },
     setRotationDeg(rotationDeg) {
       if (!pose) return;
@@ -1865,7 +1899,61 @@ function drawFullFrame(video, canvas, maxOutput) {
   canvas.width = outputW;
   canvas.height = outputH;
   context.drawImage(video, 0, 0, outputW, outputH);
-  return context.getImageData(0, 0, outputW, outputH);
+  return {
+    image: context.getImageData(0, 0, outputW, outputH),
+    canvasWidth: outputW,
+    canvasHeight: outputH,
+    scaleX: outputW / videoWidth,
+    scaleY: outputH / videoHeight,
+  };
+}
+
+function roundTrace(value) {
+  return value == null || Number.isNaN(value) ? null : Math.round(value * 100) / 100;
+}
+
+function tracePoint(point) {
+  if (!point) return null;
+  return {
+    cx: roundTrace(point.cx),
+    cy: roundTrace(point.cy),
+    radius: roundTrace(point.radius),
+    ok: point.ok === true,
+    face: roundTrace(point.dialFaceScore),
+    canonical: roundTrace(point.canonicalScore),
+    confidence: roundTrace(point.confidence),
+    source: point.source ?? null,
+  };
+}
+
+/** Map a discovery result from processing-canvas pixels into video pixels. */
+export function mapCanvasDiscoveryToVideo(found, drawn, videoWidth, videoHeight) {
+  if (!found || !drawn?.canvasWidth || !drawn?.canvasHeight || !videoWidth || !videoHeight) return null;
+  const scaleX = drawn.canvasWidth / videoWidth;
+  const scaleY = drawn.canvasHeight / videoHeight;
+  const scaleR = Math.min(drawn.canvasWidth, drawn.canvasHeight) / Math.min(videoWidth, videoHeight);
+  if (!(scaleX > 0) || !(scaleY > 0) || !(scaleR > 0)) return null;
+  return {
+    ...found,
+    cx: found.cx / scaleX,
+    cy: found.cy / scaleY,
+    radius: found.radius / scaleR,
+  };
+}
+
+function pushVideoTrace(entry) {
+  const buf = globalThis.__pressureLabVideoTrace;
+  if (!Array.isArray(buf) || buf.length >= 64) return;
+  buf.push(entry);
+}
+
+function trackSettings(video) {
+  try {
+    const settings = video.srcObject?.getVideoTracks?.()?.[0]?.getSettings?.() || {};
+    return { width: settings.width ?? null, height: settings.height ?? null };
+  } catch {
+    return { width: null, height: null };
+  }
 }
 
 /** Crop around the tracked gauge, update its pose, then read the needle from that pose. */
@@ -1873,11 +1961,59 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;
   if (!videoWidth || !videoHeight) return null;
+  const before = tracker.snapshot?.() ?? null;
+  let drawn = null;
+  let foundCanvas = null;
+  let foundVideo = null;
+  let seeded = false;
   if (!tracker.getPose()) {
-    const frame = drawFullFrame(video, canvas, 280);
-    const found = discoverGaugeInFrame(frame);
-    if (!found?.ok) return null;
-    tracker.seed({ cx: found.cx, cy: found.cy, radius: found.radius });
+    // Full video frame. discoverGaugeInFrame downscales internally and returns
+    // coordinates in this image's pixels. A second bilinear shrink (short side
+    // 280) both changed the winning circle and was seeded without mapping back.
+    drawn = drawFullFrame(video, canvas, Math.min(videoWidth, videoHeight));
+    foundCanvas = discoverGaugeInFrame(drawn.image);
+    foundVideo = mapCanvasDiscoveryToVideo(foundCanvas, drawn, videoWidth, videoHeight);
+    if (Array.isArray(globalThis.__pressureLabVideoTrace) && globalThis.__pressureLabVideoTrace.length === 0) {
+      const probe = probeGaugeDiscoveryCandidates(drawn.image);
+      drawn.topCandidates = [...(probe.candidates || [])]
+        .sort((a, b) => (b.rank || 0) - (a.rank || 0))
+        .slice(0, 5)
+        .map((c) => ({
+          cx: roundTrace(c.cx),
+          cy: roundTrace(c.cy),
+          radius: roundTrace(c.radius),
+          rank: roundTrace(c.rank),
+          ok: c.ok === true,
+          face: roundTrace(c.face),
+          canonical: roundTrace(c.canonical),
+        }));
+    }
+    if (!foundVideo?.ok) {
+      pushVideoTrace({
+        t: roundTrace(video.currentTime),
+        frameIndex: video.currentTime == null ? null : Math.round(video.currentTime * 30),
+        videoW: videoWidth,
+        videoH: videoHeight,
+        elementW: video.clientWidth || null,
+        elementH: video.clientHeight || null,
+        dpr: globalThis.devicePixelRatio ?? null,
+        track: trackSettings(video),
+        canvasW: drawn.canvasWidth,
+        canvasH: drawn.canvasHeight,
+        scaleX: roundTrace(drawn.scaleX),
+        scaleY: roundTrace(drawn.scaleY),
+        discoveryCanvas: tracePoint(foundCanvas),
+        discoveryVideo: tracePoint(foundVideo),
+        topCandidates: drawn.topCandidates ?? null,
+        seeded: false,
+        before,
+        after: tracker.snapshot?.() ?? null,
+        event: 'discovery-reject',
+      });
+      return null;
+    }
+    tracker.seed({ cx: foundVideo.cx, cy: foundVideo.cy, radius: foundVideo.radius });
+    seeded = true;
   }
 
   const pose = tracker.getPose();
@@ -1896,7 +2032,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
   if (!needleCrop) return null;
   const needle = drawCrop(video, canvas, needleCrop, 420);
-  return completeReading({
+  const reading = completeReading({
     videoWidth,
     videoHeight,
     position,
@@ -1906,4 +2042,41 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     needleScale: needle.scale,
     canonicalDial: true,
   });
+  const after = tracker.snapshot?.() ?? null;
+  pushVideoTrace({
+    t: roundTrace(video.currentTime),
+    frameIndex: video.currentTime == null ? null : Math.round(video.currentTime * 30),
+    videoW: videoWidth,
+    videoH: videoHeight,
+    elementW: video.clientWidth || null,
+    elementH: video.clientHeight || null,
+    dpr: globalThis.devicePixelRatio ?? null,
+    track: trackSettings(video),
+    canvasW: drawn?.canvasWidth ?? null,
+    canvasH: drawn?.canvasHeight ?? null,
+    scaleX: drawn ? roundTrace(drawn.scaleX) : null,
+    scaleY: drawn ? roundTrace(drawn.scaleY) : null,
+    discoveryCanvas: tracePoint(foundCanvas),
+    discoveryVideo: tracePoint(foundVideo),
+    topCandidates: drawn?.topCandidates ?? null,
+    seeded,
+    crop: {
+      originX: trackCrop.originX,
+      originY: trackCrop.originY,
+      size: trackCrop.size,
+      scale: roundTrace(tracked.scale),
+    },
+    pose: tracePoint({
+      cx: reading.gauge?.cx,
+      cy: reading.gauge?.cy,
+      radius: reading.gauge?.radius,
+      dialFaceScore: reading.gauge?.dialFaceScore,
+      confidence: reading.gauge?.confidence,
+    }),
+    trackMode: reading.gauge?.trackMode ?? null,
+    before,
+    after,
+    event: seeded ? 'seed' : 'track',
+  });
+  return reading;
 }
