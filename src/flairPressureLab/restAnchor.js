@@ -1,5 +1,5 @@
 import { CANONICAL_ZERO_BAR_ANGLE_DEG } from './canonicalDial.js';
-import { PROCESS_INTERVAL_MS, wrap360, wrapDelta } from './gaugeConfig.js';
+import { PROCESS_INTERVAL_MS, REST_MAX_SPREAD_DEG, wrap360, wrapDelta } from './gaugeConfig.js';
 
 /** How long the needle must sit still before it can confirm the printed zero. */
 export const REST_ANCHOR_MS = 500;
@@ -18,6 +18,19 @@ const REST_ANCHOR_ZERO_DEG = 10;
 export function templateConflictDeg(relativeAngleDeg) {
   if (relativeAngleDeg == null || Number.isNaN(relativeAngleDeg)) return null;
   return Math.abs(wrapDelta(relativeAngleDeg, CANONICAL_ZERO_BAR_ANGLE_DEG));
+}
+
+/**
+ * High confidence waits for a few readings in the same place.
+ * A flicker that jumps away inside the rest window does not get there.
+ */
+export function confidentAngleWindow(samples, now) {
+  const recent = (samples || []).filter(
+    (sample) => sample?.angleDeg != null && now - sample.timeMs <= REST_ANCHOR_MS,
+  );
+  if (recent.length < 3) return false;
+  const base = recent[0].angleDeg;
+  return recent.every((sample) => Math.abs(wrapDelta(base, sample.angleDeg)) <= REST_MAX_SPREAD_DEG);
 }
 
 export function createRestAnchor() {

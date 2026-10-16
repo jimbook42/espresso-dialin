@@ -24,7 +24,7 @@ import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
 import { createReadingBridge } from './frameQuality.js';
 import { HUB_CONNECTION_MIN } from './needleFromFrame.js';
-import { createRestAnchor, templateConflictDeg } from './restAnchor.js';
+import { REST_ANCHOR_MS, confidentAngleWindow, createRestAnchor, templateConflictDeg } from './restAnchor.js';
 import {
   createGaugeTracker,
   gaugeAllowsConfidentReading,
@@ -164,6 +164,7 @@ export function FlairPressureLab() {
   const frameNodeRef = useRef(null);
   const qualityBridgeRef = useRef(createReadingBridge(1000));
   const restAnchorRef = useRef(createRestAnchor());
+  const agreeSamplesRef = useRef([]);
   const qualityCanvasRef = useRef(null);
   const lastAngleRef = useRef(null);
   const angleTrackerRef = useRef(createAngleTracker());
@@ -249,6 +250,7 @@ export function FlairPressureLab() {
     if (clearTracker) trackerRef.current.reset();
     qualityBridgeRef.current.reset();
     restAnchorRef.current.reset();
+    agreeSamplesRef.current = [];
     if (clearHistory) {
       historyRef.current.reset();
       setTrace([]);
@@ -685,7 +687,18 @@ export function FlairPressureLab() {
       // Half the hub samples is a tie, not a needle. A streak that only ties
       // the pivot check still gets a bar, at low confidence.
       const hubSure = reading.hub == null || reading.hub > HUB_CONNECTION_MIN;
-      const publishedConfidence = pressureMeasured && needleSure && hubSure && confidentDial
+      if (
+        gauge.dialRegistered
+        && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE
+        && (reading.hub == null || reading.hub > HUB_CONNECTION_MIN)
+        && reading.relativeAngleDeg != null
+      ) {
+        agreeSamplesRef.current.push({ timeMs: now, angleDeg: reading.relativeAngleDeg });
+        const agreeCutoff = now - REST_ANCHOR_MS - PROCESS_INTERVAL_MS;
+        agreeSamplesRef.current = agreeSamplesRef.current.filter((sample) => sample.timeMs >= agreeCutoff);
+      }
+      const angleAgrees = confidentAngleWindow(agreeSamplesRef.current, now);
+      const publishedConfidence = pressureMeasured && needleSure && hubSure && confidentDial && angleAgrees
         ? gauge.confidence
         : Math.min(gauge.confidence ?? 0, NEEDLE_LOST_QUALITY);
       const uncertainty = record({

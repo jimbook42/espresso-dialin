@@ -38,7 +38,7 @@ import {
 import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
 import { createAngleTracker } from './smoothPressure.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
-import { createRestAnchor } from './restAnchor.js';
+import { confidentAngleWindow, createRestAnchor } from './restAnchor.js';
 import { HUB_CONNECTION_MIN, detectNeedleAngle, hubConnection, selectPointerEnd } from './needleFromFrame.js';
 import {
   BAND_INNER_FRACTION,
@@ -752,6 +752,22 @@ describe('pressure CV units', () => {
       expect(Math.abs(wrapDelta(found.angleDeg, pointer))).toBeLessThan(8);
       expect(found.hub).toBeGreaterThanOrEqual(HUB_CONNECTION_MIN);
     }
+  });
+
+  it('withholds confidence until a few readings sit together', () => {
+    const jump = [
+      { timeMs: 0, angleDeg: 47 },
+      { timeMs: 140, angleDeg: 58 },
+      { timeMs: 280, angleDeg: 48 },
+    ];
+    expect(confidentAngleWindow(jump, 280)).toBe(false);
+    const still = [
+      { timeMs: 0, angleDeg: 47 },
+      { timeMs: 140, angleDeg: 49 },
+      { timeMs: 280, angleDeg: 46 },
+    ];
+    expect(confidentAngleWindow(still, 280)).toBe(true);
+    expect(confidentAngleWindow(still.slice(0, 2), 140)).toBe(false);
   });
 
   it('does not let a pivot-missing ray drag the smoothed needle', () => {
