@@ -638,6 +638,11 @@ export function FlairPressureLab() {
             signal = thresholdRef.current.push(smoothed, Date.now());
             signalPaused = false;
           }
+        } else if (tracked.heldReason === 'hub') {
+          // This frame's ray missed the pivot. Publish that angle on its own,
+          // at low confidence below, and leave the smoothed needle where it was.
+          rawBar = angleToBar(choice.angleDeg, sessionRef.current);
+          if (rawBar == null) offScale = true;
         }
       } else {
         angleTrackerRef.current.push(null);
@@ -664,7 +669,9 @@ export function FlairPressureLab() {
         offScale,
       });
       const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
-      const pressureMeasured = Boolean(tracked.accepted) && !blockSample && rawBar != null;
+      const pressureMeasured = !blockSample && rawBar != null && (
+        Boolean(tracked.accepted) || tracked.heldReason === 'hub'
+      );
       const needleSure = (reading.quality ?? 0) >= NEEDLE_TRACK_QUALITY;
       // A face streak that misses the pivot is still a number, but not a confident one.
       const hubSure = reading.hub == null || reading.hub >= HUB_CONNECTION_MIN;
