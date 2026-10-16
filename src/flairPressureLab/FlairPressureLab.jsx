@@ -342,7 +342,6 @@ export function FlairPressureLab() {
     qualityCanvasRef.current = canvas;
     let raf = 0;
     let last = 0;
-    let nextMediaT = 0;
     let processed = 0;
     let windowStart = performance.now();
     let fps = 0;
@@ -373,22 +372,8 @@ export function FlairPressureLab() {
       dialRegistered: gauge.dialRegistered === true,
     });
 
-    const tick = (wallNow) => {
-      raf = requestAnimationFrame(tick);
-      const video = videoRef.current;
+    const processSample = (video, now, wallNow) => {
       if (!video || video.readyState < 2) return;
-      let now = wallNow;
-      if (REPLAY_BUILD) {
-        const slot = PROCESS_INTERVAL_MS / 1000;
-        const mediaT = Number.isFinite(video.currentTime) ? video.currentTime : 0;
-        if (mediaT + 1e-4 < nextMediaT) return;
-        nextMediaT = Math.floor((mediaT + 1e-4) / slot) * slot + slot;
-        now = mediaT * 1000;
-      } else if (wallNow - last < PROCESS_INTERVAL_MS) {
-        return;
-      } else {
-        last = wallNow;
-      }
       let reading;
       let processMs = null;
       try {
@@ -832,8 +817,73 @@ export function FlairPressureLab() {
       });
     };
 
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const tick = (wallNow) => {
+      raf = requestAnimationFrame(tick);
+      const video = videoRef.current;
+      if (!video || video.readyState < 2) return;
+      if (wallNow - last < PROCESS_INTERVAL_MS) return;
+      last = wallNow;
+      processSample(video, wallNow, wallNow);
+    };
+
+    if (!REPLAY_BUILD) {
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }
+
+    // Copy each media-time slot when it is presented, then read the copy.
+    // Processing time must not choose a later video frame.
+    let lastIndex = -1;
+    let pumping = false;
+    let stopped = false;
+    const queue = [];
+    const slot = PROCESS_INTERVAL_MS / 1000;
+    const startIndex = 4;
+    const pump = () => {
+      if (pumping || stopped) return;
+      const job = queue.shift();
+      if (!job) return;
+      pumping = true;
+      try {
+        processSample(job, Math.round(job.currentTime * 1000), performance.now());
+      } finally {
+        pumping = false;
+        if (queue.length) pump();
+      }
+    };
+    const arm = () => {
+      const video = videoRef.current;
+      if (stopped) return;
+      if (!video?.requestVideoFrameCallback || video.readyState < 2) {
+        raf = requestAnimationFrame(arm);
+        return;
+      }
+      video.requestVideoFrameCallback(function handle(_t, meta) {
+        const el = videoRef.current;
+        if (stopped || !el?.requestVideoFrameCallback) return;
+        el.requestVideoFrameCallback(handle);
+        const mediaT = Number.isFinite(meta?.mediaTime) ? meta.mediaTime : el.currentTime;
+        if (!Number.isFinite(mediaT) || !el.videoWidth) return;
+        const index = Math.floor(mediaT / slot);
+        if (index < startIndex || index <= lastIndex) return;
+        lastIndex = index;
+        const snap = document.createElement('canvas');
+        snap.width = el.videoWidth;
+        snap.height = el.videoHeight;
+        snap.getContext('2d', { willReadFrequently: true }).drawImage(el, 0, 0);
+        snap.videoWidth = snap.width;
+        snap.videoHeight = snap.height;
+        snap.currentTime = mediaT;
+        snap.readyState = 4;
+        queue.push(snap);
+        pump();
+      });
+    };
+    arm();
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+    };
   }, [status, videoRef, opencvReady]);
 
   const stability = stabilityStats(trace);

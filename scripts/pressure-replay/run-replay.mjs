@@ -215,6 +215,10 @@ async function main() {
       results.push(first);
       continue;
     }
+    fs.copyFileSync(
+      path.join(first.outDir, 'frames.csv'),
+      path.join(first.outDir, 'frames-pass1.csv'),
+    );
     process.stderr.write(`\n=== Replay ${clip.id} (pass 2) ===\n`);
     const second = await processClip(clip, process.env.FLAIR_REPLAY_DIR);
     const diff = compareReplayRuns(first.frames, second.frames);
