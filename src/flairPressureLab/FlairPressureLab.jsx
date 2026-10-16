@@ -381,6 +381,8 @@ export function FlairPressureLab() {
         reading = readTrackedGauge(video, canvas, null, trackerRef.current);
         processMs = performance.now() - t0;
       } catch (err) {
+        restAnchorRef.current.reset();
+        agreeSamplesRef.current = [];
         if (REPLAY_BUILD) {
           pushReplayFrame({
             gaugeFound: false,
@@ -392,6 +394,9 @@ export function FlairPressureLab() {
         return;
       }
       if (!reading?.gauge) {
+        // A lost face must not keep a confirmed zero. The next lock confirms again.
+        restAnchorRef.current.reset();
+        agreeSamplesRef.current = [];
         if (REPLAY_BUILD) {
           pushReplayFrame({
             gaugeFound: false,
@@ -534,6 +539,10 @@ export function FlairPressureLab() {
       };
 
       const frameQualityForAnchor = reading.frameQuality ?? { ok: true, flags: [] };
+      if (gauge.dialRegistered !== true) {
+        restAnchorRef.current.reset();
+        agreeSamplesRef.current = [];
+      }
       restAnchorRef.current.push({
         timeMs: now,
         angleDeg: reading.relativeAngleDeg,
@@ -831,55 +840,48 @@ export function FlairPressureLab() {
       return () => cancelAnimationFrame(raf);
     }
 
-    // Copy each media-time slot when it is presented, then read the copy.
-    // Processing time must not choose a later video frame.
-    let lastIndex = -1;
-    let pumping = false;
+    // Read stills taken at each slot. A live camera or a seek lands on a
+    // different picture from run to run, so two replays diverged.
     let stopped = false;
-    const queue = [];
+    window.__pressureReplayDrained = false;
+    const frameCount = Number(window.__pressureReplayFrameCount) || 0;
+    const frameBase = window.__pressureReplayFrameBase || '';
+    const untilS = Number(window.__pressureReplayUntilS) || 0;
     const slot = PROCESS_INTERVAL_MS / 1000;
-    const startIndex = 4;
-    const pump = () => {
-      if (pumping || stopped) return;
-      const job = queue.shift();
-      if (!job) return;
-      pumping = true;
-      try {
-        processSample(job, Math.round(job.currentTime * 1000), performance.now());
-      } finally {
-        pumping = false;
-        if (queue.length) pump();
-      }
-    };
-    const arm = () => {
-      const video = videoRef.current;
-      if (stopped) return;
-      if (!video?.requestVideoFrameCallback || video.readyState < 2) {
-        raf = requestAnimationFrame(arm);
+    const loadFrame = (src) => new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('replay frame failed to load'));
+      img.src = src;
+    });
+    const run = async () => {
+      if (!frameBase || frameCount < 1 || untilS <= 0) {
+        window.__pressureReplayError = 'replay frames missing';
         return;
       }
-      video.requestVideoFrameCallback(function handle(_t, meta) {
-        const el = videoRef.current;
-        if (stopped || !el?.requestVideoFrameCallback) return;
-        el.requestVideoFrameCallback(handle);
-        const mediaT = Number.isFinite(meta?.mediaTime) ? meta.mediaTime : el.currentTime;
-        if (!Number.isFinite(mediaT) || !el.videoWidth) return;
-        const index = Math.floor(mediaT / slot);
-        if (index < startIndex || index <= lastIndex) return;
-        lastIndex = index;
-        const snap = document.createElement('canvas');
-        snap.width = el.videoWidth;
-        snap.height = el.videoHeight;
-        snap.getContext('2d', { willReadFrequently: true }).drawImage(el, 0, 0);
-        snap.videoWidth = snap.width;
-        snap.videoHeight = snap.height;
-        snap.currentTime = mediaT;
-        snap.readyState = 4;
-        queue.push(snap);
-        pump();
-      });
+      try {
+        for (let index = 4; !stopped; index += 1) {
+          const t = index * slot;
+          if (t >= untilS) break;
+          const fileIndex = (index % frameCount) + 1;
+          const name = String(fileIndex).padStart(4, '0');
+          const img = await loadFrame(`${frameBase}${name}.png`);
+          if (stopped) return;
+          const snap = document.createElement('canvas');
+          snap.width = img.naturalWidth;
+          snap.height = img.naturalHeight;
+          snap.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0);
+          snap.videoWidth = snap.width;
+          snap.videoHeight = snap.height;
+          snap.readyState = 4;
+          processSample(snap, Math.round(t * 1000), performance.now());
+        }
+        if (!stopped) window.__pressureReplayDrained = true;
+      } catch (err) {
+        window.__pressureReplayError = err?.message || 'replay frames failed';
+      }
     };
-    arm();
+    run();
     return () => {
       stopped = true;
       cancelAnimationFrame(raf);

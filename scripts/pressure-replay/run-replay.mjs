@@ -69,7 +69,7 @@ async function ensureY4m(mp4Path) {
   return y4m;
 }
 
-async function runPlaywrightClip({ y4mPath, durationS }) {
+async function runPlaywrightClip({ y4mPath, mp4Path, durationS }) {
   await waitForMemory();
   const browserScript = path.join(__dirname, 'run-clip-browser.mjs');
   const out = await new Promise((resolve, reject) => {
@@ -79,6 +79,7 @@ async function runPlaywrightClip({ y4mPath, durationS }) {
       y4mPath,
       String(durationS),
       String(PREVIEW_PORT),
+      mp4Path,
     ]);
     const child = spawn(browserCmd, browserArgs, { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] });
     child.stdout.on('data', (buf) => chunks.push(buf));
@@ -163,7 +164,7 @@ async function processClip(clip, replayDir) {
   if (!fs.existsSync(mp4)) throw new Error(`missing clip ${mp4}`);
   const durationS = probeDurationS(mp4);
   const y4m = await ensureY4m(mp4);
-  const { frames, privacy, timing } = await runPlaywrightClip({ y4mPath: y4m, durationS });
+  const { frames, privacy, timing } = await runPlaywrightClip({ y4mPath: y4m, mp4Path: mp4, durationS });
   const summary = {
     ...summarizeClipFrames(frames, clip),
     ...diagnoseReferenceCapture(frames),

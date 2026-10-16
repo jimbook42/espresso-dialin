@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 import { chromium } from 'playwright';
-import { setTimeout as delay } from 'node:timers/promises';
+import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { startPreviewServer, waitForServer } from '../lib/previewServer.mjs';
 import { assessPressureLabPrivacy } from './privacyAssert.js';
 
 const y4mPath = process.argv[2];
 const durationS = Number(process.argv[3]);
 const port = Number(process.argv[4] || 4176);
+const mp4Path = process.argv[5];
 
-if (!y4mPath || !durationS) {
-  console.error('usage: run-clip-browser.mjs <y4m> <durationS> [port]');
+if (!y4mPath || !durationS || !mp4Path) {
+  console.error('usage: run-clip-browser.mjs <y4m> <durationS> [port] <mp4>');
   process.exit(2);
 }
 
@@ -19,13 +22,38 @@ function percentile(sorted, p) {
   return sorted[idx];
 }
 
-async function captureClip(context, previewUrl, { cpuThrottleRate = 1, waitMs }) {
+async function captureClip(context, previewUrl, { cpuThrottleRate = 1, durationS, frameDir, frameCount }) {
   const requests = [];
   const page = await context.newPage();
   const client = await context.newCDPSession(page);
   if (cpuThrottleRate > 1) {
     await client.send('Emulation.setCPUThrottlingRate', { rate: cpuThrottleRate });
   }
+
+  // Same span the camera harness used: it kept sampling for 1.5× the file
+  // plus the startup wait, and the fake camera looped under that clock.
+  const untilS = durationS * 1.5 + 5.5;
+  await page.route('**/replay-frames/*.png', (route) => {
+    const name = path.basename(new URL(route.request().url()).pathname);
+    if (!/^\d{4}\.png$/.test(name)) {
+      return route.abort();
+    }
+    return route.fulfill({
+      path: path.join(frameDir, name),
+      contentType: 'image/png',
+    });
+  });
+  await page.addInitScript((cfg) => {
+    window.__pressureReplayDurationS = cfg.durationS;
+    window.__pressureReplayUntilS = cfg.untilS;
+    window.__pressureReplayFrameCount = cfg.frameCount;
+    window.__pressureReplayFrameBase = cfg.frameBase;
+  }, {
+    durationS,
+    untilS,
+    frameCount,
+    frameBase: new URL('/replay-frames/', previewUrl).href,
+  });
 
   await page.addInitScript(() => {
     window.__pressureLabPrivacy = { localStorageWrites: 0, indexedDbWrites: 0 };
@@ -64,18 +92,40 @@ async function captureClip(context, previewUrl, { cpuThrottleRate = 1, waitMs })
   // Clicking Start again resets the tracker after the fake video has moved.
   await page.waitForFunction(() => window.__pressureLabPipelineReady === true, null, { timeout: 180_000 });
   await page.waitForFunction(
-    () => (window.__pressureLabReplay?.getFrames?.() || []).length > 3,
+    () => window.__pressureReplayDrained === true || Boolean(window.__pressureReplayError),
     null,
-    { timeout: 120_000 },
+    { timeout: Math.ceil(durationS * 1000) + 180_000 },
   );
-  await delay(waitMs);
+  const replayError = await page.evaluate(() => window.__pressureReplayError || '');
+  if (replayError) throw new Error(replayError);
   const frames = await page.evaluate(() => window.__pressureLabReplay.getFrames());
   const storage = await page.evaluate(() => window.__pressureLabPrivacy || { localStorageWrites: 0, indexedDbWrites: 0 });
   await page.close();
   return { frames, requests, storage };
 }
 
+function extractReplayFrames(src) {
+  const dest = path.join('/tmp', `pressure-frames-png-${path.basename(src, '.mp4')}`);
+  const stamp = path.join(dest, '.ok');
+  const fresh = fs.existsSync(stamp) && fs.statSync(stamp).mtimeMs >= fs.statSync(src).mtimeMs;
+  if (!fresh) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.mkdirSync(dest, { recursive: true });
+    // One still per 125ms slot, from the start of the file. Both replays
+    // read these bytes, so a seek cannot pick a different picture.
+    const result = spawnSync('ffmpeg', [
+      '-y', '-i', src, '-vf', 'fps=8', path.join(dest, '%04d.png'),
+    ], { stdio: 'ignore' });
+    if (result.status !== 0) throw new Error(`frame extract failed for ${src}`);
+    fs.writeFileSync(stamp, 'ok');
+  }
+  const names = fs.readdirSync(dest).filter((name) => /^\d{4}\.png$/.test(name));
+  if (!names.length) throw new Error(`no frames extracted for ${src}`);
+  return { frameDir: dest, frameCount: names.length };
+}
+
 async function main() {
+  const { frameDir, frameCount } = extractReplayFrames(mp4Path);
   const preview = startPreviewServer(port);
   await waitForServer(preview.url);
   const browser = await chromium.launch({
@@ -91,12 +141,8 @@ async function main() {
     const context = await browser.newContext();
     await context.grantPermissions(['camera'], { origin: 'http://127.0.0.1' });
 
-    const waitMs = Math.ceil(durationS * 1500) + 3500;
-    const mainRun = await captureClip(context, preview.url, { cpuThrottleRate: 1, waitMs });
-    const throttleRun = await captureClip(context, preview.url, {
-      cpuThrottleRate: 4,
-      waitMs: Math.min(waitMs, Math.ceil(durationS * 800) + 2500),
-    });
+    const mainRun = await captureClip(context, preview.url, { cpuThrottleRate: 1, durationS, frameDir, frameCount });
+    const throttleRun = await captureClip(context, preview.url, { cpuThrottleRate: 4, durationS, frameDir, frameCount });
 
     const privacy = assessPressureLabPrivacy(mainRun.requests, mainRun.storage, preview.url);
     const processMs = mainRun.frames.map((f) => f.processMs).filter((v) => v != null && !Number.isNaN(v)).sort((a, b) => a - b);
