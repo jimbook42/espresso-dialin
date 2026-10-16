@@ -35,6 +35,7 @@ import {
   laplacianVariance,
 } from './frameQuality.js';
 import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
+import { createAngleTracker } from './smoothPressure.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { createRestAnchor } from './restAnchor.js';
 import { HUB_CONNECTION_MIN, detectNeedleAngle, hubConnection, selectPointerEnd } from './needleFromFrame.js';
@@ -704,6 +705,19 @@ describe('pressure CV units', () => {
       expect(Math.abs(wrapDelta(found.angleDeg, pointer))).toBeLessThan(8);
       expect(found.hub).toBeGreaterThanOrEqual(HUB_CONNECTION_MIN);
     }
+  });
+
+  it('does not let a pivot-missing ray drag the smoothed needle', () => {
+    const tracker = createAngleTracker({ alpha: 0.45 });
+    const seeded = tracker.push(47, { hub: 0.67, quality: 0.4, likeness: 0.6 });
+    expect(seeded.accepted).toBe(true);
+    const streak = tracker.push(62, { hub: 0.0, quality: 0.5, likeness: 0.6 });
+    expect(streak.accepted).toBe(false);
+    expect(streak.heldReason).toBe('hub');
+    expect(streak.angle).toBe(47);
+    const next = tracker.push(54, { hub: 0.67, quality: 0.4, likeness: 0.6 });
+    expect(next.accepted).toBe(true);
+    expect(Math.abs(wrapDelta(next.angle, 47 + 0.45 * wrapDelta(47, 54)))).toBeLessThan(0.01);
   });
 
   it('keeps the long end when noise past the tail outruns the tip', () => {

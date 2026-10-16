@@ -625,6 +625,7 @@ export function FlairPressureLab() {
           quality: reading.quality,
           likeness: reading.likeness,
           poseSnap: gauge.reacquireAccepted === true,
+          hub: reading.hub,
         });
         needleDecision = tracked.accepted ? 'accepted' : (tracked.heldReason || 'held');
         if (tracked.accepted && tracked.angle != null) {

@@ -8,6 +8,7 @@ import {
   wrap360,
   wrapDelta,
 } from './gaugeConfig.js';
+import { HUB_CONNECTION_MIN } from './needleFromFrame.js';
 
 export function circularMedian(angles) {
   if (!angles?.length) return null;
@@ -41,6 +42,9 @@ function needleEvidence(meta) {
  * needle: tracking score and ridge likeness. A larger step needs that same
  * evidence on confirmCount agreeing frames. A strong ray may keep moving in
  * one direction; a weak or one-sided ray is held and cannot walk.
+ * A ray that does not reach the pivot is not the needle. It does not seed
+ * or drag the smoothed angle, so the next connected reading is not blended
+ * with a face streak.
  * There is no hard travel limit. A gap, or a pose snap, clears the candidate.
  */
 export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 0.45 } = {}) {
@@ -62,6 +66,8 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 
     },
     push(raw, meta) {
       if (raw == null || Number.isNaN(raw)) return hold('gap');
+      const hub = meta && typeof meta === 'object' ? meta.hub : null;
+      if (hub != null && hub < HUB_CONNECTION_MIN) return hold('hub');
       const evidence = needleEvidence(meta);
       if (angle == null) {
         angle = raw;
