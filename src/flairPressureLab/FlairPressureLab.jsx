@@ -612,7 +612,13 @@ export function FlairPressureLab() {
       });
       const frameQuality = reading.frameQuality ?? { ok: true, flags: [] };
       const weak = reading.quality == null || reading.quality < NEEDLE_LOST_QUALITY;
-      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || !frameQuality.ok || !confidentDial;
+      // After the anchor has confirmed, a needle under the likeness gate is
+      // still a reading. Confidence stays low until the gate is met.
+      const softNeedle = Boolean(sessionRef.current)
+        && gauge.dialRegistered === true
+        && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE * 0.5;
+      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || !frameQuality.ok
+        || (!confidentDial && !softNeedle);
       const candidateJump = lastAngleRef.current == null || choice.angleDeg == null
         ? null
         : wrapDelta(lastAngleRef.current, choice.angleDeg);
@@ -678,7 +684,7 @@ export function FlairPressureLab() {
       // Half the hub samples is a tie, not a needle. A streak that only ties
       // the pivot check still gets a bar, at low confidence.
       const hubSure = reading.hub == null || reading.hub > HUB_CONNECTION_MIN;
-      const publishedConfidence = pressureMeasured && needleSure && hubSure
+      const publishedConfidence = pressureMeasured && needleSure && hubSure && confidentDial
         ? gauge.confidence
         : Math.min(gauge.confidence ?? 0, NEEDLE_LOST_QUALITY);
       const uncertainty = record({

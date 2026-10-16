@@ -186,8 +186,12 @@ export function registerDialFromColorBands(bands) {
     const miss = Math.abs(wrapDelta(expected, dark.deg));
     const agree = miss <= BAND_AGREE_DEG ? 1 : Math.max(0, 1 - miss / 90);
     // A sharp dark peak that misses the stop sector lowers confidence.
-    // It does not throw away a sharp red centroid on its own.
-    periodMargin = red.concentration * (dark.concentration > 0.35 ? agree : 1);
+    // A shadow can invent that peak. It does not erase a red centroid the
+    // concentration gate has already accepted unless the dark peak is itself
+    // very sharp.
+    const veto = dark.concentration > 0.35 ? agree : 1;
+    const shadowFloor = 1 - Math.min(dark.concentration, 0.85);
+    periodMargin = red.concentration * Math.max(veto, shadowFloor);
   }
   if (periodMargin < PERIOD_MARGIN_MIN) {
     return { ...empty, confidence: red.concentration, periodMargin };

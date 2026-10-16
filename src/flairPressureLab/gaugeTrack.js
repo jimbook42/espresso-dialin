@@ -2026,10 +2026,11 @@ function completeReading({
       detection.angleDeg,
     );
     const reg = registerDialFromColorBands(bands);
+    // The printed face is the colour bands and the rim. A needle that dips
+    // under the likeness gate does not forget a registration already earned.
     const registered = reg.ok
       && dialFaceScore >= DIAL_FACE_VERIFY_MIN
-      && position.confidence >= CONFIDENCE_MIN
-      && (detection.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+      && position.confidence >= CONFIDENCE_MIN;
     if (registered) {
       tracker.setRotationDeg(reg.rotationDeg);
       tracker.notePrintedFace(true);

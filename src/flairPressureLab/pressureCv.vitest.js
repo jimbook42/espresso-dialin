@@ -654,6 +654,22 @@ describe('pressure CV units', () => {
     )).ok).toBe(false);
   });
 
+  it('keeps a sharp red centroid when a shadow invents a dark blob', () => {
+    const red = new Float32Array(72);
+    const dark = new Float32Array(72);
+    for (let i = 30; i <= 36; i += 1) red[i] = 8;
+    dark[0] = 40;
+    dark[1] = 40;
+    const reg = registerDialFromColorBands({
+      red,
+      dark,
+      redMass: 56,
+      darkMass: 80,
+    });
+    expect(reg.ok).toBe(true);
+    expect(reg.periodMargin).toBeGreaterThan(0.08);
+  });
+
   it('reads the measured zero and five on a dial built from the template', () => {
     for (const bar of [0, 5]) {
       const rotationDeg = 40;
