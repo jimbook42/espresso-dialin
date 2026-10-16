@@ -8,7 +8,11 @@ import {
 import {
   MIN_DISCOVERY_RADIUS_FRACTION,
   MAX_DISCOVERY_RADIUS_FRACTION,
+  REDISCOVER_EVERY_FRAMES,
+  chooseDiscoveryUpdate,
+  createGaugeTracker,
   discoverGaugeInFrame,
+  discoveredVerifies,
   gaugeAllowsConfidentReading,
   mapCanvasDiscoveryToVideo,
   selectDiscoveryCandidate,
@@ -332,6 +336,60 @@ describe('pressure CV units', () => {
       { ...dial, ok: true, canonical: 0.3 },
       clutter,
     ])?.cx).toBe(235);
+  });
+
+  it('re-detects when the face fails, the pose jumps, or the interval elapses', () => {
+    const dial = {
+      ok: true, cx: 240, cy: 355, radius: 50, dialFaceScore: 0.5, canonicalScore: 0.4, confidence: 0.6,
+    };
+    const weaker = {
+      ok: true, cx: 80, cy: 320, radius: 18, dialFaceScore: 0.32, canonicalScore: 0.3, confidence: 0.1,
+    };
+    expect(discoveredVerifies(dial)).toBe(true);
+    expect(chooseDiscoveryUpdate({ hasPose: false, discovered: dial }).action).toBe('replace');
+    expect(chooseDiscoveryUpdate({ hasPose: false, discovered: weaker }).action).toBe('replace');
+    expect(chooseDiscoveryUpdate({ hasPose: false, discovered: null }).action).toBe('drop');
+    expect(chooseDiscoveryUpdate({
+      hasPose: true,
+      faceScore: 0.1,
+      discovered: dial,
+    })).toMatchObject({ action: 'replace', reason: 'face-failed' });
+    expect(chooseDiscoveryUpdate({
+      hasPose: true,
+      faceScore: 0.1,
+      discovered: null,
+    })).toMatchObject({ action: 'drop', reason: 'face-failed' });
+    expect(chooseDiscoveryUpdate({
+      hasPose: true,
+      faceScore: 0.55,
+      canonical: 0.4,
+      confidence: 0.5,
+      discovered: weaker,
+    })).toMatchObject({ action: 'hold', reason: 'current-better' });
+    expect(chooseDiscoveryUpdate({
+      hasPose: true,
+      faceScore: 0.32,
+      canonical: 0.3,
+      confidence: 0.2,
+      discovered: dial,
+    })).toMatchObject({ action: 'replace', reason: 'better' });
+
+    const tracker = createGaugeTracker();
+    tracker.seed({ cx: 240, cy: 355, radius: 50 });
+    expect(tracker.needsRediscovery()).toBe(false);
+    tracker.noteTrackedFrame({ faceScore: 0.2, poseJumpPx: 0, radius: 50 });
+    expect(tracker.needsRediscovery()).toBe(true);
+    tracker.seed({ cx: 240, cy: 355, radius: 50 });
+    tracker.noteTrackedFrame({ faceScore: 0.6, poseJumpPx: 40, radius: 50 });
+    expect(tracker.needsRediscovery()).toBe(true);
+    tracker.seed({ cx: 240, cy: 355, radius: 50 });
+    for (let i = 0; i < REDISCOVER_EVERY_FRAMES; i += 1) {
+      tracker.noteTrackedFrame({ faceScore: 0.6, poseJumpPx: 0, radius: 50 });
+    }
+    expect(tracker.needsRediscovery()).toBe(true);
+    tracker.reset();
+    expect(tracker.getPose()).toBeNull();
+    expect(tracker.needsRediscovery()).toBe(true);
   });
 
   it('keeps the generic discovery radius band at 3%–50% of the short side', () => {

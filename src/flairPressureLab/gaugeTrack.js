@@ -478,6 +478,49 @@ function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needl
 /** Generic dial size band as a fraction of the frame's short side. Not fitted to a clip. */
 export const MIN_DISCOVERY_RADIUS_FRACTION = 0.03;
 export const MAX_DISCOVERY_RADIUS_FRACTION = 0.5;
+/** Whole-frame discovery cadence while a verified pose is held. */
+export const REDISCOVER_EVERY_FRAMES = 8;
+const POSE_JUMP_FRACTION = 0.45;
+const REDISCOVERY_MOVE_FRACTION = 0.35;
+
+export function verificationScore({ faceScore = 0, canonical = 0, confidence = 0 } = {}) {
+  return (faceScore ?? 0) + 0.35 * (canonical ?? 0) + 0.15 * (confidence ?? 0);
+}
+
+export function discoveredVerifies(found) {
+  return Boolean(found?.ok)
+    && (found.dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
+    && (found.canonicalScore ?? 0) >= DIAL_CANONICAL_VERIFY_MIN * 0.9;
+}
+
+/**
+ * Decide whether a new whole-frame detection replaces the tracked pose.
+ * A pose that fails dial-face verification is never kept.
+ */
+export function chooseDiscoveryUpdate({
+  hasPose = false,
+  faceScore = null,
+  canonical = 0,
+  confidence = 0,
+  discovered = null,
+} = {}) {
+  const currentOk = hasPose && (faceScore == null || faceScore >= DIAL_FACE_VERIFY_MIN);
+  const nextOk = discoveredVerifies(discovered);
+  if (!currentOk) {
+    return nextOk
+      ? { action: 'replace', reason: hasPose ? 'face-failed' : 'seed' }
+      : { action: 'drop', reason: hasPose ? 'face-failed' : 'no-dial' };
+  }
+  if (!nextOk) return { action: 'hold', reason: 'discovery-weak' };
+  const currentScore = verificationScore({ faceScore: faceScore ?? 0, canonical, confidence });
+  const nextScore = verificationScore({
+    faceScore: discovered.dialFaceScore,
+    canonical: discovered.canonicalScore,
+    confidence: discovered.confidence,
+  });
+  if (nextScore > currentScore + 0.02) return { action: 'replace', reason: 'better' };
+  return { action: 'hold', reason: 'current-better' };
+}
 
 function discoveryRadiusInRange(faceRadius, scaledMin) {
   const rMin = scaledMin * MIN_DISCOVERY_RADIUS_FRACTION;
@@ -862,6 +905,17 @@ export function createGaugeTracker() {
   let searchMisses = 0;
   let reacquireReason = null;
   let observed = null;
+  let framesSinceDiscovery = 0;
+  let lastFaceScore = null;
+  let lastCanonical = null;
+  let pendingJump = false;
+
+  const clearVerification = () => {
+    framesSinceDiscovery = 0;
+    lastFaceScore = null;
+    lastCanonical = null;
+    pendingJump = false;
+  };
 
   const clearPoseMemory = () => {
     centreCandidate = null;
@@ -1128,6 +1182,7 @@ export function createGaugeTracker() {
       recovering = false;
       clearPoseMemory();
       clearSearch();
+      clearVerification();
     },
     seed({ cx, cy, radius }) {
       pose = { cx, cy, radius, rotationDeg: 0 };
@@ -1139,6 +1194,37 @@ export function createGaugeTracker() {
       recovering = false;
       clearPoseMemory();
       clearSearch();
+      clearVerification();
+    },
+    nudgePose({ cx, cy, radius }) {
+      if (!pose) return;
+      pose = { ...pose, cx, cy, radius };
+      baseRadius = radius;
+    },
+    needsRediscovery() {
+      if (!pose || pendingJump) return true;
+      if (lastFaceScore != null && lastFaceScore < DIAL_FACE_VERIFY_MIN) return true;
+      return framesSinceDiscovery >= REDISCOVER_EVERY_FRAMES;
+    },
+    verificationState() {
+      return {
+        hasPose: pose != null,
+        faceScore: lastFaceScore,
+        canonical: lastCanonical ?? 0,
+        confidence: 0,
+        framesSinceDiscovery,
+        pendingJump,
+      };
+    },
+    markDiscovered() {
+      framesSinceDiscovery = 0;
+      pendingJump = false;
+    },
+    noteTrackedFrame({ faceScore, canonical = null, poseJumpPx = 0, radius = 0 }) {
+      lastFaceScore = faceScore;
+      if (canonical != null) lastCanonical = canonical;
+      framesSinceDiscovery += 1;
+      pendingJump = radius > 0 && poseJumpPx > radius * POSE_JUMP_FRACTION;
     },
     getPose() {
       return pose ? { ...pose } : null;
@@ -1966,7 +2052,8 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let foundCanvas = null;
   let foundVideo = null;
   let seeded = false;
-  if (!tracker.getPose()) {
+  let discoveryEvent = null;
+  if (tracker.needsRediscovery()) {
     // Full video frame. discoverGaugeInFrame downscales internally and returns
     // coordinates in this image's pixels. A second bilinear shrink (short side
     // 280) both changed the winning circle and was seeded without mapping back.
@@ -1988,7 +2075,23 @@ export function readTrackedGauge(video, canvas, region, tracker) {
           canonical: roundTrace(c.canonical),
         }));
     }
-    if (!foundVideo?.ok) {
+    const prior = tracker.verificationState();
+    const decision = chooseDiscoveryUpdate({ ...prior, discovered: foundVideo });
+    discoveryEvent = decision.reason;
+    if (decision.action === 'replace') {
+      const poseNow = tracker.getPose();
+      const moved = !poseNow
+        || Math.hypot(foundVideo.cx - poseNow.cx, foundVideo.cy - poseNow.cy)
+          > Math.max(poseNow.radius, foundVideo.radius) * REDISCOVERY_MOVE_FRACTION;
+      if (!poseNow || moved) {
+        tracker.seed({ cx: foundVideo.cx, cy: foundVideo.cy, radius: foundVideo.radius });
+      } else {
+        tracker.nudgePose({ cx: foundVideo.cx, cy: foundVideo.cy, radius: foundVideo.radius });
+      }
+      tracker.markDiscovered();
+      seeded = !prior.hasPose;
+    } else if (decision.action === 'drop') {
+      tracker.reset();
       pushVideoTrace({
         t: roundTrace(video.currentTime),
         frameIndex: video.currentTime == null ? null : Math.round(video.currentTime * 30),
@@ -2008,12 +2111,12 @@ export function readTrackedGauge(video, canvas, region, tracker) {
         seeded: false,
         before,
         after: tracker.snapshot?.() ?? null,
-        event: 'discovery-reject',
+        event: decision.reason,
       });
       return null;
+    } else {
+      tracker.markDiscovered();
     }
-    tracker.seed({ cx: foundVideo.cx, cy: foundVideo.cy, radius: foundVideo.radius });
-    seeded = true;
   }
 
   const pose = tracker.getPose();
@@ -2042,6 +2145,20 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     needleScale: needle.scale,
     canonicalDial: true,
   });
+  const faceScore = reading.gauge?.dialFaceScore ?? 0;
+  if (faceScore < DIAL_FACE_VERIFY_MIN) {
+    tracker.reset();
+    reading.gauge.dialRegistered = false;
+    reading.gauge.referenceCaptured = false;
+    reading.gauge.poseRejectReason = reading.gauge.poseRejectReason || 'dial-face';
+    discoveryEvent = 'dial-face';
+  } else {
+    tracker.noteTrackedFrame({
+      faceScore,
+      poseJumpPx: reading.gauge?.poseDeltaPx ?? 0,
+      radius: reading.gauge?.radius ?? 0,
+    });
+  }
   const after = tracker.snapshot?.() ?? null;
   pushVideoTrace({
     t: roundTrace(video.currentTime),
@@ -2076,7 +2193,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     trackMode: reading.gauge?.trackMode ?? null,
     before,
     after,
-    event: seeded ? 'seed' : 'track',
+    event: discoveryEvent || (seeded ? 'seed' : 'track'),
   });
   return reading;
 }
