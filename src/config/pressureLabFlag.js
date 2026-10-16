@@ -3,6 +3,7 @@ export function isPressureLabEnabledFromEnv(raw) {
   return raw === 'true';
 }
 
+/** Preview-only branch (qa/6-35-pressure-preview): lab always on; do not merge to main. */
 export function isPressureLabEnabled() {
-  return isPressureLabEnabledFromEnv(import.meta.env.VITE_ENABLE_PRESSURE_LAB);
+  return true;
 }

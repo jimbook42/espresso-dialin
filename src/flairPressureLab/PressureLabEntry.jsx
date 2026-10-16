@@ -1,8 +1,5 @@
-import { isPressureLabEnabled } from '../config/pressureLabFlag.js';
-
-/** Temporary branch entry. Gated by VITE_ENABLE_PRESSURE_LAB (off by default). */
+/** Floating shortcut (preview branch). Primary entry is in Settings. */
 export function PressureLabEntry() {
-  if (!isPressureLabEnabled()) return null;
   return (
     <button
       type="button"
@@ -12,7 +9,7 @@ export function PressureLabEntry() {
       }}
       className="fixed bottom-24 right-3 z-[80] rounded-full bg-[#c88a4b] px-3 py-2 text-xs font-bold text-[#121110] shadow-lg"
     >
-      Pressure lab
+      Pressure lab (beta)
     </button>
   );
 }

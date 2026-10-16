@@ -3852,6 +3852,22 @@ export default function App() {
                     </div>
                     <SettingsToggle checked={flairEnabled} onChange={handleToggleFlairSetting} label="Enable Flair manual profile" />
                   </div>
+                  <div className={`border-t ${ui.modalDivider} pt-3 space-y-2`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSettingsOpen(false);
+                        window.location.hash = '#/flair-pressure-lab';
+                        window.location.reload();
+                      }}
+                      className={`w-full font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 ${ui.secondaryBtn}`}
+                    >
+                      Pressure lab (beta)
+                    </button>
+                    <p className={`text-[10px] ${ui.muted}`}>
+                      Camera gauge prototype for live Flair pressure reads.
+                    </p>
+                  </div>
                   <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
                     <div>
                       <span className={`font-bold block ${ui.text}`}>Track pre-infusion time</span>
