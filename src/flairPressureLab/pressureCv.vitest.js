@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetOpenCvForTests, setOpenCvForTests } from './opencvRuntime.js';
-import { buildFlairCanonicalDialProfile } from './canonicalDial.js';
 import {
+  buildFlairCanonicalDialProfile,
   CANONICAL_ZERO_BAR_ANGLE_DEG,
+  FLAIR_CANONICAL_DIAL_PROFILE,
   FLAIR_STATELESS_SESSION,
 } from './canonicalDial.js';
 import {
@@ -227,6 +228,22 @@ describe('pressure CV units', () => {
     expect(found?.ok).toBe(true);
     expect(Math.hypot(found.cx - 240, found.cy - 355)).toBeLessThan(20);
     expect(Math.abs(found.radius - 45)).toBeLessThan(20);
+  });
+
+  it('registers a printed scale only when the arc and the ticks agree', () => {
+    const bins = FLAIR_CANONICAL_DIAL_PROFILE.length;
+    const shift = Math.round(100 / (360 / bins));
+    const turned = new Float32Array(bins);
+    for (let i = 0; i < bins; i += 1) turned[i] = FLAIR_CANONICAL_DIAL_PROFILE[(i - shift + bins) % bins];
+    const reg = registerDialRotationFromProfile(turned, null, 0);
+    expect(reg.ok).toBe(true);
+    expect(reg.rotationDeg).toBeCloseTo(100, 0);
+    const blob = new Float32Array(bins);
+    for (let i = 0; i < bins; i += 1) {
+      const deg = (i / bins) * 360;
+      blob[i] = deg >= 180 && deg <= 260 ? 1 : 0.1;
+    }
+    expect(registerDialRotationFromProfile(blob, null, 0).ok).toBe(false);
   });
 
   it('registers dial rotation from a measured profile', () => {

@@ -1876,37 +1876,62 @@ function resampleCrop(image, crop, maxOutput) {
 
 const DIAL_REGISTER_MIN = 0.34;
 
-/** Remove a slow angular ramp so a lighting gradient cannot impersonate the printed arc. */
-function highPassProfile(profile, radius = 2) {
+/** One profile bin is 5°. Arc and ticks may disagree by two bins and still be the same rotation. */
+const SCALE_AGREEMENT_DEG = 10;
+
+function smoothProfile(profile, radius = 2) {
   const n = profile.length;
   const out = new Float32Array(n);
   const win = radius * 2 + 1;
   for (let i = 0; i < n; i += 1) {
     let sum = 0;
     for (let k = -radius; k <= radius; k += 1) sum += profile[(i + k + n) % n];
-    out[i] = profile[i] - sum / win;
+    out[i] = sum / win;
   }
   return out;
 }
 
-/** Per-frame dial rotation from canonical tick profile (no session template). */
+/** Remove a slow angular ramp so a lighting gradient cannot impersonate the printed arc. */
+function highPassProfile(profile, radius = 2) {
+  const low = smoothProfile(profile, radius);
+  const out = new Float32Array(profile.length);
+  for (let i = 0; i < profile.length; i += 1) out[i] = profile[i] - low[i];
+  return out;
+}
+
+/**
+ * Per-frame dial rotation from the canonical printed scale (no session template).
+ * The wide arc (espresso band and logo) and the tick comb are matched separately.
+ * A lighting blob can imitate the arc, and the ticks repeat every 30°, so neither
+ * band may publish a rotation on its own.
+ */
 export function registerDialRotationFromProfile(profile, needleDeg = null, previousDeg = 0) {
   if (!profile || profile.length < 8) {
     return { ok: false, rotationDeg: previousDeg, confidence: 0, periodMargin: 0 };
   }
-  const rim = matchGaugeRotation(highPassProfile(FLAIR_CANONICAL_DIAL_PROFILE), highPassProfile(profile), {
-    previousDeg,
-    needleDeg,
-    maxShiftDeg: 360,
-  });
-  const ok = rim.ok
-    && rim.confidence >= DIAL_REGISTER_MIN
-    && rim.periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
+  const opts = { previousDeg, needleDeg, maxShiftDeg: 360 };
+  const arc = matchGaugeRotation(
+    smoothProfile(FLAIR_CANONICAL_DIAL_PROFILE),
+    smoothProfile(profile),
+    opts,
+  );
+  const ticks = matchGaugeRotation(
+    highPassProfile(FLAIR_CANONICAL_DIAL_PROFILE),
+    highPassProfile(profile),
+    opts,
+  );
+  const agree = Math.abs(wrapDelta(arc.estimateDeg ?? 0, ticks.estimateDeg ?? 0)) <= SCALE_AGREEMENT_DEG;
+  const ok = arc.ok
+    && ticks.ok
+    && agree
+    && arc.confidence >= DIAL_REGISTER_MIN
+    && ticks.confidence >= DIAL_REGISTER_MIN
+    && arc.periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
   return {
     ok,
-    rotationDeg: ok ? rim.estimateDeg : previousDeg,
-    confidence: rim.confidence,
-    periodMargin: rim.periodMargin,
+    rotationDeg: ok ? arc.estimateDeg : previousDeg,
+    confidence: Math.min(arc.confidence, ticks.confidence),
+    periodMargin: arc.periodMargin,
   };
 }
 

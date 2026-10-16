@@ -634,7 +634,7 @@ export function FlairPressureLab() {
         !blockSample && tracked.accepted,
         now,
       );
-      const pressureBar = bridged.value;
+      const pressureBar = confidentDial ? bridged.value : null;
       const tracking = classifyTrackingStatus({
         calibrated: true,
         quality: reading.quality,

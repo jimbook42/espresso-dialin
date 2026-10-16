@@ -70,7 +70,7 @@ On a frame whose pose is the dial (centre about 237, 351, radius about 52), the 
 
 Printed-scale registration on the same pose returned rotation 260° at correlation 0.375, period margin 0.032. Relative angle = 320° − 260° = 60°. `angleToBar` maps 60° through the canonical zero at 225° and the 270° sweep to about 8.7 bar. The rotation that would put this pointer on the canonical zero (about 95°) has correlation 0. The winning alignment is a slow lighting gradient sitting on the synthetic profile's heavy arc. A rival about 55° away still scores 0.34 and would move the reading by more than 2 bar.
 
-High-pass of that angular profile (subtract a 5-bin circular mean) drops the same frame to correlation 0.27 and period margin 0.04, so it no longer registers. A confident bar now also requires the period margin to clear 0.08. An ambiguous registration does not publish a value.
+High-pass of that angular profile (subtract a 5-bin circular mean) drops the same frame to correlation 0.27 and period margin 0.04. The slow band on its own still prefers 260° (correlation 0.75, period margin 0.05) while the ticks prefer 320° and do not clear the match. Registration now requires both bands to clear and to agree within two profile bins (10°). The wide arc is what makes the rotation unique (a perfect copy of the printed profile separates from its rival by 0.27); the ticks only confirm the phase, because they repeat every 30°. A confident bar is also withheld when the current frame is not registered, so one ambiguous match is not held for the next second.
 
 Overlay of that frame, green rim and red pointer: `/tmp/632r1-overlay.png`.
 
