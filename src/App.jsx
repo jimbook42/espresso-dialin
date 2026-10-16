@@ -3929,7 +3929,7 @@ export default function App() {
                   <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
                     <div>
                       <span className={`font-bold block ${ui.text}`}>Stats for Nerds</span>
-                      <span className={`text-[10px] ${ui.muted}`}>Show recommendation logic on shot history cards</span>
+                      <span className={`text-[10px] ${ui.muted}`}>Show recommendation logic and scale metrics on shot history cards when logged</span>
                     </div>
                     <SettingsToggle checked={statsForNerdsEnabled} onChange={handleToggleStatsForNerds} label="Stats for Nerds" />
                   </div>

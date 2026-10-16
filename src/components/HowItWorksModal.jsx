@@ -2,6 +2,11 @@ import { Coffee, X } from 'lucide-react';
 
 const SECTIONS = [
   {
+    title: 'Supported grinders',
+    body:
+      'The engine works with Baratza Sette 270Wi, Sunbeam Barista Max, Niche Zero, and many standalone presets (Breville Smart Grinder Pro, Baratza Encore ESP, Fellow Opus / Opus 2, Mazzer Philos, Eureka Mignon models, Zerno Z1, built-in grinders on Breville Barista Express / Pro / Touch, DF64 Gen 2, DF54, and Timemore Sculptor 064S). You can also define a custom dial range if your grinder is not listed.',
+  },
+  {
     title: 'Target midpoints',
     body:
       'Your recipe defines a time window (min–max seconds). The engine uses the midpoint of that window as the “bullseye” for flow. How far your shot lands from that midpoint drives coarse grind moves when time is out of range.',
@@ -9,7 +14,7 @@ const SECTIONS = [
   {
     title: 'Grinder sensitivity',
     body:
-      'Each grinder maps seconds off-target to grind steps differently. The Sette uses fine micro-steps (~1.25s per step); the Sunbeam dial moves in larger steps (~4.5s per step). The same 5s fast shot therefore gets a smaller Sette correction than a Sunbeam correction.',
+      'Each grinder maps seconds off-target to grind steps using its catalog sensitivity (seconds per step). Sette micro-steps move in smaller time chunks than the Sunbeam dial; preset and custom grinders use their own ranges and step sizes. Niche Zero stays qualitative until enough of your shots build a learned slope. Newer presets (Barista Express / Pro / Touch built-ins, DF64 Gen 2, DF54, Sculptor 064S) and custom grinders label recommendations Estimated until your logged shots raise confidence.',
   },
   {
     title: 'Age & freshness',
@@ -20,6 +25,26 @@ const SECTIONS = [
     title: 'Taste overrides',
     body:
       'When time is already in range, taste wins: sour → finer, bitter → coarser, with stronger steps for “very” sour or bitter. A balanced taste in range means keep the grind. Ratio and temperature hints may appear when time is right but taste keeps repeating.',
+  },
+  {
+    title: 'Smart scale',
+    body:
+      'Pick a supported scale in Settings to show live cup weight on the Dial and timer, plus live flow while you pull. Optional shot-start countdown (3-2-1) can tare the scale before the timer runs. When you stop, the app waits about one second for the cup to settle, then locks yield and stores average flow on the shot when a scale was connected. Manual logging still works without a scale.',
+  },
+  {
+    title: 'Brew Guide',
+    body:
+      'Brew Guide is the beginner-friendly, step-by-step path through heat-up, puck prep, extraction, and logging — using your recipe and current grind. Sunbeam owners get machine-specific steps; everyone else gets a shorter checklist option once you are comfortable.',
+  },
+  {
+    title: 'Basket adjustments',
+    body:
+      '“Changed basket” applies a one-time grind tweak to the next recommendation only (not saved to learning): more holes / faster flow nudges finer; fewer holes / tighter flow nudges coarser. Purge after any grind change so retention does not skew the next shot.',
+  },
+  {
+    title: 'Beans & history',
+    body:
+      'Mark a bag finished when it is empty; an undo toast lets you reverse a mistaken tap. Finished beans move to a collapsible list and are skipped when picking the active bag.',
   },
   {
     title: 'Known issues',

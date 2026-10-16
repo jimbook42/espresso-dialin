@@ -1,13 +1,6 @@
 import { getShotEngineStats, knownIssueReasonLabel } from '../utils/grinderLogic';
 import { formatSecondsPerStepDisplay } from '../utils/grinderSensitivityDisplay.js';
-
-function formatSigned(value, unit = '', digits = 1) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
-  const n = Number(value);
-  const sign = n > 0 ? '+' : '';
-  const formatted = Math.abs(n) % 1 === 0 ? String(n) : n.toFixed(digits);
-  return `${sign}${formatted}${unit}`;
-}
+import { buildShotEngineStatsRows } from './shotEngineStatsRows.js';
 
 export function ShotEngineStatsPanel({ shot, recipe, ui }) {
   const stats = getShotEngineStats(shot, recipe);
@@ -17,21 +10,7 @@ export function ShotEngineStatsPanel({ shot, recipe, ui }) {
       ? `Excluded from learning${shot.knownIssueReason ? `: ${knownIssueReasonLabel(shot.knownIssueReason)}` : ''}`
       : null;
 
-  const rows = [
-    { label: 'Time delta (vs midpoint)', value: `${formatSigned(stats.timeDelta, 's')}` },
-    { label: 'Yield delta (vs target)', value: `${formatSigned(stats.yieldDelta, 'g')}` },
-    {
-      label: 'Sensitivity',
-      value: formatSecondsPerStepDisplay(stats.sensitivity, {
-        confidence: stats.sensitivityConfidence,
-        usedEmpiricalSlope: stats.sensitivityUsedEmpiricalSlope,
-        isDefaultSensitivity: stats.sensitivityIsDefault,
-      }),
-    },
-    { label: 'Applied shift', value: stats.shiftSummary },
-    { label: 'Age / freshness', value: stats.ageOffsetNote || '—' },
-    { label: 'Baseline history', value: stats.evidenceContext || 'No prior recipe-matched shots in context' },
-  ];
+  const rows = buildShotEngineStatsRows(stats, shot, formatSecondsPerStepDisplay);
 
   return (
     <div className={`${ui.inset} rounded-xl p-3 space-y-2 text-[10px] leading-relaxed`}>
