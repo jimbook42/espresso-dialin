@@ -9,6 +9,7 @@ import {
   wrapDelta,
 } from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
+import { assessFrameQuality } from './frameQuality.js';
 import { detectNeedleAngle } from './needleFromFrame.js';
 import {
   FLAIR_CANONICAL_DIAL_PROFILE,
@@ -44,6 +45,13 @@ import { getOpenCvSync } from './opencvRuntime.js';
  */
 
 const RIM_BINS = 48;
+const RIM_COS = new Float64Array(RIM_BINS);
+const RIM_SIN = new Float64Array(RIM_BINS);
+for (let i = 0; i < RIM_BINS; i += 1) {
+  const angle = (i / RIM_BINS) * Math.PI * 2;
+  RIM_COS[i] = Math.cos(angle);
+  RIM_SIN[i] = Math.sin(angle);
+}
 const PROFILE_BINS = 72;
 const CONFIDENCE_MIN = 0.3;
 const ORIENT_MIN = 0.34;
@@ -68,9 +76,8 @@ export function scoreRim(edges, width, height, cx, cy, radius) {
   let sum = 0;
   let lit = 0;
   for (let i = 0; i < RIM_BINS; i += 1) {
-    const angle = (i / RIM_BINS) * Math.PI * 2;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
+    const cos = RIM_COS[i];
+    const sin = RIM_SIN[i];
     let local = 0;
     for (let dr = -3; dr <= 3; dr += 1.5) {
       local = Math.max(local, sampleRadial(edges, width, height, cx + (radius + dr) * cos, cy + (radius + dr) * sin, cos, sin));
@@ -483,6 +490,41 @@ export const REDISCOVER_EVERY_FRAMES = 8;
 const POSE_JUMP_FRACTION = 0.45;
 const REDISCOVERY_MOVE_FRACTION = 0.35;
 
+/**
+ * Same face number discovery and the live tracker both gate on.
+ * A dark Flair face often has almost no interior contrast, so the tick ring
+ * can carry the score. The boost is relative to the frame, not a clip.
+ */
+export function combineDialFaceScore(faceRaw, tickEnergy, radius, frameMin) {
+  const tickBoost = frameMin > 0 ? Math.min(1, radius / (frameMin * 0.08)) : 0;
+  return Math.max(faceRaw || 0, Math.min(0.42, (tickEnergy || 0) * 0.14 * tickBoost));
+}
+
+/**
+ * Locked frames already paid for a full needle read. The next two keep that
+ * reading and only confirm the rim, so a phone is not doing a 360° scan on
+ * every tick. A pose jump or a fresh discovery always reads the needle.
+ */
+export function shouldBridgeNeedle({
+  reusePrior = false,
+  framesSinceDiscovery = 0,
+  held = false,
+  poseDeltaPx = 0,
+  radius = 0,
+  hasBridge = false,
+  discovering = false,
+} = {}) {
+  return Boolean(
+    reusePrior
+    && hasBridge
+    && !discovering
+    && !held
+    && framesSinceDiscovery % 3 !== 0
+    && radius > 0
+    && poseDeltaPx <= radius * 0.12
+  );
+}
+
 export function verificationScore({ faceScore = 0, canonical = 0, confidence = 0 } = {}) {
   return (faceScore ?? 0) + 0.35 * (canonical ?? 0) + 0.15 * (confidence ?? 0);
 }
@@ -503,6 +545,7 @@ export function chooseDiscoveryUpdate({
   canonical = 0,
   confidence = 0,
   discovered = null,
+  pose = null,
 } = {}) {
   const currentOk = hasPose && (faceScore == null || faceScore >= DIAL_FACE_VERIFY_MIN);
   const nextOk = discoveredVerifies(discovered);
@@ -518,7 +561,12 @@ export function chooseDiscoveryUpdate({
     canonical: discovered.canonicalScore,
     confidence: discovered.confidence,
   });
-  if (nextScore > currentScore + 0.02) return { action: 'replace', reason: 'better' };
+  if (nextScore > currentScore + 0.02) {
+    const far = pose
+      && Math.hypot(discovered.cx - pose.cx, discovered.cy - pose.cy)
+        > Math.max(pose.radius, discovered.radius) * REDISCOVERY_MOVE_FRACTION;
+    if (!far) return { action: 'replace', reason: 'better' };
+  }
   return { action: 'hold', reason: 'current-better' };
 }
 
@@ -547,8 +595,7 @@ export function scoreDiscoveryCandidate({
   const tickEnergy = inRange && rim > 0
     ? scoreTickRingEnergy(edges, width, height, cx, cy, faceRadius)
     : 0;
-  const tickBoost = Math.min(1, faceRadius / (scaledMin * 0.08));
-  const face = Math.max(faceRaw, Math.min(0.42, tickEnergy * 0.14 * tickBoost));
+  const face = combineDialFaceScore(faceRaw, tickEnergy, faceRadius, scaledMin);
   const canonical = inRange && rim > 0
     ? scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg)
     : 0;
@@ -897,6 +944,7 @@ export function createGaugeTracker() {
   let anchorAccumDeg = 0;
   let trustedRotationDeg = null;
   let maskNeedleDeg = null;
+  let bridgedReading = null;
   let mode = 'locked';
   let lossStreak = 0;
   let searchStep = 0;
@@ -915,6 +963,7 @@ export function createGaugeTracker() {
     lastFaceScore = null;
     lastCanonical = null;
     pendingJump = false;
+    bridgedReading = null;
   };
 
   const clearPoseMemory = () => {
@@ -1220,6 +1269,12 @@ export function createGaugeTracker() {
       framesSinceDiscovery = 0;
       pendingJump = false;
     },
+    rememberBridge(reading) {
+      bridgedReading = reading ? { ...reading, gauge: { ...reading.gauge } } : null;
+    },
+    peekBridge() {
+      return bridgedReading;
+    },
     noteTrackedFrame({ faceScore, canonical = null, poseJumpPx = 0, radius = 0 }) {
       lastFaceScore = faceScore;
       if (canonical != null) lastCanonical = canonical;
@@ -1255,7 +1310,7 @@ export function createGaugeTracker() {
     /**
      * @param mapping image pixel = (video pixel - origin) * scale
      */
-    trackPosition(image, mapping) {
+    trackPosition(image, mapping, { reusePrior = false } = {}) {
       if (!pose) return null;
       reacquireReason = null;
       observed = null;
@@ -1302,6 +1357,12 @@ export function createGaugeTracker() {
             recovering = false;
           }
         }
+      } else if (reusePrior && !recovering) {
+        windowFraction = 0.46;
+        const scout = locateGauge(image, localPrior, { priorOnly: true });
+        found = scout.ok
+          ? scout
+          : locateGauge(image, localPrior, { searchFraction: windowFraction, edges: scout.edges });
       } else {
         windowFraction = recovering ? 0.62 : 0.46;
         found = locateGauge(image, localPrior, { searchFraction: windowFraction });
@@ -1839,7 +1900,7 @@ function completeReading({
   const localRadius = center.radius * needleScale;
   const localCx = (center.cx - needleCrop.originX) * needleScale;
   const localCy = (center.cy - needleCrop.originY) * needleScale;
-  const dialFaceScore = scoreDialFaceInterior(
+  const faceRaw = scoreDialFaceInterior(
     needleImage.data,
     needleImage.width,
     needleImage.height,
@@ -1847,12 +1908,28 @@ function completeReading({
     localCy,
     localRadius,
   );
+  const edgeSink = {};
   const detection = detectNeedleAngle(
     needleImage,
     localCx,
     localCy,
     localRadius * TIP_INNER_RATIO,
     localRadius * OUTER_RADIUS_RATIO,
+    edgeSink,
+  );
+  const tickEnergy = scoreTickRingEnergy(
+    edgeSink.edges,
+    needleImage.width,
+    needleImage.height,
+    localCx,
+    localCy,
+    localRadius,
+  );
+  const dialFaceScore = combineDialFaceScore(
+    faceRaw,
+    tickEnergy,
+    localRadius,
+    Math.min(videoWidth, videoHeight) * needleScale,
   );
   let orientation;
   if (canonicalDial && position.profile) {
@@ -1886,6 +1963,14 @@ function completeReading({
     });
     orientation.dialRegistered = orientation.referenceCaptured === true;
   }
+  const frameQuality = assessFrameQuality(
+    needleImage.data,
+    needleImage.width,
+    needleImage.height,
+    localCx,
+    localCy,
+    localRadius,
+  );
   const settled = tracker.getPose() || center;
   const minDim = Math.min(videoWidth, videoHeight);
   const pressureHold = Boolean(position.held || orientation.pressureHold);
@@ -1897,6 +1982,7 @@ function completeReading({
     relativeAngleDeg: wrap360(publishedNeedle - orientation.rotationDeg),
     videoWidth,
     videoHeight,
+    frameQuality,
     gauge: {
       nx: settled.cx / videoWidth,
       ny: settled.cy / videoHeight,
@@ -2053,10 +2139,18 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let foundVideo = null;
   let seeded = false;
   let discoveryEvent = null;
+  const stamp = () => (typeof performance !== 'undefined' ? performance.now() : 0);
+  const tStart = stamp();
+  let discoveryMs = 0;
+  let trackDrawMs = 0;
+  let trackMs = 0;
+  let needleDrawMs = 0;
+  let needleMs = 0;
   if (tracker.needsRediscovery()) {
     // Full video frame. discoverGaugeInFrame downscales internally and returns
-    // coordinates in this image's pixels. A second bilinear shrink (short side
-    // 280) both changed the winning circle and was seeded without mapping back.
+    // coordinates in this image, which are then mapped into video pixels.
+    // A coarser canvas (short side 280–320) changed which circle won.
+    const tDisc = stamp();
     drawn = drawFullFrame(video, canvas, Math.min(videoWidth, videoHeight));
     foundCanvas = discoverGaugeInFrame(drawn.image);
     foundVideo = mapCanvasDiscoveryToVideo(foundCanvas, drawn, videoWidth, videoHeight);
@@ -2076,7 +2170,11 @@ export function readTrackedGauge(video, canvas, region, tracker) {
         }));
     }
     const prior = tracker.verificationState();
-    const decision = chooseDiscoveryUpdate({ ...prior, discovered: foundVideo });
+    const decision = chooseDiscoveryUpdate({
+      ...prior,
+      discovered: foundVideo,
+      pose: tracker.getPose(),
+    });
     discoveryEvent = decision.reason;
     if (decision.action === 'replace') {
       const poseNow = tracker.getPose();
@@ -2117,34 +2215,81 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     } else {
       tracker.markDiscovered();
     }
+    discoveryMs = stamp() - tDisc;
   }
 
   const pose = tracker.getPose();
   const capture = tracker.captureSpec();
   const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * capture.pad);
   if (!trackCrop) return null;
+  const tTrackDraw = stamp();
   const tracked = drawCrop(video, canvas, trackCrop, capture.maxOutput);
+  trackDrawMs = stamp() - tTrackDraw;
+  const tTrack = stamp();
+  const priorState = tracker.verificationState?.() ?? {};
+  const priorFace = priorState.faceScore ?? 0;
+  const reusePrior = priorFace >= DIAL_FACE_VERIFY_MIN;
   const position = tracker.trackPosition(tracked.image, {
     originX: trackCrop.originX,
     originY: trackCrop.originY,
     scale: tracked.scale,
-  });
+  }, { reusePrior });
+  trackMs = stamp() - tTrack;
   if (!position) return null;
 
-  const center = position.pose;
-  const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
-  if (!needleCrop) return null;
-  const needle = drawCrop(video, canvas, needleCrop, 420);
-  const reading = completeReading({
-    videoWidth,
-    videoHeight,
-    position,
-    tracker,
-    needleImage: needle.image,
-    needleCrop,
-    needleScale: needle.scale,
-    canonicalDial: true,
-  });
+  let reading;
+  let bridged = false;
+  if (shouldBridgeNeedle({
+    reusePrior,
+    framesSinceDiscovery: priorState.framesSinceDiscovery ?? 0,
+    held: position.held,
+    poseDeltaPx: position.poseDeltaPx ?? 0,
+    radius: position.pose?.radius ?? 0,
+    hasBridge: Boolean(tracker.peekBridge?.()),
+    discovering: discoveryMs > 0,
+  })) {
+    const cached = tracker.peekBridge();
+    const poseNow = position.pose;
+    const minDim = Math.min(videoWidth, videoHeight);
+    reading = {
+      ...cached,
+      videoWidth,
+      videoHeight,
+      gauge: {
+        ...cached.gauge,
+        cx: poseNow.cx,
+        cy: poseNow.cy,
+        radius: poseNow.radius,
+        nx: poseNow.cx / videoWidth,
+        ny: poseNow.cy / videoHeight,
+        nr: poseNow.radius / minDim,
+        confidence: position.confidence,
+        poseDeltaPx: position.poseDeltaPx ?? 0,
+        held: Boolean(position.held),
+      },
+    };
+    bridged = true;
+    discoveryEvent = discoveryEvent || 'bridge';
+  } else {
+    const center = position.pose;
+    const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
+    if (!needleCrop) return null;
+    const tNeedleDraw = stamp();
+    const needle = drawCrop(video, canvas, needleCrop, 420);
+    needleDrawMs = stamp() - tNeedleDraw;
+    const tNeedle = stamp();
+    reading = completeReading({
+      videoWidth,
+      videoHeight,
+      position,
+      tracker,
+      needleImage: needle.image,
+      needleCrop,
+      needleScale: needle.scale,
+      canonicalDial: true,
+    });
+    needleMs = stamp() - tNeedle;
+  }
   const faceScore = reading.gauge?.dialFaceScore ?? 0;
   if (faceScore < DIAL_FACE_VERIFY_MIN) {
     tracker.reset();
@@ -2158,6 +2303,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       poseJumpPx: reading.gauge?.poseDeltaPx ?? 0,
       radius: reading.gauge?.radius ?? 0,
     });
+    if (!bridged) tracker.rememberBridge?.(reading);
   }
   const after = tracker.snapshot?.() ?? null;
   pushVideoTrace({
@@ -2194,6 +2340,14 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     before,
     after,
     event: discoveryEvent || (seeded ? 'seed' : 'track'),
+    ms: {
+      total: roundTrace(stamp() - tStart),
+      discovery: roundTrace(discoveryMs),
+      trackDraw: roundTrace(trackDrawMs),
+      track: roundTrace(trackMs),
+      needleDraw: roundTrace(needleDrawMs),
+      needle: roundTrace(needleMs),
+    },
   });
   return reading;
 }

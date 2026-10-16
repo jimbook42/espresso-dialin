@@ -20,7 +20,7 @@ import { DiagnosticTrace } from './DiagnosticTrace';
 import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
-import { assessFrameQuality, createReadingBridge } from './frameQuality.js';
+import { createReadingBridge } from './frameQuality.js';
 import {
   createGaugeTracker,
   gaugeAllowsConfidentReading,
@@ -589,26 +589,7 @@ export function FlairPressureLab() {
         oppositeScore: reading.oppositeScore,
         previousAngle: lastAngleRef.current,
       });
-      let frameQuality = { ok: true, flags: [] };
-      if (gauge.cx != null && gauge.cy != null && gauge.radius != null) {
-        const qctx = canvas.getContext('2d', { willReadFrequently: true });
-        const qw = Math.min(reading.videoWidth, 320);
-        const qh = Math.round(reading.videoHeight * (qw / reading.videoWidth));
-        canvas.width = qw;
-        canvas.height = qh;
-        qctx.drawImage(video, 0, 0, qw, qh);
-        const qdata = qctx.getImageData(0, 0, qw, qh).data;
-        const sx = qw / reading.videoWidth;
-        const sy = qh / reading.videoHeight;
-        frameQuality = assessFrameQuality(
-          qdata,
-          qw,
-          qh,
-          gauge.cx * sx,
-          gauge.cy * sy,
-          gauge.radius * Math.min(sx, sy),
-        );
-      }
+      const frameQuality = reading.frameQuality ?? { ok: true, flags: [] };
       const weak = reading.quality == null || reading.quality < NEEDLE_LOST_QUALITY;
       const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || !frameQuality.ok || !confidentDial;
       const candidateJump = lastAngleRef.current == null || choice.angleDeg == null

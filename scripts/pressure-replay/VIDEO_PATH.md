@@ -51,6 +51,15 @@ The old picker kept any verified circle, so the weaker one was seeded. Still-fra
 
 After the fix, the same clip seeds (235.4, 350.8) radius 56.1 and the tracker holds about x 232–236, y 349–351, dial-face score about 0.38–0.41. That matches the still-frame dial within a few pixels.
 
-## Not done in this step
+## Phone speed
 
-The tracker still does not re-discover on later frames. A bad first lock would stick. Periodic re-detect is the next step.
+Locked frames confirm the rim at the current pose instead of searching the whole window, and two of every three of those frames reuse the last needle reading. Discovery stays on the full video frame, only when the pose is due for a re-check, and a farther circle does not replace a pose that still verifies.
+
+Measured on `20261015_225219` (CDP `Emulation.setCPUThrottlingRate` 4). The centre stayed on the dial (x 232–237, y 345–354) for all 184 frames.
+
+| | Median | p95 |
+| --- | ---: | ---: |
+| Normal | 3.9 ms | 48.6 ms |
+| 4× CPU | 14.4 ms | 198.5 ms |
+
+The 4× median is under the 33 ms target. The p95 is a full-frame re-detect.

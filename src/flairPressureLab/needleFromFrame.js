@@ -266,10 +266,11 @@ function startRadiusOf(startIndex, innerR, outerR) {
   return radius / gaugeRadius;
 }
 
-export function detectNeedleAngle(image, cx, cy, innerR, outerR) {
+export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
   if (!(outerR > innerR + 1)) return emptyDetection();
   const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
   const { gray, edges, width, height } = prepareEdges(image, { contrastRadius });
+  if (sink) sink.edges = edges;
   const rayCount = 360 / ANGLE_STEP;
   const evidence = new Array(rayCount);
   for (let i = 0; i < rayCount; i += 1) {

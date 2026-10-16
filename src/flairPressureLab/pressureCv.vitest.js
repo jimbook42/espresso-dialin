@@ -10,6 +10,8 @@ import {
   MAX_DISCOVERY_RADIUS_FRACTION,
   REDISCOVER_EVERY_FRAMES,
   chooseDiscoveryUpdate,
+  combineDialFaceScore,
+  shouldBridgeNeedle,
   createGaugeTracker,
   discoverGaugeInFrame,
   discoveredVerifies,
@@ -373,6 +375,16 @@ describe('pressure CV units', () => {
       confidence: 0.2,
       discovered: dial,
     })).toMatchObject({ action: 'replace', reason: 'better' });
+    expect(chooseDiscoveryUpdate({
+      hasPose: true,
+      faceScore: 0.42,
+      canonical: 0.28,
+      confidence: 0.48,
+      pose: { cx: 237, cy: 347, radius: 56 },
+      discovered: {
+        ok: true, cx: 366, cy: 204, radius: 26, dialFaceScore: 0.42, canonicalScore: 0.5, confidence: 0.6,
+      },
+    })).toMatchObject({ action: 'hold', reason: 'current-better' });
 
     const tracker = createGaugeTracker();
     tracker.seed({ cx: 240, cy: 355, radius: 50 });
@@ -390,6 +402,33 @@ describe('pressure CV units', () => {
     tracker.reset();
     expect(tracker.getPose()).toBeNull();
     expect(tracker.needsRediscovery()).toBe(true);
+  });
+
+  it('bridges the needle on the locked frames between full reads', () => {
+    const steady = {
+      reusePrior: true,
+      hasBridge: true,
+      discovering: false,
+      held: false,
+      poseDeltaPx: 1,
+      radius: 50,
+    };
+    expect(shouldBridgeNeedle({ ...steady, framesSinceDiscovery: 0 })).toBe(false);
+    expect(shouldBridgeNeedle({ ...steady, framesSinceDiscovery: 1 })).toBe(true);
+    expect(shouldBridgeNeedle({ ...steady, framesSinceDiscovery: 2 })).toBe(true);
+    expect(shouldBridgeNeedle({ ...steady, framesSinceDiscovery: 3 })).toBe(false);
+    expect(shouldBridgeNeedle({ ...steady, framesSinceDiscovery: 1, discovering: true })).toBe(false);
+    expect(shouldBridgeNeedle({ ...steady, framesSinceDiscovery: 1, poseDeltaPx: 20 })).toBe(false);
+    expect(shouldBridgeNeedle({ ...steady, framesSinceDiscovery: 1, hasBridge: false })).toBe(false);
+  });
+
+  it('lets tick energy carry a dark face the same way discovery does', () => {
+    const dark = combineDialFaceScore(0.29, 3.2, 52, 406);
+    expect(dark).toBeGreaterThanOrEqual(0.3);
+    expect(dark).toBeLessThanOrEqual(0.42);
+    expect(combineDialFaceScore(0, 0, 52, 406)).toBe(0);
+    const small = combineDialFaceScore(0, 3.2, 12, 406);
+    expect(small).toBeLessThan(dark);
   });
 
   it('keeps the generic discovery radius band at 3%–50% of the short side', () => {
