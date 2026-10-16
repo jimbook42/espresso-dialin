@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "clips": [
+    {
+      "id": "20261015_225219-small",
+      "file": "20261015_225219-small.mp4",
+      "description": "Small off-centre variant of 20261015_225219",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "notes": "Synthetic. Placement is not a CV input."
+    },
+    {
+      "id": "20261015_225240-small",
+      "file": "20261015_225240-small.mp4",
+      "description": "Small off-centre variant of 20261015_225240",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "notes": "Synthetic. Placement is not a CV input."
+    },
+    {
+      "id": "20261015_225254-small",
+      "file": "20261015_225254-small.mp4",
+      "description": "Small off-centre variant of 20261015_225254",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "notes": "Synthetic. Placement is not a CV input."
+    },
+    {
+      "id": "20261015_225307-small",
+      "file": "20261015_225307-small.mp4",
+      "description": "Small off-centre variant of 20261015_225307",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "notes": "Synthetic. Placement is not a CV input."
+    },
+    {
+      "id": "20261015_225324-small",
+      "file": "20261015_225324-small.mp4",
+      "description": "Small off-centre variant of 20261015_225324",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "notes": "Synthetic. Placement is not a CV input."
+    },
+    {
+      "id": "20261015_225337-small",
+      "file": "20261015_225337-small.mp4",
+      "description": "Small off-centre variant of 20261015_225337",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "notes": "Synthetic. Placement is not a CV input."
+    }
+  ]
+}

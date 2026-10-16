@@ -6,7 +6,9 @@
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { loadPressureReplayManifest, resolveClipPath } from './manifest.js';
 import {
@@ -57,68 +59,119 @@ function readFrame(videoPath, timeS, width, height) {
 async function loadCv() {
   if (!fs.existsSync(OPENCV_PATH)) return;
   try {
-    const text = fs.readFileSync(OPENCV_PATH, 'utf8');
-    (0, eval)(text);
-    const cv = await globalThis.cv;
+    // The bundle calls require('fs') on Node. The app package is ESM, so load
+    // a .cjs copy from outside the package, where that require exists.
+    const copy = path.join(os.tmpdir(), 'flair-pressure-opencv.cjs');
+    fs.copyFileSync(OPENCV_PATH, copy);
+    const require = createRequire(path.join(os.tmpdir(), 'flair-pressure-opencv-load.cjs'));
+    const loaded = require(copy);
+    const cv = await loaded;
     if (cv?.Mat) setOpenCvForTests(cv);
+    else process.stderr.write('OpenCV loaded without Mat; using the rim search\n');
   } catch (err) {
     process.stderr.write(`OpenCV unavailable for compositing measure (${err?.message || err}); using the rim search\n`);
   }
 }
 
-function measureDial(videoPath, width, height) {
-  for (const timeS of [0.4, 1.2, 2.5, 0]) {
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function measureDials(videoPath, width, height) {
+  const hits = [];
+  for (const timeS of [0.2, 0.6, 1.0, 1.6, 2.4, 3.5, 5, 8]) {
     const frame = readFrame(videoPath, timeS, width, height);
     if (!frame) continue;
     const found = discoverGaugeInFrame(frame);
-    if (found?.ok && found.radius > 8) {
-      return { cx: found.cx, cy: found.cy, radius: found.radius, timeS };
+    if (found?.ok && found.confidence >= 0.22 && found.radius >= 20) {
+      hits.push({ cx: found.cx, cy: found.cy, radius: found.radius, confidence: found.confidence });
     }
   }
-  return null;
+  if (!hits.length) return null;
+  const ranked = [...hits].sort((a, b) => b.confidence - a.confidence);
+  const core = ranked.slice(0, Math.max(1, Math.ceil(ranked.length / 2)));
+  const mx = median(core.map((item) => item.cx));
+  const my = median(core.map((item) => item.cy));
+  const mr = median(core.map((item) => item.radius));
+  const near = hits.filter((item) => Math.hypot(item.cx - mx, item.cy - my) <= mr * 2.5);
+  return near.length ? near : core;
 }
 
 function num(value) {
   return Number(value).toFixed(3);
 }
 
+function paintEllipse(data, width, height, shape, rgba) {
+  const x0 = Math.max(0, Math.floor(shape.cx - shape.rx));
+  const x1 = Math.min(width - 1, Math.ceil(shape.cx + shape.rx));
+  const y0 = Math.max(0, Math.floor(shape.cy - shape.ry));
+  const y1 = Math.min(height - 1, Math.ceil(shape.cy + shape.ry));
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      const dx = (x - shape.cx) / shape.rx;
+      const dy = (y - shape.cy) / shape.ry;
+      if (dx * dx + dy * dy > 1) continue;
+      const o = (y * width + x) * 4;
+      data[o] = rgba[0];
+      data[o + 1] = rgba[1];
+      data[o + 2] = rgba[2];
+      data[o + 3] = rgba[3];
+    }
+  }
+}
+
+function writeOverlay(plan, dest) {
+  const data = Buffer.alloc(SYNTHETIC_WIDTH * SYNTHETIC_HEIGHT * 4);
+  paintEllipse(data, SYNTHETIC_WIDTH, SYNTHETIC_HEIGHT, plan.compositing.hotspot, [255, 250, 235, 200]);
+  paintEllipse(data, SYNTHETIC_WIDTH, SYNTHETIC_HEIGHT, plan.compositing.occluder, [8, 8, 10, 220]);
+  execFileSync('ffmpeg', [
+    '-y',
+    '-f', 'rawvideo',
+    '-pix_fmt', 'rgba',
+    '-s', `${SYNTHETIC_WIDTH}x${SYNTHETIC_HEIGHT}`,
+    '-i', 'pipe:0',
+    '-frames:v', '1',
+    dest,
+  ], { input: data, stdio: ['pipe', 'inherit', 'inherit'] });
+}
+
 function buildFilter(plan) {
   const { compositing: c } = plan;
-  const s = c.outSide;
   const pinch = c.pinch;
-  const x0 = s * pinch;
-  const y0 = 0;
-  const x1 = s * (1 - pinch);
-  const y1 = 0;
-  const x2 = 0;
-  const y2 = s;
-  const x3 = s;
-  const y3 = s;
-  const hot = c.hotspot;
-  const occ = c.occluder;
-  const add = (cx, cy, rx, ry, gain) => `if(lt(hypot((X-${num(cx)})/${num(rx)},(Y-${num(cy)})/${num(ry)}),1),${gain},0)`;
-  const expr = `clip(p(X,Y)+${add(hot.cx, hot.cy, hot.rx, hot.ry, 170)}-${add(occ.cx, occ.cy, occ.rx, occ.ry, 150)},0,255)`;
+  const corners = [
+    c.outW * pinch, 0,
+    c.outW * (1 - pinch), 0,
+    0, c.outH,
+    c.outW, c.outH,
+  ].map(num).join(':');
   return [
-    `crop=${c.cropSide}:${c.cropSide}:${c.cropX}:${c.cropY}`,
-    `scale=${s}:${s}:flags=bilinear`,
-    `perspective=${num(x0)}:${num(y0)}:${num(x1)}:${num(y1)}:${num(x2)}:${num(y2)}:${num(x3)}:${num(y3)}:sense=destination`,
+    `crop=${c.cropW}:${c.cropH}:${c.cropX}:${c.cropY}`,
+    `scale=${c.outW}:${c.outH}:flags=bilinear`,
+    `perspective=${corners}:sense=destination`,
     `pad=${SYNTHETIC_WIDTH}:${SYNTHETIC_HEIGHT}:${c.originX}:${c.originY}:black`,
-    'format=rgb24',
-    `geq=r='${expr.replaceAll('p(X,Y)', 'r(X,Y)')}':g='${expr.replaceAll('p(X,Y)', 'g(X,Y)')}':b='${expr.replaceAll('p(X,Y)', 'b(X,Y)')}'`,
+    'format=rgba',
   ].join(',');
 }
 
 function renderClip(sourcePath, destPath, plan) {
-  execFileSync('ffmpeg', [
-    '-y',
-    '-i', sourcePath,
-    '-vf', buildFilter(plan),
-    '-an',
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-crf', '18',
-    destPath,
-  ], { stdio: 'inherit' });
+  const overlay = `${destPath}.overlay.png`;
+  writeOverlay(plan, overlay);
+  try {
+    execFileSync('ffmpeg', [
+      '-y',
+      '-i', sourcePath,
+      '-i', overlay,
+      '-filter_complex', `[0:v]${buildFilter(plan)}[base];[base][1:v]overlay=0:0:format=auto`,
+      '-an',
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-crf', '18',
+      destPath,
+    ], { stdio: 'inherit' });
+  } finally {
+    fs.rmSync(overlay, { force: true });
+  }
 }
 
 async function main() {
@@ -130,20 +183,19 @@ async function main() {
     const sourcePath = resolveClipPath(clip);
     if (!fs.existsSync(sourcePath)) throw new Error(`missing dry clip ${sourcePath}`);
     const { width, height } = probeSize(sourcePath);
-    const dial = measureDial(sourcePath, width, height);
-    if (!dial) throw new Error(`no dial measured for compositing ${clip.id}`);
+    const dials = measureDials(sourcePath, width, height);
+    if (!dials?.length) throw new Error(`no dial measured for compositing ${clip.id}`);
     const variant = planSmallGaugeVariant({
       clipId: clip.id,
       frameWidth: width,
       frameHeight: height,
-      dialCx: dial.cx,
-      dialCy: dial.cy,
-      dialRadius: dial.radius,
+      observations: dials,
     });
     const row = scoringClip(clip, variant);
     const dest = path.join(OUT_DIR, row.file);
+    const sample = dials[0];
     process.stderr.write(
-      `${clip.id} dial r=${dial.radius.toFixed(1)} at ${dial.cx.toFixed(0)},${dial.cy.toFixed(0)} `
+      `${clip.id} ${dials.length} sightings, first r=${sample.radius.toFixed(1)} at ${sample.cx.toFixed(0)},${sample.cy.toFixed(0)} `
       + `→ diameter ${variant.compositing.diameter.toFixed(1)} → ${dest}\n`,
     );
     renderClip(sourcePath, dest, variant);

@@ -33,10 +33,15 @@ function clamp(value, lo, hi) {
   return Math.max(lo, Math.min(hi, value));
 }
 
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
 /**
- * Place a measured dial into a 1280×720 frame at a seeded off-centre spot,
- * with a mild from-below warp, a bright ellipse, and a dark occluder.
- * `dialCx/Cy/Radius` are source-frame pixels used only to build the picture.
+ * Place measured dial sightings into a 1280×720 frame at a seeded off-centre
+ * spot, with a mild from-below warp, a bright ellipse, and a dark occluder.
+ * Sightings are source-frame pixels used only to build the picture.
  */
 export function planSmallGaugeVariant({
   clipId,
@@ -45,33 +50,45 @@ export function planSmallGaugeVariant({
   dialCx,
   dialCy,
   dialRadius,
+  observations = null,
 }) {
-  if (!(dialRadius > 4) || !(frameWidth > 0) || !(frameHeight > 0)) {
+  const sightings = observations?.length
+    ? observations
+    : [{ cx: dialCx, cy: dialCy, radius: dialRadius }];
+  const radius = median(sightings.map((item) => item.radius));
+  if (!(radius > 4) || !(frameWidth > 0) || !(frameHeight > 0)) {
     throw new Error(`cannot place a dial for ${clipId}`);
   }
   const rand = mulberry32(hashSeed(`small-gauge:${clipId}`));
-  const diameter = DIAMETER_MIN_PX + rand() * (DIAMETER_MAX_PX - DIAMETER_MIN_PX);
-  const sourceDiameter = dialRadius * 2;
-  const cropSide = Math.round(clamp(sourceDiameter * 3.4, sourceDiameter + 48, Math.min(frameWidth, frameHeight)));
-  const cropX = Math.round(clamp(dialCx - cropSide / 2, 0, frameWidth - cropSide));
-  const cropY = Math.round(clamp(dialCy - cropSide / 2, 0, frameHeight - cropSide));
-  const scale = diameter / sourceDiameter;
-  const outSide = Math.max(16, Math.round(cropSide * scale));
-  const localCx = (dialCx - cropX) * scale;
-  const localCy = (dialCy - cropY) * scale;
-  // From below: the top edge of the crop pinches in by a few percent.
+  let diameter = DIAMETER_MIN_PX + rand() * (DIAMETER_MAX_PX - DIAMETER_MIN_PX);
+  const pad = radius * 2.6;
+  const cropX = Math.round(clamp(Math.min(...sightings.map((item) => item.cx)) - pad, 0, frameWidth - 16));
+  const cropY = Math.round(clamp(Math.min(...sightings.map((item) => item.cy)) - pad, 0, frameHeight - 16));
+  const cropRight = Math.round(clamp(Math.max(...sightings.map((item) => item.cx)) + pad, cropX + 16, frameWidth));
+  const cropBottom = Math.round(clamp(Math.max(...sightings.map((item) => item.cy)) + pad, cropY + 16, frameHeight));
+  const cropW = cropRight - cropX;
+  const cropH = cropBottom - cropY;
+  let scale = diameter / (radius * 2);
+  const fit = Math.min((SYNTHETIC_WIDTH - 80) / cropW, (SYNTHETIC_HEIGHT - 80) / cropH, scale);
+  scale = Math.max(0.2, fit);
+  diameter = radius * 2 * scale;
+  const outW = Math.max(16, Math.round(cropW * scale));
+  const outH = Math.max(16, Math.round(cropH * scale));
+  const anchor = sightings[0];
+  const localCx = (anchor.cx - cropX) * scale;
+  const localCy = (anchor.cy - cropY) * scale;
   const pinch = 0.035 + rand() * 0.025;
-  const maxX = Math.max(0, SYNTHETIC_WIDTH - outSide);
-  const maxY = Math.max(0, SYNTHETIC_HEIGHT - outSide);
+  const maxX = Math.max(0, SYNTHETIC_WIDTH - outW);
+  const maxY = Math.max(0, SYNTHETIC_HEIGHT - outH);
   let originX = Math.round(rand() * maxX);
   let originY = Math.round(rand() * maxY);
-  const centreX = originX + localCx;
-  const centreY = originY + localCy;
   const frameCx = SYNTHETIC_WIDTH / 2;
   const frameCy = SYNTHETIC_HEIGHT / 2;
+  const centreX = originX + localCx;
+  const centreY = originY + localCy;
   if (Math.hypot(centreX - frameCx, centreY - frameCy) < Math.min(SYNTHETIC_WIDTH, SYNTHETIC_HEIGHT) * 0.12) {
-    originX = originX < frameCx ? Math.min(maxX, originX + Math.round(outSide * 0.45)) : Math.max(0, originX - Math.round(outSide * 0.45));
-    originY = originY < frameCy ? Math.min(maxY, originY + Math.round(outSide * 0.35)) : Math.max(0, originY - Math.round(outSide * 0.35));
+    originX = centreX < frameCx ? Math.min(maxX, originX + Math.round(outW * 0.35)) : Math.max(0, originX - Math.round(outW * 0.35));
+    originY = centreY < frameCy ? Math.min(maxY, originY + Math.round(outH * 0.35)) : Math.max(0, originY - Math.round(outH * 0.35));
   }
   const placedCx = originX + localCx;
   const placedCy = originY + localCy;
@@ -83,8 +100,10 @@ export function planSmallGaugeVariant({
     compositing: {
       cropX,
       cropY,
-      cropSide,
-      outSide,
+      cropW,
+      cropH,
+      outW,
+      outH,
       originX,
       originY,
       pinch,
