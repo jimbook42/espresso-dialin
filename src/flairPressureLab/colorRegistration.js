@@ -34,10 +34,22 @@ for (let i = 0; i < 180; i += 1) {
   ANNULUS_SIN[i] = Math.sin(rad);
 }
 
-function sampleAnnulus(image, cx, cy, radius, inner, outer, needleDeg) {
+function annulusPack() {
+  return {
+    deg: new Float64Array(720),
+    chroma: new Float64Array(720),
+    lum: new Float64Array(720),
+    lumSort: new Float64Array(720),
+  };
+}
+
+const redAnnulus = annulusPack();
+const darkAnnulus = annulusPack();
+
+function sampleAnnulus(image, cx, cy, radius, inner, outer, needleDeg, into) {
   const { data, width, height } = image;
-  const samples = [];
-  if (!(radius > 4)) return samples;
+  let n = 0;
+  if (!(radius > 4)) return n;
   for (let i = 0; i < 180; i += 1) {
     const deg = i * 2;
     if (nearRay(deg, needleDeg, 14)) continue;
@@ -52,14 +64,13 @@ function sampleAnnulus(image, cx, cy, radius, inner, outer, needleDeg) {
       const r = data[o];
       const g = data[o + 1];
       const b = data[o + 2];
-      samples.push({
-        deg,
-        chroma: chromaOf(r, g, b),
-        lum: r * 0.299 + g * 0.587 + b * 0.114,
-      });
+      into.deg[n] = deg;
+      into.chroma[n] = chromaOf(r, g, b);
+      into.lum[n] = r * 0.299 + g * 0.587 + b * 0.114;
+      n += 1;
     }
   }
-  return samples;
+  return n;
 }
 
 /**
@@ -72,26 +83,31 @@ function sampleAnnulus(image, cx, cy, radius, inner, outer, needleDeg) {
 export function measureDialColorBands(image, cx, cy, radius, needleDeg = null) {
   const red = new Float32Array(BINS);
   const dark = new Float32Array(BINS);
-  const redSamples = sampleAnnulus(
-    image, cx, cy, radius, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, null,
+  const redN = sampleAnnulus(
+    image, cx, cy, radius, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, null, redAnnulus,
   );
-  const darkSamples = sampleAnnulus(
-    image, cx, cy, radius, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION, needleDeg,
+  const darkN = sampleAnnulus(
+    image, cx, cy, radius, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION, needleDeg, darkAnnulus,
   );
   let redMass = 0;
-  for (const sample of redSamples) {
-    if (sample.chroma < CHROMA_MIN) continue;
-    const bin = Math.round(sample.deg / BIN_DEG) % BINS;
-    red[bin] += sample.chroma;
-    redMass += sample.chroma;
+  for (let i = 0; i < redN; i += 1) {
+    const chroma = redAnnulus.chroma[i];
+    if (chroma < CHROMA_MIN) continue;
+    const bin = Math.round(redAnnulus.deg[i] / BIN_DEG) % BINS;
+    red[bin] += chroma;
+    redMass += chroma;
   }
   let darkMass = 0;
-  if (darkSamples.length) {
-    const lumas = darkSamples.map((sample) => sample.lum).sort((a, b) => a - b);
-    const darkCut = lumas[Math.floor(lumas.length / 2)] * 0.62;
-    for (const sample of darkSamples) {
-      if (sample.chroma >= CHROMA_MIN || sample.lum > darkCut) continue;
-      const bin = Math.round(sample.deg / BIN_DEG) % BINS;
+  if (darkN) {
+    const lumSort = darkAnnulus.lumSort;
+    for (let i = 0; i < darkN; i += 1) lumSort[i] = darkAnnulus.lum[i];
+    lumSort.subarray(0, darkN).sort((a, b) => a - b);
+    const darkCut = lumSort[Math.floor(darkN / 2)] * 0.62;
+    for (let i = 0; i < darkN; i += 1) {
+      const chroma = darkAnnulus.chroma[i];
+      const lum = darkAnnulus.lum[i];
+      if (chroma >= CHROMA_MIN || lum > darkCut) continue;
+      const bin = Math.round(darkAnnulus.deg[i] / BIN_DEG) % BINS;
       dark[bin] += 1;
       darkMass += 1;
     }
@@ -101,7 +117,7 @@ export function measureDialColorBands(image, cx, cy, radius, needleDeg = null) {
     dark,
     redMass,
     darkMass,
-    samples: redSamples.length + darkSamples.length,
+    samples: redN + darkN,
   };
 }
 

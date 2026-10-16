@@ -87,31 +87,70 @@ export function normalizedSharpness(gray, width, height, cx, cy, radius) {
  * The outlier test uses the dimmer bulk of the face, so a bright spot does
  * not raise the bar it has to clear.
  */
+let glareLumas = new Float64Array(4096);
+let glareWork = new Float64Array(4096);
+
+function glareSelectNth(arr, k, len) {
+  let left = 0;
+  let right = len - 1;
+  while (left < right) {
+    const pivot = arr[right];
+    let store = left;
+    for (let i = left; i < right; i += 1) {
+      if (arr[i] < pivot) {
+        const tmp = arr[store];
+        arr[store] = arr[i];
+        arr[i] = tmp;
+        store += 1;
+      }
+    }
+    arr[right] = arr[store];
+    arr[store] = pivot;
+    if (store === k) return;
+    if (store < k) left = store + 1;
+    else right = store - 1;
+  }
+}
+
 export function glareFraction(data, width, height, cx, cy, radius) {
   const { limit, x0, y0, x1, y1 } = faceBounds(width, height, cx, cy, radius);
-  const lumas = [];
+  const cap = (x1 - x0 + 1) * (y1 - y0 + 1);
+  if (cap > glareLumas.length) {
+    let next = glareLumas.length;
+    while (next < cap) next *= 2;
+    glareLumas = new Float64Array(next);
+    glareWork = new Float64Array(next);
+  }
+  const limit2 = limit * limit;
+  let n = 0;
   for (let y = y0; y <= y1; y += 1) {
+    const dy = y - cy;
+    const row = y * width;
     for (let x = x0; x <= x1; x += 1) {
-      if (!insideFace(x, y, cx, cy, limit)) continue;
-      const o = (y * width + x) * 4;
-      lumas.push(data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114);
+      const dx = x - cx;
+      if (dx * dx + dy * dy > limit2) continue;
+      const o = (row + x) * 4;
+      glareLumas[n] = data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+      n += 1;
     }
   }
-  const n = lumas.length;
   if (n < 4) return 0;
-  const sorted = lumas.slice().sort((a, b) => a - b);
+  // Same core as a full sort: the dimmer 90%, its median, then that core's spread.
+  glareWork.set(glareLumas.subarray(0, n));
   const coreCount = Math.max(4, Math.floor(n * 0.9));
-  const core = sorted.slice(0, coreCount);
-  const median = core[Math.floor(core.length / 2)];
+  glareSelectNth(glareWork, coreCount - 1, n);
+  const medAt = Math.floor(coreCount / 2);
+  glareSelectNth(glareWork, medAt, coreCount);
+  const median = glareWork[medAt];
   let acc = 0;
-  for (let i = 0; i < core.length; i += 1) {
-    const d = core[i] - median;
+  for (let i = 0; i < coreCount; i += 1) {
+    const d = glareWork[i] - median;
     acc += d * d;
   }
-  const std = Math.sqrt(acc / core.length);
+  const std = Math.sqrt(acc / coreCount);
   let hot = 0;
   for (let i = 0; i < n; i += 1) {
-    const lum = lumas[i];
+    const lum = glareLumas[i];
     const saturated = lum >= 245;
     const specular = lum > median + 3 * std && lum > median * 2.2;
     if (saturated || specular) hot += 1;

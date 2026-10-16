@@ -34,18 +34,14 @@ function boxBlurInto(src, width, height, tmp, out) {
   if (width >= 3 && height >= 3) {
     for (let y = 0; y < height; y += 1) {
       const row = y * width;
+      const end = row + width - 1;
       tmp[row] = (src[row] + src[row + 1]) * 0.5;
-      const last = row + width - 1;
-      tmp[last] = (src[last - 1] + src[last]) * 0.5;
-      for (let x = 1; x < width - 1; x += 1) {
-        const i = row + x;
-        tmp[i] = (src[i - 1] + src[i] + src[i + 1]) / 3;
-      }
+      tmp[end] = (src[end - 1] + src[end]) * 0.5;
+      for (let i = row + 1; i < end; i += 1) tmp[i] = (src[i - 1] + src[i] + src[i + 1]) / 3;
     }
-    const rowBytes = width;
-    out[0] = (tmp[0] + tmp[rowBytes]) * 0.5;
-    for (let x = 1; x < width - 1; x += 1) out[x] = (tmp[x] + tmp[rowBytes + x]) * 0.5;
-    out[width - 1] = (tmp[width - 1] + tmp[rowBytes + width - 1]) * 0.5;
+    out[0] = (tmp[0] + tmp[width]) * 0.5;
+    for (let x = 1; x < width - 1; x += 1) out[x] = (tmp[x] + tmp[width + x]) * 0.5;
+    out[width - 1] = (tmp[width - 1] + tmp[width + width - 1]) * 0.5;
     const lastRow = (height - 1) * width;
     const prevRow = (height - 2) * width;
     out[lastRow] = (tmp[prevRow] + tmp[lastRow]) * 0.5;
@@ -53,13 +49,10 @@ function boxBlurInto(src, width, height, tmp, out) {
     out[lastRow + width - 1] = (tmp[prevRow + width - 1] + tmp[lastRow + width - 1]) * 0.5;
     for (let y = 1; y < height - 1; y += 1) {
       const row = y * width;
-      const up = row - width;
-      const down = row + width;
-      out[row] = (tmp[up] + tmp[row] + tmp[down]) / 3;
-      out[row + width - 1] = (tmp[up + width - 1] + tmp[row + width - 1] + tmp[down + width - 1]) / 3;
-      for (let x = 1; x < width - 1; x += 1) {
-        out[row + x] = (tmp[up + x] + tmp[row + x] + tmp[down + x]) / 3;
-      }
+      const end = row + width - 1;
+      out[row] = (tmp[row - width] + tmp[row] + tmp[row + width]) / 3;
+      out[end] = (tmp[end - width] + tmp[end] + tmp[end + width]) / 3;
+      for (let i = row + 1; i < end; i += 1) out[i] = (tmp[i - width] + tmp[i] + tmp[i + width]) / 3;
     }
     return out;
   }
@@ -165,22 +158,21 @@ export function localContrast(gray, width, height, radius) {
 }
 
 function sobelInto(gray, width, height, mag, gx, gy) {
+  const w = width;
   for (let y = 1; y < height - 1; y += 1) {
-    const row = y * width;
-    const up = row - width;
-    const down = row + width;
-    for (let x = 1; x < width - 1; x += 1) {
-      const i = row + x;
-      const tl = gray[up + x - 1];
-      const tc = gray[up + x];
-      const tr = gray[up + x + 1];
+    const row = y * w;
+    const end = row + w - 1;
+    for (let i = row + 1; i < end; i += 1) {
+      const tl = gray[i - w - 1];
+      const tc = gray[i - w];
+      const tr = gray[i - w + 1];
       const ml = gray[i - 1];
       const mr = gray[i + 1];
-      const bl = gray[down + x - 1];
-      const bc = gray[down + x];
-      const br = gray[down + x + 1];
-      const gxValue = -tl + tr - 2 * ml + 2 * mr - bl + br;
-      const gyValue = -tl - 2 * tc - tr + bl + 2 * bc + br;
+      const bl = gray[i + w - 1];
+      const bc = gray[i + w];
+      const br = gray[i + w + 1];
+      const gxValue = tr - tl + 2 * (mr - ml) + br - bl;
+      const gyValue = bl - tl + 2 * (bc - tc) + br - tr;
       gx[i] = gxValue;
       gy[i] = gyValue;
       // Same magnitude as Math.hypot while the Sobel sums stay in a normal range.

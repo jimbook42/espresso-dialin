@@ -97,6 +97,15 @@ function lateralProbes(span, stepDeg = ANGLE_STEP) {
 
 const contrastScratch = new Float32Array(16);
 const probeCache = new Map();
+const DEG_COS = new Float64Array(360);
+const DEG_SIN = new Float64Array(360);
+for (let deg = 0; deg < 360; deg += 1) {
+  const rad = (deg * Math.PI) / 180;
+  DEG_COS[deg] = Math.cos(rad);
+  DEG_SIN[deg] = Math.sin(rad);
+}
+const lateralX = new Float64Array(16);
+const lateralY = new Float64Array(16);
 
 function cachedLateralProbes(span, stepDeg) {
   const key = `${span}:${stepDeg}`;
@@ -125,11 +134,19 @@ function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outer
   else probeAt.fill(0);
   const span = outerR - innerR;
   if (span < 1) return { samples, probeAt };
-  const rad = (angleDeg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
+  const degInt = angleDeg | 0;
+  const cos = degInt === angleDeg && degInt >= 0 && degInt < 360
+    ? DEG_COS[degInt]
+    : Math.cos((angleDeg * Math.PI) / 180);
+  const sin = degInt === angleDeg && degInt >= 0 && degInt < 360
+    ? DEG_SIN[degInt]
+    : Math.sin((angleDeg * Math.PI) / 180);
   const { offsets, comfortable } = cachedLateralProbes(span, stepDeg);
   const offsetCount = offsets.length;
+  for (let k = 0; k < offsetCount; k += 1) {
+    lateralX[k] = sin * offsets[k];
+    lateralY[k] = cos * offsets[k];
+  }
   const gxA = edges.gx;
   const gyA = edges.gy;
   const limitX = width - 1;
@@ -146,11 +163,10 @@ function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outer
     const center = gray[index];
     let peakContrast = 0;
     for (let k = 0; k < offsetCount; k += 1) {
-      const offset = offsets[k];
-      const lxi = ((x - sin * offset) + 0.5) | 0;
-      const lyi = ((y + cos * offset) + 0.5) | 0;
-      const rxi = ((x + sin * offset) + 0.5) | 0;
-      const ryi = ((y - cos * offset) + 0.5) | 0;
+      const lxi = ((x - lateralX[k]) + 0.5) | 0;
+      const lyi = ((y + lateralY[k]) + 0.5) | 0;
+      const rxi = ((x + lateralX[k]) + 0.5) | 0;
+      const ryi = ((y - lateralY[k]) + 0.5) | 0;
       let contrast = 0;
       if (lxi >= 0 && lyi >= 0 && lxi < width && lyi < height && rxi >= 0 && ryi >= 0 && rxi < width && ryi < height) {
         const leftContrast = gray[lyi * width + lxi] - center;
@@ -475,6 +491,10 @@ export function hubConnection(raw, width, height, cx, cy, angleDeg, innerR) {
   return hits / n;
 }
 
+const raySlab = { samples: new Float32Array(0), probes: new Float32Array(0) };
+let rayColumn = new Float32Array(0);
+const rayRaw = new Float32Array(360);
+
 export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hintDeg = null) {
   if (!(outerR > innerR + 1)) return emptyDetection();
   const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
@@ -487,8 +507,14 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
   }
   const scan = scanAngles(hintDeg);
   const angleCount = scan.angles.length;
-  const sampleSlab = new Float32Array(angleCount * SAMPLE_COUNT);
-  const probeSlab = new Float32Array(angleCount * SAMPLE_COUNT);
+  const slabNeed = angleCount * SAMPLE_COUNT;
+  if (raySlab.samples.length < slabNeed) {
+    raySlab.samples = new Float32Array(slabNeed);
+    raySlab.probes = new Float32Array(slabNeed);
+  }
+  if (rayColumn.length < angleCount) rayColumn = new Float32Array(angleCount);
+  const sampleSlab = raySlab.samples;
+  const probeSlab = raySlab.probes;
   const evidence = new Array(angleCount);
   for (let i = 0; i < angleCount; i += 1) {
     const sampleView = sampleSlab.subarray(i * SAMPLE_COUNT, (i + 1) * SAMPLE_COUNT);
@@ -499,7 +525,7 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
   }
 
   const medianProfile = new Float32Array(SAMPLE_COUNT);
-  const column = new Float32Array(evidence.length);
+  const column = rayColumn;
   const mid = Math.floor(evidence.length / 2);
   for (let s = 0; s < SAMPLE_COUNT; s += 1) {
     for (let i = 0; i < evidence.length; i += 1) column[i] = evidence[i].samples[s];
@@ -520,7 +546,8 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     return profile;
   };
 
-  const raw = new Float32Array(360);
+  rayRaw.fill(0);
+  const raw = rayRaw;
   let best = 0;
   let bestProfile = emptyProfile();
   bestProfile.score = -1;
