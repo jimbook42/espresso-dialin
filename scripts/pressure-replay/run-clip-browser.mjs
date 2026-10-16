@@ -100,8 +100,9 @@ async function captureClip(context, previewUrl, { cpuThrottleRate = 1, durationS
   if (replayError) throw new Error(replayError);
   const frames = await page.evaluate(() => window.__pressureLabReplay.getFrames());
   const storage = await page.evaluate(() => window.__pressureLabPrivacy || { localStorageWrites: 0, indexedDbWrites: 0 });
+  const smoothness = await page.evaluate(() => window.__pressureReplaySmoothness?.() || { longTasks: 0, scaleTicks: 0, slots: 0 });
   await page.close();
-  return { frames, requests, storage };
+  return { frames, requests, storage, smoothness };
 }
 
 function extractReplayFrames(src) {
@@ -145,17 +146,37 @@ async function main() {
     const throttleRun = await captureClip(context, preview.url, { cpuThrottleRate: 4, durationS, frameDir, frameCount });
 
     const privacy = assessPressureLabPrivacy(mainRun.requests, mainRun.storage, preview.url);
-    const processMs = mainRun.frames.map((f) => f.processMs).filter((v) => v != null && !Number.isNaN(v)).sort((a, b) => a - b);
-    const throttledMs = throttleRun.frames.map((f) => f.processMs).filter((v) => v != null && !Number.isNaN(v)).sort((a, b) => a - b);
+    const series = (run, key) => run.frames
+      .map((frame) => frame[key])
+      .filter((value) => value != null && !Number.isNaN(value))
+      .sort((a, b) => a - b);
+    const processedPct = (run) => {
+      const slots = run.smoothness?.slots || 0;
+      if (!slots) return null;
+      return (run.frames.length / slots) * 100;
+    };
 
     const payload = {
       frames: mainRun.frames,
       privacy,
       timing: {
-        processMsMedian: percentile(processMs, 50),
-        processMsP95: percentile(processMs, 95),
-        throttled4xMedian: percentile(throttledMs, 50),
-        throttled4xP95: percentile(throttledMs, 95),
+        processMsMedian: percentile(series(mainRun, 'processMs'), 50),
+        processMsP95: percentile(series(mainRun, 'processMs'), 95),
+        throttled4xMedian: percentile(series(throttleRun, 'processMs'), 50),
+        throttled4xP95: percentile(series(throttleRun, 'processMs'), 95),
+        e2eMedian: percentile(series(mainRun, 'e2eMs'), 50),
+        e2eP95: percentile(series(mainRun, 'e2eMs'), 95),
+        e2e4xMedian: percentile(series(throttleRun, 'e2eMs'), 50),
+        e2e4xP95: percentile(series(throttleRun, 'e2eMs'), 95),
+        mainMedian: percentile(series(mainRun, 'mainThreadMs'), 50),
+        mainP95: percentile(series(mainRun, 'mainThreadMs'), 95),
+        main4xMedian: percentile(series(throttleRun, 'mainThreadMs'), 50),
+        main4xP95: percentile(series(throttleRun, 'mainThreadMs'), 95),
+        framesProcessedPct: processedPct(mainRun),
+        framesProcessed4xPct: processedPct(throttleRun),
+        longTasks: mainRun.smoothness?.longTasks ?? null,
+        longTasks4x: throttleRun.smoothness?.longTasks ?? null,
+        scaleTicks4x: throttleRun.smoothness?.scaleTicks ?? null,
       },
     };
     process.stdout.write(JSON.stringify(payload));

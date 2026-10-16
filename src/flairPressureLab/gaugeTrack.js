@@ -70,17 +70,14 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function sampleRadial(edges, width, height, x, y, cos, sin) {
-  const xi = Math.round(x);
-  const yi = Math.round(y);
-  if (xi < 1 || yi < 1 || xi >= width - 1 || yi >= height - 1) return 0;
-  const index = yi * width + xi;
-  return Math.abs(edges.gx[index] * cos + edges.gy[index] * sin);
-}
-
 /** How strongly edges at `radius` point at `(cx, cy)`. 0 if the circle does not fit. */
 export function scoreRim(edges, width, height, cx, cy, radius) {
   if (radius < 8) return 0;
+  const gx = edges.gx;
+  const gy = edges.gy;
+  const limitX = width - 1;
+  const limitY = height - 1;
+  const litNeed = RIM_BINS * 0.35;
   let sum = 0;
   let lit = 0;
   for (let i = 0; i < RIM_BINS; i += 1) {
@@ -88,12 +85,21 @@ export function scoreRim(edges, width, height, cx, cy, radius) {
     const sin = RIM_SIN[i];
     let local = 0;
     for (let dr = -3; dr <= 3; dr += 1.5) {
-      local = Math.max(local, sampleRadial(edges, width, height, cx + (radius + dr) * cos, cy + (radius + dr) * sin, cos, sin));
+      const x = cx + (radius + dr) * cos;
+      const y = cy + (radius + dr) * sin;
+      const xi = Math.round(x);
+      const yi = Math.round(y);
+      if (xi < 1 || yi < 1 || xi >= limitX || yi >= limitY) continue;
+      const index = yi * width + xi;
+      const radial = Math.abs(gx[index] * cos + gy[index] * sin);
+      if (radial > local) local = radial;
     }
     sum += local;
     if (local > 0.4) lit += 1;
+    // A miss cannot become a rim if the bins left cannot light enough of the circle.
+    if (lit + (RIM_BINS - i - 1) < litNeed) return 0;
   }
-  if (lit < RIM_BINS * 0.35) return 0;
+  if (lit < litNeed) return 0;
   return (sum / RIM_BINS) * (lit / RIM_BINS);
 }
 
@@ -638,10 +644,6 @@ export function scoreDiscoveryCandidate({
   return { rim, face, faceRaw, tickEnergy, canonical, rank, inRange };
 }
 
-function rankDiscoveryCandidate(params) {
-  return scoreDiscoveryCandidate(params).rank;
-}
-
 function discoveryCandidateOk({ rimScore, confidence, faceScore, canonicalScore, rankScore }) {
   if (rimScore <= 1e-3 || faceScore < DIAL_FACE_VERIFY_MIN) return false;
   if (canonicalScore < DIAL_CANONICAL_VERIFY_MIN) return false;
@@ -746,7 +748,7 @@ function collectHoughCircleCandidates(ctx, cv, candidates) {
   let srcMat = null;
   let gray = null;
   let circles = null;
-  let houghCount = 0;
+  let houghCount;
   try {
     srcMat = cv.matFromImageData({ data: small, width: sw, height: sh });
     gray = new cv.Mat();
@@ -2373,8 +2375,8 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   const stamp = () => (typeof performance !== 'undefined' ? performance.now() : 0);
   const tStart = stamp();
   let discoveryMs = 0;
-  let trackDrawMs = 0;
-  let trackMs = 0;
+  let trackDrawMs;
+  let trackMs;
   let needleDrawMs = 0;
   let needleMs = 0;
   const havePose = Boolean(tracker.getPose());

@@ -71,9 +71,17 @@ function lateralProbes(span, stepDeg = ANGLE_STEP) {
   return { offsets, comfortable };
 }
 
-function widthWeight(offset, comfortable) {
-  if (offset <= comfortable + 1) return 1;
-  return 1 / (1 + (offset - comfortable - 1));
+const contrastScratch = new Float32Array(16);
+const probeCache = new Map();
+
+function cachedLateralProbes(span, stepDeg) {
+  const key = `${span}:${stepDeg}`;
+  let found = probeCache.get(key);
+  if (!found) {
+    found = lateralProbes(span, stepDeg);
+    probeCache.set(key, found);
+  }
+  return found;
 }
 
 /**
@@ -86,51 +94,70 @@ function widthWeight(offset, comfortable) {
  * test on its own. A one-sided step therefore contributes nothing.
  * Circumferential gradients contribute nothing either.
  */
-function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR, stepDeg = ANGLE_STEP) {
-  const samples = new Float32Array(SAMPLE_COUNT);
-  const probeAt = new Float32Array(SAMPLE_COUNT);
+function rayEvidence(gray, edges, width, height, cx, cy, angleDeg, innerR, outerR, stepDeg = ANGLE_STEP, samples = null, probeAt = null) {
+  if (!samples) samples = new Float32Array(SAMPLE_COUNT);
+  else samples.fill(0);
+  if (!probeAt) probeAt = new Float32Array(SAMPLE_COUNT);
+  else probeAt.fill(0);
   const span = outerR - innerR;
   if (span < 1) return { samples, probeAt };
   const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const { offsets, comfortable } = lateralProbes(span, stepDeg);
-  const contrasts = new Float32Array(offsets.length);
+  const { offsets, comfortable } = cachedLateralProbes(span, stepDeg);
+  const offsetCount = offsets.length;
+  const gxA = edges.gx;
+  const gyA = edges.gy;
+  const limitX = width - 1;
+  const limitY = height - 1;
+  const comfort = comfortable + 1;
   for (let i = 0; i < SAMPLE_COUNT; i += 1) {
     const r = innerR + span * ((i + 0.5) / SAMPLE_COUNT);
     const x = cx + r * cos;
     const y = cy + r * sin;
     const xi = Math.round(x);
     const yi = Math.round(y);
-    if (xi < 1 || yi < 1 || xi >= width - 1 || yi >= height - 1) continue;
+    if (xi < 1 || yi < 1 || xi >= limitX || yi >= limitY) continue;
     const index = yi * width + xi;
     const center = gray[index];
     let peakContrast = 0;
-    for (let k = 0; k < offsets.length; k += 1) {
+    for (let k = 0; k < offsetCount; k += 1) {
       const offset = offsets[k];
-      const left = sample(gray, width, height, x - sin * offset, y + cos * offset);
-      const right = sample(gray, width, height, x + sin * offset, y - cos * offset);
-      const contrast = left == null || right == null ? 0 : twoSidedContrast(left, right, center);
-      contrasts[k] = contrast;
+      const lxi = Math.round(x - sin * offset);
+      const lyi = Math.round(y + cos * offset);
+      const rxi = Math.round(x + sin * offset);
+      const ryi = Math.round(y - cos * offset);
+      let contrast = 0;
+      if (lxi >= 0 && lyi >= 0 && lxi < width && lyi < height && rxi >= 0 && ryi >= 0 && rxi < width && ryi < height) {
+        const leftContrast = gray[lyi * width + lxi] - center;
+        const rightContrast = gray[ryi * width + rxi] - center;
+        if (leftContrast > 0 && rightContrast > 0) {
+          const weaker = leftContrast < rightContrast ? leftContrast : rightContrast;
+          const stronger = leftContrast > rightContrast ? leftContrast : rightContrast;
+          if (weaker * 2 >= stronger) contrast = weaker;
+        }
+      }
+      contrastScratch[k] = contrast;
       if (contrast > peakContrast) peakContrast = contrast;
     }
     if (peakContrast <= 0) continue;
     const floor = peakContrast * 0.6;
     let chosen = 0;
     let chosenContrast = 0;
-    for (let k = 0; k < offsets.length; k += 1) {
-      if (contrasts[k] < floor) continue;
+    for (let k = 0; k < offsetCount; k += 1) {
+      if (contrastScratch[k] < floor) continue;
       chosen = offsets[k];
-      chosenContrast = contrasts[k];
+      chosenContrast = contrastScratch[k];
       break;
     }
     if (chosen <= 0) continue;
-    const gx = edges.gx[index];
-    const gy = edges.gy[index];
+    const gx = gxA[index];
+    const gy = gyA[index];
     const across = Math.abs(gx * sin - gy * cos);
     const grad = Math.hypot(gx, gy);
     const alignment = grad > 1 ? across / grad : 0;
-    samples[i] = chosenContrast * widthWeight(chosen, comfortable) * (0.35 + 0.65 * alignment);
+    const weight = chosen <= comfort ? 1 : 1 / (1 + (chosen - comfort));
+    samples[i] = chosenContrast * weight * (0.35 + 0.65 * alignment);
     probeAt[i] = chosen;
   }
   return { samples, probeAt };
@@ -431,9 +458,17 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
   const rawLuma = grayscale(image.data, width, height);
   if (sink) sink.edges = edges;
   const scan = scanAngles(hintDeg);
-  const evidence = scan.angles.map((deg) => (
-    rayEvidence(gray, edges, width, height, cx, cy, deg, innerR, outerR, scan.probeStep)
-  ));
+  const angleCount = scan.angles.length;
+  const sampleSlab = new Float32Array(angleCount * SAMPLE_COUNT);
+  const probeSlab = new Float32Array(angleCount * SAMPLE_COUNT);
+  const evidence = new Array(angleCount);
+  for (let i = 0; i < angleCount; i += 1) {
+    const sampleView = sampleSlab.subarray(i * SAMPLE_COUNT, (i + 1) * SAMPLE_COUNT);
+    const probeView = probeSlab.subarray(i * SAMPLE_COUNT, (i + 1) * SAMPLE_COUNT);
+    evidence[i] = rayEvidence(
+      gray, edges, width, height, cx, cy, scan.angles[i], innerR, outerR, scan.probeStep, sampleView, probeView,
+    );
+  }
 
   const medianProfile = new Float32Array(SAMPLE_COUNT);
   const column = new Float32Array(evidence.length);

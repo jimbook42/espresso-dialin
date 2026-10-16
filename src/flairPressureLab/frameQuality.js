@@ -131,7 +131,8 @@ export const GLARE_FRACTION_MAX = 0.008;
 export function assessFrameQuality(imageData, width, height, cx, cy, radius) {
   const gray = grayscale(imageData, width, height);
   const blurVar = laplacianVariance(gray, width, height, cx, cy, radius);
-  const sharpness = normalizedSharpness(gray, width, height, cx, cy, radius);
+  const contrast = faceContrast(gray, width, height, cx, cy, radius);
+  const sharpness = contrast < 1 ? 0 : blurVar / (contrast * contrast);
   const glare = glareFraction(imageData, width, height, cx, cy, radius);
   const blurOk = sharpness >= BLUR_SHARPNESS_MIN;
   const glareOk = glare <= GLARE_FRACTION_MAX;

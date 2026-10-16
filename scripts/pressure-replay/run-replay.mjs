@@ -171,6 +171,18 @@ async function processClip(clip, replayDir) {
     privacy,
     processMsThrottled4xMedian: timing?.throttled4xMedian ?? null,
     processMsThrottled4xP95: timing?.throttled4xP95 ?? null,
+    e2eMedian: timing?.e2eMedian ?? null,
+    e2eP95: timing?.e2eP95 ?? null,
+    e2e4xMedian: timing?.e2e4xMedian ?? null,
+    e2e4xP95: timing?.e2e4xP95 ?? null,
+    mainMedian: timing?.mainMedian ?? null,
+    mainP95: timing?.mainP95 ?? null,
+    main4xMedian: timing?.main4xMedian ?? null,
+    main4xP95: timing?.main4xP95 ?? null,
+    framesProcessedPct: timing?.framesProcessedPct ?? null,
+    framesProcessed4xPct: timing?.framesProcessed4xPct ?? null,
+    longTasks: timing?.longTasks ?? null,
+    longTasks4x: timing?.longTasks4x ?? null,
   };
   const outDir = path.join(OUT_ROOT, clip.id);
   fs.mkdirSync(outDir, { recursive: true });
@@ -260,9 +272,14 @@ async function main() {
     '',
     '## Timing (median / p95 ms per frame)',
     '',
-    '| Clip | Normal med | Normal p95 | 4× CPU med | 4× CPU p95 |',
-    '| --- | ---: | ---: | ---: | ---: |',
-    ...mergedResults.map(({ id, summary }) => `| ${id} | ${summary.processMsMedian?.toFixed(1) ?? '—'} | ${summary.processMsP95?.toFixed(1) ?? '—'} | ${summary.processMsThrottled4xMedian?.toFixed(1) ?? '—'} | ${summary.processMsThrottled4xP95?.toFixed(1) ?? '—'} |`),
+    'End-to-end is frame grab through the result being applied, including time waiting on the worker. Main-thread is that span minus the worker wait. Frames processed is slots that produced a row; none are dropped to improve the times.',
+    '',
+    '| Clip | Found % | ±0.5 % | Conf-wrong % | Frames % | E2E med | E2E p95 | E2E 4× med | E2E 4× p95 | Main med | Main p95 | Main 4× med | Main 4× p95 | Long tasks | Long tasks 4× |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    ...mergedResults.map(({ id, summary }) => {
+      const num = (value) => (value == null || Number.isNaN(value) ? '—' : Number(value).toFixed(1));
+      return `| ${id} | ${summary.gaugeTrackedPct.toFixed(1)} | ${summary.withinTolerancePct.toFixed(1)} | ${summary.confidentButWrongPct.toFixed(1)} | ${num(summary.framesProcessedPct)} | ${num(summary.e2eMedian)} | ${num(summary.e2eP95)} | ${num(summary.e2e4xMedian)} | ${num(summary.e2e4xP95)} | ${num(summary.mainMedian)} | ${num(summary.mainP95)} | ${num(summary.main4xMedian)} | ${num(summary.main4xP95)} | ${summary.longTasks ?? '—'} | ${summary.longTasks4x ?? '—'} |`;
+    }),
     '',
     '## Glare setup hint (frames)',
     '',

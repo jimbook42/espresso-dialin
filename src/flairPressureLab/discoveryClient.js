@@ -97,10 +97,14 @@ export function requestImageDiscovery(image) {
     settleResolve = resolve;
   });
   const pixels = image.data;
-  const buffer = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
+  const whole = pixels.byteOffset === 0 && pixels.byteLength === pixels.buffer.byteLength;
+  const buffer = whole
+    ? pixels.buffer
+    : pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
+  const payload = whole ? pixels : buffer;
   try {
     ensureWorker().postMessage({
-      pixels: buffer,
+      pixels: payload,
       width: image.width,
       height: image.height,
     }, [buffer]);

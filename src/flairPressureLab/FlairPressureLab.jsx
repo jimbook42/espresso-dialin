@@ -152,10 +152,6 @@ async function copyPlainText(text) {
   }
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 export function FlairPressureLab() {
   const ui = getAppTheme(true);
   const { videoRef, start, stop, status, error, trackInfo } = useFrontCameraStream();
@@ -369,6 +365,8 @@ export function FlairPressureLab() {
         bar: partial.bar ?? null,
         confidence: partial.confidence ?? null,
         processMs: partial.processMs ?? null,
+        e2eMs: partial.e2eMs ?? null,
+        mainThreadMs: partial.mainThreadMs ?? null,
         flags: partial.flags ?? '',
         tracking: partial.tracking ?? null,
         conflictDeg: partial.conflictDeg ?? null,
@@ -381,19 +379,22 @@ export function FlairPressureLab() {
       dialRegistered: gauge.dialRegistered === true,
     });
 
-    const processSample = async (video, now, wallNow, { replay = false } = {}) => {
+    const processSample = async (video, now, wallNow, { replay = false, grabAt = null } = {}) => {
       if (!video || video.readyState < 2) return;
+      const grab = grabAt ?? performance.now();
+      let discoveryWait = 0;
+      const frameTiming = () => {
+        const e2eMs = Math.max(0, performance.now() - grab);
+        const mainThreadMs = Math.max(0, e2eMs - discoveryWait);
+        return { e2eMs, mainThreadMs, processMs: mainThreadMs };
+      };
       let reading;
-      let processMs = null;
       try {
-        const t0 = performance.now();
-        let discoveryWait = 0;
         if (replay) {
           const primed = await primeReplayDiscovery(video, canvas, trackerRef.current);
           discoveryWait = primed?.waitMs || 0;
         }
         reading = readTrackedGauge(video, canvas, null, trackerRef.current);
-        processMs = Math.max(0, performance.now() - t0 - discoveryWait);
       } catch (err) {
         restAnchorRef.current.reset();
         agreeSamplesRef.current = [];
@@ -403,6 +404,7 @@ export function FlairPressureLab() {
             centreFromGuide: false,
             flags: `error:${err?.message || 'read'}`,
             tracking: 'LOST',
+            ...frameTiming(),
           }, now);
         }
         return;
@@ -417,6 +419,7 @@ export function FlairPressureLab() {
             centreFromGuide: false,
             flags: 'no-gauge',
             tracking: 'LOST',
+            ...frameTiming(),
           }, now);
         }
         return;
@@ -597,26 +600,9 @@ export function FlairPressureLab() {
             glare: frameQualityForAnchor.flags.includes('glare'),
             shotRunning: shotRunRef.current.running(),
           });
-          if (REPLAY_BUILD) {
-            const labels = replayGaugeLabels(gauge);
-            const qualityFlags = frameQualityForAnchor.ok ? '' : `|${frameQualityForAnchor.flags.join('|')}`;
-            const hintFlag = preShotGlare ? '|glare-hint' : '';
-            pushReplayFrame({
-              gaugeFound: labels.gaugeFound,
-              centreFromGuide: labels.centreFromGuide,
-              centreX: gauge.cx,
-              centreY: gauge.cy,
-              radius: gauge.radius,
-              gaugeRotationDeg: gauge.rotationDeg,
-              needleAngleDeg: null,
-              bar: null,
-              confidence: gauge.confidence,
-              processMs,
-              conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
-              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}`,
-              tracking: 'CALIBRATING',
-            }, now);
-          }
+          const labels = REPLAY_BUILD ? replayGaugeLabels(gauge) : null;
+          const qualityFlags = frameQualityForAnchor.ok ? '' : `|${frameQualityForAnchor.flags.join('|')}`;
+          const hintFlag = preShotGlare ? '|glare-hint' : '';
           setLive({
             ...EMPTY_LIVE,
             ...gaugeFields,
@@ -627,6 +613,23 @@ export function FlairPressureLab() {
             offScale: false,
             glareHint: preShotGlare ? GLARE_SETUP_HINT : null,
           });
+          if (REPLAY_BUILD) {
+            pushReplayFrame({
+              gaugeFound: labels.gaugeFound,
+              centreFromGuide: labels.centreFromGuide,
+              centreX: gauge.cx,
+              centreY: gauge.cy,
+              radius: gauge.radius,
+              gaugeRotationDeg: gauge.rotationDeg,
+              needleAngleDeg: null,
+              bar: null,
+              confidence: gauge.confidence,
+              conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
+              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}`,
+              tracking: 'CALIBRATING',
+              ...frameTiming(),
+            }, now);
+          }
           return;
         }
         const next = {
@@ -816,31 +819,6 @@ export function FlairPressureLab() {
         poseAge: poseAgeRef.current,
         jitterDeg: jitter,
       });
-      if (REPLAY_BUILD) {
-        const labels = replayGaugeLabels(gauge);
-        const flagParts = [tracking, needleDecision].filter(Boolean);
-        if (gauge.held) flagParts.push('gauge-held');
-        if (weak) flagParts.push('weak-needle');
-        if (!frameQuality.ok) flagParts.push(...frameQuality.flags);
-        if (showGlareHint) flagParts.push('glare-hint');
-        if (shotRunning) flagParts.push('shot');
-        pushReplayFrame({
-          gaugeFound: labels.gaugeFound,
-          centreFromGuide: labels.centreFromGuide,
-          centreX: gauge.cx,
-          centreY: gauge.cy,
-          radius: gauge.radius,
-          gaugeRotationDeg: gauge.rotationDeg,
-          needleAngleDeg: tracked.angle,
-          bar: rawBar,
-          confidence: publishedConfidence,
-          processMs,
-          conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
-          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}|hub:${reading.hub == null ? 'na' : reading.hub.toFixed(2)}`,
-          tracking,
-        }, now);
-      }
-
       setLive({
         tracking,
         displayBar: tracking === 'TRACKING' || tracking === 'UNCERTAIN' ? pressureBar : null,
@@ -863,6 +841,30 @@ export function FlairPressureLab() {
         corrected: choice.corrected,
         glareHint: showGlareHint ? GLARE_SETUP_HINT : null,
       });
+      if (REPLAY_BUILD) {
+        const labels = replayGaugeLabels(gauge);
+        const flagParts = [tracking, needleDecision].filter(Boolean);
+        if (gauge.held) flagParts.push('gauge-held');
+        if (weak) flagParts.push('weak-needle');
+        if (!frameQuality.ok) flagParts.push(...frameQuality.flags);
+        if (showGlareHint) flagParts.push('glare-hint');
+        if (shotRunning) flagParts.push('shot');
+        pushReplayFrame({
+          gaugeFound: labels.gaugeFound,
+          centreFromGuide: labels.centreFromGuide,
+          centreX: gauge.cx,
+          centreY: gauge.cy,
+          radius: gauge.radius,
+          gaugeRotationDeg: gauge.rotationDeg,
+          needleAngleDeg: tracked.angle,
+          bar: rawBar,
+          confidence: publishedConfidence,
+          conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
+          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}|hub:${reading.hub == null ? 'na' : reading.hub.toFixed(2)}`,
+          tracking,
+          ...frameTiming(),
+        }, now);
+      }
     };
 
     const tick = (wallNow) => {
@@ -887,6 +889,49 @@ export function FlairPressureLab() {
     const frameBase = window.__pressureReplayFrameBase || '';
     const untilS = Number(window.__pressureReplayUntilS) || 0;
     const slot = PROCESS_INTERVAL_MS / 1000;
+    const snap = document.createElement('canvas');
+    const chart = document.createElement('canvas');
+    chart.width = 280;
+    chart.height = 72;
+    const chartCtx = chart.getContext('2d');
+    let chartRaf = 0;
+    let lastChart = 0;
+    let scaleTicks = 0;
+    let longTasks = 0;
+    let countLongTasks = false;
+    let slots = 0;
+    const drawChart = (now) => {
+      chartRaf = requestAnimationFrame(drawChart);
+      if (now - lastChart < 1000 / 30) return;
+      lastChart = now;
+      chartCtx.clearRect(0, 0, chart.width, chart.height);
+      chartCtx.beginPath();
+      chartCtx.strokeStyle = '#c45c26';
+      for (let i = 0; i < 40; i += 1) {
+        const y = 36 + Math.sin((scaleTicks + i) * 0.35) * 24;
+        if (i === 0) chartCtx.moveTo(i * 7, y);
+        else chartCtx.lineTo(i * 7, y);
+      }
+      chartCtx.stroke();
+    };
+    chartRaf = requestAnimationFrame(drawChart);
+    const scaleTimer = setInterval(() => {
+      scaleTicks += 1;
+      window.__pressureReplayScale = scaleTicks;
+    }, 100);
+    let longTaskObserver = null;
+    if (typeof PerformanceObserver !== 'undefined') {
+      try {
+        longTaskObserver = new PerformanceObserver((list) => {
+          if (!countLongTasks) return;
+          longTasks += list.getEntries().length;
+        });
+        longTaskObserver.observe({ type: 'longtask', buffered: false });
+      } catch {
+        longTaskObserver = null;
+      }
+    }
+    window.__pressureReplaySmoothness = () => ({ longTasks, scaleTicks, slots });
     const loadFrame = (src) => new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
@@ -899,6 +944,8 @@ export function FlairPressureLab() {
         return;
       }
       try {
+        countLongTasks = true;
+        const snapCtx = snap.getContext('2d', { willReadFrequently: true });
         for (let index = 4; !stopped; index += 1) {
           const t = index * slot;
           if (t >= untilS) break;
@@ -906,14 +953,18 @@ export function FlairPressureLab() {
           const name = String(fileIndex).padStart(4, '0');
           const img = await loadFrame(`${frameBase}${name}.png`);
           if (stopped) return;
-          const snap = document.createElement('canvas');
-          snap.width = img.naturalWidth;
-          snap.height = img.naturalHeight;
-          snap.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0);
+          const grabAt = performance.now();
+          if (snap.width !== img.naturalWidth || snap.height !== img.naturalHeight) {
+            snap.width = img.naturalWidth;
+            snap.height = img.naturalHeight;
+          }
+          snapCtx.drawImage(img, 0, 0);
           snap.videoWidth = snap.width;
           snap.videoHeight = snap.height;
           snap.readyState = 4;
-          await processSample(snap, Math.round(t * 1000), performance.now(), { replay: true });
+          slots += 1;
+          window.__pressureReplaySlots = slots;
+          await processSample(snap, Math.round(t * 1000), performance.now(), { replay: true, grabAt });
         }
         if (!stopped) window.__pressureReplayDrained = true;
       } catch (err) {
@@ -923,6 +974,10 @@ export function FlairPressureLab() {
     run();
     return () => {
       stopped = true;
+      countLongTasks = false;
+      clearInterval(scaleTimer);
+      cancelAnimationFrame(chartRaf);
+      longTaskObserver?.disconnect();
       cancelAnimationFrame(raf);
     };
   }, [status, videoRef, opencvReady]);

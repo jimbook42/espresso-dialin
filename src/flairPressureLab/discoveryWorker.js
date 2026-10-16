@@ -30,7 +30,8 @@ self.onmessage = async (event) => {
     }
     let image = null;
     if (pixels && width && height) {
-      image = { data: new Uint8ClampedArray(pixels), width, height };
+      const data = pixels instanceof Uint8ClampedArray ? pixels : new Uint8ClampedArray(pixels);
+      image = { data, width, height };
     } else if (bitmap && width && height) {
       const canvas = new OffscreenCanvas(width, height);
       const context = canvas.getContext('2d', { willReadFrequently: true });
