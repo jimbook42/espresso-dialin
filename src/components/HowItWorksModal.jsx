@@ -2,54 +2,54 @@ import { Coffee, X } from 'lucide-react';
 
 const SECTIONS = [
   {
-    title: 'Supported grinders',
+    title: 'Grinder registry',
     body:
-      'The engine works with Baratza Sette 270Wi, Sunbeam Barista Max, Niche Zero, and many standalone presets (Breville Smart Grinder Pro, Baratza Encore ESP, Fellow Opus / Opus 2, Mazzer Philos, Eureka Mignon models, Zerno Z1, built-in grinders on Breville Barista Express / Pro / Touch, DF64 Gen 2, DF54, and Timemore Sculptor 064S). You can also define a custom dial range if your grinder is not listed.',
+      'Recommendations are grinder-specific. Supported identities include Baratza Sette 270Wi, Sunbeam Barista Max, Niche Zero, preset models (Breville Smart Grinder Pro BCG820, Baratza Encore ESP, Fellow Opus / Opus 2, Mazzer Philos, Eureka Mignon Specialità / Zero variants, Zerno Z1, Breville Barista Express BES870/875, Barista Pro BES878, Barista Touch BES880, DF64 Gen 2, DF54, Timemore Sculptor 064S), and a user-defined custom dial range.',
   },
   {
-    title: 'Target midpoints',
+    title: 'Time target & Δt',
     body:
-      'Your recipe defines a time window (min–max seconds). The engine uses the midpoint of that window as the “bullseye” for flow. How far your shot lands from that midpoint drives coarse grind moves when time is out of range.',
+      'Recipe stores targetTimeMinS and targetTimeMaxS. The engine uses t_mid = (min + max) / 2. Off-target timing uses Δt = actualTimeS − t_mid to size coarse grind moves when actualTimeS is outside [min, max].',
   },
   {
-    title: 'Grinder sensitivity',
+    title: 'Sensitivity (s/step)',
     body:
-      'Each grinder maps seconds off-target to grind steps using its catalog sensitivity (seconds per step). Sette micro-steps move in smaller time chunks than the Sunbeam dial; preset and custom grinders use their own ranges and step sizes. Niche Zero stays qualitative until enough of your shots build a learned slope. Newer presets (Barista Express / Pro / Touch built-ins, DF64 Gen 2, DF54, Sculptor 064S) and custom grinders label recommendations Estimated until your logged shots raise confidence.',
+      'Each grinder definition supplies a catalog sensitivity in seconds per dial step (Sette: micro-steps; Sunbeam: dial settings; presets/custom: stepped or stepless ranges). Shifts scale with Δt via proportional damping. Niche Zero uses reference-dial learning — no fixed catalog s/step; empirical slope when eligible. Held-back presets (Barista Express / Pro / Touch built-ins, DF64 Gen 2, DF54, Sculptor 064S) and custom grinders prefix grind reasons ESTIMATED until learned confidence ≥ 0.75.',
   },
   {
-    title: 'Age & freshness',
+    title: 'Effective age & freshness offset',
     body:
-      'Bean age (including freeze/thaw and vacuum storage) adjusts the starting grind before you log shots. As beans age, the app may nudge finer; very fresh beans nudge coarser. After your first shots, learning follows your logged results; dynamic age shifts also apply between sessions when bean age changes a lot.',
+      'Bean effective age (days) incorporates roast date and storageType (bag, vacuum, frozen/thaw). Freshness maps to a starting-grind offset in dial steps before shot learning. Between sessions, large age deltas vs your last logged shot can apply a dynamic grind shift (ageWarning on the recommendation card).',
   },
   {
-    title: 'Taste overrides',
+    title: 'In-range taste override',
     body:
-      'When time is already in range, taste wins: sour → finer, bitter → coarser, with stronger steps for “very” sour or bitter. A balanced taste in range means keep the grind. Ratio and temperature hints may appear when time is right but taste keeps repeating.',
+      'When actualTimeS is inside the recipe window, tasteProfile drives step direction and magnitude (sour → finer, bitter → coarser; stronger for very_sour / very_bitter). Balanced taste in range → hold grind. Persistent in-range sour/bitter can surface ratio advisory text or Flair brew-temperature hints when enabled.',
   },
   {
-    title: 'Smart scale',
+    title: 'Smart scale integration',
     body:
-      'Pick a supported scale in Settings to show live cup weight on the Dial and timer, plus live flow while you pull. Optional shot-start countdown (3-2-1) can tare the scale before the timer runs. When you stop, the app waits about one second for the cup to settle, then locks yield and stores average flow on the shot when a scale was connected. Manual logging still works without a scale.',
+      'Settings smartScaleDeviceId enables live cup weight (g) and extraction flow (g/s) on Dial/timer when BLE-connected. Optional shot-start countdown (3-2-1) calls scale tare during countdown prep. On stop: ~1000 ms yield settle (SHOT_YIELD_SETTLE_MS), then actualYieldG is set and scaleFlowRateGs / scaleFlowCurve are persisted on the shot when recorded. Manual entry remains available without a scale.',
   },
   {
     title: 'Brew Guide',
     body:
-      'Brew Guide is the beginner-friendly, step-by-step path through heat-up, puck prep, extraction, and logging — using your recipe and current grind. Sunbeam owners get machine-specific steps; everyone else gets a shorter checklist option once you are comfortable.',
+      'Full Brew Guide tab: ordered workflow (heat-up → prep → extract → log) bound to active recipe and grind. Sunbeam (brewGuideMachineKey) loads machine-specific steps; brewGuideGuidanceMode can switch to a quick checklist on Dial-In or disable guidance.',
   },
   {
-    title: 'Basket adjustments',
+    title: 'Basket change (display-only)',
     body:
-      '“Changed basket” applies a one-time grind tweak to the next recommendation only (not saved to learning): more holes / faster flow nudges finer; fewer holes / tighter flow nudges coarser. Purge after any grind change so retention does not skew the next shot.',
+      '“Changed basket” applies applyBasketChangeToRecommendation once: more holes / faster flow → finer shift; fewer holes / tighter flow → coarser shift. Adjusts the displayed recommendation only — not persisted to learning. Purge after grind changes (wasPurged) to avoid retention skew.',
   },
   {
-    title: 'Beans & history',
+    title: 'Bean lifecycle',
     body:
-      'Mark a bag finished when it is empty; an undo toast lets you reverse a mistaken tap. Finished beans move to a collapsible list and are skipped when picking the active bag.',
+      'isFinished marks an empty bag; FinishBeanToast supports undo. Finished beans list separately and are excluded from active-bean selection.',
   },
   {
-    title: 'Known issues',
+    title: 'Known issues (excludeFromLearning)',
     body:
-      'Mark a shot as a known issue (puck prep, stopped early, overheated grounds, etc.) to keep it in history but exclude it from learning. Those shots won’t move future recommendations or roast baselines.',
+      'Flagging a known issue keeps the shot in history but sets excludeFromLearning so it does not update grind learning or roast baselines.',
   },
 ];
 
@@ -77,7 +77,7 @@ export function HowItWorksModal({ open, onClose, ui }) {
 
         <div className="p-5 space-y-4 text-xs leading-relaxed">
           <p className={ui.sub}>
-            Recommendations combine your recipe targets, grinder math, bean freshness, and your shot history. This is a guide — puck prep and machine behaviour always matter.
+            Grind recommendations are computed from recipe targets (time, dose, yield), grinder sensitivity (s/step or learned slope), bean effective age, and recipe-matched shot history. Puck prep and machine behaviour are not modeled.
           </p>
 
           {SECTIONS.map((section) => (

@@ -37,27 +37,31 @@ describe('shotEngineStatsRows', () => {
     expect(shotHasSmartScaleLoggedData({ scaleFlowRateGs: 1.2 })).toBe(true);
   });
 
-  it('builds standard rows when no scale data was stored', () => {
+  it('builds technical rows when no scale data was stored', () => {
     const rows = buildShotEngineStatsRows(
       baseStats,
-      { actualYieldG: 36 },
+      { grinderModel: SETTE_GRINDER_ID, actualYieldG: 36 },
       formatSecondsPerStepDisplay
     );
     expect(rows.map((r) => r.label)).toEqual([
-      'Time vs target middle',
-      'Yield vs target',
-      'Grind sensitivity',
-      'Grind change applied',
-      'Bean age at log',
-      'Learning from prior shots',
+      'Δt vs target mid (s)',
+      'Yield Δ vs target (g)',
+      'Sensitivity (s/step, Sette 270Wi)',
+      'Grind shift applied',
+      'Freshness offset @ log',
+      'Recipe-matched evidence',
     ]);
-    expect(rows.some((r) => r.label.includes('scale'))).toBe(false);
+    expect(rows[0].value).toBe('-2');
+    expect(rows[1].value).toBe('+1.5');
+    expect(rows[2].value).toMatch(/^Estimated · 1\.25$/);
+    expect(rows.some((r) => r.label.includes('Scale'))).toBe(false);
   });
 
   it('inserts scale yield and flow rows when scale metrics exist', () => {
     const rows = buildShotEngineStatsRows(
       baseStats,
       {
+        grinderModel: SUNBEAM_GRINDER_ID,
         actualYieldG: 35.2,
         scaleFlowCurve: [{ t: 0, g: 0 }, { t: 1, g: 10 }],
         scaleFlowRateGs: 1.85,
@@ -65,17 +69,17 @@ describe('shotEngineStatsRows', () => {
       formatSecondsPerStepDisplay
     );
     expect(rows.map((r) => r.label)).toEqual([
-      'Time vs target middle',
-      'Yield vs target',
-      'Measured yield (scale)',
-      'Average flow (scale)',
-      'Grind sensitivity',
-      'Grind change applied',
-      'Bean age at log',
-      'Learning from prior shots',
+      'Δt vs target mid (s)',
+      'Yield Δ vs target (g)',
+      'Scale yield (g)',
+      'Scale mean flow (g/s)',
+      'Sensitivity (s/step, Sunbeam)',
+      'Grind shift applied',
+      'Freshness offset @ log',
+      'Recipe-matched evidence',
     ]);
-    expect(rows.find((r) => r.label === 'Measured yield (scale)')?.value).toBe('35.2g');
-    expect(rows.find((r) => r.label === 'Average flow (scale)')?.value).toBe('1.85 g/s');
+    expect(rows.find((r) => r.label === 'Scale yield (g)')?.value).toBe('35.2');
+    expect(rows.find((r) => r.label === 'Scale mean flow (g/s)')?.value).toBe('1.85');
   });
 
   it('shows scale yield without flow row when only the curve was stored', () => {
@@ -84,8 +88,8 @@ describe('shotEngineStatsRows', () => {
       { actualYieldG: 40, scaleFlowCurve: [{ t: 0, g: 0 }] },
       formatSecondsPerStepDisplay
     );
-    expect(rows.map((r) => r.label)).toContain('Measured yield (scale)');
-    expect(rows.map((r) => r.label)).not.toContain('Average flow (scale)');
+    expect(rows.map((r) => r.label)).toContain('Scale yield (g)');
+    expect(rows.map((r) => r.label)).not.toContain('Scale mean flow (g/s)');
   });
 
   it('getShotEngineStats sensitivity follows shot grinder when engineStats is missing', () => {

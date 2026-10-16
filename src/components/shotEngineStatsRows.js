@@ -1,16 +1,33 @@
-function formatSigned(value, unit = '', digits = 1) {
+import {
+  grinderShortDisplayName,
+  resolveShotStatsGrinderModel,
+} from '../grinders/grinderRegistry.js';
+
+function formatSignedNumericFixed(value, digits = 1) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   const n = Number(value);
-  const sign = n > 0 ? '+' : '';
-  const formatted = Math.abs(n) % 1 === 0 ? String(n) : n.toFixed(digits);
-  return `${sign}${formatted}${unit}`;
+  const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  const formatted = abs % 1 === 0 ? String(abs) : abs.toFixed(digits);
+  return `${sign}${formatted}`;
 }
 
-function formatYieldG(value) {
+function formatMassG(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '—';
-  const rounded = n % 1 === 0 ? String(n) : n.toFixed(1);
-  return `${rounded}g`;
+  return n % 1 === 0 ? String(n) : n.toFixed(1);
+}
+
+function sensitivityGrinderLabel(shot) {
+  const model = resolveShotStatsGrinderModel(shot?.grinderModel);
+  return grinderShortDisplayName(model) || model;
+}
+
+/** Strip unit suffix; label carries (s/step, grinder). */
+function formatSensitivityStatValue(sensitivity, opts, formatSecondsPerStepDisplay) {
+  const line = formatSecondsPerStepDisplay(sensitivity, opts);
+  if (line === '—') return line;
+  return line.replace(/\s*s per step\s*$/i, '');
 }
 
 /** Shot history stores scale flow metrics when a supported scale was connected during the pull. */
@@ -27,21 +44,27 @@ export function shotHasSmartScaleLoggedData(shot) {
  * @param {import('../utils/grinderSensitivityDisplay.js').formatSecondsPerStepDisplay} formatSensitivity
  */
 export function buildShotEngineStatsRows(stats, shot, formatSensitivity) {
+  const grinder = sensitivityGrinderLabel(shot);
+
   const rows = [
-    { label: 'Time vs target middle', value: formatSigned(stats.timeDelta, 's') },
-    { label: 'Yield vs target', value: formatSigned(stats.yieldDelta, 'g') },
+    { label: 'Δt vs target mid (s)', value: formatSignedNumericFixed(stats.timeDelta) },
+    { label: 'Yield Δ vs target (g)', value: formatSignedNumericFixed(stats.yieldDelta) },
     {
-      label: 'Grind sensitivity',
-      value: formatSensitivity(stats.sensitivity, {
-        confidence: stats.sensitivityConfidence,
-        usedEmpiricalSlope: stats.sensitivityUsedEmpiricalSlope,
-        isDefaultSensitivity: stats.sensitivityIsDefault,
-      }),
+      label: `Sensitivity (s/step, ${grinder})`,
+      value: formatSensitivityStatValue(
+        stats.sensitivity,
+        {
+          confidence: stats.sensitivityConfidence,
+          usedEmpiricalSlope: stats.sensitivityUsedEmpiricalSlope,
+          isDefaultSensitivity: stats.sensitivityIsDefault,
+        },
+        formatSensitivity
+      ),
     },
-    { label: 'Grind change applied', value: stats.shiftSummary },
-    { label: 'Bean age at log', value: stats.ageOffsetNote || '—' },
+    { label: 'Grind shift applied', value: stats.shiftSummary },
+    { label: 'Freshness offset @ log', value: stats.ageOffsetNote || '—' },
     {
-      label: 'Learning from prior shots',
+      label: 'Recipe-matched evidence',
       value: stats.evidenceContext || 'No prior recipe-matched shots in context',
     },
   ];
@@ -49,13 +72,13 @@ export function buildShotEngineStatsRows(stats, shot, formatSensitivity) {
   if (shotHasSmartScaleLoggedData(shot)) {
     const measuredYield = shot.actualYieldG ?? shot.actualYield;
     rows.splice(2, 0, {
-      label: 'Measured yield (scale)',
-      value: formatYieldG(measuredYield),
+      label: 'Scale yield (g)',
+      value: formatMassG(measuredYield),
     });
     if (shot.scaleFlowRateGs != null && Number.isFinite(Number(shot.scaleFlowRateGs))) {
       rows.splice(3, 0, {
-        label: 'Average flow (scale)',
-        value: `${Number(shot.scaleFlowRateGs).toFixed(2)} g/s`,
+        label: 'Scale mean flow (g/s)',
+        value: Number(shot.scaleFlowRateGs).toFixed(2),
       });
     }
   }
