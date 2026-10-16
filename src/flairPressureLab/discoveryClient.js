@@ -7,12 +7,19 @@
 let worker = null;
 let inflight = false;
 let latest = null;
+let broken = false;
 
 function ensureWorker() {
   if (worker) return worker;
   worker = new Worker(new URL('./discoveryWorker.js', import.meta.url), { type: 'module' });
   worker.onmessage = (event) => {
     inflight = false;
+    if (event.data?.failed) {
+      broken = true;
+      latest = null;
+      console.error('discovery worker', event.data.message || 'failed');
+      return;
+    }
     latest = event.data?.found ?? null;
   };
   worker.onerror = () => {
@@ -30,7 +37,7 @@ export function takeDiscoveryResult() {
 
 /** @returns {boolean} true when the main thread should not also search this frame */
 export function requestVideoDiscovery(video) {
-  if (typeof Worker === 'undefined' || typeof createImageBitmap !== 'function') return false;
+  if (broken || typeof Worker === 'undefined' || typeof createImageBitmap !== 'function') return false;
   if (!video?.videoWidth || !video?.videoHeight) return false;
   if (inflight) return true;
   const width = video.videoWidth;
