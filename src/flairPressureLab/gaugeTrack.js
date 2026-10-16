@@ -2229,6 +2229,19 @@ function trackSettings(video) {
 }
 
 /** Crop around the tracked gauge, update its pose, then read the needle from that pose. */
+/**
+ * Full-frame search stays off the thread that reads the needle.
+ * `defer` means the worker has the frame (or is already busy): do not Hough here.
+ * `sync` is only the fallback when no worker is available.
+ */
+export function mainThreadDiscoveryAction({ havePose, discoveryDue, hasAsyncResult, workerAccepted }) {
+  if (hasAsyncResult) return 'apply';
+  const wantSearch = !havePose || discoveryDue;
+  if (!wantSearch) return 'needle';
+  if (workerAccepted) return 'defer';
+  return 'sync';
+}
+
 export function readTrackedGauge(video, canvas, region, tracker) {
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;
@@ -2248,16 +2261,21 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let needleMs = 0;
   const discoveryDue = tracker.needsRediscovery();
   const havePose = Boolean(tracker.getPose());
-  // A result that arrives after the pose was dropped belongs to an older frame.
-  // Applying it would lock whichever bitmap the worker happened to finish.
-  const pendingDiscovery = takeDiscoveryResult();
-  const asyncFound = havePose ? pendingDiscovery : null;
-  // A locked pose searches on a worker so this frame only reads the needle.
-  // No pose yet: search this frame here. The first circle is then the same
-  // frame every run, not whichever bitmap the worker returned first.
-  const handedToWorker = havePose && discoveryDue && !asyncFound && requestVideoDiscovery(video);
+  // The worker owns every full-frame search, including the first pose and a
+  // lost pose. This frame only applies a result that is already back, or
+  // reads the needle. While the worker is busy the frame is skipped.
+  const asyncFound = takeDiscoveryResult();
+  const wantSearch = !asyncFound && (!havePose || discoveryDue);
+  const handedToWorker = wantSearch && requestVideoDiscovery(video);
+  const discoveryAction = mainThreadDiscoveryAction({
+    havePose,
+    discoveryDue,
+    hasAsyncResult: Boolean(asyncFound),
+    workerAccepted: handedToWorker,
+  });
+  const runSync = discoveryAction === 'sync';
   if (asyncFound) foundVideo = asyncFound;
-  if (asyncFound || (discoveryDue && !handedToWorker)) {
+  if (asyncFound || runSync) {
     // Full video frame. discoverGaugeInFrame downscales internally and returns
     // coordinates in this image, which are then mapped into video pixels.
     // A coarser canvas (short side 280–320) changed which circle won.
@@ -2313,13 +2331,13 @@ export function readTrackedGauge(video, canvas, region, tracker) {
         elementH: video.clientHeight || null,
         dpr: globalThis.devicePixelRatio ?? null,
         track: trackSettings(video),
-        canvasW: drawn.canvasWidth,
-        canvasH: drawn.canvasHeight,
-        scaleX: roundTrace(drawn.scaleX),
-        scaleY: roundTrace(drawn.scaleY),
+        canvasW: drawn?.canvasWidth ?? null,
+        canvasH: drawn?.canvasHeight ?? null,
+        scaleX: roundTrace(drawn?.scaleX),
+        scaleY: roundTrace(drawn?.scaleY),
         discoveryCanvas: tracePoint(foundCanvas),
         discoveryVideo: tracePoint(foundVideo),
-        topCandidates: drawn.topCandidates ?? null,
+        topCandidates: drawn?.topCandidates ?? null,
         seeded: false,
         before,
         after: tracker.snapshot?.() ?? null,

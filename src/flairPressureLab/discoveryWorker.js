@@ -24,6 +24,10 @@ self.onmessage = async (event) => {
   const { bitmap, width, height } = event.data || {};
   try {
     await loadCv();
+    if (event.data?.warmup) {
+      self.postMessage({ warmup: true });
+      return;
+    }
     if (!bitmap || !width || !height) {
       self.postMessage({ found: null });
       return;

@@ -11,6 +11,7 @@ import {
   MAX_DISCOVERY_RADIUS_FRACTION,
   REDISCOVER_EVERY_FRAMES,
   chooseDiscoveryUpdate,
+  mainThreadDiscoveryAction,
   combineDialFaceScore,
   shouldBridgeNeedle,
   createGaugeTracker,
@@ -461,6 +462,36 @@ describe('pressure CV units', () => {
       discovered: farBetter,
       printedFace: true,
     })).toMatchObject({ action: 'hold', reason: 'current-better' });
+    expect(mainThreadDiscoveryAction({
+      havePose: false,
+      discoveryDue: true,
+      hasAsyncResult: false,
+      workerAccepted: true,
+    })).toBe('defer');
+    expect(mainThreadDiscoveryAction({
+      havePose: true,
+      discoveryDue: true,
+      hasAsyncResult: false,
+      workerAccepted: true,
+    })).toBe('defer');
+    expect(mainThreadDiscoveryAction({
+      havePose: false,
+      discoveryDue: true,
+      hasAsyncResult: true,
+      workerAccepted: false,
+    })).toBe('apply');
+    expect(mainThreadDiscoveryAction({
+      havePose: true,
+      discoveryDue: false,
+      hasAsyncResult: false,
+      workerAccepted: false,
+    })).toBe('needle');
+    expect(mainThreadDiscoveryAction({
+      havePose: false,
+      discoveryDue: true,
+      hasAsyncResult: false,
+      workerAccepted: false,
+    })).toBe('sync');
 
     const tracker = createGaugeTracker();
     tracker.seed({ cx: 240, cy: 355, radius: 50 });

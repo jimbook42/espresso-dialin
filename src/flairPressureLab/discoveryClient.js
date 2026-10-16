@@ -13,6 +13,7 @@ function ensureWorker() {
   if (worker) return worker;
   worker = new Worker(new URL('./discoveryWorker.js', import.meta.url), { type: 'module' });
   worker.onmessage = (event) => {
+    if (event.data?.warmup) return;
     inflight = false;
     if (event.data?.failed) {
       broken = true;
@@ -27,6 +28,16 @@ function ensureWorker() {
     latest = null;
   };
   return worker;
+}
+
+/** Load OpenCV before the first frame so the first search is not the warm-up. */
+export function warmDiscoveryWorker() {
+  if (broken || typeof Worker === 'undefined') return;
+  try {
+    ensureWorker().postMessage({ warmup: true });
+  } catch {
+    broken = true;
+  }
 }
 
 export function takeDiscoveryResult() {

@@ -31,6 +31,7 @@ import {
   probeGaugeDiscoveryCandidates,
   readTrackedGauge,
 } from './gaugeTrack';
+import { warmDiscoveryWorker } from './discoveryClient.js';
 import {
   createAngleJitterTracker,
   createAngleTracker,
@@ -325,6 +326,7 @@ export function FlairPressureLab() {
 
   useEffect(() => {
     if (status !== 'live' || !opencvReady) return undefined;
+    warmDiscoveryWorker();
     const canvas = qualityCanvasRef.current || document.createElement('canvas');
     qualityCanvasRef.current = canvas;
     let raf = 0;
