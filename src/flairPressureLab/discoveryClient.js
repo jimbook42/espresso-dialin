@@ -87,6 +87,31 @@ export function takeDiscoveryResult() {
   return found;
 }
 
+/** Pixels already read on the main thread. The buffer is transferred. */
+export function requestImageDiscovery(image) {
+  if (broken || typeof Worker === 'undefined') return false;
+  if (!image?.data || !image.width || !image.height) return false;
+  if (inflight) return true;
+  inflight = true;
+  inflightPromise = new Promise((resolve) => {
+    settleResolve = resolve;
+  });
+  const pixels = image.data;
+  const buffer = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
+  try {
+    ensureWorker().postMessage({
+      pixels: buffer,
+      width: image.width,
+      height: image.height,
+    }, [buffer]);
+  } catch {
+    latest = null;
+    finishInflight();
+    return false;
+  }
+  return true;
+}
+
 /** @returns {boolean} true when the main thread should not also search this frame */
 export function requestVideoDiscovery(video) {
   if (broken || typeof Worker === 'undefined' || typeof createImageBitmap !== 'function') return false;

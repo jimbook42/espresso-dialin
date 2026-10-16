@@ -386,10 +386,14 @@ export function FlairPressureLab() {
       let reading;
       let processMs = null;
       try {
-        if (replay) await primeReplayDiscovery(video, trackerRef.current);
         const t0 = performance.now();
+        let discoveryWait = 0;
+        if (replay) {
+          const primed = await primeReplayDiscovery(video, canvas, trackerRef.current);
+          discoveryWait = primed?.waitMs || 0;
+        }
         reading = readTrackedGauge(video, canvas, null, trackerRef.current);
-        processMs = performance.now() - t0;
+        processMs = Math.max(0, performance.now() - t0 - discoveryWait);
       } catch (err) {
         restAnchorRef.current.reset();
         agreeSamplesRef.current = [];

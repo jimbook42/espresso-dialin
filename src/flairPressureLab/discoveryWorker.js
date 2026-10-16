@@ -21,22 +21,27 @@ function loadCv() {
 }
 
 self.onmessage = async (event) => {
-  const { bitmap, width, height } = event.data || {};
+  const { bitmap, pixels, width, height } = event.data || {};
   try {
     await loadCv();
     if (event.data?.warmup) {
       self.postMessage({ warmup: true });
       return;
     }
-    if (!bitmap || !width || !height) {
+    let image = null;
+    if (pixels && width && height) {
+      image = { data: new Uint8ClampedArray(pixels), width, height };
+    } else if (bitmap && width && height) {
+      const canvas = new OffscreenCanvas(width, height);
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(bitmap, 0, 0);
+      if (typeof bitmap.close === 'function') bitmap.close();
+      image = context.getImageData(0, 0, width, height);
+    }
+    if (!image) {
       self.postMessage({ found: null });
       return;
     }
-    const canvas = new OffscreenCanvas(width, height);
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    context.drawImage(bitmap, 0, 0);
-    if (typeof bitmap.close === 'function') bitmap.close();
-    const image = context.getImageData(0, 0, width, height);
     const found = discoverGaugeInFrame(image);
     self.postMessage({ found });
   } catch (err) {

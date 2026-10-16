@@ -16,7 +16,12 @@ import {
   FLAIR_CANONICAL_FACE_PROFILE,
 } from './canonicalDial.js';
 import { getOpenCvSync } from './opencvRuntime.js';
-import { requestVideoDiscovery, takeDiscoveryResult, whenDiscoverySettled } from './discoveryClient.js';
+import {
+  requestImageDiscovery,
+  requestVideoDiscovery,
+  takeDiscoveryResult,
+  whenDiscoverySettled,
+} from './discoveryClient.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
 
@@ -1274,9 +1279,7 @@ export function createGaugeTracker() {
   const noteLockedMiss = () => {
     observed = null;
     lossStreak += 1;
-    // A printed-scale lock stays on the last pose through a blurry rim.
-    // Opening a search here is the full-frame hunt the worker is for.
-    if (lossStreak >= SEARCH_LOSS_FRAMES && !scaleLock) {
+    if (lossStreak >= SEARCH_LOSS_FRAMES) {
       beginSearch();
       reacquireReason = 'reacquire-none';
     }
@@ -1555,7 +1558,7 @@ export function createGaugeTracker() {
           return acceptCandidate(found, video, wide, mapping, windowFraction);
         }
         lossStreak += 1;
-        if (!scaleLock && (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES)) {
+        if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
           beginSearch();
         }
         return finish(windowFraction, withRimProfile({
@@ -2105,9 +2108,8 @@ function completeReading({
       localCy,
       localRadius,
     );
-    const qualityHold = frameQuality.flags.includes('blur') || frameQuality.flags.includes('glare');
-    let stepped = trackLockedScale(tracker, bands, { qualityHold });
-    if (stepped.needsFull && !qualityHold) {
+    let stepped = trackLockedScale(tracker, bands);
+    if (stepped.needsFull) {
       const reg = registerDialFromColorBands(bands);
       // The printed face is the colour bands and the rim. A full search runs
       // only when the frame-to-frame lock has nothing to follow.
@@ -2326,15 +2328,22 @@ let replayFrameSearched = false;
  * Replay posts this frame to the worker and waits before the timed read.
  * The circle is applied to the same frame. The wait is not part of processMs.
  */
-export async function primeReplayDiscovery(video, tracker) {
+export async function primeReplayDiscovery(video, canvas, tracker) {
   replayFrameSearched = false;
-  if (!video?.videoWidth || !video?.videoHeight || !tracker?.discoveryDueNow) return;
+  const empty = { waitMs: 0 };
+  if (!video?.videoWidth || !video?.videoHeight || !canvas || !tracker?.discoveryDueNow) return empty;
   const havePose = Boolean(tracker.getPose());
   const due = !tracker.getScaleLock?.() && tracker.discoveryDueNow();
-  if ((!havePose || due) && requestVideoDiscovery(video)) {
+  if (!havePose || due) {
+    // Same pixels the synchronous search used, so the worker sees this frame.
+    const drawn = drawFullFrame(video, canvas, Math.min(video.videoWidth, video.videoHeight));
+    if (!requestImageDiscovery(drawn.image)) return empty;
+    const tWait = performance.now();
     await whenDiscoverySettled();
     replayFrameSearched = true;
+    return { waitMs: performance.now() - tWait };
   }
+  return empty;
 }
 
 /** Crop around the tracked gauge, update its pose, then read the needle from that pose. */
@@ -2521,8 +2530,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       colorR,
       cached.angleDeg,
     );
-    const qualityHold = frameQuality.flags.includes('blur') || frameQuality.flags.includes('glare');
-    const stepped = trackLockedScale(tracker, bands, { qualityHold });
+    const stepped = trackLockedScale(tracker, bands);
     // A bridge frame has no new needle. Only a lock that is already following
     // may keep the last relative angle. A dropped lock falls through to a
     // full read, which publishes nothing until registration returns.

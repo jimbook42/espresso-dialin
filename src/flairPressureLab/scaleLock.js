@@ -99,10 +99,9 @@ export function stepScaleLock(lock, { profile = null, fullRegistration, qualityH
     periodMargin: 0,
     lock: null,
   };
-  // Blur and glare wash the colour annulus out. Keep the last registration
-  // instead of unlocking and sending a full-frame search after the dial.
-  // A clean frame is what may move or replace the lock.
-  if (qualityHold && lock?.profile) {
+  // A readable face still moves the lock during blur. A washed-out face, or a
+  // wild jump on a bad frame, keeps the last registration instead of unlocking.
+  if (qualityHold && lock?.profile && (!profile || profile.length !== lock.profile.length)) {
     return tracked({ ...lock, misses: lock.misses ?? 0 });
   }
   if (lock?.profile && profile && lock.profile.length === profile.length) {
@@ -119,6 +118,9 @@ export function stepScaleLock(lock, { profile = null, fullRegistration, qualityH
         periodMargin: Math.max(delta.periodMargin, lock.periodMargin ?? 0),
         misses: 0,
       });
+    }
+    if (qualityHold) {
+      return tracked({ ...lock, misses: lock.misses ?? 0 });
     }
     if (!tooFar) {
       const misses = (lock.misses ?? 0) + 1;
