@@ -204,7 +204,12 @@ export function FlairPressureLab() {
     let cancelled = false;
     loadOpenCv()
       .then(() => {
-        if (!cancelled) setOpencvReady(true);
+        if (!cancelled) {
+          setOpencvReady(true);
+          if (REPLAY_BUILD && typeof window !== 'undefined') {
+            window.__pressureLabOpenCvReady = true;
+          }
+        }
       })
       .catch((err) => {
         console.error('OpenCV.js failed to load', err);

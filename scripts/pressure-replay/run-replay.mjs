@@ -204,6 +204,14 @@ async function main() {
     results.push(await processClip(clip, process.env.FLAIR_REPLAY_DIR));
   }
 
+  const mergedResults = manifest.clips.map((clip) => {
+    const fresh = results.find((r) => r.id === clip.id);
+    if (fresh) return fresh;
+    const summaryPath = path.join(OUT_ROOT, clip.id, 'summary.json');
+    if (!fs.existsSync(summaryPath)) return null;
+    return { id: clip.id, summary: JSON.parse(fs.readFileSync(summaryPath, 'utf8')) };
+  }).filter(Boolean);
+
   const reportPath = path.join(OUT_ROOT, 'REPORT.md');
   const refNotes = fs.readFileSync(path.join(__dirname, 'REFERENCE_CAPTURE.md'), 'utf8');
   const intro = `# Pressure lab video replay — ${new Date().toISOString()}\n\n`;
@@ -220,7 +228,23 @@ async function main() {
     '',
     refNotes.split('\n').slice(2).join('\n'),
     '',
-    writeReportTable(results),
+    writeReportTable(mergedResults),
+    '',
+    '## Timing (median / p95 ms per frame)',
+    '',
+    '| Clip | Normal med | Normal p95 | 4× CPU med | 4× CPU p95 |',
+    '| --- | ---: | ---: | ---: | ---: |',
+    ...mergedResults.map(({ id, summary }) => `| ${id} | ${summary.processMsMedian?.toFixed(1) ?? '—'} | ${summary.processMsP95?.toFixed(1) ?? '—'} | ${summary.processMsThrottled4xMedian?.toFixed(1) ?? '—'} | ${summary.processMsThrottled4xP95?.toFixed(1) ?? '—'} |`),
+    '',
+    '## Privacy (per clip)',
+    '',
+    '| Clip | Passed | External reqs | Storage writes |',
+    '| --- | ---: | ---: | ---: |',
+    ...mergedResults.map(({ id, summary }) => {
+      const p = summary.privacy;
+      if (!p) return `| ${id} | — | — | — |`;
+      return `| ${id} | ${p.passed ? 'yes' : 'no'} | ${p.externalRequestCount ?? 0} | ${p.storageWrites ?? 0} |`;
+    }),
   ].join('\n');
   fs.writeFileSync(reportPath, `${intro}${body}`);
   process.stdout.write(`Wrote ${reportPath}\n`);

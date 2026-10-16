@@ -58,7 +58,7 @@ async function captureClip(context, previewUrl, { cpuThrottleRate = 1, waitMs })
   });
 
   await page.goto(`${previewUrl}#/flair-pressure-lab`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => window.__pressureLabOpenCvReady === true, null, { timeout: 180_000 });
   await page.waitForFunction(() => window.__pressureLabReplay?.getFrames, null, { timeout: 120_000 });
   const startBtn = page.getByRole('button', { name: /Start front camera/i });
   if (await startBtn.isVisible().catch(() => false)) {
