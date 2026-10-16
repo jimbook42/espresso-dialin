@@ -115,3 +115,18 @@ Offline script `scripts/pressure-replay/measure-design-dial.py` on `/workspace/f
 | Dark STOP! BREAKAGE! band | 258–355° |
 
 Printed scale is 0, 5, and 10. There is no printed 12 or 16. Sweep from the stop pin to the 10 is 170°. The solid red block sits at about 0.44–0.62 of the face radius. The dark band sits further out, about 0.74–0.90. Registration uses the heaviest red run so the Flair script does not move zero. A rest needle that disagrees with this zero stays a conflict and does not replace the template.
+
+## Replay at 8100677
+
+Output: `/workspace/flair-replay/out-6.33`. Compared with `out-6.32-pm-r2` (found 42–77%, no bar, confident-wrong 0, 4× p95 58–215 ms). Privacy passed on every clip (0 external requests, 0 storage writes). OpenCV.js is 13298869 bytes raw, 3763644 gzip. The rest anchor still only confirms the template; it does not replace zero.
+
+| Clip | Found % | Centre | Within ±0.5 % | First s | No-read % | Bar | Conflict med/max ° | Blur % | Glare % | Conf-wrong % | 4× med/p95 |
+| --- | ---: | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 225219 | 90.8 | x 232–237, y 345–354 | 70.1 | 0.67 | 28.8 | 0.00–0.51 | 2.7 / 9.0 | 1.1 | 0.0 | 1.1 | 19.4 / 134.9 |
+| 225240 | 82.4 | x 234–235, y 351–351 | 80.0 | 4.00 | 20.0 | 0.00–0.21 | 2.9 / 4.2 | 0.0 | 0.0 | 0.0 | 20.0 / 173.8 |
+| 225254 | 84.1 | x 232–239, y 349–352 | 77.1 | 3.07 | 22.4 | 0.00–0.57 | 3.2 / 14.0 | 13.5 | 4.1 | 0.6 | 18.9 / 194.6 |
+| 225307 | 59.8 | x 194–241, y 335–358 | 27.6 | 9.22 | 72.0 | 0.00–0.50 | 4.9 / 170.6 | 67.8 | 8.4 | 0.5 | 41.9 / 158.9 |
+| 225324 | 82.6 | x 196–238, y 328–369 | 66.3 | 0.53 | 29.2 | 0.00–0.61 | 4.9 / 43.3 | 43.3 | 0.0 | 4.5 | 78.2 / 146.0 |
+| 225337 | 54.0 | x 193–238, y 339–349 | 21.8 | 1.87 | 59.8 | 0.00–0.88 | 7.6 / 25.4 | 14.4 | 0.0 | 18.4 | 36.0 / 165.7 |
+
+Blur fires on the defocused clip. The glare clip's face is not sensor-saturated, so the glare flag stays at 0 there; the lamps sit outside the dial. 4× p95 is still above 33 ms because a full-frame search remains in the slow tail. Confident-wrong is 0 only on 225240. The other clips publish a resting needle a few tenths of a bar off the stop pin, and 225337's tail crosses 0.5 bar.
