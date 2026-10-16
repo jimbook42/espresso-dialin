@@ -130,3 +130,20 @@ Output: `/workspace/flair-replay/out-6.33`. Compared with `out-6.32-pm-r2` (foun
 | 225337 | 54.0 | x 193–238, y 339–349 | 21.8 | 1.87 | 59.8 | 0.00–0.88 | 7.6 / 25.4 | 14.4 | 0.0 | 18.4 | 36.0 / 165.7 |
 
 Blur fires on the defocused clip. The glare clip's face is not sensor-saturated, so the glare flag stays at 0 there; the lamps sit outside the dial. 4× p95 is still above 33 ms because a full-frame search remains in the slow tail. Confident-wrong is 0 only on 225240. The other clips publish a resting needle a few tenths of a bar off the stop pin, and 225337's tail crosses 0.5 bar.
+
+## Replay at 3bbf5ea
+
+Output: `/workspace/flair-replay/out-6.33-r1f`. Privacy passed on every clip (0 external requests, 0 storage writes). OpenCV.js is 13298869 bytes raw. The rest anchor still only confirms the template zero. A ray that misses the pivot does not move the smoothed needle; its own angle is published at low confidence. A hub tie (three of six inner samples) is also low confidence. Bars are not clamped to the expected 0.
+
+Confident-wrong is 0% on all six clips. 4× p95 is 36–87 ms, still above 33 ms. Locked-pose search runs on a same-origin worker. The first search, and a search with no pose, stays on the frame that is showing.
+
+225307 was run twice back to back on 73bc1bb (the discovery change, before the hub-tie confidence gate). Both found 68.2%, centre x 195–241, y 334–357, bar 0.00–0.61, confident-wrong 0. The six-clip run at 3bbf5ea found 50.0% on that clip and did publish bars (0.00–1.01, confident-wrong 0). The fake camera's position when sampling starts still depends on how long the page takes to load, so the suite and the isolated pair are not the same frames.
+
+| Clip | Found % | Centre | Within ±0.5 % | First s | No-read % | Bar | Conflict med/max ° | Blur % | Glare % | Conf-wrong % | 4× med/p95 |
+| --- | ---: | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 225219 | 87.0 | x 232–237, y 345–354 | 61.4 | 0.53 | 38.6 | 0.00–0.37 | 3.2 / 6.5 | 0.5 | 0.0 | 0.0 | 18.8 / 36.2 |
+| 225240 | 76.5 | x 234–239, y 349–351 | 65.3 | 4.40 | 34.7 | 0.00–0.21 | 2.6 / 10.5 | 0.0 | 0.0 | 0.0 | 21.6 / 41.6 |
+| 225254 | 88.8 | x 235–237, y 351–351 | 78.8 | 3.07 | 21.2 | 0.00–0.19 | 2.4 / 18.5 | 4.1 | 4.1 | 0.0 | 19.3 / 44.9 |
+| 225307 | 50.0 | x 197–239, y 335–358 | 13.1 | 11.28 | 82.2 | 0.00–1.01 | 6.4 / 135.2 | 66.8 | 16.4 | 0.0 | 55.3 / 72.5 |
+| 225324 | 74.2 | x 194–237, y 337–364 | 32.6 | 11.20 | 61.8 | 0.00–1.16 | 4.3 / 27.2 | 33.1 | 6.2 | 0.0 | 72.4 / 86.6 |
+| 225337 | 26.4 | x 194–239, y 338–356 | 11.5 | 4.00 | 86.2 | 0.00–0.79 | 6.1 / 66.3 | 54.6 | 13.2 | 0.0 | 34.0 / 68.9 |
