@@ -27,8 +27,12 @@ import {
   scoreRim,
 } from './gaugeTrack.js';
 import { prepareEdges } from './framePrep.js';
-import { assessFrameQuality, createReadingBridge, laplacianVariance } from './frameQuality.js';
-import { angleToBar } from './gaugeConfig.js';
+import { assessFrameQuality, BLUR_VARIANCE_MIN, createReadingBridge, laplacianVariance } from './frameQuality.js';
+import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
+import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
+import { createRestAnchor } from './restAnchor.js';
+import { detectNeedleAngle } from './needleFromFrame.js';
+import { BAND_INNER_FRACTION, BAND_OUTER_FRACTION, ESPRESSO_SECTOR, STOP_SECTOR } from './dialFaceTemplate.js';
 
 function syntheticGauge(width, height, { cx, cy, radius, needleDeg = 40 }) {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -469,6 +473,183 @@ describe('pressure CV units', () => {
     expect(MIN_DISCOVERY_RADIUS_FRACTION).toBeLessThanOrEqual(0.03);
     expect(MAX_DISCOVERY_RADIUS_FRACTION).toBeGreaterThanOrEqual(0.5);
     expect(MAX_DISCOVERY_RADIUS_FRACTION).toBeLessThanOrEqual(0.55);
+  });
+
+  function inPrintedSector(deg, start, end) {
+    const width = wrap360(end - start);
+    return wrap360(deg - start) <= width;
+  }
+
+  function syntheticPrintedDial({
+    size,
+    cx,
+    cy,
+    radius,
+    rotationDeg,
+    gain = 1,
+    bias = 0,
+    shadow = 0,
+  }) {
+    const data = new Uint8ClampedArray(size * size * 4);
+    const pointer = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + rotationDeg);
+    const tail = wrap360(pointer + 180);
+    const clampByte = (value) => Math.max(0, Math.min(255, Math.round(value)));
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const dist = Math.hypot(dx, dy);
+        const imageDeg = wrap360((Math.atan2(dy, dx) * 180) / Math.PI);
+        const dialDeg = wrap360(imageDeg - rotationDeg);
+        let r = 24;
+        let g = 24;
+        let b = 24;
+        if (dist < radius * 0.92) {
+          r = 214;
+          g = 214;
+          b = 214;
+          const rf = dist / radius;
+          if (rf >= BAND_INNER_FRACTION && rf <= BAND_OUTER_FRACTION) {
+            if (inPrintedSector(dialDeg, ESPRESSO_SECTOR.startDeg, ESPRESSO_SECTOR.endDeg)) {
+              r = 186;
+              g = 42;
+              b = 48;
+            } else if (inPrintedSector(dialDeg, STOP_SECTOR.startDeg, STOP_SECTOR.endDeg)) {
+              r = 22;
+              g = 22;
+              b = 22;
+            }
+          }
+          const fromPointer = Math.abs(wrapDelta(pointer, imageDeg));
+          const fromTail = Math.abs(wrapDelta(tail, imageDeg));
+          if (fromPointer < 5 && dist > radius * 0.14 && dist < radius * 0.84) {
+            r = 12;
+            g = 12;
+            b = 12;
+          } else if (fromTail < 6 && dist > radius * 0.14 && dist < radius * 0.34) {
+            r = 16;
+            g = 16;
+            b = 16;
+          }
+        }
+        const shade = 1 - shadow * (x / size);
+        const o = (y * size + x) * 4;
+        data[o] = clampByte(r * gain * shade + bias);
+        data[o + 1] = clampByte(g * gain * shade + bias);
+        data[o + 2] = clampByte(b * gain * shade + bias);
+        data[o + 3] = 255;
+      }
+    }
+    return { data, width: size, height: size };
+  }
+
+  it('registers the printed red and stop bands at several rotations and lights', () => {
+    const lights = [
+      { gain: 1, bias: 0, shadow: 0 },
+      { gain: 0.45, bias: 10, shadow: 0 },
+      { gain: 1, bias: 0, shadow: 0.5 },
+    ];
+    for (const rotationDeg of [0, 35, 100, 200]) {
+      for (const radius of [34, 60]) {
+        for (const light of lights) {
+          const frame = syntheticPrintedDial({
+            size: 160,
+            cx: 78,
+            cy: 84,
+            radius,
+            rotationDeg,
+            ...light,
+          });
+          const needle = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + rotationDeg);
+          const reg = registerDialFromColorBands(measureDialColorBands(frame, 78, 84, radius, needle));
+          expect(reg.ok, `rotation ${rotationDeg} r ${radius}`).toBe(true);
+          expect(Math.abs(wrapDelta(reg.rotationDeg, rotationDeg))).toBeLessThanOrEqual(10);
+          const relative = wrap360(needle - reg.rotationDeg);
+          expect(Math.abs(angleToBar(relative, FLAIR_STATELESS_SESSION))).toBeLessThan(0.5);
+        }
+      }
+    }
+    const blank = new Uint8ClampedArray(120 * 120 * 4);
+    for (let i = 0; i < blank.length; i += 4) {
+      blank[i] = blank[i + 1] = blank[i + 2] = 200;
+      blank[i + 3] = 255;
+    }
+    expect(registerDialFromColorBands(measureDialColorBands(
+      { data: blank, width: 120, height: 120 },
+      60,
+      60,
+      40,
+      null,
+    )).ok).toBe(false);
+  });
+
+  it('picks the long pointer rather than the short tail', () => {
+    const rotationDeg = 20;
+    const frame = syntheticPrintedDial({
+      size: 180,
+      cx: 90,
+      cy: 90,
+      radius: 58,
+      rotationDeg,
+    });
+    const found = detectNeedleAngle(frame, 90, 90, 58 * 0.24, 58 * 0.86);
+    const pointer = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + rotationDeg);
+    expect(Math.abs(wrapDelta(found.angleDeg, pointer))).toBeLessThan(12);
+  });
+
+  it('confirms rest zero only after a still half-second on the printed zero', () => {
+    const anchor = createRestAnchor();
+    expect(anchor.push({ timeMs: 0, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG, usable: true })).toBe('pending');
+    expect(anchor.push({ timeMs: 200, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG + 2, usable: true })).toBe('pending');
+    expect(anchor.push({ timeMs: 500, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG - 1, usable: true })).toBe('confirmed');
+    const conflict = createRestAnchor();
+    conflict.push({ timeMs: 0, angleDeg: 40, usable: true });
+    conflict.push({ timeMs: 250, angleDeg: 42, usable: true });
+    expect(conflict.push({ timeMs: 500, angleDeg: 41, usable: true })).toBe('conflict');
+    expect(gaugeAllowsConfidentReading({
+      dialRegistered: true,
+      confidence: 0.6,
+      dialFaceScore: 0.5,
+      needleLikeness: 0.7,
+      periodMargin: 0.2,
+      restAnchor: 'pending',
+    })).toBe(false);
+    expect(gaugeAllowsConfidentReading({
+      dialRegistered: true,
+      confidence: 0.6,
+      dialFaceScore: 0.5,
+      needleLikeness: 0.7,
+      periodMargin: 0.2,
+      restAnchor: 'conflict',
+    })).toBe(false);
+    expect(gaugeAllowsConfidentReading({
+      dialRegistered: true,
+      confidence: 0.6,
+      dialFaceScore: 0.5,
+      needleLikeness: 0.7,
+      periodMargin: 0.2,
+      restAnchor: 'confirmed',
+    })).toBe(true);
+  });
+
+  it('flags a defocused face and keeps a sharp face', () => {
+    const sharp = new Uint8ClampedArray(90 * 90 * 4);
+    const soft = new Uint8ClampedArray(90 * 90 * 4);
+    for (let y = 0; y < 90; y += 1) {
+      for (let x = 0; x < 90; x += 1) {
+        const o = (y * 90 + x) * 4;
+        const v = ((x + y) % 2) * 255;
+        sharp[o] = sharp[o + 1] = sharp[o + 2] = v;
+        sharp[o + 3] = 255;
+        soft[o] = soft[o + 1] = soft[o + 2] = 140;
+        soft[o + 3] = 255;
+      }
+    }
+    const sharpQ = assessFrameQuality(sharp, 90, 90, 45, 45, 30);
+    const softQ = assessFrameQuality(soft, 90, 90, 45, 45, 30);
+    expect(sharpQ.blurVar).toBeGreaterThan(BLUR_VARIANCE_MIN);
+    expect(sharpQ.flags).not.toContain('blur');
+    expect(softQ.flags).toContain('blur');
   });
 
   it('scores a circular rim', () => {

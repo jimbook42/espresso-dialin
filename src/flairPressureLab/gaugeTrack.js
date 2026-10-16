@@ -16,6 +16,7 @@ import {
   FLAIR_CANONICAL_FACE_PROFILE,
 } from './canonicalDial.js';
 import { getOpenCvSync } from './opencvRuntime.js';
+import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 
 /**
  * Gauge pose for the pressure lab.
@@ -629,11 +630,14 @@ export function gaugeAllowsConfidentReading({
   dialFaceScore,
   needleLikeness,
   periodMargin = null,
+  restAnchor = null,
 }) {
   const orientationClear = periodMargin == null
     || periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
+  const anchorClear = restAnchor == null || restAnchor === 'confirmed';
   return dialRegistered === true
     && orientationClear
+    && anchorClear
     && (confidence ?? 0) >= CONFIDENCE_MIN
     && (dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
     && (needleLikeness ?? 0) >= NEEDLE_LIKENESS_GATE;
@@ -968,6 +972,7 @@ export function createGaugeTracker() {
     lastCanonical = null;
     pendingJump = false;
     bridgedReading = null;
+    idleFrames = 0;
   };
 
   const clearPoseMemory = () => {
@@ -1257,12 +1262,16 @@ export function createGaugeTracker() {
     needsRediscovery() {
       if (!pose) {
         const due = idleFrames % LOST_DISCOVERY_STRIDE === 0;
+      idleFrames += 1;
+      return due;
+    }
+    if (pendingJump) return true;
+      if (lastFaceScore != null && lastFaceScore < DIAL_FACE_VERIFY_MIN) {
+        const due = idleFrames % LOST_DISCOVERY_STRIDE === 0;
         idleFrames += 1;
         return due;
       }
       idleFrames = 0;
-      if (pendingJump) return true;
-      if (lastFaceScore != null && lastFaceScore < DIAL_FACE_VERIFY_MIN) return true;
       return framesSinceDiscovery >= REDISCOVER_EVERY_FRAMES;
     },
     verificationState() {
@@ -1983,15 +1992,22 @@ function completeReading({
     Math.min(videoWidth, videoHeight) * needleScale,
   );
   let orientation;
-  if (canonicalDial && position.profile) {
+  if (canonicalDial) {
     const priorRot = tracker.getPose()?.rotationDeg ?? 0;
-    const reg = registerDialRotationFromProfile(position.profile, detection.angleDeg, priorRot);
+    const bands = measureDialColorBands(
+      needleImage,
+      localCx,
+      localCy,
+      localRadius,
+      detection.angleDeg,
+    );
+    const reg = registerDialFromColorBands(bands);
     const registered = reg.ok
       && dialFaceScore >= DIAL_FACE_VERIFY_MIN
       && position.confidence >= CONFIDENCE_MIN
       && (detection.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
     if (registered) tracker.setRotationDeg(reg.rotationDeg);
-    const rotationDeg = tracker.getPose()?.rotationDeg ?? priorRot;
+    const rotationDeg = registered ? reg.rotationDeg : priorRot;
     orientation = {
       rotationDeg,
       rawRotationDeg: reg.rotationDeg,
@@ -2304,8 +2320,21 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     const cached = tracker.peekBridge();
     const poseNow = position.pose;
     const minDim = Math.min(videoWidth, videoHeight);
+    const colorCx = (poseNow.cx - trackCrop.originX) * tracked.scale;
+    const colorCy = (poseNow.cy - trackCrop.originY) * tracked.scale;
+    const colorR = poseNow.radius * tracked.scale;
+    const heldReg = registerDialFromColorBands(measureDialColorBands(
+      tracked.image,
+      colorCx,
+      colorCy,
+      colorR,
+      cached.angleDeg,
+    ));
     reading = {
       ...cached,
+      relativeAngleDeg: heldReg.ok
+        ? wrap360((cached.angleDeg ?? 0) - heldReg.rotationDeg)
+        : cached.relativeAngleDeg,
       videoWidth,
       videoHeight,
       gauge: {
@@ -2317,8 +2346,13 @@ export function readTrackedGauge(video, canvas, region, tracker) {
         ny: poseNow.cy / videoHeight,
         nr: poseNow.radius / minDim,
         confidence: position.confidence,
+        rotationDeg: heldReg.ok ? heldReg.rotationDeg : cached.gauge.rotationDeg,
+        orientationConfidence: heldReg.confidence,
+        periodMargin: heldReg.periodMargin,
         poseDeltaPx: position.poseDeltaPx ?? 0,
         held: Boolean(position.held),
+        referenceCaptured: heldReg.ok,
+        dialRegistered: heldReg.ok,
       },
     };
     bridged = true;

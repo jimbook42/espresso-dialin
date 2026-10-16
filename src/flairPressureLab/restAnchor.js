@@ -1,0 +1,56 @@
+import { CANONICAL_ZERO_BAR_ANGLE_DEG } from './canonicalDial.js';
+import { wrap360, wrapDelta } from './gaugeConfig.js';
+
+/** How long the needle must sit still before it can confirm the printed zero. */
+export const REST_ANCHOR_MS = 500;
+const REST_ANCHOR_SPREAD_DEG = 8;
+/** 10° is inside half a bar on the 270° scale, and coarser than one profile bin. */
+const REST_ANCHOR_ZERO_DEG = 10;
+
+/**
+ * Session-start check. The printed template is the scale. This only confirms
+ * that a needle which has been still for half a second lies on that template's
+ * zero. It never runs on the first frame, and it never copies an angle in as zero.
+ * Disagreement leaves the anchor in conflict so a confident bar is not published.
+ */
+export function createRestAnchor() {
+  let samples = [];
+  let status = 'pending';
+  return {
+    status() {
+      return status;
+    },
+    reset() {
+      samples = [];
+      status = 'pending';
+    },
+    push({ timeMs, angleDeg, usable }) {
+      if (status !== 'pending') return status;
+      if (!usable || angleDeg == null || timeMs == null) return status;
+      samples.push({ timeMs, angleDeg });
+      const cutoff = timeMs - REST_ANCHOR_MS;
+      samples = samples.filter((sample) => sample.timeMs >= cutoff);
+      if (samples.length < 3) return status;
+      const span = samples[samples.length - 1].timeMs - samples[0].timeMs;
+      if (span < REST_ANCHOR_MS) return status;
+      const base = samples[0].angleDeg;
+      const spread = samples.reduce(
+        (max, sample) => Math.max(max, Math.abs(wrapDelta(base, sample.angleDeg))),
+        0,
+      );
+      if (spread > REST_ANCHOR_SPREAD_DEG) return status;
+      let sin = 0;
+      let cos = 0;
+      for (const sample of samples) {
+        const rad = (sample.angleDeg * Math.PI) / 180;
+        sin += Math.sin(rad);
+        cos += Math.cos(rad);
+      }
+      const mean = wrap360((Math.atan2(sin, cos) * 180) / Math.PI);
+      status = Math.abs(wrapDelta(mean, CANONICAL_ZERO_BAR_ANGLE_DEG)) <= REST_ANCHOR_ZERO_DEG
+        ? 'confirmed'
+        : 'conflict';
+      return status;
+    },
+  };
+}

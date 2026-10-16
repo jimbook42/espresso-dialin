@@ -145,6 +145,7 @@ function emptyProfile() {
     reach: 0,
     innerReach: 0,
     startIndex: -1,
+    endIndex: -1,
     probePx: 0,
   };
 }
@@ -176,6 +177,7 @@ function scoreProfile(samples) {
   let outerSum = 0;
   let innerHits = 0;
   let startIndex = -1;
+  let endIndex = -1;
   for (let i = 0; i < n; i += 1) {
     const value = samples[i];
     if (i < bodyCount) bodySum += value;
@@ -183,6 +185,7 @@ function scoreProfile(samples) {
     if (i < innerSlots && value >= innerLevel) innerHits += 1;
     if (value >= hitLevel) {
       if (startIndex < 0) startIndex = i;
+      endIndex = i;
       hits += 1;
       run += 1 + gap;
       gap = 0;
@@ -213,6 +216,7 @@ function scoreProfile(samples) {
     reach,
     innerReach,
     startIndex,
+    endIndex,
     probePx: 0,
   };
 }
@@ -331,8 +335,22 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
     measured.push({ angle: peakAngle, score: peakScore });
   }
 
+  const opposite = (best + 180) % 360;
+  const oppositeProfile = scoreAngle(opposite, opposite % ANGLE_STEP === 0 ? evidence[opposite / ANGLE_STEP] : null);
+  const leadingScore = bestProfile.score < 0 ? 0 : bestProfile.score;
+  // The pointer is the long end. The tail is dark only near the hub, so its
+  // outer sample index stops short of the long end.
+  if (
+    oppositeProfile.endIndex > bestProfile.endIndex + 4
+    && oppositeProfile.score >= leadingScore * 0.45
+  ) {
+    best = opposite;
+    bestProfile = oppositeProfile;
+  }
+
   const bestScore = bestProfile.score < 0 ? 0 : bestProfile.score;
   const bestLikeness = bestProfile.likeness;
+  const oppositeScore = oppositeProfile.score;
 
   let second = 0;
   let secondAngle = null;
@@ -354,9 +372,6 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
       secondAngle = item.angle;
     }
   }
-
-  const opposite = (best + 180) % 360;
-  const oppositeScore = scoreAngle(opposite, opposite % ANGLE_STEP === 0 ? evidence[opposite / ANGLE_STEP] : null).score;
   const margin = bestScore <= 1e-4 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
   const quality = margin * Math.min(1, bestLikeness / NEEDLE_LIKENESS_GATE);
   return {

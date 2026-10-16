@@ -5,6 +5,7 @@ import { useFrontCameraStream } from './hooks/useFrontCameraStream';
 import {
   EXTRACTION_START_BAR,
   FLAIR_58_SCALE,
+  NEEDLE_LIKENESS_GATE,
   NEEDLE_LOST_QUALITY,
   PROCESS_INTERVAL_MS,
   REST_STABLE_SAMPLES,
@@ -21,6 +22,7 @@ import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from '.
 import { buildDiagnosticReport } from './diagnosticReport';
 import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
 import { createReadingBridge } from './frameQuality.js';
+import { createRestAnchor } from './restAnchor.js';
 import {
   createGaugeTracker,
   gaugeAllowsConfidentReading,
@@ -158,6 +160,7 @@ export function FlairPressureLab() {
   const videoSizeRef = useRef(null);
   const frameNodeRef = useRef(null);
   const qualityBridgeRef = useRef(createReadingBridge(1000));
+  const restAnchorRef = useRef(createRestAnchor());
   const qualityCanvasRef = useRef(null);
   const lastAngleRef = useRef(null);
   const angleTrackerRef = useRef(createAngleTracker());
@@ -241,6 +244,7 @@ export function FlairPressureLab() {
     poseAgeRef.current = 0;
     if (clearTracker) trackerRef.current.reset();
     qualityBridgeRef.current.reset();
+    restAnchorRef.current.reset();
     if (clearHistory) {
       historyRef.current.reset();
       setTrace([]);
@@ -517,12 +521,21 @@ export function FlairPressureLab() {
         poseAge: poseAgeRef.current,
       };
 
+      const frameQualityForAnchor = reading.frameQuality ?? { ok: true, flags: [] };
+      restAnchorRef.current.push({
+        timeMs: now,
+        angleDeg: reading.relativeAngleDeg,
+        usable: gauge.dialRegistered === true
+          && frameQualityForAnchor.ok
+          && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE,
+      });
       const confidentDial = gaugeAllowsConfidentReading({
         dialRegistered: gauge.dialRegistered,
         confidence: gauge.confidence,
         dialFaceScore: gauge.dialFaceScore,
         needleLikeness: reading.likeness,
         periodMargin: gauge.periodMargin,
+        restAnchor: restAnchorRef.current.status(),
       });
 
       if (!sessionRef.current) {

@@ -51,7 +51,8 @@ export function glareFraction(data, width, height, cx, cy, radius) {
   return n ? hot / n : 0;
 }
 
-export const BLUR_VARIANCE_MIN = 18;
+/** A focused face on the full-resolution crop clears this. A defocused face does not. */
+export const BLUR_VARIANCE_MIN = 60;
 export const GLARE_FRACTION_MAX = 0.22;
 
 export function assessFrameQuality(imageData, width, height, cx, cy, radius) {
