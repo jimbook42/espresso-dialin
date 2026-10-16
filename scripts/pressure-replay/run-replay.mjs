@@ -198,6 +198,14 @@ async function processClip(clip, replayDir) {
     stageNeedleDraw4xMax: timing?.stageNeedleDraw4xMax ?? null,
     stageDiscovery4xMax: timing?.stageDiscovery4xMax ?? null,
     e2e4xOver50: timing?.e2e4xOver50 ?? null,
+    discDraw4xP95: timing?.discDraw4xP95 ?? null,
+    discWait4xP95: timing?.discWait4xP95 ?? null,
+    readWall4xP95: timing?.readWall4xP95 ?? null,
+    discDraw4xMedian: timing?.discDraw4xMedian ?? null,
+    discWait4xMedian: timing?.discWait4xMedian ?? null,
+    readWall4xMedian: timing?.readWall4xMedian ?? null,
+    sync4xP95: timing?.sync4xP95 ?? null,
+    readPaths4x: timing?.readPaths4x ?? null,
     e2e4xMax: timing?.e2e4xMax ?? null,
     framesProcessedPct: timing?.framesProcessedPct ?? null,
     framesProcessed4xPct: timing?.framesProcessed4xPct ?? null,
@@ -205,8 +213,6 @@ async function processClip(clip, replayDir) {
     longTasks4x: timing?.longTasks4x ?? null,
     longTaskMax4x: timing?.longTaskMax4x ?? null,
     longTaskDurations4x: timing?.longTaskDurations4x ?? null,
-    cropBenchPre4x: timing?.cropBenchPre4x ?? null,
-    cropBenchPost4x: timing?.cropBenchPost4x ?? null,
   };
   const outDir = path.join(OUT_ROOT, clip.id);
   fs.mkdirSync(outDir, { recursive: true });

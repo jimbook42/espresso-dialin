@@ -191,6 +191,18 @@ async function main() {
         stageNeedleDraw4xMax: series(throttleRun, 'stageNeedleDraw').at(-1) ?? null,
         stageDiscovery4xMax: series(throttleRun, 'stageDiscovery').at(-1) ?? null,
         e2e4xOver50: series(throttleRun, 'e2eMs').filter((value) => value > 50).length,
+        discDraw4xP95: percentile(series(throttleRun, 'discDrawMs'), 95),
+        discWait4xP95: percentile(series(throttleRun, 'discWaitMs'), 95),
+        readWall4xP95: percentile(series(throttleRun, 'readWallMs'), 95),
+        discDraw4xMedian: percentile(series(throttleRun, 'discDrawMs'), 50),
+        discWait4xMedian: percentile(series(throttleRun, 'discWaitMs'), 50),
+        readWall4xMedian: percentile(series(throttleRun, 'readWallMs'), 50),
+        sync4xP95: percentile(series(throttleRun, 'syncMs'), 95),
+        readPaths4x: Object.fromEntries(['reading', 'no-pose', 'no-position', 'rim-weak', 'drop', 'no-crop', 'no-needle-crop'].map((path) => {
+          const rows = throttleRun.frames.filter((frame) => frame.readPath === path);
+          const walls = rows.map((frame) => frame.readWallMs).filter((value) => value != null).sort((a, b) => a - b);
+          return [path, { n: rows.length, readP95: percentile(walls, 95) }];
+        })),
         e2e4xMax: series(throttleRun, 'e2eMs').at(-1) ?? null,
         framesProcessedPct: processedPct(mainRun),
         framesProcessed4xPct: processedPct(throttleRun),
@@ -198,8 +210,6 @@ async function main() {
         longTasks4x: throttleRun.smoothness?.longTasks ?? null,
         longTaskMax4x: throttleRun.smoothness?.longTaskMax ?? null,
         longTaskDurations4x: throttleRun.smoothness?.longTaskDurations ?? null,
-        cropBenchPre4x: throttleRun.smoothness?.cropBenchPre ?? null,
-        cropBenchPost4x: throttleRun.smoothness?.cropBenchPost ?? null,
         scaleTicks4x: throttleRun.smoothness?.scaleTicks ?? null,
       },
     };

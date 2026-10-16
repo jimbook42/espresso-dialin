@@ -34,6 +34,7 @@ import {
   createGaugeTracker,
   gaugeAllowsConfidentReading,
   gaugeAllowsReading,
+  lastReadProfile,
   primeReplayDiscovery,
   probeGaugeDiscoveryCandidates,
   readTrackedGauge,
@@ -377,6 +378,11 @@ export function FlairPressureLab() {
         stageTrackRead: partial.stageTrackRead ?? null,
         stageTrackResize: partial.stageTrackResize ?? null,
         stageTrackOutput: partial.stageTrackOutput ?? null,
+        discDrawMs: partial.discDrawMs ?? null,
+        discWaitMs: partial.discWaitMs ?? null,
+        readWallMs: partial.readWallMs ?? null,
+        readPath: partial.readPath ?? null,
+        syncMs: partial.syncMs ?? null,
         flags: partial.flags ?? '',
         tracking: partial.tracking ?? null,
         conflictDeg: partial.conflictDeg ?? null,
@@ -393,6 +399,8 @@ export function FlairPressureLab() {
       if (!video || video.readyState < 2) return;
       const grab = grabAt ?? performance.now();
       let discoveryWait = 0;
+      let discoveryDraw = 0;
+      let readWall = 0;
       let cvDone = 0;
       const markCv = () => {
         cvDone = Math.max(0, performance.now() - grab - discoveryWait);
@@ -400,15 +408,28 @@ export function FlairPressureLab() {
       const frameTiming = () => {
         const e2eMs = Math.max(0, performance.now() - grab);
         const mainThreadMs = Math.max(0, e2eMs - discoveryWait);
-        return { e2eMs, mainThreadMs, processMs: mainThreadMs, cvMs: cvDone };
+        return {
+          e2eMs,
+          mainThreadMs,
+          processMs: mainThreadMs,
+          cvMs: cvDone,
+          discDrawMs: discoveryDraw,
+          discWaitMs: discoveryWait,
+          readWallMs: readWall,
+          readPath: lastReadProfile.path || null,
+          syncMs: lastReadProfile.syncMs || 0,
+        };
       };
       let reading;
       try {
         if (replay) {
           const primed = await primeReplayDiscovery(video, canvas, trackerRef.current);
           discoveryWait = primed?.waitMs || 0;
+          discoveryDraw = primed?.drawMs || 0;
         }
+        const tRead = performance.now();
         reading = readTrackedGauge(video, canvas, null, trackerRef.current);
+        readWall = performance.now() - tRead;
       } catch (err) {
         restAnchorRef.current.reset();
         agreeSamplesRef.current = [];
@@ -932,6 +953,7 @@ export function FlairPressureLab() {
     let scaleTicks = 0;
     let longTasks = 0;
     let longTaskMax = 0;
+    let loopStart = 0;
     const longTaskDurations = [];
     let countLongTasks = false;
     let slots = 0;
@@ -960,6 +982,8 @@ export function FlairPressureLab() {
         longTaskObserver = new PerformanceObserver((list) => {
           if (!countLongTasks) return;
           for (const entry of list.getEntries()) {
+            // A task that started while the stills were loading is not the frame loop.
+            if (loopStart && entry.startTime < loopStart) continue;
             longTasks += 1;
             if (entry.duration > longTaskMax) longTaskMax = entry.duration;
             if (longTaskDurations.length < 8) longTaskDurations.push(Math.round(entry.duration));
@@ -976,8 +1000,6 @@ export function FlairPressureLab() {
       longTaskDurations,
       scaleTicks,
       slots,
-      cropBenchPre: window.__cropBenchPre || null,
-      cropBenchPost: window.__cropBenchPost || null,
     });
     const loadFrame = (src) => new Promise((resolve, reject) => {
       const img = new Image();
@@ -991,7 +1013,6 @@ export function FlairPressureLab() {
         return;
       }
       try {
-        const hold = document.createElement('canvas');
         const stills = [];
         for (let index = 4; !stopped; index += 1) {
           const t = index * slot;
@@ -1000,36 +1021,36 @@ export function FlairPressureLab() {
           const name = String(fileIndex).padStart(4, '0');
           const img = await loadFrame(`${frameBase}${name}.png`);
           if (stopped) return;
-          if (hold.width !== img.naturalWidth || hold.height !== img.naturalHeight) {
-            hold.width = img.naturalWidth;
-            hold.height = img.naturalHeight;
-          }
-          const holdCtx = hold.getContext('2d', { willReadFrequently: true });
-          holdCtx.drawImage(img, 0, 0);
-          stills.push({
-            t,
-            pixels: holdCtx.getImageData(0, 0, hold.width, hold.height),
-          });
+          stills.push({ t, img });
         }
-        // Stills are the frames. The fake camera keeps decoding beside them
-        // and stalls the crop readback. Decoding the PNG stays outside the frame.
+        // The fake camera keeps decoding beside the stills and stalls the crop read.
+        // PNG decode stays outside the measured loop. A live frame is already decoded.
         const liveVideo = videoRef.current;
         liveVideo?.pause?.();
         liveVideo?.srcObject?.getTracks?.().forEach((track) => track.stop());
+        const hold = document.createElement('canvas');
         const frame = document.createElement('canvas');
-        const first = stills[0]?.pixels;
-        if (first) {
-          frame.width = first.width;
-          frame.height = first.height;
-        }
-        frame.videoWidth = frame.width;
-        frame.videoHeight = frame.height;
-        frame.readyState = 4;
-        const frameCtx = frame.getContext('2d', { willReadFrequently: true });
+        let frameCtx = null;
+        loopStart = performance.now();
         countLongTasks = true;
         for (const still of stills) {
           if (stopped) return;
-          frameCtx.putImageData(still.pixels, 0, 0);
+          const img = still.img;
+          if (hold.width !== img.naturalWidth || hold.height !== img.naturalHeight) {
+            hold.width = img.naturalWidth;
+            hold.height = img.naturalHeight;
+            frame.width = hold.width;
+            frame.height = hold.height;
+            frame.videoWidth = frame.width;
+            frame.videoHeight = frame.height;
+            frame.readyState = 4;
+            frameCtx = frame.getContext('2d', { willReadFrequently: true });
+          }
+          const holdCtx = hold.getContext('2d', { willReadFrequently: true });
+          holdCtx.drawImage(img, 0, 0);
+          frameCtx.putImageData(holdCtx.getImageData(0, 0, hold.width, hold.height), 0, 0);
+          // Let the still install finish so it is not one task with the reading.
+          await new Promise((resolve) => { setTimeout(resolve, 0); });
           const grabAt = performance.now();
           slots += 1;
           window.__pressureReplaySlots = slots;

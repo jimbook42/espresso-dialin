@@ -2350,6 +2350,7 @@ function trackSettings(video) {
 }
 
 let replayFrameSearched = false;
+export const lastReadProfile = { path: '', syncMs: 0, trackMs: 0, needleMs: 0 };
 
 /**
  * Replay posts this frame to the worker and waits before the timed read.
@@ -2363,12 +2364,14 @@ export async function primeReplayDiscovery(video, canvas, tracker) {
   const due = !tracker.getScaleLock?.() && tracker.discoveryDueNow();
   if (!havePose || due) {
     // Same pixels the synchronous search used, so the worker sees this frame.
+    const tDraw = performance.now();
     const drawn = drawFullFrame(video, canvas, Math.min(video.videoWidth, video.videoHeight));
-    if (!requestImageDiscovery(drawn.image)) return empty;
+    const drawMs = performance.now() - tDraw;
+    if (!requestImageDiscovery(drawn.image)) return { waitMs: 0, drawMs };
     const tWait = performance.now();
     await whenDiscoverySettled();
     replayFrameSearched = true;
-    return { waitMs: performance.now() - tWait };
+    return { waitMs: performance.now() - tWait, drawMs };
   }
   return empty;
 }
@@ -2399,11 +2402,21 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let discoveryEvent = null;
   const stamp = () => (typeof performance !== 'undefined' ? performance.now() : 0);
   const tStart = stamp();
+  lastReadProfile.path = '';
+  lastReadProfile.syncMs = 0;
+  lastReadProfile.trackMs = 0;
+  lastReadProfile.needleMs = 0;
   let discoveryMs = 0;
   let trackDrawMs;
   let trackMs;
   let needleDrawMs = 0;
   let needleMs = 0;
+  const finishProfile = (path) => {
+    lastReadProfile.path = path;
+    lastReadProfile.syncMs = discoveryMs;
+    lastReadProfile.trackMs = trackMs || 0;
+    lastReadProfile.needleMs = needleMs;
+  };
   const havePose = Boolean(tracker.getPose());
   // A locked scale is the registration. Another full-frame search is what
   // made a rotating clip depend on worker timing, and it is the slow tail.
@@ -2491,6 +2504,8 @@ export function readTrackedGauge(video, canvas, region, tracker) {
         after: tracker.snapshot?.() ?? null,
         event: decision.reason,
       });
+      discoveryMs = stamp() - tDisc;
+      finishProfile('drop');
       return null;
     } else {
       tracker.markDiscovered();
@@ -2500,10 +2515,16 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   if (handedToWorker && tracker.getPose()) tracker.markDiscovered();
 
   const pose = tracker.getPose();
-  if (!pose) return null;
+  if (!pose) {
+    finishProfile('no-pose');
+    return null;
+  }
   const capture = tracker.captureSpec();
   const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * capture.pad);
-  if (!trackCrop) return null;
+  if (!trackCrop) {
+    finishProfile('no-crop');
+    return null;
+  }
   const tTrackDraw = stamp();
   const tracked = drawCrop(video, scratchCanvas('track') || canvas, trackCrop, capture.maxOutput);
   trackDrawMs = stamp() - tTrackDraw;
@@ -2521,11 +2542,15 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     scale: tracked.scale,
   }, { reusePrior });
   trackMs = stamp() - tTrack;
-  if (!position) return null;
+  if (!position) {
+    finishProfile('no-position');
+    return null;
+  }
   // A circle the rim does not support is not a dial. Drop it so the next
   // frame can search again, instead of keeping it until the rediscover stride.
   if ((position.confidence ?? 0) < CONFIDENCE_MIN && priorState.printedFace !== true) {
     tracker.reset();
+    finishProfile('rim-weak');
     return null;
   }
 
@@ -2600,7 +2625,10 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   if (!reading) {
     const center = position.pose;
     const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
-    if (!needleCrop) return null;
+    if (!needleCrop) {
+      finishProfile('no-needle-crop');
+      return null;
+    }
     const tNeedleDraw = stamp();
     const needle = drawCrop(video, scratchCanvas('needle') || canvas, needleCrop, 420);
     needleDrawMs = stamp() - tNeedleDraw;
@@ -2700,5 +2728,6 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     trackResize: trackResizeMs,
     trackOutput,
   };
+  finishProfile('reading');
   return reading;
 }
