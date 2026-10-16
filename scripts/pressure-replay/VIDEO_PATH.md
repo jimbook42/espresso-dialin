@@ -147,3 +147,26 @@ Confident-wrong is 0% on all six clips. 4× p95 is 36–87 ms, still above 33 ms
 | 225307 | 50.0 | x 197–239, y 335–358 | 13.1 | 11.28 | 82.2 | 0.00–1.01 | 6.4 / 135.2 | 66.8 | 16.4 | 0.0 | 55.3 / 72.5 |
 | 225324 | 74.2 | x 194–237, y 337–364 | 32.6 | 11.20 | 61.8 | 0.00–1.16 | 4.3 / 27.2 | 33.1 | 6.2 | 0.0 | 72.4 / 86.6 |
 | 225337 | 26.4 | x 194–239, y 338–356 | 11.5 | 4.00 | 86.2 | 0.00–0.79 | 6.1 / 66.3 | 54.6 | 13.2 | 0.0 | 34.0 / 68.9 |
+
+## Replay at b69d414
+
+Output: `/workspace/flair-replay/out-6.33-r2c` and a second full suite `/workspace/flair-replay/out-6.33-r2d`. Privacy passed on every clip in both suites (0 external requests, 0 storage writes). OpenCV.js is 13298869 bytes raw. The rest anchor still only confirms the template zero. Bars are not clamped to the expected 0. A confident bar needs the printed face, a needle, a hub majority, and three readings inside the rest spread. `pressureCv.vitest.js` is 33 tests.
+
+Confident-wrong is 0% on all six clips in both suites, checked by scanning `frames.csv` (confidence ≥ 0.18 and |bar| > 0.5). 4× p95 is 36–91 ms, still above 33 ms. The main thread reads the needle ROI; full-frame search, including the first pose and a lost pose, runs on the worker and a busy worker skips the frame.
+
+225307 in the two suites found 98.6% then 86.9%. Both confident-wrong 0. The fake camera's position when sampling starts still depends on how long the page takes to load.
+
+| Suite | Clip | Found % | Within ±0.5 % | First s | No-read % | Bar | Conf-wrong % | Normal med/p95 | 4× med/p95 |
+| --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| r2c | 225219 | 98.4 | 95.1 | 0.93 | 4.4 | 0.00–0.51 | 0.0 | 4.9 / 9.2 | 19.2 / 39.4 |
+| r2c | 225240 | 98.2 | 95.9 | 0.93 | 4.1 | 0.00–0.21 | 0.0 | 5.6 / 10.6 | 23.2 / 42.2 |
+| r2c | 225254 | 98.2 | 74.0 | 0.93 | 19.5 | 0.00–0.68 | 0.0 | 5.6 / 11.4 | 22.6 / 49.1 |
+| r2c | 225307 | 98.6 | 40.4 | 5.47 | 51.2 | 0.00–1.08 | 0.0 | 7.1 / 12.3 | 28.7 / 52.9 |
+| r2c | 225324 | 96.0 | 39.5 | 0.67 | 56.5 | 0.00–1.22 | 0.0 | 9.2 / 23.3 | 35.5 / 87.7 |
+| r2c | 225337 | 73.6 | 17.2 | 0.67 | 77.6 | 0.00–1.41 | 0.0 | 17.3 / 22.5 | 43.3 / 89.3 |
+| r2d | 225219 | 98.4 | 95.1 | 0.93 | 4.4 | 0.00–0.51 | 0.0 | 4.7 / 9.0 | 18.8 / 36.1 |
+| r2d | 225240 | 98.2 | 95.9 | 0.93 | 4.1 | 0.00–0.21 | 0.0 | 5.3 / 9.7 | 22.3 / 41.3 |
+| r2d | 225254 | 97.6 | 73.4 | 1.07 | 19.5 | 0.00–0.76 | 0.0 | 5.2 / 10.3 | 19.1 / 44.1 |
+| r2d | 225307 | 86.9 | 21.6 | 6.00 | 77.0 | 0.00–0.70 | 0.0 | 7.4 / 18.9 | 33.7 / 88.6 |
+| r2d | 225324 | 95.5 | 37.1 | 0.80 | 51.7 | 0.00–1.72 | 0.0 | 10.1 / 24.6 | 29.9 / 54.1 |
+| r2d | 225337 | 75.3 | 26.4 | 0.80 | 71.3 | 0.00–1.63 | 0.0 | 18.7 / 25.5 | 46.4 / 90.8 |
