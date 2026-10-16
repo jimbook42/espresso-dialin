@@ -28,13 +28,14 @@ export function minReadableDialRadiusPx() {
 
 /**
  * Upscale for a crop whose dial is below the readable radius.
- * A dial already within 15% of that radius is left at its native scale:
- * resampling it would not add a sample.
+ * A dial with at least half a sample per pixel stays at its native scale.
+ * A milder resample smears the ridge and the pointer score falls.
+ * At half the readable radius the crop is doubled, and never past 4×.
  */
 export function needleZoomForRadius(radiusPx) {
   if (!(radiusPx > 0)) return 1;
   const factor = minReadableDialRadiusPx() / radiusPx;
-  if (factor < 1.15) return 1;
+  if (factor < 2) return 1;
   return Math.min(4, factor);
 }
 /**

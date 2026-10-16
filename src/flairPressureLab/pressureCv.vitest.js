@@ -552,7 +552,8 @@ describe('pressure CV units', () => {
     const minR = minReadableDialRadiusPx();
     expect(minR).toBeGreaterThan(40);
     expect(needleZoomForRadius(minR)).toBe(1);
-    expect(needleZoomForRadius(minR * 0.5)).toBeGreaterThan(1);
+    expect(needleZoomForRadius(minR * 0.66)).toBe(1);
+    expect(needleZoomForRadius(minR * 0.5)).toBeGreaterThanOrEqual(2);
     expect(MOVE_CLOSER_HINT).toBe('Move closer — gauge too small');
     expect(gaugeTooSmallForNeedle(minR - 1, minR)).toBe(false);
     expect(gaugeTooSmallForNeedle(minR - 2, minR)).toBe(true);
