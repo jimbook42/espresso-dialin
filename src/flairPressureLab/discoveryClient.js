@@ -13,7 +13,14 @@ let settleResolve = null;
 let pending = null;
 let completed = null;
 let videoSerial = 0;
+let inflightStartedAt = 0;
+let searchListener = null;
 const warmWaiters = [];
+
+/** Replay records how long the search took. The live page does not. */
+export function setDiscoverySearchListener(listener) {
+  searchListener = typeof listener === 'function' ? listener : null;
+}
 
 function finishInflight() {
   inflight = false;
@@ -45,6 +52,7 @@ function takePixels(image) {
 
 function postPendingNow(item) {
   armInflight();
+  inflightStartedAt = item.startedAt || performance.now();
   try {
     if (item.kind === 'bitmap') {
       ensureWorker().postMessage({
@@ -76,8 +84,11 @@ function startPending() {
 }
 
 function publish(found) {
-  completed = { found: found ?? null };
+  const searchMs = inflightStartedAt ? Math.max(0, performance.now() - inflightStartedAt) : 0;
+  inflightStartedAt = 0;
+  completed = { found: found ?? null, searchMs };
   finishInflight();
+  if (searchListener) searchListener(searchMs);
 }
 
 function ensureWorker() {
@@ -141,7 +152,7 @@ export function consumeDiscoveryResult() {
   const result = completed;
   completed = null;
   startPending();
-  return { ready: true, found: result.found };
+  return { ready: true, found: result.found, searchMs: result.searchMs ?? 0 };
 }
 
 export function takeDiscoveryResult() {
@@ -183,7 +194,9 @@ export function requestCanvasDiscovery(source, width, height) {
   if (broken || typeof Worker === 'undefined' || typeof createImageBitmap !== 'function') return false;
   if (!source || !width || !height) return false;
   if (inflight || completed) return true;
+  const startedAt = performance.now();
   armInflight();
+  inflightStartedAt = startedAt;
   createImageBitmap(source).then((bitmap) => {
     try {
       ensureWorker().postMessage({ bitmap, width, height }, [bitmap]);
@@ -202,13 +215,14 @@ export function requestVideoDiscovery(video) {
   const width = video.videoWidth;
   const height = video.videoHeight;
   const serial = ++videoSerial;
+  const startedAt = performance.now();
   const busy = inflight || completed || pending;
   createImageBitmap(video).then((bitmap) => {
     if (serial !== videoSerial) {
       bitmap.close?.();
       return;
     }
-    const item = { kind: 'bitmap', bitmap, width, height };
+    const item = { kind: 'bitmap', bitmap, width, height, startedAt };
     if (inflight || completed || pending) park(item);
     else postPendingNow(item);
   }).catch(() => {

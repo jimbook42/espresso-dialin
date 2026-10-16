@@ -211,6 +211,16 @@ async function processClip(clip, replayDir) {
     framesProcessed4xPct: timing?.framesProcessed4xPct ?? null,
     longTasks: timing?.longTasks ?? null,
     longTasks4x: timing?.longTasks4x ?? null,
+    harnessLongTasks: timing?.harnessLongTasks ?? null,
+    appLongTasks: timing?.appLongTasks ?? null,
+    harnessLongTasks4x: timing?.harnessLongTasks4x ?? null,
+    appLongTasks4x: timing?.appLongTasks4x ?? null,
+    workerMedian: timing?.workerMedian ?? null,
+    workerP95: timing?.workerP95 ?? null,
+    worker4xMedian: timing?.worker4xMedian ?? null,
+    worker4xP95: timing?.worker4xP95 ?? null,
+    searchPct: timing?.searchPct ?? null,
+    search4xPct: timing?.search4xPct ?? null,
     longTaskMax4x: timing?.longTaskMax4x ?? null,
     longTaskDurations4x: timing?.longTaskDurations4x ?? null,
   };
@@ -302,13 +312,13 @@ async function main() {
     '',
     '## Timing (median / p95 ms per frame)',
     '',
-    'End-to-end starts after this frame’s worker search has finished and runs until the reading is applied. The main thread does not run Hough. Main-thread matches that span. Frames processed is slots that produced a row; none are dropped to improve the times.',
+    'End-to-end is from frame grab until that frame’s result is applied. When the frame posted a worker search, the search duration is added when the worker finishes, so the wait is inside end-to-end and not inside main-thread. The live camera posts one search and keeps reading; this replay does the same and does not wait. Worker med/p95 is the completed searches. Search % is frames that needed one. Long tasks while a still is copied in are the harness; the rest are the app.',
     '',
-    '| Clip | Found % | ±0.5 % | Conf-wrong % | Frames % | E2E med | E2E p95 | E2E 4× med | E2E 4× p95 | Main med | Main p95 | Main 4× med | Main 4× p95 | Long tasks | Long tasks 4× |',
-    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    '| Clip | Found % | ±0.5 % | Conf-wrong % | Frames % | E2E med | E2E p95 | E2E 4× med | E2E 4× p95 | Main med | Main p95 | Main 4× med | Main 4× p95 | Worker med | Worker p95 | Worker 4× med | Worker 4× p95 | Search % | LT app | LT harness | LT app 4× | LT harness 4× |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...mergedResults.map(({ id, summary }) => {
       const num = (value) => (value == null || Number.isNaN(value) ? '—' : Number(value).toFixed(1));
-      return `| ${id} | ${summary.gaugeTrackedPct.toFixed(1)} | ${summary.withinTolerancePct.toFixed(1)} | ${summary.confidentButWrongPct.toFixed(1)} | ${num(summary.framesProcessedPct)} | ${num(summary.e2eMedian)} | ${num(summary.e2eP95)} | ${num(summary.e2e4xMedian)} | ${num(summary.e2e4xP95)} | ${num(summary.mainMedian)} | ${num(summary.mainP95)} | ${num(summary.main4xMedian)} | ${num(summary.main4xP95)} | ${summary.longTasks ?? '—'} | ${summary.longTasks4x ?? '—'} |`;
+      return `| ${id} | ${summary.gaugeTrackedPct.toFixed(1)} | ${summary.withinTolerancePct.toFixed(1)} | ${summary.confidentButWrongPct.toFixed(1)} | ${num(summary.framesProcessedPct)} | ${num(summary.e2eMedian)} | ${num(summary.e2eP95)} | ${num(summary.e2e4xMedian)} | ${num(summary.e2e4xP95)} | ${num(summary.mainMedian)} | ${num(summary.mainP95)} | ${num(summary.main4xMedian)} | ${num(summary.main4xP95)} | ${num(summary.workerMedian)} | ${num(summary.workerP95)} | ${num(summary.worker4xMedian)} | ${num(summary.worker4xP95)} | ${num(summary.searchPct)} | ${summary.appLongTasks ?? '—'} | ${summary.harnessLongTasks ?? '—'} | ${summary.appLongTasks4x ?? '—'} | ${summary.harnessLongTasks4x ?? '—'} |`;
     }),
     '',
     '## Glare setup hint (frames)',

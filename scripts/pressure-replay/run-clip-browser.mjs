@@ -208,6 +208,20 @@ async function main() {
         framesProcessed4xPct: processedPct(throttleRun),
         longTasks: mainRun.smoothness?.longTasks ?? null,
         longTasks4x: throttleRun.smoothness?.longTasks ?? null,
+        harnessLongTasks: mainRun.smoothness?.harnessLongTasks ?? null,
+        appLongTasks: mainRun.smoothness?.appLongTasks ?? null,
+        harnessLongTasks4x: throttleRun.smoothness?.harnessLongTasks ?? null,
+        appLongTasks4x: throttleRun.smoothness?.appLongTasks ?? null,
+        workerMedian: percentile([...(mainRun.smoothness?.searchDurations || [])].sort((a, b) => a - b), 50),
+        workerP95: percentile([...(mainRun.smoothness?.searchDurations || [])].sort((a, b) => a - b), 95),
+        worker4xMedian: percentile([...(throttleRun.smoothness?.searchDurations || [])].sort((a, b) => a - b), 50),
+        worker4xP95: percentile([...(throttleRun.smoothness?.searchDurations || [])].sort((a, b) => a - b), 95),
+        searchPct: mainRun.frames.length
+          ? (mainRun.frames.filter((frame) => frame.searchNeeded).length / mainRun.frames.length) * 100
+          : null,
+        search4xPct: throttleRun.frames.length
+          ? (throttleRun.frames.filter((frame) => frame.searchNeeded).length / throttleRun.frames.length) * 100
+          : null,
         longTaskMax4x: throttleRun.smoothness?.longTaskMax ?? null,
         longTaskDurations4x: throttleRun.smoothness?.longTaskDurations ?? null,
         scaleTicks4x: throttleRun.smoothness?.scaleTicks ?? null,

@@ -4,10 +4,12 @@
  */
 
 let sessionStartMs = null;
+let openSearchIndex = null;
 const frames = [];
 
 function resetFrames() {
   sessionStartMs = null;
+  openSearchIndex = null;
   frames.length = 0;
 }
 
@@ -36,6 +38,25 @@ export function createReplaySessionExport() {
 
 export function pushPressureReplayFrame(row) {
   pushFrame(row);
+}
+
+/** Kept so a posted frame is obvious at the call site. Matching uses the row flag. */
+export function markReplaySearchOpen() {
+  if (openSearchIndex == null) openSearchIndex = frames.length - 1;
+}
+
+/**
+ * The oldest frame that asked for a search receives this duration.
+ * End-to-end becomes that frame's blocking time plus the worker.
+ */
+export function completeReplaySearch(searchMs) {
+  if (searchMs == null) return;
+  const index = frames.findIndex((row) => row.postedSearch && row.workerSearchMs == null);
+  const row = index >= 0 ? frames[index] : null;
+  openSearchIndex = null;
+  if (!row) return;
+  row.workerSearchMs = searchMs;
+  row.e2eMs = (row.mainThreadMs || 0) + searchMs;
 }
 
 export function resetPressureReplaySession() {

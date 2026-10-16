@@ -35,12 +35,10 @@ import {
   gaugeAllowsConfidentReading,
   gaugeAllowsReading,
   lastReadProfile,
-  beginReplayDiscovery,
-  primeReplayDiscovery,
   probeGaugeDiscoveryCandidates,
   readTrackedGauge,
 } from './gaugeTrack';
-import { warmDiscoveryWorker, whenDiscoverySettled, whenDiscoveryWarmed } from './discoveryClient.js';
+import { setDiscoverySearchListener, warmDiscoveryWorker, whenDiscoverySettled, whenDiscoveryWarmed } from './discoveryClient.js';
 import {
   createAngleJitterTracker,
   createAngleTracker,
@@ -51,7 +49,9 @@ import {
 } from './smoothPressure';
 import { isPressureReplayBuild } from '../config/pressureReplayFlag.js';
 import {
+  completeReplaySearch,
   installPressureReplayHook,
+  markReplaySearchOpen,
   pushPressureReplayFrame,
   resetPressureReplaySession,
 } from './replaySessionExport.js';
@@ -381,6 +381,9 @@ export function FlairPressureLab() {
         stageTrackOutput: partial.stageTrackOutput ?? null,
         discDrawMs: partial.discDrawMs ?? null,
         discWaitMs: partial.discWaitMs ?? null,
+        workerSearchMs: partial.workerSearchMs ?? null,
+        searchNeeded: partial.searchNeeded === true,
+        postedSearch: partial.postedSearch === true,
         readWallMs: partial.readWallMs ?? null,
         readPath: partial.readPath ?? null,
         syncMs: partial.syncMs ?? null,
@@ -388,6 +391,7 @@ export function FlairPressureLab() {
         tracking: partial.tracking ?? null,
         conflictDeg: partial.conflictDeg ?? null,
       });
+      if (partial.postedSearch) markReplaySearchOpen();
     };
 
     const replayGaugeLabels = (gauge) => classifyReplayGaugeFrame({
@@ -396,26 +400,28 @@ export function FlairPressureLab() {
       dialRegistered: gauge.dialRegistered === true,
     });
 
-    const processSample = async (video, now, wallNow, { replay = false, grabAt = null } = {}) => {
+    const processSample = async (video, now, wallNow, { grabAt = null } = {}) => {
       if (!video || video.readyState < 2) return;
       const grab = grabAt ?? performance.now();
-      let discoveryWait = 0;
-      let discoveryDraw = 0;
       let readWall = 0;
       let cvDone = 0;
       const markCv = () => {
-        cvDone = Math.max(0, performance.now() - grab - discoveryWait);
+        cvDone = Math.max(0, performance.now() - grab);
       };
       const frameTiming = () => {
-        const e2eMs = Math.max(0, performance.now() - grab);
-        const mainThreadMs = Math.max(0, e2eMs - discoveryWait);
+        // Blocking time from this grab until the result is applied. A worker
+        // search posted here is added to e2e when that search finishes.
+        const mainThreadMs = Math.max(0, performance.now() - grab);
         return {
-          e2eMs,
+          e2eMs: mainThreadMs,
           mainThreadMs,
           processMs: mainThreadMs,
           cvMs: cvDone,
-          discDrawMs: discoveryDraw,
-          discWaitMs: discoveryWait,
+          discDrawMs: 0,
+          discWaitMs: 0,
+          workerSearchMs: null,
+          searchNeeded: lastReadProfile.searchNeeded === true,
+          postedSearch: lastReadProfile.postedSearch === true,
           readWallMs: readWall,
           readPath: lastReadProfile.path || null,
           syncMs: lastReadProfile.syncMs || 0,
@@ -423,11 +429,6 @@ export function FlairPressureLab() {
       };
       let reading;
       try {
-        if (replay) {
-          const primed = await primeReplayDiscovery(video, canvas, trackerRef.current);
-          discoveryWait = primed?.waitMs || 0;
-          discoveryDraw = primed?.drawMs || 0;
-        }
         const tRead = performance.now();
         reading = readTrackedGauge(video, canvas, null, trackerRef.current);
         readWall = performance.now() - tRead;
@@ -953,10 +954,18 @@ export function FlairPressureLab() {
     let lastChart = 0;
     let scaleTicks = 0;
     let longTasks = 0;
+    let harnessLongTasks = 0;
+    let appLongTasks = 0;
     let longTaskMax = 0;
     let loopStart = 0;
     const longTaskDurations = [];
+    const searchDurations = [];
     let countLongTasks = false;
+    let taskPhase = 'app';
+    setDiscoverySearchListener((searchMs) => {
+      searchDurations.push(searchMs);
+      completeReplaySearch(searchMs);
+    });
     let slots = 0;
     const drawChart = (now) => {
       chartRaf = requestAnimationFrame(drawChart);
@@ -986,6 +995,8 @@ export function FlairPressureLab() {
             // A task that started while the stills were loading is not the frame loop.
             if (loopStart && entry.startTime < loopStart) continue;
             longTasks += 1;
+            if (taskPhase === 'harness') harnessLongTasks += 1;
+            else appLongTasks += 1;
             if (entry.duration > longTaskMax) longTaskMax = entry.duration;
             if (longTaskDurations.length < 8) longTaskDurations.push(Math.round(entry.duration));
           }
@@ -997,8 +1008,11 @@ export function FlairPressureLab() {
     }
     window.__pressureReplaySmoothness = () => ({
       longTasks,
+      harnessLongTasks,
+      appLongTasks,
       longTaskMax,
       longTaskDurations,
+      searchDurations: searchDurations.slice(),
       scaleTicks,
       slots,
     });
@@ -1048,20 +1062,29 @@ export function FlairPressureLab() {
             frameCtx = frame.getContext('2d', { willReadFrequently: true });
           }
           const holdCtx = hold.getContext('2d', { willReadFrequently: true });
+          // Still install is the harness. Split it so a full-frame read is not
+          // one long task, and keep those tasks out of the app count.
+          taskPhase = 'harness';
           holdCtx.drawImage(img, 0, 0);
-          frameCtx.putImageData(holdCtx.getImageData(0, 0, hold.width, hold.height), 0, 0);
-          // Install and the search draw are separate tasks so neither is a long task.
           await new Promise((resolve) => { setTimeout(resolve, 0); });
-          // The worker searches this still before the timed read. The main thread
-          // does not Hough. The clock starts when that circle is applied.
-          const kicked = beginReplayDiscovery(frame, canvas, trackerRef.current);
-          if (kicked.posted) await whenDiscoverySettled();
+          const installed = holdCtx.getImageData(0, 0, hold.width, hold.height);
           await new Promise((resolve) => { setTimeout(resolve, 0); });
+          frameCtx.putImageData(installed, 0, 0);
+          await new Promise((resolve) => { setTimeout(resolve, 0); });
+          taskPhase = 'app';
+          // Same path as the live camera: grab, post a search if this frame
+          // needs one, and apply whatever circle is already back. Do not wait.
+          // The live tick also leaves PROCESS_INTERVAL_MS between reads, which
+          // is long enough for the search to finish before the next frame.
           const grabAt = performance.now();
           slots += 1;
           window.__pressureReplaySlots = slots;
-          await processSample(frame, Math.round(still.t * 1000), performance.now(), { replay: true, grabAt });
+          await processSample(frame, Math.round(still.t * 1000), performance.now(), { grabAt });
+          const remain = PROCESS_INTERVAL_MS - (performance.now() - grabAt);
+          if (remain > 0) await new Promise((resolve) => { setTimeout(resolve, remain); });
         }
+        // The last search can still be running. Record it before the harness reads the rows.
+        await whenDiscoverySettled();
         if (!stopped) window.__pressureReplayDrained = true;
       } catch (err) {
         window.__pressureReplayError = err?.message || 'replay frames failed';
@@ -1071,6 +1094,7 @@ export function FlairPressureLab() {
     return () => {
       stopped = true;
       countLongTasks = false;
+      setDiscoverySearchListener(null);
       clearInterval(scaleTimer);
       cancelAnimationFrame(chartRaf);
       longTaskObserver?.disconnect();

@@ -2347,7 +2347,14 @@ function trackSettings(video) {
 
 let replayFrameSearched = false;
 let replayDiscoveryDrawn = null;
-export const lastReadProfile = { path: '', syncMs: 0, trackMs: 0, needleMs: 0 };
+export const lastReadProfile = {
+  path: '',
+  syncMs: 0,
+  trackMs: 0,
+  needleMs: 0,
+  searchNeeded: false,
+  postedSearch: false,
+};
 
 function replayDiscoveryNeeded(video, canvas, tracker) {
   if (!video?.videoWidth || !video?.videoHeight || !canvas || !tracker?.discoveryDueNow) return false;
@@ -2423,6 +2430,8 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   lastReadProfile.syncMs = 0;
   lastReadProfile.trackMs = 0;
   lastReadProfile.needleMs = 0;
+  lastReadProfile.searchNeeded = false;
+  lastReadProfile.postedSearch = false;
   let discoveryMs = 0;
   let trackDrawMs;
   let trackMs;
@@ -2438,14 +2447,16 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   // A locked scale is the registration. Another full-frame search is what
   // made a rotating clip depend on worker timing, and it is the slow tail.
   const discoveryDue = !tracker.getScaleLock?.() && tracker.needsRediscovery();
-  // Replay already waited for this frame's search. A null result is a miss,
-  // not a reason to run Hough on the main thread.
+  // Live and replay both post the search and keep going. A finished miss is
+  // applied here. The main thread never runs Hough.
   const searched = replayFrameSearched;
   replayFrameSearched = false;
   const consumed = consumeDiscoveryResult();
   const asyncFound = consumed.ready ? consumed.found : null;
   const wantSearch = !searched && !consumed.ready && (!havePose || discoveryDue);
   const handedToWorker = wantSearch && requestVideoDiscovery(video);
+  if (wantSearch) lastReadProfile.searchNeeded = true;
+  if (handedToWorker) lastReadProfile.postedSearch = true;
   const discoveryAction = mainThreadDiscoveryAction({
     havePose,
     discoveryDue,
