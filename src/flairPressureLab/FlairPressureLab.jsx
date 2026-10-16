@@ -673,8 +673,9 @@ export function FlairPressureLab() {
         Boolean(tracked.accepted) || tracked.heldReason === 'hub'
       );
       const needleSure = (reading.quality ?? 0) >= NEEDLE_TRACK_QUALITY;
-      // A face streak that misses the pivot is still a number, but not a confident one.
-      const hubSure = reading.hub == null || reading.hub >= HUB_CONNECTION_MIN;
+      // Half the hub samples is a tie, not a needle. A streak that only ties
+      // the pivot check still gets a bar, at low confidence.
+      const hubSure = reading.hub == null || reading.hub > HUB_CONNECTION_MIN;
       const publishedConfidence = pressureMeasured && needleSure && hubSure
         ? gauge.confidence
         : Math.min(gauge.confidence ?? 0, NEEDLE_LOST_QUALITY);
