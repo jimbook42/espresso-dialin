@@ -2051,7 +2051,11 @@ function completeReading({
   );
   const settled = tracker.getPose() || center;
   const minDim = Math.min(videoWidth, videoHeight);
-  const pressureHold = Boolean(position.held || orientation.pressureHold);
+  // A printed-face registration is the scale. The legacy rim search can stay
+  // `held` for the whole clip without ever accepting an orientation candidate.
+  // That hold must not veto a face the template has already accepted.
+  const printed = orientation.dialRegistered === true;
+  const pressureHold = printed ? false : Boolean(position.held || orientation.pressureHold);
   const publishedNeedle = pressureHold && orientation.stableNeedleDeg != null
     ? orientation.stableNeedleDeg
     : detection.angleDeg;
@@ -2076,7 +2080,7 @@ function completeReading({
       confidence: position.confidence,
       orientationConfidence: orientation.confidence,
       periodMargin: orientation.periodMargin ?? null,
-      held: Boolean(position.held),
+      held: printed ? false : Boolean(position.held),
       pressureHold,
       poseQuality: orientation.poseQuality ?? position.poseQuality ?? null,
       narrowOk: orientation.narrowOk ?? null,
@@ -2368,7 +2372,8 @@ export function readTrackedGauge(video, canvas, region, tracker) {
         orientationConfidence: heldReg.confidence,
         periodMargin: heldReg.periodMargin,
         poseDeltaPx: position.poseDeltaPx ?? 0,
-        held: Boolean(position.held),
+        held: heldReg.ok ? false : Boolean(position.held),
+        pressureHold: heldReg.ok ? false : Boolean(cached.gauge.pressureHold || position.held),
         referenceCaptured: heldReg.ok,
         dialRegistered: heldReg.ok,
       },
