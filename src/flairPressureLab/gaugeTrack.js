@@ -16,6 +16,7 @@ import {
   FLAIR_CANONICAL_FACE_PROFILE,
 } from './canonicalDial.js';
 import { getOpenCvSync } from './opencvRuntime.js';
+import { requestVideoDiscovery, takeDiscoveryResult } from './discoveryClient.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 
 /**
@@ -2245,15 +2246,23 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let trackMs = 0;
   let needleDrawMs = 0;
   let needleMs = 0;
-  if (tracker.needsRediscovery()) {
+  const discoveryDue = tracker.needsRediscovery();
+  const asyncFound = takeDiscoveryResult();
+  // A locked pose searches on a worker so this frame only reads the needle.
+  // The first pose, or a runtime without workers, still searches here.
+  const handedToWorker = discoveryDue && !asyncFound && requestVideoDiscovery(video);
+  if (asyncFound) foundVideo = asyncFound;
+  if (asyncFound || (discoveryDue && !handedToWorker)) {
     // Full video frame. discoverGaugeInFrame downscales internally and returns
     // coordinates in this image, which are then mapped into video pixels.
     // A coarser canvas (short side 280–320) changed which circle won.
     const tDisc = stamp();
-    drawn = drawFullFrame(video, canvas, Math.min(videoWidth, videoHeight));
-    foundCanvas = discoverGaugeInFrame(drawn.image);
-    foundVideo = mapCanvasDiscoveryToVideo(foundCanvas, drawn, videoWidth, videoHeight);
-    if (Array.isArray(globalThis.__pressureLabVideoTrace) && globalThis.__pressureLabVideoTrace.length === 0) {
+    if (!asyncFound) {
+      drawn = drawFullFrame(video, canvas, Math.min(videoWidth, videoHeight));
+      foundCanvas = discoverGaugeInFrame(drawn.image);
+      foundVideo = mapCanvasDiscoveryToVideo(foundCanvas, drawn, videoWidth, videoHeight);
+    }
+    if (drawn && Array.isArray(globalThis.__pressureLabVideoTrace) && globalThis.__pressureLabVideoTrace.length === 0) {
       const probe = probeGaugeDiscoveryCandidates(drawn.image);
       drawn.topCandidates = [...(probe.candidates || [])]
         .sort((a, b) => (b.rank || 0) - (a.rank || 0))
@@ -2317,8 +2326,10 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     }
     discoveryMs = stamp() - tDisc;
   }
+  if (handedToWorker && tracker.getPose()) tracker.markDiscovered();
 
   const pose = tracker.getPose();
+  if (!pose) return null;
   const capture = tracker.captureSpec();
   const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * capture.pad);
   if (!trackCrop) return null;
