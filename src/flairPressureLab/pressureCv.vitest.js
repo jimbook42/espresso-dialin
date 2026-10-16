@@ -18,6 +18,7 @@ import {
   discoverGaugeInFrame,
   discoveredVerifies,
   gaugeAllowsConfidentReading,
+  gaugeAllowsReading,
   REGISTRATION_PERIOD_MARGIN_MIN,
   mapCanvasDiscoveryToVideo,
   selectDiscoveryCandidate,
@@ -36,7 +37,8 @@ import {
   laplacianVariance,
 } from './frameQuality.js';
 import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
-import { createAngleTracker } from './smoothPressure.js';
+import { createAngleTracker, createNeedleKalman } from './smoothPressure.js';
+import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { confidentAngleWindow, createRestAnchor } from './restAnchor.js';
 import { HUB_CONNECTION_MIN, detectNeedleAngle, hubConnection, selectPointerEnd } from './needleFromFrame.js';
@@ -419,6 +421,12 @@ describe('pressure CV units', () => {
     })).toMatchObject({ action: 'drop', reason: 'face-failed' });
     expect(chooseDiscoveryUpdate({
       hasPose: true,
+      faceScore: 0.1,
+      discovered: null,
+      printedFace: true,
+    })).toMatchObject({ action: 'hold', reason: 'scale-locked' });
+    expect(chooseDiscoveryUpdate({
+      hasPose: true,
       faceScore: 0.55,
       canonical: 0.4,
       confidence: 0.5,
@@ -694,6 +702,86 @@ describe('pressure CV units', () => {
       expect(Math.abs(reading - bar), `bar ${bar} read ${reading}`).toBeLessThanOrEqual(slack);
       expect(Math.abs(unclamped), `bar ${bar} unclamped ${unclamped}`).toBeLessThanOrEqual(slack);
     }
+  });
+
+  it('tracks a rotating synthetic dial and publishes nothing while the lock is down', () => {
+    const rotations = [12, 20, 28, 36];
+    let lock = null;
+    let fullSearches = 0;
+    for (const rotationDeg of rotations) {
+      const frame = syntheticPrintedDial({
+        size: 180,
+        cx: 90,
+        cy: 90,
+        radius: 62,
+        rotationDeg,
+      });
+      const needle = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + rotationDeg);
+      const bands = measureDialColorBands(frame, 90, 90, 62, needle);
+      const profile = faceProfileFromBands(bands);
+      let stepped = stepScaleLock(lock, { profile });
+      if (stepped.needsFull) {
+        fullSearches += 1;
+        const reg = registerDialFromColorBands(bands);
+        expect(reg.ok, `full register at ${rotationDeg}`).toBe(true);
+        stepped = stepScaleLock(null, { profile, fullRegistration: reg });
+        expect(stepped.mode).toBe('register');
+      } else {
+        expect(stepped.mode, `track at ${rotationDeg}`).toBe('track');
+      }
+      expect(stepped.registered).toBe(true);
+      lock = stepped.lock;
+      const relative = wrap360(needle - stepped.rotationDeg);
+      expect(Math.abs(angleToBar(relative, FLAIR_STATELESS_SESSION))).toBeLessThan(0.5);
+    }
+    expect(fullSearches).toBe(1);
+
+    const jumped = syntheticPrintedDial({
+      size: 180,
+      cx: 90,
+      cy: 90,
+      radius: 62,
+      rotationDeg: 120,
+    });
+    const farNeedle = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + 120);
+    const farProfile = faceProfileFromBands(measureDialColorBands(jumped, 90, 90, 62, farNeedle));
+    const dropped = stepScaleLock(lock, { profile: farProfile });
+    expect(dropped.registered).toBe(false);
+    expect(dropped.needsFull).toBe(true);
+    const stillDown = stepScaleLock(null, { profile: farProfile, fullRegistration: null });
+    expect(stillDown.mode).toBe('unlocked');
+    expect(stillDown.registered).toBe(false);
+  });
+
+  it('publishes a pending rest anchor and still blocks a conflict', () => {
+    const ready = {
+      dialRegistered: true,
+      confidence: 0.6,
+      dialFaceScore: 0.5,
+      needleLikeness: 0.7,
+      periodMargin: 0.2,
+    };
+    expect(gaugeAllowsReading({ ...ready, restAnchor: 'pending' })).toBe(true);
+    expect(gaugeAllowsConfidentReading({ ...ready, restAnchor: 'pending' })).toBe(false);
+    expect(gaugeAllowsReading({ ...ready, restAnchor: 'conflict' })).toBe(false);
+    expect(gaugeAllowsReading({ ...ready, restAnchor: 'confirmed' })).toBe(true);
+  });
+
+  it('coasts a short blur gap and refuses to extrapolate a wild needle', () => {
+    const kalman = createNeedleKalman({ maxGapMs: 400 });
+    expect(kalman.push(40, 0, { confidence: 0.4, accept: true }).angle).toBeCloseTo(40, 5);
+    const held = kalman.push(70, 125, { confidence: 0.05, accept: false, soft: true });
+    expect(held.predicted || held.lowConfidence).toBe(true);
+    expect(Math.abs(wrapDelta(40, held.angle))).toBeLessThan(8);
+    const coast = kalman.push(null, 250);
+    expect(coast.predicted).toBe(true);
+    expect(coast.angle).not.toBeNull();
+    const agree = kalman.push(42, 300, { confidence: 0.02, accept: false, soft: true });
+    expect(agree.predicted).toBe(true);
+    expect(Math.abs(wrapDelta(40, agree.angle))).toBeLessThan(8);
+    const gap = kalman.push(null, 900);
+    expect(gap.gap).toBe(true);
+    expect(gap.angle).toBeNull();
   });
 
   it('picks the long pointer rather than the short tail', () => {

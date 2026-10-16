@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { loadPressureReplayManifest, resolveClipPath, selectClips } from './manifest.js';
-import { summarizeClipFrames } from './summary.js';
+import { compareReplayRuns, summarizeClipFrames } from './summary.js';
 import { framesToCsv } from './framesCsv.js';
 import { writeAnnotatedFrames } from './annotate.mjs';
 import { ROOT } from '../lib/previewServer.mjs';
@@ -181,7 +181,11 @@ async function processClip(clip, replayDir) {
     videoPath: mp4,
     outDir,
   });
-  return { id: clip.id, summary, annotated, outDir };
+  return { id: clip.id, summary, annotated, outDir, frames };
+}
+
+function replayTwice(argv) {
+  return argv.includes('--twice') || process.env.PRESSURE_REPLAY_REPEAT === '2';
 }
 
 async function main() {
@@ -201,10 +205,26 @@ async function main() {
     });
   }
 
+  const twice = replayTwice(process.argv);
   const results = [];
+  const determinism = [];
   for (const clip of clips) {
     process.stderr.write(`\n=== Replay ${clip.id} ===\n`);
-    results.push(await processClip(clip, process.env.FLAIR_REPLAY_DIR));
+    const first = await processClip(clip, process.env.FLAIR_REPLAY_DIR);
+    if (!twice) {
+      results.push(first);
+      continue;
+    }
+    process.stderr.write(`\n=== Replay ${clip.id} (pass 2) ===\n`);
+    const second = await processClip(clip, process.env.FLAIR_REPLAY_DIR);
+    const diff = compareReplayRuns(first.frames, second.frames);
+    determinism.push({ id: clip.id, diff, first: first.summary, second: second.summary });
+    process.stderr.write(
+      `determinism ${clip.id}: ${diff.identical ? 'match' : 'DIFF'} `
+      + `frames ${diff.left}/${diff.right} barMismatch ${diff.barMismatch} `
+      + `max|bar| ${diff.maxBarDelta.toFixed(3)} centreMismatch ${diff.centreMismatch}\n`,
+    );
+    results.push(second);
   }
 
   const mergedResults = manifest.clips.map((clip) => {
@@ -238,6 +258,16 @@ async function main() {
     '| Clip | Normal med | Normal p95 | 4× CPU med | 4× CPU p95 |',
     '| --- | ---: | ---: | ---: | ---: |',
     ...mergedResults.map(({ id, summary }) => `| ${id} | ${summary.processMsMedian?.toFixed(1) ?? '—'} | ${summary.processMsP95?.toFixed(1) ?? '—'} | ${summary.processMsThrottled4xMedian?.toFixed(1) ?? '—'} | ${summary.processMsThrottled4xP95?.toFixed(1) ?? '—'} |`),
+    '',
+    '## Determinism (two consecutive replays)',
+    '',
+    twice
+      ? [
+        '| Clip | Match | Frames | Bar mismatches | Max |bar| | Centre mismatches |',
+        '| --- | ---: | ---: | ---: | ---: | ---: |',
+        ...determinism.map(({ id, diff }) => `| ${id} | ${diff.identical ? 'yes' : 'no'} | ${diff.left}/${diff.right} | ${diff.barMismatch} | ${diff.maxBarDelta.toFixed(3)} | ${diff.centreMismatch} |`),
+      ].join('\n')
+      : 'Not requested. Run with `PRESSURE_REPLAY_REPEAT=2` or `--twice`.',
     '',
     '## Privacy (per clip)',
     '',

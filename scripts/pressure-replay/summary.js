@@ -152,3 +152,64 @@ export function summarizeClipFrames(frames, clip) {
     tolerance,
   };
 }
+
+/**
+ * Two consecutive replays of the same clip. Pair frames by time.
+ * A small bar and centre tolerance is the determinism budget: the fake
+ * camera can present one frame early, and that must not look like a new run.
+ */
+export function compareReplayRuns(leftFrames, rightFrames, {
+  barTol = 0.08,
+  centreTol = 3,
+  timeTolS = 0.2,
+} = {}) {
+  const used = new Set();
+  let matched = 0;
+  let barMismatch = 0;
+  let centreMismatch = 0;
+  let maxBarDelta = 0;
+  for (const frame of leftFrames) {
+    let best = -1;
+    let bestDt = Infinity;
+    for (let i = 0; i < rightFrames.length; i += 1) {
+      if (used.has(i)) continue;
+      const dt = Math.abs((frame.timeS ?? 0) - (rightFrames[i].timeS ?? 0));
+      if (dt < bestDt) {
+        bestDt = dt;
+        best = i;
+      }
+    }
+    if (best < 0 || bestDt > timeTolS) continue;
+    used.add(best);
+    matched += 1;
+    const other = rightFrames[best];
+    const leftBar = finite(frame.bar);
+    const rightBar = finite(other.bar);
+    if (leftBar || rightBar) {
+      if (!leftBar || !rightBar) barMismatch += 1;
+      else {
+        const delta = Math.abs(frame.bar - other.bar);
+        maxBarDelta = Math.max(maxBarDelta, delta);
+        if (delta > barTol) barMismatch += 1;
+      }
+    }
+    if (finite(frame.centreX) && finite(other.centreX) && finite(frame.centreY) && finite(other.centreY)) {
+      const dist = Math.hypot(frame.centreX - other.centreX, frame.centreY - other.centreY);
+      if (dist > centreTol) centreMismatch += 1;
+    }
+  }
+  const frameDelta = Math.abs(leftFrames.length - rightFrames.length);
+  const barRate = matched ? barMismatch / matched : 1;
+  const centreRate = matched ? centreMismatch / matched : 1;
+  const identical = frameDelta <= 2 && barRate <= 0.02 && maxBarDelta <= 0.15 && centreRate <= 0.02;
+  return {
+    left: leftFrames.length,
+    right: rightFrames.length,
+    matched,
+    barMismatch,
+    centreMismatch,
+    maxBarDelta,
+    frameDelta,
+    identical,
+  };
+}

@@ -16,8 +16,9 @@ import {
   FLAIR_CANONICAL_FACE_PROFILE,
 } from './canonicalDial.js';
 import { getOpenCvSync } from './opencvRuntime.js';
-import { requestVideoDiscovery, takeDiscoveryResult } from './discoveryClient.js';
+import { replayDiscoveryIsSync, requestVideoDiscovery, takeDiscoveryResult } from './discoveryClient.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
+import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
 
 /**
  * Gauge pose for the pressure lab.
@@ -564,6 +565,11 @@ export function chooseDiscoveryUpdate({
   const currentOk = hasPose && (faceScore == null || faceScore >= DIAL_FACE_VERIFY_MIN);
   const nextOk = discoveredVerifies(discovered);
   if (!currentOk) {
+    // A locked scale survives a blurry frame. Dropping it would re-seed from
+    // whatever circle the next search happens to like.
+    if (printedFace && hasPose && !nextOk) {
+      return { action: 'hold', reason: 'scale-locked' };
+    }
     return nextOk
       ? { action: 'replace', reason: hasPose ? 'face-failed' : 'seed' }
       : { action: 'drop', reason: hasPose ? 'face-failed' : 'no-dial' };
@@ -636,6 +642,45 @@ function discoveryCandidateOk({ rimScore, confidence, faceScore, canonicalScore,
     || (faceScore >= DIAL_FACE_VERIFY_MIN + 0.08 && rankScore > rimScore * 0.14);
 }
 
+function readingGates({
+  dialRegistered,
+  confidence,
+  dialFaceScore,
+  needleLikeness,
+  periodMargin = null,
+}) {
+  const orientationClear = periodMargin == null
+    || periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
+  return dialRegistered === true
+    && orientationClear
+    && (confidence ?? 0) >= CONFIDENCE_MIN
+    && (dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
+    && (needleLikeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+}
+
+/**
+ * A bar may be published once the printed scale and the needle are confident.
+ * The rest anchor confirms that zero; it does not have to finish first.
+ * A conflict still blocks the bar. The anchor never becomes the zero.
+ */
+export function gaugeAllowsReading({
+  dialRegistered,
+  confidence,
+  dialFaceScore,
+  needleLikeness,
+  periodMargin = null,
+  restAnchor = null,
+}) {
+  if (restAnchor === 'conflict') return false;
+  return readingGates({
+    dialRegistered,
+    confidence,
+    dialFaceScore,
+    needleLikeness,
+    periodMargin,
+  });
+}
+
 export function gaugeAllowsConfidentReading({
   dialRegistered,
   confidence,
@@ -644,15 +689,14 @@ export function gaugeAllowsConfidentReading({
   periodMargin = null,
   restAnchor = null,
 }) {
-  const orientationClear = periodMargin == null
-    || periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
   const anchorClear = restAnchor == null || restAnchor === 'confirmed';
-  return dialRegistered === true
-    && orientationClear
-    && anchorClear
-    && (confidence ?? 0) >= CONFIDENCE_MIN
-    && (dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
-    && (needleLikeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+  return anchorClear && readingGates({
+    dialRegistered,
+    confidence,
+    dialFaceScore,
+    needleLikeness,
+    periodMargin,
+  });
 }
 
 /**
@@ -978,6 +1022,7 @@ export function createGaugeTracker() {
   let lastCanonical = null;
   let pendingJump = false;
   let printedFace = false;
+  let scaleLock = null;
 
   const clearVerification = () => {
     framesSinceDiscovery = 0;
@@ -987,6 +1032,7 @@ export function createGaugeTracker() {
     printedFace = false;
     bridgedReading = null;
     idleFrames = 0;
+    scaleLock = null;
   };
 
   const clearPoseMemory = () => {
@@ -1344,6 +1390,12 @@ export function createGaugeTracker() {
     setRotationDeg(rotationDeg) {
       if (!pose) return;
       pose = { ...pose, rotationDeg: wrap360(rotationDeg) };
+    },
+    getScaleLock() {
+      return scaleLock;
+    },
+    setScaleLock(lock) {
+      scaleLock = lock;
     },
     captureSpec() {
       if (mode !== 'searching') return { pad: 1.9, maxOutput: 188 };
@@ -1957,6 +2009,20 @@ export function registerDialRotationFromProfile(profile, needleDeg = null, previ
   };
 }
 
+function trackLockedScale(tracker, bands) {
+  const profile = faceProfileFromBands(bands);
+  return stepScaleLock(tracker.getScaleLock?.() ?? null, { profile });
+}
+
+function commitScaleStep(tracker, stepped) {
+  tracker.setScaleLock?.(stepped.lock);
+  if (stepped.registered) {
+    tracker.setRotationDeg(stepped.rotationDeg);
+    tracker.notePrintedFace(true);
+  }
+  return stepped;
+}
+
 function drawCrop(video, canvas, crop, maxOutput) {
   const output = Math.min(crop.size, maxOutput);
   const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -2017,7 +2083,6 @@ function completeReading({
   );
   let orientation;
   if (canonicalDial) {
-    const priorRot = tracker.getPose()?.rotationDeg ?? 0;
     const bands = measureDialColorBands(
       needleImage,
       localCx,
@@ -2025,29 +2090,33 @@ function completeReading({
       localRadius,
       detection.angleDeg,
     );
-    const reg = registerDialFromColorBands(bands);
-    // The printed face is the colour bands and the rim. A needle that dips
-    // under the likeness gate does not forget a registration already earned.
-    const registered = reg.ok
-      && dialFaceScore >= DIAL_FACE_VERIFY_MIN
-      && position.confidence >= CONFIDENCE_MIN;
-    if (registered) {
-      tracker.setRotationDeg(reg.rotationDeg);
-      tracker.notePrintedFace(true);
+    let stepped = trackLockedScale(tracker, bands);
+    if (stepped.needsFull) {
+      const reg = registerDialFromColorBands(bands);
+      // The printed face is the colour bands and the rim. A full search runs
+      // only when the frame-to-frame lock has nothing to follow.
+      const registered = reg.ok
+        && dialFaceScore >= DIAL_FACE_VERIFY_MIN
+        && position.confidence >= CONFIDENCE_MIN;
+      stepped = stepScaleLock(null, {
+        profile: faceProfileFromBands(bands),
+        fullRegistration: registered ? reg : null,
+      });
     }
-    const rotationDeg = registered ? reg.rotationDeg : priorRot;
+    commitScaleStep(tracker, stepped);
+    const priorRot = tracker.getPose()?.rotationDeg ?? 0;
     orientation = {
-      rotationDeg,
-      rawRotationDeg: reg.rotationDeg,
-      confidence: reg.confidence,
-      periodMargin: reg.periodMargin ?? 0,
+      rotationDeg: stepped.registered ? stepped.rotationDeg : priorRot,
+      rawRotationDeg: stepped.rotationDeg,
+      confidence: stepped.confidence,
+      periodMargin: stepped.periodMargin ?? 0,
       held: false,
       pressureHold: Boolean(position.held),
-      referenceCaptured: registered,
-      dialRegistered: registered,
-      poseQuality: reg.confidence,
+      referenceCaptured: stepped.registered,
+      dialRegistered: stepped.registered,
+      poseQuality: stepped.confidence,
       posePending: false,
-      poseRejectReason: registered ? null : 'dial-register-weak',
+      poseRejectReason: stepped.registered ? null : 'dial-register-weak',
       stableNeedleDeg: detection.angleDeg,
     };
   } else {
@@ -2262,12 +2331,13 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let needleMs = 0;
   const discoveryDue = tracker.needsRediscovery();
   const havePose = Boolean(tracker.getPose());
-  // The worker owns every full-frame search, including the first pose and a
-  // lost pose. This frame only applies a result that is already back, or
-  // reads the needle. While the worker is busy the frame is skipped.
-  const asyncFound = takeDiscoveryResult();
+  // Replay runs discovery on this frame. A worker result from an earlier
+  // bitmap lands on a later video time, and a rotating clip then diverges
+  // from run to run. Live keeps the worker for periodic search.
+  const syncDiscovery = replayDiscoveryIsSync();
+  const asyncFound = syncDiscovery ? null : takeDiscoveryResult();
   const wantSearch = !asyncFound && (!havePose || discoveryDue);
-  const handedToWorker = wantSearch && requestVideoDiscovery(video);
+  const handedToWorker = !syncDiscovery && wantSearch && requestVideoDiscovery(video);
   const discoveryAction = mainThreadDiscoveryAction({
     havePose,
     discoveryDue,
@@ -2395,50 +2465,57 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     const colorCx = (poseNow.cx - trackCrop.originX) * tracked.scale;
     const colorCy = (poseNow.cy - trackCrop.originY) * tracked.scale;
     const colorR = poseNow.radius * tracked.scale;
-    const heldReg = registerDialFromColorBands(measureDialColorBands(
+    const bands = measureDialColorBands(
       tracked.image,
       colorCx,
       colorCy,
       colorR,
       cached.angleDeg,
-    ));
-    reading = {
-      ...cached,
-      relativeAngleDeg: heldReg.ok
-        ? wrap360((cached.angleDeg ?? 0) - heldReg.rotationDeg)
-        : cached.relativeAngleDeg,
-      frameQuality: assessFrameQuality(
-        tracked.image.data,
-        tracked.image.width,
-        tracked.image.height,
-        colorCx,
-        colorCy,
-        colorR,
-      ),
-      videoWidth,
-      videoHeight,
-      gauge: {
-        ...cached.gauge,
-        cx: poseNow.cx,
-        cy: poseNow.cy,
-        radius: poseNow.radius,
-        nx: poseNow.cx / videoWidth,
-        ny: poseNow.cy / videoHeight,
-        nr: poseNow.radius / minDim,
-        confidence: position.confidence,
-        rotationDeg: heldReg.ok ? heldReg.rotationDeg : cached.gauge.rotationDeg,
-        orientationConfidence: heldReg.confidence,
-        periodMargin: heldReg.periodMargin,
-        poseDeltaPx: position.poseDeltaPx ?? 0,
-        held: heldReg.ok ? false : Boolean(position.held),
-        pressureHold: heldReg.ok ? false : Boolean(cached.gauge.pressureHold || position.held),
-        referenceCaptured: heldReg.ok,
-        dialRegistered: heldReg.ok,
-      },
-    };
-    bridged = true;
-    discoveryEvent = discoveryEvent || 'bridge';
-  } else {
+    );
+    const stepped = trackLockedScale(tracker, bands);
+    // A bridge frame has no new needle. Only a lock that is already following
+    // may keep the last relative angle. A dropped lock falls through to a
+    // full read, which publishes nothing until registration returns.
+    if (stepped.mode === 'track') {
+      commitScaleStep(tracker, stepped);
+      reading = {
+        ...cached,
+        relativeAngleDeg: cached.relativeAngleDeg,
+        frameQuality: assessFrameQuality(
+          tracked.image.data,
+          tracked.image.width,
+          tracked.image.height,
+          colorCx,
+          colorCy,
+          colorR,
+        ),
+        videoWidth,
+        videoHeight,
+        gauge: {
+          ...cached.gauge,
+          cx: poseNow.cx,
+          cy: poseNow.cy,
+          radius: poseNow.radius,
+          nx: poseNow.cx / videoWidth,
+          ny: poseNow.cy / videoHeight,
+          nr: poseNow.radius / minDim,
+          confidence: position.confidence,
+          rotationDeg: stepped.rotationDeg,
+          rawRotationDeg: stepped.rotationDeg,
+          orientationConfidence: stepped.confidence,
+          periodMargin: stepped.periodMargin,
+          poseDeltaPx: position.poseDeltaPx ?? 0,
+          held: false,
+          pressureHold: false,
+          referenceCaptured: true,
+          dialRegistered: true,
+        },
+      };
+      bridged = true;
+      discoveryEvent = discoveryEvent || 'bridge';
+    }
+  }
+  if (!reading) {
     const center = position.pose;
     const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
     if (!needleCrop) return null;
@@ -2460,11 +2537,21 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   }
   const faceScore = reading.gauge?.dialFaceScore ?? 0;
   if (faceScore < DIAL_FACE_VERIFY_MIN) {
-    tracker.reset();
-    reading.gauge.dialRegistered = false;
-    reading.gauge.referenceCaptured = false;
+    const keepLock = Boolean(tracker.getScaleLock?.());
+    if (!keepLock) {
+      tracker.reset();
+      reading.gauge.dialRegistered = false;
+      reading.gauge.referenceCaptured = false;
+    }
     reading.gauge.poseRejectReason = reading.gauge.poseRejectReason || 'dial-face';
     discoveryEvent = 'dial-face';
+    if (keepLock) {
+      tracker.noteTrackedFrame({
+        faceScore,
+        poseJumpPx: reading.gauge?.poseDeltaPx ?? 0,
+        radius: reading.gauge?.radius ?? 0,
+      });
+    }
   } else {
     tracker.noteTrackedFrame({
       faceScore,

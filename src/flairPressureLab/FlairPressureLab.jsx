@@ -28,13 +28,15 @@ import { REST_ANCHOR_MS, confidentAngleWindow, createRestAnchor, templateConflic
 import {
   createGaugeTracker,
   gaugeAllowsConfidentReading,
+  gaugeAllowsReading,
   probeGaugeDiscoveryCandidates,
   readTrackedGauge,
 } from './gaugeTrack';
-import { warmDiscoveryWorker } from './discoveryClient.js';
+import { warmDiscoveryWorker, whenDiscoveryWarmed } from './discoveryClient.js';
 import {
   createAngleJitterTracker,
   createAngleTracker,
+  createNeedleKalman,
   createPressureSmoother,
   createRestCalibration,
   createRisingThreshold,
@@ -168,6 +170,7 @@ export function FlairPressureLab() {
   const qualityCanvasRef = useRef(null);
   const lastAngleRef = useRef(null);
   const angleTrackerRef = useRef(createAngleTracker());
+  const kalmanRef = useRef(createNeedleKalman());
   const pressureRef = useRef(createPressureSmoother());
   const jitterRef = useRef(createAngleJitterTracker());
   const thresholdRef = useRef(createRisingThreshold(EXTRACTION_START_BAR));
@@ -243,6 +246,7 @@ export function FlairPressureLab() {
     lastAngleRef.current = null;
     calibRef.current.reset();
     angleTrackerRef.current.reset();
+    kalmanRef.current.reset();
     pressureRef.current.reset();
     jitterRef.current.reset();
     thresholdRef.current.reset();
@@ -266,19 +270,23 @@ export function FlairPressureLab() {
   };
 
   useEffect(() => {
-    if (!REPLAY_BUILD) return undefined;
+    if (!REPLAY_BUILD || !opencvReady) return undefined;
     let cancelled = false;
-    const timer = setTimeout(() => {
+    // The fake camera starts when the track opens. Opening it before OpenCV
+    // and the worker are warm makes the first processed frame depend on
+    // page-load time, so two replays of a rotating clip are not the same.
+    (async () => {
+      await whenDiscoveryWarmed();
       if (cancelled) return;
+      if (typeof window !== 'undefined') window.__pressureLabPipelineReady = true;
       resetReading({ clearHistory: true, clearTracker: true });
       resetPressureReplaySession();
-      void start();
-    }, 500);
+      await start();
+    })();
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
-  }, [resetReading, start]);
+  }, [opencvReady, resetReading, start]);
 
   const handleStop = () => {
     stop();
@@ -334,6 +342,7 @@ export function FlairPressureLab() {
     qualityCanvasRef.current = canvas;
     let raf = 0;
     let last = 0;
+    let nextMediaT = 0;
     let processed = 0;
     let windowStart = performance.now();
     let fps = 0;
@@ -364,12 +373,22 @@ export function FlairPressureLab() {
       dialRegistered: gauge.dialRegistered === true,
     });
 
-    const tick = (now) => {
+    const tick = (wallNow) => {
       raf = requestAnimationFrame(tick);
-      if (now - last < PROCESS_INTERVAL_MS) return;
-      last = now;
       const video = videoRef.current;
       if (!video || video.readyState < 2) return;
+      let now = wallNow;
+      if (REPLAY_BUILD) {
+        const slot = PROCESS_INTERVAL_MS / 1000;
+        const mediaT = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+        if (mediaT + 1e-4 < nextMediaT) return;
+        nextMediaT = Math.floor((mediaT + 1e-4) / slot) * slot + slot;
+        now = mediaT * 1000;
+      } else if (wallNow - last < PROCESS_INTERVAL_MS) {
+        return;
+      } else {
+        last = wallNow;
+      }
       let reading;
       let processMs = null;
       try {
@@ -400,10 +419,10 @@ export function FlairPressureLab() {
       }
 
       processed += 1;
-      if (now - windowStart >= 1000) {
+      if (wallNow - windowStart >= 1000) {
         fps = processed;
         processed = 0;
-        windowStart = now;
+        windowStart = wallNow;
       }
 
       const gauge = reading.gauge;
@@ -537,17 +556,19 @@ export function FlairPressureLab() {
           && frameQualityForAnchor.ok
           && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE,
       });
-      const confidentDial = gaugeAllowsConfidentReading({
+      const gate = {
         dialRegistered: gauge.dialRegistered,
         confidence: gauge.confidence,
         dialFaceScore: gauge.dialFaceScore,
         needleLikeness: reading.likeness,
         periodMargin: gauge.periodMargin,
         restAnchor: restAnchorRef.current.status(),
-      });
+      };
+      const canRead = gaugeAllowsReading(gate);
+      const confidentDial = gaugeAllowsConfidentReading(gate);
 
       if (!sessionRef.current) {
-        if (!confidentDial || gauge.held) {
+        if (!canRead || gauge.held) {
           const uncertainty = record({
             tracking: 'CALIBRATING',
             smoothedAngle: null,
@@ -602,6 +623,7 @@ export function FlairPressureLab() {
         setSession(next);
         lastAngleRef.current = null;
         angleTrackerRef.current.reset();
+        kalmanRef.current.reset();
         pressureRef.current.reset();
         jitterRef.current.reset();
         thresholdRef.current.reset();
@@ -620,8 +642,9 @@ export function FlairPressureLab() {
       const softNeedle = Boolean(sessionRef.current)
         && gauge.dialRegistered === true
         && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE * 0.5;
-      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || !frameQuality.ok
-        || (!confidentDial && !softNeedle);
+      const qualityBlocked = !frameQuality.ok;
+      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || qualityBlocked
+        || (!canRead && !softNeedle);
       const candidateJump = lastAngleRef.current == null || choice.angleDeg == null
         ? null
         : wrapDelta(lastAngleRef.current, choice.angleDeg);
@@ -631,6 +654,16 @@ export function FlairPressureLab() {
       let signal = thresholdRef.current.get();
       let tracked = { angle: lastAngleRef.current, accepted: false, pendingHits: 0, heldReason: null };
       let needleDecision;
+      let predicted = false;
+      const applyKalmanBar = (km) => {
+        if (km?.angle == null) return false;
+        rawBar = angleToBar(km.angle, sessionRef.current);
+        if (rawBar == null) {
+          offScale = true;
+          return false;
+        }
+        return true;
+      };
       if (!blockSample && choice.angleDeg != null) {
         tracked = angleTrackerRef.current.push(choice.angleDeg, {
           quality: reading.quality,
@@ -640,11 +673,13 @@ export function FlairPressureLab() {
         });
         needleDecision = tracked.accepted ? 'accepted' : (tracked.heldReason || 'held');
         if (tracked.accepted && tracked.angle != null) {
-          lastAngleRef.current = tracked.angle;
-          rawBar = angleToBar(tracked.angle, sessionRef.current);
-          if (rawBar == null) {
-            offScale = true;
-          } else {
+          const km = kalmanRef.current.push(tracked.angle, now, {
+            confidence: reading.quality,
+            accept: true,
+          });
+          lastAngleRef.current = km.angle ?? tracked.angle;
+          tracked = { ...tracked, angle: lastAngleRef.current };
+          if (applyKalmanBar(km)) {
             const smoothed = pressureRef.current.push(rawBar);
             signal = thresholdRef.current.push(smoothed, Date.now());
             signalPaused = false;
@@ -654,35 +689,60 @@ export function FlairPressureLab() {
           // at low confidence below, and leave the smoothed needle where it was.
           rawBar = angleToBar(choice.angleDeg, sessionRef.current);
           if (rawBar == null) offScale = true;
+          predicted = true;
+        } else {
+          const km = kalmanRef.current.push(null, now);
+          if (applyKalmanBar(km) && km.predicted) {
+            predicted = true;
+            needleDecision = 'coast';
+          }
+        }
+      } else if (!gauge.held && !gauge.pressureHold && !choice.held && canRead && (qualityBlocked || weak)) {
+        // Blur and a weak ray do not get to move the needle. A measurement
+        // that still agrees can nudge it. Anything else coasts, then gaps.
+        angleTrackerRef.current.push(null);
+        const km = choice.angleDeg != null
+          ? kalmanRef.current.push(choice.angleDeg, now, {
+            confidence: reading.quality ?? 0,
+            accept: false,
+            soft: true,
+          })
+          : kalmanRef.current.push(null, now);
+        if (applyKalmanBar(km)) {
+          predicted = true;
+          needleDecision = km.predicted ? 'coast' : 'soft';
+        } else if (qualityBlocked) {
+          needleDecision = `gap-${frameQuality.flags.join('-') || 'quality'}`;
+        } else {
+          needleDecision = 'gap-weak';
         }
       } else {
         angleTrackerRef.current.push(null);
+        kalmanRef.current.push(null, now);
         if (gauge.held) needleDecision = 'held-gauge';
         else if (gauge.pressureHold) needleDecision = 'held-pose';
         else if (choice.held) needleDecision = 'held-flip';
-        else if (!frameQuality.ok) needleDecision = `held-${frameQuality.flags.join('-') || 'quality'}`;
+        else if (qualityBlocked) needleDecision = `held-${frameQuality.flags.join('-') || 'quality'}`;
         else needleDecision = 'held-weak';
       }
       const jitter = jitterRef.current.push(tracked.accepted ? tracked.angle : lastAngleRef.current);
-      const bridged = qualityBridgeRef.current.publish(
+      qualityBridgeRef.current.publish(
         pressureRef.current.get(),
-        !blockSample && tracked.accepted,
+        !blockSample && tracked.accepted && !predicted,
         now,
       );
-      const pressureBar = confidentDial ? bridged.value : null;
+      const pressureBar = rawBar;
       const tracking = classifyTrackingStatus({
         calibrated: true,
         quality: reading.quality,
         jitterDeg: jitter,
-        accepted: Boolean(tracked.accepted) && !blockSample,
+        accepted: Boolean(tracked.accepted) && !blockSample && !predicted,
         heldFlip: choice.held || tracked.rejectedFlip,
         gaugeHeld: gauge.held,
         offScale,
       });
       const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
-      const pressureMeasured = !blockSample && rawBar != null && (
-        Boolean(tracked.accepted) || tracked.heldReason === 'hub'
-      );
+      const pressureMeasured = !predicted && !blockSample && rawBar != null && Boolean(tracked.accepted);
       const needleSure = (reading.quality ?? 0) >= NEEDLE_TRACK_QUALITY;
       // Half the hub samples is a tie, not a needle. A streak that only ties
       // the pivot check still gets a bar, at low confidence.
@@ -698,7 +758,7 @@ export function FlairPressureLab() {
         agreeSamplesRef.current = agreeSamplesRef.current.filter((sample) => sample.timeMs >= agreeCutoff);
       }
       const angleAgrees = confidentAngleWindow(agreeSamplesRef.current, now);
-      const publishedConfidence = pressureMeasured && needleSure && hubSure && confidentDial && angleAgrees
+      const publishedConfidence = !predicted && pressureMeasured && needleSure && hubSure && confidentDial && angleAgrees
         ? gauge.confidence
         : Math.min(gauge.confidence ?? 0, NEEDLE_LOST_QUALITY);
       const uncertainty = record({
@@ -733,7 +793,7 @@ export function FlairPressureLab() {
           radius: gauge.radius,
           gaugeRotationDeg: gauge.rotationDeg,
           needleAngleDeg: tracked.angle,
-          bar: pressureMeasured ? rawBar : pressureBar,
+          bar: rawBar,
           confidence: publishedConfidence,
           processMs,
           conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,

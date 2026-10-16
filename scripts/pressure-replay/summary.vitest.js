@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadPressureReplayManifest, selectClips } from './manifest.js';
-import { isHighConfidence, isValidReading, summarizeClipFrames } from './summary.js';
+import { compareReplayRuns, isHighConfidence, isValidReading, summarizeClipFrames } from './summary.js';
 
 describe('pressure replay manifest', () => {
   it('loads all six clips with expected metadata', () => {
@@ -56,5 +56,24 @@ describe('pressure replay summary math', () => {
     expect(summary.blurPct).toBeCloseTo(100 / 3, 5);
     expect(summary.glarePct).toBeCloseTo(100 / 3, 5);
     expect(summary.confidentButWrongPct).toBe(0);
+  });
+
+  it('treats two replays as the same run inside a small tolerance', () => {
+    const left = [
+      { timeS: 0.125, bar: 0.1, centreX: 230, centreY: 350 },
+      { timeS: 0.25, bar: 0.12, centreX: 231, centreY: 351 },
+    ];
+    const right = [
+      { timeS: 0.13, bar: 0.14, centreX: 232, centreY: 350 },
+      { timeS: 0.26, bar: 0.1, centreX: 231, centreY: 352 },
+    ];
+    expect(compareReplayRuns(left, right).identical).toBe(true);
+    const drifted = [
+      { timeS: 0.125, bar: 1.4, centreX: 230, centreY: 350 },
+      { timeS: 0.25, bar: 0.1, centreX: 260, centreY: 400 },
+    ];
+    const diff = compareReplayRuns(left, drifted);
+    expect(diff.identical).toBe(false);
+    expect(diff.barMismatch).toBeGreaterThan(0);
   });
 });

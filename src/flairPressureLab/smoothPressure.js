@@ -110,6 +110,94 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 
   };
 }
 
+/** A coast longer than this is a gap, not a reading. */
+export const NEEDLE_COAST_MAX_MS = 480;
+const COAST_VELOCITY_TAU_S = 0.2;
+const SOFT_INNOVATION_DEG = 8;
+
+/**
+ * Constant-velocity needle angle.
+ * A confident measurement moves the state. A blurry measurement moves it
+ * only when it already agrees, and only a little. A disagreement or a long
+ * gap clears the output instead of walking into a confident-wrong bar.
+ * Coasting is marked predicted so the caller can keep confidence low.
+ */
+export function createNeedleKalman({
+  maxGapMs = NEEDLE_COAST_MAX_MS,
+  maxInnovationDeg = 16,
+  gain = 0.22,
+} = {}) {
+  let angle = null;
+  let velocity = 0;
+  let lastT = null;
+  let lastUpdateT = null;
+
+  const clear = () => {
+    angle = null;
+    velocity = 0;
+    lastT = null;
+    lastUpdateT = null;
+  };
+
+  const integrate = (now, decay) => {
+    const dt = lastT == null ? 0 : Math.max(0, (now - lastT) / 1000);
+    lastT = now;
+    if (decay) velocity *= Math.exp(-dt / COAST_VELOCITY_TAU_S);
+    angle = wrap360(angle + velocity * dt);
+    return dt;
+  };
+
+  const coast = (now) => {
+    if (angle == null || lastUpdateT == null || now == null) {
+      return { angle: null, predicted: false, gap: true, lowConfidence: true };
+    }
+    if (now - lastUpdateT > maxGapMs) {
+      clear();
+      return { angle: null, predicted: false, gap: true, lowConfidence: true };
+    }
+    integrate(now, true);
+    return { angle, predicted: true, gap: false, lowConfidence: true };
+  };
+
+  return {
+    reset() {
+      clear();
+    },
+    push(raw, now, { confidence = 1, accept = true, soft = false } = {}) {
+      if (raw == null || now == null || Number.isNaN(raw)) return coast(now ?? lastT);
+      if (angle == null) {
+        if (!accept) return { angle: null, predicted: false, gap: true, lowConfidence: true };
+        angle = wrap360(raw);
+        velocity = 0;
+        lastT = now;
+        lastUpdateT = now;
+        return { angle, predicted: false, gap: false, lowConfidence: false };
+      }
+      const dt = Math.max(0.001, (now - (lastT ?? now)) / 1000);
+      const predictedAngle = wrap360(angle + velocity * dt);
+      const innovation = wrapDelta(predictedAngle, raw);
+      const big = Math.abs(innovation) > maxInnovationDeg;
+      const softAgree = soft && !accept && Math.abs(innovation) <= SOFT_INNOVATION_DEG;
+      if (softAgree) {
+        // The blurry needle is still on the last angle. Extend the gap
+        // without walking the state into a confident-wrong bar.
+        lastT = now;
+        lastUpdateT = now;
+        velocity *= 0.5;
+        return { angle, predicted: true, gap: false, lowConfidence: true };
+      }
+      if (!accept) return coast(now);
+      if (big && confidence < 0.18) return coast(now);
+      const next = wrap360(predictedAngle + gain * innovation);
+      velocity = Math.max(-120, Math.min(120, wrapDelta(angle, next) / dt));
+      angle = next;
+      lastT = now;
+      lastUpdateT = now;
+      return { angle, predicted: false, gap: false, lowConfidence: false };
+    },
+  };
+}
+
 export function createPressureSmoother(alpha = 0.4) {
   let value = null;
   return {
