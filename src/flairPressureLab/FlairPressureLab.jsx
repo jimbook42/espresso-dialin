@@ -217,6 +217,7 @@ export function FlairPressureLab() {
 
   useEffect(() => {
     let cancelled = false;
+    warmDiscoveryWorker();
     loadOpenCv()
       .then(() => {
         if (!cancelled) {

@@ -2371,6 +2371,12 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   }, { reusePrior });
   trackMs = stamp() - tTrack;
   if (!position) return null;
+  // A circle the rim does not support is not a dial. Drop it so the next
+  // frame can search again, instead of keeping it until the rediscover stride.
+  if ((position.confidence ?? 0) < CONFIDENCE_MIN && priorState.printedFace !== true) {
+    tracker.reset();
+    return null;
+  }
 
   let reading;
   let bridged = false;
