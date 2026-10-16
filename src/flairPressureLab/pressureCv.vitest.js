@@ -31,7 +31,7 @@ import { assessFrameQuality, BLUR_VARIANCE_MIN, createReadingBridge, laplacianVa
 import { angleToBar, wrap360, wrapDelta } from './gaugeConfig.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { createRestAnchor } from './restAnchor.js';
-import { detectNeedleAngle } from './needleFromFrame.js';
+import { detectNeedleAngle, selectPointerEnd } from './needleFromFrame.js';
 import {
   BAND_INNER_FRACTION,
   BAND_OUTER_FRACTION,
@@ -500,6 +500,7 @@ describe('pressure CV units', () => {
     bias = 0,
     shadow = 0,
     needleBar = 0,
+    needleHalfDeg = 5,
   }) {
     const data = new Uint8ClampedArray(size * size * 4);
     const pointer = wrap360(barToDialAngle(needleBar) + rotationDeg);
@@ -533,7 +534,7 @@ describe('pressure CV units', () => {
           }
           const fromPointer = Math.abs(wrapDelta(pointer, imageDeg));
           const fromTail = Math.abs(wrapDelta(tail, imageDeg));
-          if (fromPointer < 5 && dist > radius * 0.14 && dist < radius * 0.84) {
+          if (fromPointer < needleHalfDeg && dist > radius * 0.14 && dist < radius * 0.84) {
             r = 12;
             g = 12;
             b = 12;
@@ -604,6 +605,7 @@ describe('pressure CV units', () => {
         radius: 62,
         rotationDeg,
         needleBar: bar,
+        needleHalfDeg: 1.6,
       });
       const needle = wrap360(barToDialAngle(bar) + rotationDeg);
       const reg = registerDialFromColorBands(measureDialColorBands(frame, 90, 88, 62, needle));
@@ -612,7 +614,10 @@ describe('pressure CV units', () => {
       const relative = wrap360(found.angleDeg - reg.rotationDeg);
       const reading = angleToBar(relative, FLAIR_STATELESS_SESSION);
       const slack = bar === 0 ? 0.1 : 0.2;
+      const unclamped = (wrapDelta(relative, barToDialAngle(bar)) / FLAIR_STATELESS_SESSION.sweepDeg)
+        * FLAIR_STATELESS_SESSION.maxBar;
       expect(Math.abs(reading - bar), `bar ${bar} read ${reading}`).toBeLessThanOrEqual(slack);
+      expect(Math.abs(unclamped), `bar ${bar} unclamped ${unclamped}`).toBeLessThanOrEqual(slack);
     }
   });
 
@@ -628,6 +633,41 @@ describe('pressure CV units', () => {
     const found = detectNeedleAngle(frame, 90, 90, 58 * 0.24, 58 * 0.86);
     const pointer = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + rotationDeg);
     expect(Math.abs(wrapDelta(found.angleDeg, pointer))).toBeLessThan(12);
+    expect(found.needleEnd).toBe('long');
+  });
+
+  it('keeps the long end when noise past the tail outruns the tip', () => {
+    const n = 32;
+    const leaderSamples = new Float32Array(n);
+    const leaderProbe = new Float32Array(n);
+    const tailSamples = new Float32Array(n);
+    const tailProbe = new Float32Array(n);
+    for (let i = 0; i < 26; i += 1) {
+      leaderSamples[i] = 8;
+      leaderProbe[i] = i < 10 ? 6 : 2;
+    }
+    for (let i = 0; i < 8; i += 1) {
+      tailSamples[i] = 9;
+      tailProbe[i] = 5;
+    }
+    for (let i = 28; i < n; i += 1) {
+      tailSamples[i] = 12;
+      tailProbe[i] = 3;
+    }
+    const choice = selectPointerEnd(
+      { samples: leaderSamples, probeAt: leaderProbe },
+      { samples: tailSamples, probeAt: tailProbe },
+    );
+    expect(choice.oppositeEnd).toBeLessThan(choice.leaderEnd);
+    expect(choice.takeOpposite).toBe(false);
+    expect(choice.needleEnd).toBe('long');
+
+    const flipped = selectPointerEnd(
+      { samples: tailSamples, probeAt: tailProbe },
+      { samples: leaderSamples, probeAt: leaderProbe },
+    );
+    expect(flipped.takeOpposite).toBe(true);
+    expect(flipped.needleEnd).toBe('long');
   });
 
   it('confirms rest zero only after a still half-second on the printed zero', () => {

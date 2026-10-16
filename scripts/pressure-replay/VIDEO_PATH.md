@@ -100,3 +100,18 @@ Compared with `out-6.32-pm` (d0cf6ac), the 3.8–11 bar confident readings are g
 The scale angle is the centroid of the red espresso sector (5→10 bar on the unit-circle template) checked against the dark stop sector. The needle angle is the long end. A confident bar is published only after the needle has been still for half a second and that angle lies on the template's zero. Disagreement keeps the anchor in conflict, so a wrong centroid cannot publish a bar.
 
 Replay: `/workspace/flair-replay/out-6.32-repair4`. Confident-wrong is 0% on every clip. No bar was published. Privacy passed (0 external, 0 storage). The three steady clips sit on the dial (about x 230–238, y 345–353) and are found 34–64% of frames while still calibrating, because the red centroid does not put the resting pointer on the template zero. 225307 is still not on the dial. Blur and glare flags did not appear. 4× median is under 33 ms on 225219, 225240, 225254, and 225307; 225324 and 225337 are above it, and several p95 values are still over 150 ms.
+
+## Measured printed face (design photo)
+
+Offline script `scripts/pressure-replay/measure-design-dial.py` on `/workspace/flair-replay/20261015_225359.jpg`. Angles are this photo's orientation (0° to the right, clockwise, y down). The template stores them on the unit dial. The photo's pixel centre and radius are not runtime constants.
+
+| Mark | Angle |
+| --- | --- |
+| 0 bar, stop pin | 47° |
+| Needle long end at rest | 52° |
+| Numeral 5 | 132.6° |
+| Numeral 10 | 216.9° |
+| Red Espresso block | 137–197° |
+| Dark STOP! BREAKAGE! band | 258–355° |
+
+Printed scale is 0, 5, and 10. There is no printed 12 or 16. Sweep from the stop pin to the 10 is 170°. The solid red block sits at about 0.44–0.62 of the face radius. The dark band sits further out, about 0.74–0.90. Registration uses the heaviest red run so the Flair script does not move zero. A rest needle that disagrees with this zero stays a conflict and does not replace the template.

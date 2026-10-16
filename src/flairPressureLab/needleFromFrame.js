@@ -221,6 +221,90 @@ function scoreProfile(samples) {
   };
 }
 
+const EXTENT_GAP = 2;
+
+/**
+ * How far a dark run stays connected to the hub.
+ * A gap of two samples can be a tick crossing the pointer. A larger gap ends
+ * the pointer, so a speck further out does not make the tail the long end.
+ */
+export function coherentEndIndex(samples) {
+  const n = samples?.length ?? 0;
+  if (!n) return -1;
+  let total = 0;
+  for (let i = 0; i < n; i += 1) total += samples[i];
+  const mean = total / n;
+  if (mean <= 1e-4) return -1;
+  const level = mean * 0.45;
+  const innerSlots = Math.max(3, Math.round(n * INNER_WINDOW));
+  let start = -1;
+  for (let i = 0; i < innerSlots; i += 1) {
+    if (samples[i] >= level) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) return -1;
+  let end = start;
+  let gap = 0;
+  for (let i = start + 1; i < n; i += 1) {
+    if (samples[i] >= level) {
+      end = i;
+      gap = 0;
+    } else {
+      gap += 1;
+      if (gap > EXTENT_GAP) break;
+    }
+  }
+  return end;
+}
+
+/** Wider at the hub than at the tip. A blob or a band does not taper. */
+export function rayTaper(probeAt, samples, endIndex) {
+  if (!probeAt || endIndex < 4) return 0;
+  const inner = [];
+  const outer = [];
+  const split = Math.max(1, Math.floor((endIndex + 1) / 2));
+  for (let i = 0; i <= endIndex; i += 1) {
+    if (!(samples[i] > 0) || !(probeAt[i] > 0)) continue;
+    (i < split ? inner : outer).push(probeAt[i]);
+  }
+  if (!inner.length || !outer.length) return 0;
+  const innerMed = median(inner);
+  const outerMed = median(outer);
+  if (innerMed <= 0) return 0;
+  return (innerMed - outerMed) / innerMed;
+}
+
+export function pointerMerit(profile) {
+  const samples = profile?.samples;
+  const end = coherentEndIndex(samples);
+  const taper = rayTaper(profile?.probeAt, samples, end);
+  const extent = end < 0 ? 0 : (end + 1) / (samples?.length || 1);
+  const tapered = taper > 0.05 ? taper : 0;
+  return { end, taper, merit: extent * (1 + 0.4 * tapered) };
+}
+
+/**
+ * The long end is the ray with greater coherent reach from the hub.
+ * Taper breaks a near tie. A disconnected speck beyond the tail does not count.
+ * needleEnd is `long` when the chosen ray is that longer end.
+ */
+export function selectPointerEnd(leader, opposite) {
+  const leaderMerit = pointerMerit(leader);
+  const oppositeMerit = pointerMerit(opposite);
+  const takeOpposite = oppositeMerit.merit > leaderMerit.merit + 0.02;
+  const chosen = takeOpposite ? oppositeMerit : leaderMerit;
+  const other = takeOpposite ? leaderMerit : oppositeMerit;
+  const needleEnd = chosen.end >= other.end ? 'long' : 'tail';
+  return {
+    takeOpposite,
+    needleEnd,
+    leaderEnd: leaderMerit.end,
+    oppositeEnd: oppositeMerit.end,
+  };
+}
+
 function probeDistance(probeAt, samples) {
   const used = [];
   for (let i = 0; i < samples.length; i += 1) {
@@ -260,6 +344,7 @@ function emptyDetection(angleDeg = 0) {
     continuity: 0,
     startRadius: null,
     probePx: 0,
+    needleEnd: 'long',
   };
 }
 
@@ -294,6 +379,8 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
     for (let s = 0; s < SAMPLE_COUNT; s += 1) scratch[s] = Math.max(0, ray.samples[s] - medianProfile[s]);
     const profile = scoreProfile(scratch);
     profile.probePx = probeDistance(ray.probeAt, scratch);
+    profile.samples = Float32Array.from(scratch);
+    profile.probeAt = Float32Array.from(ray.probeAt);
     return profile;
   };
 
@@ -337,13 +424,8 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
 
   const opposite = (best + 180) % 360;
   const oppositeProfile = scoreAngle(opposite, opposite % ANGLE_STEP === 0 ? evidence[opposite / ANGLE_STEP] : null);
-  const leadingScore = bestProfile.score < 0 ? 0 : bestProfile.score;
-  // The pointer is the long end. The tail is dark only near the hub, so its
-  // outer sample index stops short of the long end.
-  if (
-    oppositeProfile.endIndex > bestProfile.endIndex + 4
-    && oppositeProfile.score >= leadingScore * 0.45
-  ) {
+  const chosenEnd = selectPointerEnd(bestProfile, oppositeProfile);
+  if (chosenEnd.takeOpposite) {
     best = opposite;
     bestProfile = oppositeProfile;
   }
@@ -388,6 +470,7 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null) {
     continuity: bestProfile.continuity,
     startRadius: startRadiusOf(bestProfile.startIndex, innerR, outerR),
     probePx: bestProfile.probePx,
+    needleEnd: chosenEnd.needleEnd,
   };
 }
 

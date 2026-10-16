@@ -569,7 +569,7 @@ export function FlairPressureLab() {
               bar: null,
               confidence: gauge.confidence,
               processMs,
-              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}`,
+              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}`,
               tracking: 'CALIBRATING',
             }, now);
           }
@@ -694,7 +694,7 @@ export function FlairPressureLab() {
           bar: pressureMeasured ? rawBar : pressureBar,
           confidence: gauge.confidence,
           processMs,
-          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}`,
+          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}`,
           tracking,
         }, now);
       }
