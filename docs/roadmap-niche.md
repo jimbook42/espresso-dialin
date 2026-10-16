@@ -70,3 +70,61 @@ Confidence gate constants (`NICHE_LEARNING_MIN_OBSERVATIONS`, `MIN_PAIRS`, `MIN_
 | ESLint | **31** warnings (baseline) |
 
 Browser QA for item 5 remains outstanding before merge.
+
+## Future planned work
+
+This section tracks approved follow-ups beyond the Niche table above. See also `docs/HANDOVER.md` for process and deploy rules.
+
+### Flair pressure lab (feature-flagged; branches `cursor/6-29` … `cursor/6-35`, stacked, not merged to `main`)
+
+Replay baseline and PM scoring use clips under `/workspace/flair-replay/720` (no clip names or expected values in non-test source). **0% confidently-wrong readings** remains a hard safety gate.
+
+| Area | Status / notes |
+|------|----------------|
+| Harness + OpenCV path, 0–10 bar dial, worker, privacy checks | On branch stack (through **6.35** @ `2d211f2`) |
+| Rotation, determinism, startup, blur | **Done** on branch (**6.34** @ `55a4b69`) |
+| Glare / hard light | Tried in **6.35**; full approach reverted; pre-shot glare hint only — **more work queued** |
+| **4× CPU throttle** latency on mid-tier phones | **Queued** (PM scores p95 per clip) |
+| **Real-phone** test (camera path, not replay-only) | **Queued** |
+| **Held-back real-shot clips** test (owner clips not all in replay suite) | **Queued** |
+| **Beta label** in UI when lab is enabled for preview testers | **Queued** |
+| **"Snap your gauge"** dial profiles + **other gauges** (beyond Flair 58) | **Future** |
+| Difficult held-back clip accuracy (±0.5 bar still weak vs other clips) | **Open** — target 9/10 reading accuracy before ship |
+| Hosted preview with visible lab entry | `qa/6-35-pressure-preview` @ `84cd36b` (env flag + link; not production) |
+
+**Merge:** integrate stacked pressure-lab branches in order after QA; keep `VITE_ENABLE_PRESSURE_LAB` **OFF** in production until explicitly promoted.
+
+Shot timer pressure integration (after pressure lab passes real-shot tests): live tracking status, smoothed pressure, live pressure profile, time and smart-scale weight during the shot; post-shot pressure and flow-rate graphs and stats. Storing pressure curves per shot is a data/schema change and needs Isaac's OK.
+
+Before shot-timer pressure integration ships, plan a **combined on-phone test**: camera pressure reading + Bluetooth smart scale + shot timer running together (real phone, real shot).
+
+### Queued v4.11.0 walkthrough polish (Isaac's rulings)
+
+Batch UI/copy fixes from the App QA blind walkthrough (evidence screenshots: `/workspace/qa-reports/dialin-blind-2/`; PM log in the Dial-In store). Includes items deferred from earlier QA:
+
+- Bean form **NaN** warnings on empty numeric fields; **"1 shots"** (and similar) pluralisation.
+- After saving the **first bean**, stay on the current flow (no auto-jump to Brew Guide + welcome).
+- Suppress **"Ready for a quicker workflow?"** right after CSV import.
+- **Legacy CSV import:** backfill inferred per-shot targets (6.14 D-1).
+- Import notice **doubled period**; **Apply rec** label clarity; **CSV Rec Followed** on first shots; **timer carryover**; bean-history copy (5.2c minors).
+- **Yield** not prefilling from recipe on log form (if still desired); **previous-recipe** card shot-count mismatch ("Based on N").
+- **Brew Guide** empty state / **"Choose a coffee"** after fresh load; welcome modal layout over tools list.
+- **Settings** overlay: grinder/machine context at top (walkthrough finding).
+- **Stats** timeline: target compliance / rating **N/A** where product expects a value.
+
+### Scale / BLE
+
+- Branch `feat/ble-scale`: Web Bluetooth (Timemore; more scales on `main`), simulated scale on Preview only. Merge per PM after pressure-lab stack.
+- Protocol research: PM store `research/timemore-ble.md`.
+
+### Multi-tab safety (follow-up)
+
+`patchGlobalSettings` atomic merges are in App for most settings writes. **Follow-up:** audit remaining `settings.get` + `settings.put` paths (e.g. CSV import) for cross-tab lost updates until all global settings writes use the same pattern.
+
+### Deferred (PM log / store)
+
+- Niche item **4** (empirical recs on real hardware) — **DEFERRED** (no Niche Zero to validate against).
+- Niche item **5** — full regression + browser QA still **pending** before merge.
+- **Applied dial after Apply** — session-only in memory; product decision whether to persist across reload.
+- Draft grinder/scale batch (**6.15**) — not on `main`; separate roadmap when approved.
+- GitHub **default branch** still stale `master`; production canonical branch is **`main`** (`vercel.json` on `main` enables deploy for `main`, `master`, and `qa/*` only).
