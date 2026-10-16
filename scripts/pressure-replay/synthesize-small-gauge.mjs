@@ -180,7 +180,7 @@ async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const clips = [];
   for (const clip of manifest.clips) {
-    const sourcePath = resolveClipPath(clip);
+    const sourcePath = resolveClipPath(clip, process.env.FLAIR_REPLAY_DIR);
     if (!fs.existsSync(sourcePath)) throw new Error(`missing dry clip ${sourcePath}`);
     const { width, height } = probeSize(sourcePath);
     const dials = measureDials(sourcePath, width, height);

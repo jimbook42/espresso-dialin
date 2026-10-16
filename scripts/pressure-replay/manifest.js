@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MANIFEST_PATH = path.join(__dirname, 'manifest.json');
+const DEFAULT_REPLAY_DIR = '/workspace/flair-replay/720';
 
 /**
  * Load replay manifest. Expected values stay in the harness only — never passed to the app/CV.
@@ -27,9 +28,8 @@ export function loadPressureReplayManifest(manifestPath = MANIFEST_PATH) {
   return { version: raw.version ?? 1, clips };
 }
 
-export function resolveClipPath(clip, replayDir) {
-  const base = replayDir || process.env.FLAIR_REPLAY_DIR || '/workspace/flair-replay/720';
-  return path.join(base, clip.file);
+export function resolveClipPath(clip, replayDir = DEFAULT_REPLAY_DIR) {
+  return path.join(replayDir, clip.file);
 }
 
 export function selectClips(manifest, filterId) {
