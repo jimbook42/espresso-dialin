@@ -480,6 +480,47 @@ describe('pressure CV units', () => {
     expect(Math.hypot(found.cx - dial.cx, found.cy - dial.cy)).toBeLessThan(24);
   });
 
+  it('does not replace a verified coarse dial with a different finer circle', () => {
+    const width = 1280;
+    const height = 720;
+    const dial = { cx: 1000, cy: 180, radius: 120 };
+    const frame = syntheticGauge(width, height, dial);
+    const seen = [];
+    let calls = 0;
+    setOpenCvForTests({
+      Mat: class Mat {
+        constructor() { this.cols = 0; }
+        delete() {}
+        floatAt(_row, col) {
+          const image = seen[seen.length - 1];
+          const scale = image.w / width;
+          const part = col % 3;
+          if (part === 0) return (calls === 1 ? dial.cx : 80) * scale;
+          if (part === 1) return (calls === 1 ? dial.cy : 600) * scale;
+          return dial.radius * 1.02 * scale;
+        }
+      },
+      matFromImageData: (image) => {
+        seen.push({ w: image.width, h: image.height });
+        return new (class { delete() {} })();
+      },
+      cvtColor: () => {},
+      GaussianBlur: () => {},
+      HoughCircles(_gray, circles) {
+        calls += 1;
+        circles.cols = 1;
+      },
+      HOUGH_GRADIENT: 3,
+      COLOR_RGBA2GRAY: 0,
+      BORDER_DEFAULT: 0,
+      Size: class Size {},
+    });
+    const found = discoverGaugeInFrame(frame);
+    expect(calls).toBe(1);
+    expect(found?.ok).toBe(true);
+    expect(Math.hypot(found.cx - dial.cx, found.cy - dial.cy)).toBeLessThan(24);
+  });
+
   it('never holds a reading for more than a second', () => {
     expect(READING_HOLD_MAX_MS).toBeLessThanOrEqual(1000);
     expect(READING_HOLD_MAX_MS).toBeGreaterThanOrEqual(1000);
@@ -513,7 +554,8 @@ describe('pressure CV units', () => {
     expect(needleZoomForRadius(minR)).toBe(1);
     expect(needleZoomForRadius(minR * 0.5)).toBeGreaterThan(1);
     expect(MOVE_CLOSER_HINT).toBe('Move closer — gauge too small');
-    expect(gaugeTooSmallForNeedle(minR - 1, minR)).toBe(true);
+    expect(gaugeTooSmallForNeedle(minR - 1, minR)).toBe(false);
+    expect(gaugeTooSmallForNeedle(minR - 2, minR)).toBe(true);
     expect(gaugeTooSmallForNeedle(minR, minR)).toBe(false);
     expect(gaugeTooSmallForNeedle(0, minR)).toBe(false);
     expect(moveCloserHintVisible({ tooSmall: true, shotRunning: false })).toBe(true);

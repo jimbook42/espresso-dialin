@@ -190,12 +190,16 @@ export const GLARE_SETUP_HINT = 'Glare on gauge — shift your phone a bit';
 /** Shown before a shot when the detected dial is below the needle's pixel need. */
 export const MOVE_CLOSER_HINT = 'Move closer — gauge too small';
 
-/** True when a detected radius cannot feed the needle sampler a pixel per sample. */
+/**
+ * True when a detected radius cannot feed the needle sampler a pixel per sample.
+ * One pixel of slack: the sampler rounds each radial step, so a dial a
+ * fraction of a pixel under the count is already on a real source pixel.
+ */
 export function gaugeTooSmallForNeedle(radiusPx, minRadiusPx) {
   return typeof radiusPx === 'number'
     && radiusPx > 0
     && typeof minRadiusPx === 'number'
-    && radiusPx < minRadiusPx;
+    && radiusPx < minRadiusPx - 1;
 }
 
 /**

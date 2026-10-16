@@ -855,7 +855,10 @@ export function selectDiscoveryCandidate(candidates) {
 
 /**
  * Working-image radius at which the tick ring is a few pixels wide.
- * A coarser hit below this is kept only when no finer scale verifies.
+ * Scales are added until a dial at the small end of the generic radius
+ * band reaches this size. A scale that already verifies a dial is the
+ * answer: a later full-frame search must not replace it with a different
+ * circle, and it must not run when this one is already in hand.
  */
 export const TICK_READABLE_RADIUS_PX = 28;
 
@@ -947,7 +950,6 @@ function discoverGaugeWithOpenCv(image, cv) {
   if (!image?.width || !image?.data || !cv?.Mat) return null;
   const minDim = Math.min(image.width, image.height);
   const outputs = discoveryOutputSizes(minDim);
-  let pending = null;
   for (let level = 0; level < outputs.length; level += 1) {
     const ctx = buildDiscoveryFrameContext(image, outputs[level]);
     const candidates = [];
@@ -955,13 +957,13 @@ function discoverGaugeWithOpenCv(image, cv) {
     const chosen = selectDiscoveryCandidate(candidates);
     if (!chosen?.ok) continue;
     if (chosen.radius < minDim * MIN_DISCOVERY_RADIUS_FRACTION) continue;
-    const workingRadius = chosen.radiusScaled ?? chosen.radius * ctx.scale;
-    const result = resultFromChosen(chosen);
-    const last = level === outputs.length - 1;
-    if (workingRadius >= TICK_READABLE_RADIUS_PX || last) return result;
-    pending = result;
+    // Image radius is already scaled back from this working size. A verified
+    // dial here is tracked from that circle. Another octave runs only when
+    // this scale does not verify one, which is how a small dial missed by
+    // the coarse Hough is still found.
+    return resultFromChosen(chosen);
   }
-  return pending;
+  return null;
 }
 
 /**
