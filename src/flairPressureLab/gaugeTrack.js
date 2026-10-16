@@ -2247,10 +2247,15 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let needleDrawMs = 0;
   let needleMs = 0;
   const discoveryDue = tracker.needsRediscovery();
-  const asyncFound = takeDiscoveryResult();
+  const havePose = Boolean(tracker.getPose());
+  // A result that arrives after the pose was dropped belongs to an older frame.
+  // Applying it would lock whichever bitmap the worker happened to finish.
+  const pendingDiscovery = takeDiscoveryResult();
+  const asyncFound = havePose ? pendingDiscovery : null;
   // A locked pose searches on a worker so this frame only reads the needle.
-  // The first pose, or a runtime without workers, still searches here.
-  const handedToWorker = discoveryDue && !asyncFound && requestVideoDiscovery(video);
+  // No pose yet: search this frame here. The first circle is then the same
+  // frame every run, not whichever bitmap the worker returned first.
+  const handedToWorker = havePose && discoveryDue && !asyncFound && requestVideoDiscovery(video);
   if (asyncFound) foundVideo = asyncFound;
   if (asyncFound || (discoveryDue && !handedToWorker)) {
     // Full video frame. discoverGaugeInFrame downscales internally and returns
