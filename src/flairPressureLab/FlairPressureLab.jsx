@@ -522,6 +522,7 @@ export function FlairPressureLab() {
         confidence: gauge.confidence,
         dialFaceScore: gauge.dialFaceScore,
         needleLikeness: reading.likeness,
+        periodMargin: gauge.periodMargin,
       });
 
       if (!sessionRef.current) {

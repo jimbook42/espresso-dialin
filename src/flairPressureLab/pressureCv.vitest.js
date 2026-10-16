@@ -16,6 +16,7 @@ import {
   discoverGaugeInFrame,
   discoveredVerifies,
   gaugeAllowsConfidentReading,
+  REGISTRATION_PERIOD_MARGIN_MIN,
   mapCanvasDiscoveryToVideo,
   selectDiscoveryCandidate,
   matchGaugeRotation,
@@ -263,6 +264,23 @@ describe('pressure CV units', () => {
     expect(first.qualityOk).toBe(true);
   });
 
+  it('rejects a confident bar when scale registration is ambiguous', () => {
+    expect(gaugeAllowsConfidentReading({
+      dialRegistered: true,
+      confidence: 0.6,
+      dialFaceScore: 0.5,
+      needleLikeness: 0.7,
+      periodMargin: REGISTRATION_PERIOD_MARGIN_MIN - 0.03,
+    })).toBe(false);
+    expect(gaugeAllowsConfidentReading({
+      dialRegistered: true,
+      confidence: 0.6,
+      dialFaceScore: 0.5,
+      needleLikeness: 0.7,
+      periodMargin: REGISTRATION_PERIOD_MARGIN_MIN,
+    })).toBe(true);
+  });
+
   it('rejects confident readings when dial-face verification is weak', () => {
     expect(gaugeAllowsConfidentReading({
       dialRegistered: true,
@@ -320,24 +338,19 @@ describe('pressure CV units', () => {
     expect(identity.radius).toBeCloseTo(51, 5);
   });
 
-  it('prefers a dominant near-verified dial over a weaker verified circle', () => {
-    const dial = {
-      cx: 235, cy: 351, radius: 52, rank: 18, ok: false, face: 0.42, canonical: 0.27, rim: 40,
+  it('does not loosen the canonical gate to accept a dominant circle', () => {
+    const strong = {
+      cx: 40, cy: 50, radius: 30, rank: 18, ok: false, face: 0.5, canonical: 0.2, rim: 40,
     };
-    const clutter = {
-      cx: 72, cy: 394, radius: 18, rank: 13, ok: true, face: 0.42, canonical: 0.32, rim: 20,
+    const weak = {
+      cx: 90, cy: 20, radius: 12, rank: 13, ok: true, face: 0.5, canonical: 0.4, rim: 20,
     };
-    const chosen = selectDiscoveryCandidate([clutter, dial]);
-    expect(chosen?.ok).toBe(true);
-    expect(chosen?.cx).toBe(235);
+    expect(selectDiscoveryCandidate([weak, strong])).toBeNull();
     expect(selectDiscoveryCandidate([
-      { ...dial, canonical: 0.05, rank: 18, ok: false },
-      clutter,
-    ])).toBeNull();
-    expect(selectDiscoveryCandidate([
-      { ...dial, ok: true, canonical: 0.3 },
-      clutter,
-    ])?.cx).toBe(235);
+      { ...strong, ok: true, canonical: 0.4 },
+      weak,
+    ])?.cx).toBe(40);
+    expect(selectDiscoveryCandidate([weak])).toEqual(expect.objectContaining({ cx: 90, ok: true }));
   });
 
   it('re-detects when the face fails, the pose jumps, or the interval elapses', () => {

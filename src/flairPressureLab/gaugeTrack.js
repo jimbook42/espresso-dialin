@@ -486,7 +486,14 @@ function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needl
 export const MIN_DISCOVERY_RADIUS_FRACTION = 0.03;
 export const MAX_DISCOVERY_RADIUS_FRACTION = 0.5;
 /** Whole-frame discovery cadence while a verified pose is held. */
-export const REDISCOVER_EVERY_FRAMES = 8;
+export const REDISCOVER_EVERY_FRAMES = 24;
+/** Full-frame search while the dial is lost. Most ticks stay cheap. */
+const LOST_DISCOVERY_STRIDE = 4;
+/**
+ * Absolute orientation must beat the next distant alignment by this much.
+ * A smaller gap means a lighting gradient or a tick-period alias, not the printed scale.
+ */
+export const REGISTRATION_PERIOD_MARGIN_MIN = 0.08;
 const POSE_JUMP_FRACTION = 0.45;
 const REDISCOVERY_MOVE_FRACTION = 0.35;
 
@@ -532,7 +539,7 @@ export function verificationScore({ faceScore = 0, canonical = 0, confidence = 0
 export function discoveredVerifies(found) {
   return Boolean(found?.ok)
     && (found.dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
-    && (found.canonicalScore ?? 0) >= DIAL_CANONICAL_VERIFY_MIN * 0.9;
+    && (found.canonicalScore ?? 0) >= DIAL_CANONICAL_VERIFY_MIN;
 }
 
 /**
@@ -621,13 +628,22 @@ export function gaugeAllowsConfidentReading({
   confidence,
   dialFaceScore,
   needleLikeness,
+  periodMargin = null,
 }) {
+  const orientationClear = periodMargin == null
+    || periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
   return dialRegistered === true
+    && orientationClear
     && (confidence ?? 0) >= CONFIDENCE_MIN
     && (dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
     && (needleLikeness ?? 0) >= NEEDLE_LIKENESS_GATE;
 }
 
+/**
+ * Working resolution for Hough and the tick profile. Centres are scaled back
+ * to the input image. The bound is there so discovery is not a full-frame
+ * pixel loop; every frame uses the same scale.
+ */
 const DISCOVERY_MAX_OUTPUT = 240;
 
 function buildDiscoveryFrameContext(image, maxOutput = DISCOVERY_MAX_OUTPUT) {
@@ -743,9 +759,10 @@ const DISCOVERY_RANK_DOMINANCE = 1.25;
 
 /**
  * Pick the circle to seed.
- * A weaker circle that barely verifies must not replace a clearly stronger
- * circle that sits just under the canonical gate. If that stronger circle is
- * not even close, return null and try another frame instead of locking the weak one.
+ * Rank is the continuous score (rim, face, canonical). A circle that fails the
+ * full verification gate is not accepted by loosening that gate. If that
+ * failing circle still outranks every verified circle by a clear factor, the
+ * frame is ambiguous: return null and try again, rather than locking the weaker one.
  */
 export function selectDiscoveryCandidate(candidates) {
   let bestRank = null;
@@ -757,10 +774,6 @@ export function selectDiscoveryCandidate(candidates) {
   if (!bestRank) return null;
   if (bestOk && bestOk !== bestRank) {
     const dominant = (bestRank.rank || 0) > (bestOk.rank || 0) * DISCOVERY_RANK_DOMINANCE;
-    const nearVerify = (bestRank.face || 0) >= DIAL_FACE_VERIFY_MIN
-      && (bestRank.canonical || 0) >= DIAL_CANONICAL_VERIFY_MIN * 0.9
-      && (bestRank.rim || 0) > 1e-3;
-    if (dominant && nearVerify) return { ...bestRank, ok: true };
     if (dominant) return null;
   }
   return bestOk;
@@ -945,6 +958,7 @@ export function createGaugeTracker() {
   let trustedRotationDeg = null;
   let maskNeedleDeg = null;
   let bridgedReading = null;
+  let idleFrames = 0;
   let mode = 'locked';
   let lossStreak = 0;
   let searchStep = 0;
@@ -1251,7 +1265,13 @@ export function createGaugeTracker() {
       baseRadius = radius;
     },
     needsRediscovery() {
-      if (!pose || pendingJump) return true;
+      if (!pose) {
+        const due = idleFrames % LOST_DISCOVERY_STRIDE === 0;
+        idleFrames += 1;
+        return due;
+      }
+      idleFrames = 0;
+      if (pendingJump) return true;
       if (lastFaceScore != null && lastFaceScore < DIAL_FACE_VERIFY_MIN) return true;
       return framesSinceDiscovery >= REDISCOVER_EVERY_FRAMES;
     },
@@ -1856,21 +1876,37 @@ function resampleCrop(image, crop, maxOutput) {
 
 const DIAL_REGISTER_MIN = 0.34;
 
+/** Remove a slow angular ramp so a lighting gradient cannot impersonate the printed arc. */
+function highPassProfile(profile, radius = 2) {
+  const n = profile.length;
+  const out = new Float32Array(n);
+  const win = radius * 2 + 1;
+  for (let i = 0; i < n; i += 1) {
+    let sum = 0;
+    for (let k = -radius; k <= radius; k += 1) sum += profile[(i + k + n) % n];
+    out[i] = profile[i] - sum / win;
+  }
+  return out;
+}
+
 /** Per-frame dial rotation from canonical tick profile (no session template). */
 export function registerDialRotationFromProfile(profile, needleDeg = null, previousDeg = 0) {
   if (!profile || profile.length < 8) {
-    return { ok: false, rotationDeg: previousDeg, confidence: 0 };
+    return { ok: false, rotationDeg: previousDeg, confidence: 0, periodMargin: 0 };
   }
-  const rim = matchGaugeRotation(FLAIR_CANONICAL_DIAL_PROFILE, profile, {
+  const rim = matchGaugeRotation(highPassProfile(FLAIR_CANONICAL_DIAL_PROFILE), highPassProfile(profile), {
     previousDeg,
     needleDeg,
     maxShiftDeg: 360,
   });
-  const ok = rim.ok && rim.confidence >= DIAL_REGISTER_MIN;
+  const ok = rim.ok
+    && rim.confidence >= DIAL_REGISTER_MIN
+    && rim.periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
   return {
     ok,
     rotationDeg: ok ? rim.estimateDeg : previousDeg,
     confidence: rim.confidence,
+    periodMargin: rim.periodMargin,
   };
 }
 
@@ -1945,6 +1981,7 @@ function completeReading({
       rotationDeg,
       rawRotationDeg: reg.rotationDeg,
       confidence: reg.confidence,
+      periodMargin: reg.periodMargin ?? 0,
       held: false,
       pressureHold: Boolean(position.held),
       referenceCaptured: registered,
@@ -1997,6 +2034,7 @@ function completeReading({
       rawRotationDeg: orientation.rawRotationDeg ?? orientation.rotationDeg,
       confidence: position.confidence,
       orientationConfidence: orientation.confidence,
+      periodMargin: orientation.periodMargin ?? null,
       held: Boolean(position.held),
       pressureHold,
       poseQuality: orientation.poseQuality ?? position.poseQuality ?? null,

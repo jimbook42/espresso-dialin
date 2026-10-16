@@ -63,3 +63,15 @@ Measured on `20261015_225219` (CDP `Emulation.setCPUThrottlingRate` 4). The cent
 | 4× CPU | 14.4 ms | 198.5 ms |
 
 The 4× median is under the 33 ms target. The p95 is a full-frame re-detect.
+
+## Needle to bar
+
+On a frame whose pose is the dial (centre about 237, 351, radius about 52), the long dark stroke is at about 320° in image space (0° is to the right, angles increase clockwise because y grows downward). That stroke runs from near the hub out to the bezel, so it is the pointer, not a tick. The short opposite end, near 140°, is only dark next to the hub: that is the tail.
+
+Printed-scale registration on the same pose returned rotation 260° at correlation 0.375, period margin 0.032. Relative angle = 320° − 260° = 60°. `angleToBar` maps 60° through the canonical zero at 225° and the 270° sweep to about 8.7 bar. The rotation that would put this pointer on the canonical zero (about 95°) has correlation 0. The winning alignment is a slow lighting gradient sitting on the synthetic profile's heavy arc. A rival about 55° away still scores 0.34 and would move the reading by more than 2 bar.
+
+High-pass of that angular profile (subtract a 5-bin circular mean) drops the same frame to correlation 0.27 and period margin 0.04, so it no longer registers. A confident bar now also requires the period margin to clear 0.08. An ambiguous registration does not publish a value.
+
+Overlay of that frame, green rim and red pointer: `/tmp/632r1-overlay.png`.
+
+Discovery no longer accepts a circle by multiplying the canonical gate by 0.9. If the strongest circle fails the full gate and still outranks every verified circle, the frame is skipped. Discovery's 240px working image is the same scale on every frame so the Hough stays small; centres are scaled back to the input. Full-frame re-detect while the dial is held is every 24 tracked frames, and while it is lost every 4th tick, so a miss does not spend the whole frame budget on Hough.
