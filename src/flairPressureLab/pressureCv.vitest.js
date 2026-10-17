@@ -44,6 +44,7 @@ import {
   gaugeTooSmallForNeedle,
   glareSetupHintVisible,
   moveCloserHintVisible,
+  qualityBlocksSample,
   READING_HOLD_MAX_MS,
   laplacianVariance,
 } from './frameQuality.js';
@@ -450,7 +451,7 @@ describe('pressure CV units', () => {
     expect(chooseReadableDiscovery(hotspot, [
       { candidate: hotspot, nativeOk: true, blurry: true, sharpness: 0.4, canonical: 0.3 },
       { candidate: face, nativeOk: true, blurry: false, sharpness: 1.6, canonical: 0.32 },
-    ])).toBe(face);
+    ])).toBe(hotspot);
   });
 
   it('searches a finer scale for a dial that is small on the coarse frame', () => {
@@ -581,6 +582,7 @@ describe('pressure CV units', () => {
     expect(needleZoomForRadius(minR)).toBe(1);
     expect(needleZoomForRadius(minR * 0.66)).toBe(1);
     expect(needleZoomForRadius(minR * 0.5)).toBeGreaterThanOrEqual(2);
+    expect(needleZoomForRadius(minR * 0.99, { locked: true })).toBe(1);
     expect(needleZoomForRadius(minR * 0.87, { locked: true })).toBeGreaterThan(1);
     expect(needleZoomForRadius(minR * 0.87, { locked: true })).toBeLessThan(2);
     expect(needleZoomForRadius(minR * 0.66, { locked: true })).toBe(1);
@@ -1210,6 +1212,10 @@ describe('pressure CV units', () => {
     expect(sharpQ.sharpness).toBeGreaterThan(BLUR_SHARPNESS_MIN);
     expect(sharpQ.flags).not.toContain('blur');
     expect(softQ.flags).toContain('blur');
+    expect(qualityBlocksSample({ flags: ['blur'], likeness: 0.8 })).toBe(true);
+    expect(qualityBlocksSample({ flags: ['glare'], likeness: 0.2 })).toBe(true);
+    expect(qualityBlocksSample({ flags: ['glare'], likeness: 0.5 })).toBe(false);
+    expect(qualityBlocksSample({ flags: ['blur', 'glare'], likeness: 0.8 })).toBe(true);
   });
 
   function paintStripes(size, radius, lo, hi, smooth) {

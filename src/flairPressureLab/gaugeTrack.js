@@ -9,7 +9,7 @@ import {
   wrapDelta,
 } from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
-import { assessFrameQuality, BLUR_SHARPNESS_MIN } from './frameQuality.js';
+import { assessFrameQuality } from './frameQuality.js';
 import { detectNeedleAngle, needleZoomForRadius } from './needleFromFrame.js';
 import {
   FLAIR_CANONICAL_DIAL_PROFILE,
@@ -860,10 +860,12 @@ export function selectDiscoveryCandidate(candidates) {
  */
 export function chooseReadableDiscovery(chosen, examined) {
   if (!chosen) return null;
-  const usable = (item) => item?.nativeOk && item.blurry !== true && item.candidate;
   const self = (examined || []).find((item) => item?.candidate === chosen);
-  if (usable(self)) return chosen;
-  const alternatives = (examined || []).filter((item) => usable(item) && item.candidate !== chosen);
+  // A coarse winner whose printed face still matches on the original pixels
+  // stays, even when that crop is soft. Replacing it with a sharper neighbour
+  // walks a dry dial off its needle.
+  if (self?.nativeOk) return chosen;
+  const alternatives = (examined || []).filter((item) => item?.nativeOk && item.candidate && item.candidate !== chosen);
   if (!alternatives.length) return chosen;
   alternatives.sort((a, b) => (b.sharpness || 0) - (a.sharpness || 0) || (b.canonical || 0) - (a.canonical || 0));
   return alternatives[0].candidate;
@@ -976,79 +978,12 @@ function discoverGaugeWithOpenCv(image, cv) {
     // Image radius is already scaled back from this working size. A verified
     // dial here is tracked from that circle. Another octave runs only when
     // this scale does not verify one, which is how a small dial missed by
-    // the coarse Hough is still found. A winner smaller than the tick ring
-    // is checked on the original frame before it is trusted: the coarse
-    // template score is inflated by the downscale.
-    const working = chosen.radiusScaled ?? (chosen.radius * Math.min(1, outputs[level] / minDim));
-    if (working < TICK_READABLE_RADIUS_PX) {
-      const refined = refineUndersizedDiscovery(image, candidates, chosen);
-      if (!refined) continue;
-      return resultFromChosen(refined);
-    }
+    // the coarse Hough is still found. Re-scoring that winner on a native
+    // crop changes which frame the worker finishes on, and a moving clip
+    // then locks a different circle from run to run.
     return resultFromChosen(chosen);
   }
   return null;
-}
-
-/**
- * Re-score a few coarse circles on a native crop.
- * Only runs when the rank winner is smaller than the tick ring, so a dry dial
- * that already verifies at the coarse scale never pays for it and is never replaced.
- */
-function refineUndersizedDiscovery(image, candidates, chosen) {
-  const floor = (chosen.rank || 0) * 0.55;
-  const ranked = (candidates || [])
-    .filter((candidate) => candidate?.ok && (candidate.rank || 0) >= floor)
-    .sort((a, b) => (b.rank || 0) - (a.rank || 0));
-  const distinct = [];
-  for (const candidate of ranked) {
-    if (distinct.length >= 4) break;
-    const near = distinct.some((prior) => (
-      Math.hypot(prior.cx - candidate.cx, prior.cy - candidate.cy)
-      < Math.max(12, Math.min(prior.radius, candidate.radius) * 0.35)
-    ));
-    if (!near) distinct.push(candidate);
-  }
-  if (!distinct.some((candidate) => candidate === chosen)) distinct.unshift(chosen);
-  const examined = [];
-  for (const candidate of distinct) {
-    const pad = Math.max(16, candidate.radius * 1.2);
-    const crop = squareCrop(image.width, image.height, candidate.cx, candidate.cy, pad);
-    if (!crop) continue;
-    const drawn = resampleCrop(image, crop, 280);
-    const localCx = (candidate.cx - crop.originX) * drawn.scale;
-    const localCy = (candidate.cy - crop.originY) * drawn.scale;
-    const localR = candidate.radius * drawn.scale;
-    const edges = prepareEdges(drawn.image, {
-      contrastRadius: Math.max(3, Math.round(localR / 8)),
-    }).edges;
-    const scored = scoreDiscoveryCandidate({
-      edges,
-      data: drawn.image.data,
-      width: drawn.image.width,
-      height: drawn.image.height,
-      cx: localCx,
-      cy: localCy,
-      faceRadius: localR,
-      scaledMin: Math.min(image.width, image.height),
-    });
-    const quality = assessFrameQuality(
-      drawn.image.data,
-      drawn.image.width,
-      drawn.image.height,
-      localCx,
-      localCy,
-      localR,
-    );
-    examined.push({
-      candidate,
-      nativeOk: scored.canonical >= DIAL_CANONICAL_VERIFY_MIN - 0.02 && scored.face >= DIAL_FACE_VERIFY_MIN,
-      blurry: quality.sharpness < BLUR_SHARPNESS_MIN,
-      sharpness: quality.sharpness,
-      canonical: scored.canonical,
-    });
-  }
-  return chooseReadableDiscovery(chosen, examined);
 }
 
 /**

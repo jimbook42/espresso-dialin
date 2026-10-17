@@ -31,6 +31,7 @@ import {
   gaugeTooSmallForNeedle,
   glareSetupHintVisible,
   moveCloserHintVisible,
+  qualityBlocksSample,
 } from './frameQuality.js';
 import { HUB_CONNECTION_MIN, minReadableDialRadiusPx } from './needleFromFrame.js';
 import { REST_ANCHOR_MS, confidentAngleWindow, createRestAnchor, templateConflictDeg } from './restAnchor.js';
@@ -718,8 +719,13 @@ export function FlairPressureLab() {
       const softNeedle = Boolean(sessionRef.current)
         && gauge.dialRegistered === true
         && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE * 0.5;
-      const qualityBlocked = !frameQuality.ok;
       const glareHidden = frameQuality.flags.includes('glare');
+      const qualityBlocked = qualityBlocksSample({
+        flags: frameQuality.flags,
+        likeness: reading.likeness ?? 0,
+        likenessGate: NEEDLE_LIKENESS_GATE,
+      });
+      const sharpDespiteGlare = glareHidden && !qualityBlocked;
       // A registered dial keeps its last bar through blur and glare even when
       // the face score dips. A template conflict still publishes nothing.
       const coastQuality = qualityBlocked
@@ -839,7 +845,7 @@ export function FlairPressureLab() {
       const freshSighting = rawBar != null
         && !gauge.held
         && !choice.held
-        && !glareHidden
+        && (!glareHidden || sharpDespiteGlare)
         && reading.relativeAngleDeg != null
         && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
       const gated = readingHoldRef.current.push({ bar: rawBar, fresh: freshSighting, now });

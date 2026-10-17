@@ -184,6 +184,17 @@ export function assessFrameQuality(imageData, width, height, cx, cy, radius, gra
   };
 }
 
+/**
+ * Blur hides the ridge, so it blocks a sample.
+ * A sharp face with a bright patch still has a ridge. Glare blocks the sample
+ * only when the pointer itself is weak. The setup hint is separate.
+ */
+export function qualityBlocksSample({ flags = [], likeness = 0, likenessGate = 0.4 } = {}) {
+  if (flags.includes('blur')) return true;
+  if (flags.includes('glare') && !(likeness >= likenessGate)) return true;
+  return false;
+}
+
 /** Shown before a shot when the dial face is glaring. Hidden for the whole shot. */
 export const GLARE_SETUP_HINT = 'Glare on gauge — shift your phone a bit';
 

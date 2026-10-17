@@ -40,8 +40,10 @@ export function needleZoomForRadius(radiusPx, { locked = false } = {}) {
   const factor = need / radiusPx;
   if (factor <= 1) return 1;
   if (!locked && factor < 2) return 1;
-  // Below this the ridge is a speck. Resampling it does not recover a pointer.
-  if (locked && factor >= 1.45) return 1;
+  // A fraction under the sampler (a dry dial) stays native: that resample
+  // smears the ridge. A locked face clearly below it is enlarged. A speck
+  // is not.
+  if (locked && (factor < 1.08 || factor >= 1.45)) return 1;
   return Math.min(4, factor);
 }
 
