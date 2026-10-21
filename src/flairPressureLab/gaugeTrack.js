@@ -11,7 +11,7 @@ import {
 } from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
 import { assessFrameQuality } from './frameQuality.js';
-import { detectNeedleAngle, needleZoomForRadius } from './needleFromFrame.js';
+import { detectNeedleAngle, needleZoomForRadius, refineNeedleAngle } from './needleFromFrame.js';
 import {
   buildFlairCanonicalDialProfile,
   FLAIR_CANONICAL_DIAL_PROFILE,
@@ -283,6 +283,7 @@ export function matchGaugeRotation(reference, current, {
   alsoNeedleDeg = null,
   referenceNeedleDeg = null,
   maxShiftDeg = 18,
+  maskHalfDeg = 16,
 } = {}) {
   if (!reference || !current || reference.length !== current.length) {
     return { ok: false, rotationDeg: previousDeg, confidence: 0, margin: 0, periodMargin: 0 };
@@ -295,8 +296,8 @@ export function matchGaugeRotation(reference, current, {
   const refMask = new Uint8Array(bins);
   for (let i = 0; i < bins; i += 1) {
     const deg = i * step;
-    if (nearNeedle(deg, needleDeg, 16) || nearNeedle(deg, alsoNeedleDeg, 16)) curMask[i] = 1;
-    if (nearNeedle(deg, referenceNeedleDeg, 16)) refMask[i] = 1;
+    if (nearNeedle(deg, needleDeg, maskHalfDeg) || nearNeedle(deg, alsoNeedleDeg, maskHalfDeg)) curMask[i] = 1;
+    if (nearNeedle(deg, referenceNeedleDeg, maskHalfDeg)) refMask[i] = 1;
   }
   const ranked = [];
   for (let shift = centerBin - half; shift <= centerBin + half; shift += 1) {
@@ -2107,29 +2108,42 @@ export function registerDialRotationFromProfile(profile, needleDeg = null, previ
   const canonical = profile.length === FLAIR_CANONICAL_DIAL_PROFILE.length
     ? FLAIR_CANONICAL_DIAL_PROFILE
     : buildFlairCanonicalDialProfile(profile.length);
-  const smooth = angularSmoothRadius(profile.length);
-  const opts = { previousDeg, needleDeg, maxShiftDeg: 360 };
+  const smooth = profile.length > PROFILE_BINS
+    ? Math.max(1, Math.round((4 * profile.length) / 360))
+    : angularSmoothRadius(profile.length);
   const arc = matchGaugeRotation(
     smoothProfile(canonical, smooth),
     smoothProfile(profile, smooth),
-    opts,
+    { previousDeg, needleDeg, maxShiftDeg: 360 },
   );
+  // The tick comb repeats every major tick. Its global peak can be an alias.
+  // The arc is the unique sector, so the comb only has to confirm that angle.
   const ticks = matchGaugeRotation(
     highPassProfile(canonical, smooth),
     highPassProfile(profile, smooth),
-    opts,
+    {
+      previousDeg: arc.estimateDeg ?? previousDeg,
+      needleDeg,
+      maxShiftDeg: arc.ok ? SCALE_AGREEMENT_DEG : 360,
+    },
   );
-  const agree = Math.abs(wrapDelta(arc.estimateDeg ?? 0, ticks.estimateDeg ?? 0)) <= SCALE_AGREEMENT_DEG;
+  const tickMeasurable = ticks.confidence >= DIAL_REGISTER_MIN && (arc.ok || ticks.ok);
+  const agree = !tickMeasurable
+    || Math.abs(wrapDelta(arc.estimateDeg ?? 0, ticks.estimateDeg ?? 0)) <= SCALE_AGREEMENT_DEG;
+  // A strong unique arc is the scale. The comb refines it when the ticks are
+  // actually visible. A weak comb (glare, occluder) must not veto that arc,
+  // and it must not publish a rotation the arc rejected.
   const ok = arc.ok
-    && ticks.ok
     && agree
     && arc.confidence >= DIAL_REGISTER_MIN
-    && ticks.confidence >= DIAL_REGISTER_MIN
     && arc.periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
+  const rotationDeg = ok
+    ? (tickMeasurable ? ticks.estimateDeg : arc.estimateDeg)
+    : previousDeg;
   return {
     ok,
-    rotationDeg: ok ? arc.estimateDeg : previousDeg,
-    confidence: Math.min(arc.confidence, ticks.confidence),
+    rotationDeg,
+    confidence: tickMeasurable ? Math.min(arc.confidence, ticks.confidence) : arc.confidence,
     periodMargin: arc.periodMargin,
   };
 }
@@ -2158,18 +2172,27 @@ export function readRectifiedPressure(image, candidate) {
     rectified.radius * OUTER_RADIUS_RATIO,
     sink,
   );
+  needle.angleDeg = refineNeedleAngle(
+    rectified.image,
+    rectified.cx,
+    rectified.cy,
+    rectified.radius * TIP_INNER_RATIO,
+    rectified.radius * OUTER_RADIUS_RATIO,
+    needle.angleDeg,
+  );
   const tNeedle = stamp();
-  const profile = sink.edges
-    ? measureRimProfile(
-      sink.edges,
-      rectified.image.width,
-      rectified.image.height,
-      rectified.cx,
-      rectified.cy,
-      rectified.radius,
-      { bins: FINE_PROFILE_BINS },
-    )
-    : null;
+  const tickEdges = prepareEdges(rectified.image, {
+    contrastRadius: Math.max(2, Math.round(rectified.radius * 0.05)),
+  }).edges;
+  const profile = measureRimProfile(
+    tickEdges,
+    rectified.image.width,
+    rectified.image.height,
+    rectified.cx,
+    rectified.cy,
+    rectified.radius,
+    { bins: FINE_PROFILE_BINS, innerRatio: 0.76, outerRatio: 0.88 },
+  );
   const reg = registerDialRotationFromProfile(profile, needle.angleDeg);
   const tReg = stamp();
   const relative = wrap360(needle.angleDeg - (reg.rotationDeg || 0));
@@ -2334,14 +2357,17 @@ function completeReading({
     if (stepped.needsFull) {
       let reg = registerDialFromColorBands(bands);
       if (edgeSink.edges) {
+        const fineEdges = prepareEdges(readImage, {
+          contrastRadius: Math.max(2, Math.round(readRadius * 0.05)),
+        }).edges;
         const fine = measureRimProfile(
-          edgeSink.edges,
+          fineEdges,
           readImage.width,
           readImage.height,
           readCx,
           readCy,
           readRadius,
-          { bins: 360 },
+          { bins: 360, innerRatio: 0.76, outerRatio: 0.88 },
         );
         const fromTemplate = registerDialRotationFromProfile(fine, detection.angleDeg);
         if (fromTemplate.ok) reg = fromTemplate;

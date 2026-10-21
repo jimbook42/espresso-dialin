@@ -1411,15 +1411,12 @@ describe('pressure CV units', () => {
           bch = 226;
           const local = wrap360((Math.atan2(v / b, u / a) * 180) / Math.PI);
           const dial = wrap360(local - rotationDeg);
-          if (rimTickAtDeg(dial) && rho > 0.74 && rho < 0.91) {
+          const majorTick = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].some((mark) => Math.abs(wrapDelta(dial, barToDialAngle(mark))) < 1.1);
+          const minorTick = !majorTick && [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5].some((mark) => Math.abs(wrapDelta(dial, barToDialAngle(mark))) < 0.7);
+          if ((majorTick || minorTick) && Math.abs(wrapDelta(dial, bar)) > 8 && rho > 0.74 && rho < 0.91) {
             r = 16;
             g = 16;
             bch = 16;
-          }
-          if (Math.abs(wrapDelta(pointer, local)) < 1.35 && rho > 0.18 && rho < 0.8) {
-            r = 8;
-            g = 8;
-            bch = 8;
           }
         }
         paint(x, y, r, g, bch);
@@ -1430,15 +1427,15 @@ describe('pressure CV units', () => {
     const glareV = Math.sin(glareAngle) * b * 0.28;
     const glareCx = cx + glareU * cos - glareV * sin;
     const glareCy = cy + glareU * sin + glareV * cos;
-    const glareRx = major * 0.11;
-    const glareRy = major * 0.07;
+    const glareRx = b * 0.22;
+    const glareRy = b * 0.14;
     const occAngle = ((40 + rotationDeg) * Math.PI) / 180;
     const occU = Math.cos(occAngle) * a * 0.9;
     const occV = Math.sin(occAngle) * b * 0.9;
     const occCx = cx + occU * cos - occV * sin;
     const occCy = cy + occU * sin + occV * cos;
-    const occRx = major * 0.16;
-    const occRy = major * 0.22;
+    const occRx = b * 0.2;
+    const occRy = b * 0.28;
     const blob = (bcx, bcy, rx, ry, r, g, bch) => {
       const bx0 = Math.max(0, Math.floor(bcx - rx - 2));
       const by0 = Math.max(0, Math.floor(bcy - ry - 2));
@@ -1455,6 +1452,19 @@ describe('pressure CV units', () => {
     };
     blob(glareCx, glareCy, glareRx, glareRy, 255, 255, 250);
     blob(occCx, occCy, occRx, occRy, 12, 12, 12);
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const u = dx * cos + dy * sin;
+        const v = -dx * sin + dy * cos;
+        const rho = Math.hypot(u / a, v / b);
+        if (rho < 0.12 || rho > 0.78) continue;
+        const local = wrap360((Math.atan2(v / b, u / a) * 180) / Math.PI);
+        if (Math.abs(wrapDelta(pointer, local)) > 2.2) continue;
+        paint(x, y, 6, 6, 6);
+      }
+    }
     return { data, width, height };
   }
 
@@ -1499,22 +1509,7 @@ describe('pressure CV units', () => {
       setOpenCvForTests(cv);
       const reading = readRectifiedPressure(frame, candidate);
       timings.push({ n, bar, read: reading.bar, ms: reading.ms, warped: reading.warped, ok: reading.ok });
-      expect(reading.ok, JSON.stringify({
-        n,
-        bar,
-        aspect,
-        rotationDeg,
-        tiltDeg,
-        reason: reading.reason ?? null,
-        read: reading.bar,
-        angle: reading.angleDeg,
-        rot: reading.rotationDeg,
-        conf: reading.confidence,
-        like: reading.likeness,
-        warped: reading.warped,
-        ellipse: reading.ellipse,
-        ms: reading.ms,
-      })).toBe(true);
+      expect(reading.ok, `frame ${n} bar ${bar} read ${reading.bar} rot ${reading.rotationDeg}`).toBe(true);
       expect(Math.abs(reading.bar - bar), `frame ${n} bar ${bar} read ${reading.bar}`).toBeLessThan(0.3);
     }
     console.info(`oblique rectify timings ${JSON.stringify(timings)}`);

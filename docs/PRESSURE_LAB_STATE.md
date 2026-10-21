@@ -1,45 +1,38 @@
-# Pressure lab: resumable state (updated 2026-10-22 10:35 NZT)
+# Pressure lab: resumable state (updated 2026-10-22 12:25 NZT)
 
 - Branch: `cursor/6-40-pressure-rectify` (worktree `/workspace/cursor-dialin-6.39`).
-- Step 1 refinement: upright Flair 58 face geometry from owner reference photos in `docs/reference/`.
+- Step 2: rectify an oblique face, then register and read the needle on that circle.
 
-## Reference measurement (offline)
+## This pass
 
-Script: `scripts/pressure-replay/measure-design-dial.py` (scaled search, optional multi-photo argv, white-background product fallback).
+- `faceRectify.js`: rim-edge points around the detected circle, `cv.fitEllipse` with residual rejection (glare and occluded rays dropped), `cv.warpAffine` onto a circle the size of the fitted major axis. Ellipse centre, axes, and tilt come from that fit. A nearly round face is not resampled.
+- `gaugeTrack.js`: `readRectifiedPressure` runs needle and template registration on the rectified circle. `matchGaugeRotation` refines the best bin with a parabola (sub-degree; the nearest bin does not change). Fine profiles are 360 bins. The unique scale arc publishes the rotation; the tick comb refines it when the comb is actually visible, and a flat comb does not veto the arc. Needle bins stay masked.
+- `needleFromFrame.js`: 1° peak plus a parabola, then a half-degree ridge centre on the rectified face.
+- `canonicalDial.js`: profile builder takes a bin count. The exported template is still 72 bins.
+- Live `completeReading` rectifies before the needle and the colour/template registration when OpenCV is loaded.
 
-**Primary source:** `docs/reference/flair58-face-phone.jpg` (oblique phone; hub/needle locked).
+## Synthetic oblique frames
 
-| Quantity | Absolute (0° = right, CW) | Relative to zero pin |
-| --- | ---: | ---: |
-| Zero stop pin | 145.0° | 0° |
-| Numeral 5 (glyph) | 216.7° | 71.7° (design 85°) |
-| Numeral 10 (glyph) | 315.1° | 170.1° (design 170°) |
-| Espresso block | 225°–310° | 80°–165° |
-| STOP wedge | 61°–94° | 276°–309° |
-| Flair logo centroid | 128.0° | 343.0° |
-| Registration pins (right) | 321.5°, 355.5° | 176.5°, 210.5° @ r≈0.75, 0.83 |
-| Red band (face radius) | — | inner 0.437, outer 0.78 |
-| Dark stop band | — | inner 0.719, outer 0.94 |
+Four seeded 1280×720 frames, major axis 150–200 px, aspect 0.6–0.95, random tilt, in-plane rotation that is not a multiple of 5°, glare blob, partial rim occluder. Candidate from the bright-face moments, not the painter. Bar error vs `barToDialAngle` / `angleToBar`:
 
-**Secondary:** `docs/reference/flair58-face-product.png` — studio white field; circle/hub search is unreliable on this crop (product-only fallback often locks to the frame edge). Use for visual upright layout only; phone photo drives numbers.
+| Frame | Expected bar | Read | Total ms (rectify / needle / register) |
+| --- | ---: | ---: | --- |
+| 0 | 5.949 | 5.928 | 38 (13 / 12 / 13) |
+| 1 | 8.717 | 8.698 | 17 (3 / 4 / 10) |
+| 2 | 1.942 | 1.972 | 15 (2 / 3 / 10) |
+| 3 | 1.346 | 1.369 | 21 (4 / 5 / 11) |
 
-Printed scale unchanged: **0–10 bar over 170°** clockwise from the stop pin (`FLAIR_58_SCALE.sweepDeg`).
-
-## Template / profile updates (this pass)
-
-- `dialFaceTemplate.js`: `CANONICAL_ZERO_BAR_ANGLE_DEG` **47 → 145** (old value matched a rotated design capture, not upright lower-left zero). Updated `ESPRESSO_SECTOR`, `STOP_SECTOR`, band fractions, `FLAIR_LOGO_ANGLE_DEG`, `REGISTRATION_PINS`.
-- `canonicalDial.js`: face prior bumps for logo + right-side pins (step-1 profile).
-- `measure-design-dial.py`: image-size-scaled search, relative-to-zero JSON, band fractions, logo/pins, CLI multi-photo.
-- `pressureCv.vitest.js`: synthetic dial paints optional registration marks; zero needle omits short tail (tail at ~325° was winning over pointer at ~145°); tests adjusted for new zero angle.
+Largest absolute error about 0.03 bar.
 
 ## Tests
 
-`/workspace/bin/box-test-slot --build npm run test:vitest -- src/flairPressureLab/pressureCv.vitest.js scripts/pressure-replay/syntheticLayout.vitest.js` — **45/45 passed**.
+`/workspace/bin/box-test-slot --build npm run test:vitest -- src/flairPressureLab/pressureCv.vitest.js src/flairPressureLab/replayGaugeSemantics.vitest.js scripts/pressure-replay/syntheticLayout.vitest.js scripts/pressure-replay/privacyAssert.vitest.js` — **52/52 passed**.
+
+`node src/flairPressureLab/gaugeConfig.test.js` — passed (same slot, after vitest).
 
 ## Next
 
-- Step 2: refine 72-bin profile (per task plan).
-- Score dry + synthetic clips; held-out real-shot exam still out of scope for Cursor.
+- Score dry + synthetic clips on the rectified reader. Held-out real-shot exam still out of scope for Cursor.
 
 ## Rules (unchanged)
 

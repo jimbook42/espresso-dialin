@@ -698,6 +698,56 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
   };
 }
 
+function grayAt(data, width, height, x, y) {
+  const xi = Math.round(x);
+  const yi = Math.round(y);
+  if (xi < 0 || yi < 0 || xi >= width || yi >= height) return null;
+  const o = (yi * width + xi) * 4;
+  return data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+}
+
+/**
+ * Centre a detector angle on the dark ridge. The 1° scan can sit on the
+ * shoulder of a thin pointer; half-degree samples pull it back to the middle.
+ */
+export function refineNeedleAngle(image, cx, cy, innerR, outerR, hintDeg) {
+  if (!image?.data || !Number.isFinite(hintDeg) || !(outerR > innerR + 1)) return hintDeg;
+  const { data, width, height } = image;
+  const span = outerR - innerR;
+  const scoreAt = (deg) => {
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    let acc = 0;
+    let n = 0;
+    for (let i = 0; i < 18; i += 1) {
+      const r = innerR + span * ((i + 0.5) / 18);
+      const x = cx + r * cos;
+      const y = cy + r * sin;
+      const center = grayAt(data, width, height, x, y);
+      const left = grayAt(data, width, height, x - sin * 2.5, y + cos * 2.5);
+      const right = grayAt(data, width, height, x + sin * 2.5, y - cos * 2.5);
+      if (center == null || left == null || right == null) continue;
+      const contrast = Math.min(left - center, right - center);
+      if (contrast > 0) acc += contrast * (i < 9 ? 1.5 : 0.7);
+      n += 1;
+    }
+    return n ? acc / n : 0;
+  };
+  let bestDeg = hintDeg;
+  let best = -1;
+  for (let delta = -8; delta <= 8; delta += 0.25) {
+    const score = scoreAt(hintDeg + delta);
+    if (score > best) {
+      best = score;
+      bestDeg = hintDeg + delta;
+    }
+  }
+  const step = 0.25;
+  const offset = parabolicAngleOffset(scoreAt(bestDeg - step), best, scoreAt(bestDeg + step));
+  return ((bestDeg + offset * step) % 360 + 360) % 360;
+}
+
 /** Crop the unmirrored video around a fixed circle and estimate the needle. */
 export function readNeedleFromVideo(video, canvas, region) {
   const videoWidth = video.videoWidth;
