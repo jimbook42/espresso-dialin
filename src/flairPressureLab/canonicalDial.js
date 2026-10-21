@@ -10,7 +10,6 @@ import {
 
 /** Design-only Flair 58 dial signature (not loaded from photos or manifest). */
 const PROFILE_BINS = 72;
-const BIN_DEG = 360 / PROFILE_BINS;
 const BASELINE = 0.12;
 
 function inSector(deg, startDeg, endDeg) {
@@ -47,11 +46,13 @@ function scaleTickAngles() {
  * Synthetic rim-edge prior for absolute dial registration.
  * Minor ticks exist only on the printed 0–10 bar arc; nothing past 10 is scaled.
  */
-export function buildFlairCanonicalDialProfile() {
-  const profile = new Float32Array(PROFILE_BINS);
+export function buildFlairCanonicalDialProfile(binCount = PROFILE_BINS) {
+  const bins = binCount;
+  const binDeg = 360 / bins;
+  const profile = new Float32Array(bins);
   const { majors, minors, startDeg, endDeg, stopPinDeg } = scaleTickAngles();
-  for (let i = 0; i < PROFILE_BINS; i += 1) {
-    const deg = i * BIN_DEG;
+  for (let i = 0; i < bins; i += 1) {
+    const deg = i * binDeg;
     let v = BASELINE;
     if (inSector(deg, startDeg, endDeg)) {
       v += 0.2;
@@ -67,10 +68,12 @@ export function buildFlairCanonicalDialProfile() {
 }
 
 /** Mid-face prior: Espresso block, STOP band, and numeral sectors from the template. */
-export function buildFlairCanonicalFaceProfile() {
-  const profile = new Float32Array(PROFILE_BINS);
-  for (let i = 0; i < PROFILE_BINS; i += 1) {
-    const deg = i * BIN_DEG;
+export function buildFlairCanonicalFaceProfile(binCount = PROFILE_BINS) {
+  const bins = binCount;
+  const binDeg = 360 / bins;
+  const profile = new Float32Array(bins);
+  for (let i = 0; i < bins; i += 1) {
+    const deg = i * binDeg;
     let v = BASELINE;
     if (inSector(deg, ESPRESSO_SECTOR.startDeg, ESPRESSO_SECTOR.endDeg)) v += 0.9;
     if (inSector(deg, STOP_SECTOR.startDeg, STOP_SECTOR.endDeg)) v += 0.5;

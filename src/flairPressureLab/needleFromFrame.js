@@ -529,6 +529,21 @@ export function hubConnection(raw, width, height, cx, cy, angleDeg, innerR) {
   return hits / n;
 }
 
+function parabolicAngleOffset(left, mid, right) {
+  const denom = left - 2 * mid + right;
+  if (!(denom < -1e-6)) return 0;
+  const delta = (0.5 * (left - right)) / denom;
+  if (!Number.isFinite(delta)) return 0;
+  return Math.max(-0.65, Math.min(0.65, delta));
+}
+
+function needleSubDegree(scoreAngle, best, bestScore) {
+  if (!(bestScore > 0)) return best;
+  const left = scoreAngle((best - 1 + 360) % 360).score;
+  const right = scoreAngle((best + 1) % 360).score;
+  return ((best + parabolicAngleOffset(left, bestScore, right)) % 360 + 360) % 360;
+}
+
 const raySlab = { samples: new Float32Array(0), probes: new Float32Array(0) };
 let rayColumn = new Float32Array(0);
 const rayRaw = new Float32Array(360);
@@ -663,8 +678,9 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
   }
   const margin = bestScore <= 1e-4 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
   const quality = margin * Math.min(1, bestLikeness / NEEDLE_LIKENESS_GATE);
+  const subDegree = needleSubDegree(scoreAngle, best, bestScore);
   return {
-    angleDeg: best,
+    angleDeg: subDegree,
     quality,
     peak: bestScore,
     second,

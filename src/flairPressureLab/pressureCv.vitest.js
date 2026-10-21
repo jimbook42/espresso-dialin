@@ -1,4 +1,7 @@
+import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it } from 'vitest';
+import { hashSeed, mulberry32 } from '../../scripts/pressure-replay/syntheticLayout.js';
+import { proposeGaugeCandidate } from './faceRectify.js';
 import { resetOpenCvForTests, setOpenCvForTests } from './opencvRuntime.js';
 import {
   buildFlairCanonicalDialProfile,
@@ -26,6 +29,7 @@ import {
   selectDiscoveryCandidate,
   chooseReadableDiscovery,
   matchGaugeRotation,
+  readRectifiedPressure,
   registerDialRotationFromProfile,
   scoreDialFaceInterior,
   scoreDiscoveryCandidate,
@@ -65,6 +69,8 @@ import {
   STOP_SECTOR,
   barToDialAngle,
 } from './dialFaceTemplate.js';
+import { proposeGaugeCandidate } from './faceRectify.js';
+import { hashSeed, mulberry32 } from '../../scripts/pressure-replay/syntheticLayout.js';
 
 function syntheticGauge(width, height, { cx, cy, radius, needleDeg = 40 }) {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -1333,6 +1339,186 @@ describe('pressure CV units', () => {
       expect(patch.glare).toBeGreaterThan(GLARE_FRACTION_MAX);
     }
   });
+
+  it('recovers a rotation that is not a multiple of 5°', () => {
+    const bins = 360;
+    const canonical = buildFlairCanonicalDialProfile(bins);
+    const shiftDeg = 12.4;
+    const shiftBins = shiftDeg / (360 / bins);
+    const turned = new Float32Array(bins);
+    for (let i = 0; i < bins; i += 1) {
+      const src = i - shiftBins;
+      const i0 = Math.floor(src);
+      const frac = src - i0;
+      const a = canonical[((i0 % bins) + bins) % bins];
+      const b = canonical[(((i0 + 1) % bins) + bins) % bins];
+      turned[i] = a * (1 - frac) + b * frac;
+    }
+    const reg = registerDialRotationFromProfile(turned, null, 0);
+    expect(reg.ok).toBe(true);
+    expect(Math.abs(wrapDelta(reg.rotationDeg, shiftDeg))).toBeLessThan(1);
+  });
+
+  function paintObliqueDial({
+    width,
+    height,
+    cx,
+    cy,
+    major,
+    aspect,
+    tiltDeg,
+    rotationDeg,
+    bar,
+  }) {
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 28;
+      data[i + 1] = 28;
+      data[i + 2] = 28;
+      data[i + 3] = 255;
+    }
+    const a = major / 2;
+    const b = a * aspect;
+    const phi = (tiltDeg * Math.PI) / 180;
+    const cos = Math.cos(phi);
+    const sin = Math.sin(phi);
+    const pointer = wrap360(barToDialAngle(bar) + rotationDeg);
+    const x0 = Math.max(0, Math.floor(cx - major - 6));
+    const y0 = Math.max(0, Math.floor(cy - major - 6));
+    const x1 = Math.min(width, Math.ceil(cx + major + 6));
+    const y1 = Math.min(height, Math.ceil(cy + major + 6));
+    const paint = (x, y, r, g, bch) => {
+      if (x < 0 || y < 0 || x >= width || y >= height) return;
+      const o = (y * width + x) * 4;
+      data[o] = r;
+      data[o + 1] = g;
+      data[o + 2] = bch;
+    };
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const u = dx * cos + dy * sin;
+        const v = -dx * sin + dy * cos;
+        const rho = Math.hypot(u / a, v / b);
+        if (rho > 1.02) continue;
+        let r = 16;
+        let g = 16;
+        let bch = 16;
+        if (rho < 0.96) {
+          r = 228;
+          g = 228;
+          bch = 226;
+          const local = wrap360((Math.atan2(v / b, u / a) * 180) / Math.PI);
+          const dial = wrap360(local - rotationDeg);
+          if (rimTickAtDeg(dial) && rho > 0.74 && rho < 0.91) {
+            r = 16;
+            g = 16;
+            bch = 16;
+          }
+          if (Math.abs(wrapDelta(pointer, local)) < 1.35 && rho > 0.18 && rho < 0.8) {
+            r = 8;
+            g = 8;
+            bch = 8;
+          }
+        }
+        paint(x, y, r, g, bch);
+      }
+    }
+    const glareAngle = ((rotationDeg + 70) * Math.PI) / 180;
+    const glareU = Math.cos(glareAngle) * a * 0.28;
+    const glareV = Math.sin(glareAngle) * b * 0.28;
+    const glareCx = cx + glareU * cos - glareV * sin;
+    const glareCy = cy + glareU * sin + glareV * cos;
+    const glareRx = major * 0.11;
+    const glareRy = major * 0.07;
+    const occAngle = ((40 + rotationDeg) * Math.PI) / 180;
+    const occU = Math.cos(occAngle) * a * 0.9;
+    const occV = Math.sin(occAngle) * b * 0.9;
+    const occCx = cx + occU * cos - occV * sin;
+    const occCy = cy + occU * sin + occV * cos;
+    const occRx = major * 0.16;
+    const occRy = major * 0.22;
+    const blob = (bcx, bcy, rx, ry, r, g, bch) => {
+      const bx0 = Math.max(0, Math.floor(bcx - rx - 2));
+      const by0 = Math.max(0, Math.floor(bcy - ry - 2));
+      const bx1 = Math.min(width, Math.ceil(bcx + rx + 2));
+      const by1 = Math.min(height, Math.ceil(bcy + ry + 2));
+      for (let y = by0; y < by1; y += 1) {
+        for (let x = bx0; x < bx1; x += 1) {
+          const nx = (x - bcx) / rx;
+          const ny = (y - bcy) / ry;
+          if (nx * nx + ny * ny > 1) continue;
+          paint(x, y, r, g, bch);
+        }
+      }
+    };
+    blob(glareCx, glareCy, glareRx, glareRy, 255, 255, 250);
+    blob(occCx, occCy, occRx, occRy, 12, 12, 12);
+    return { data, width, height };
+  }
+
+  it('reads bar within 0.3 on an oblique ellipse', async () => {
+    const require = createRequire(import.meta.url);
+    let cv = require('@techstark/opencv-js');
+    if (typeof cv.then === 'function') cv = await cv;
+    if (!cv.Mat && cv.onRuntimeInitialized) {
+      await new Promise((resolve) => {
+        cv.onRuntimeInitialized = resolve;
+      });
+    }
+    const width = 1280;
+    const height = 720;
+    const timings = [];
+    for (let n = 0; n < 4; n += 1) {
+      const rand = mulberry32(hashSeed(`oblique-face:${n}`));
+      const aspect = 0.6 + rand() * 0.35;
+      const major = 150 + rand() * 50;
+      const tiltDeg = rand() * 180;
+      let rotationDeg = rand() * 360;
+      if (Math.abs(rotationDeg % 5) < 0.4) rotationDeg += 2.3;
+      const bar = rand() * 9;
+      const margin = major * 0.6;
+      const cx = margin + rand() * (width - margin * 2);
+      const cy = margin + rand() * (height - margin * 2);
+      const frame = paintObliqueDial({
+        width,
+        height,
+        cx,
+        cy,
+        major,
+        aspect,
+        tiltDeg,
+        rotationDeg,
+        bar,
+      });
+      resetOpenCvForTests();
+      const candidate = proposeGaugeCandidate(frame);
+      expect(candidate?.radius, `candidate ${n}`).toBeGreaterThan(8);
+      expect(Math.hypot(candidate.cx - cx, candidate.cy - cy), `candidate ${n} centre`).toBeLessThan(major);
+      setOpenCvForTests(cv);
+      const reading = readRectifiedPressure(frame, candidate);
+      timings.push({ n, bar, read: reading.bar, ms: reading.ms, warped: reading.warped, ok: reading.ok });
+      expect(reading.ok, JSON.stringify({
+        n,
+        bar,
+        aspect,
+        rotationDeg,
+        tiltDeg,
+        reason: reading.reason ?? null,
+        read: reading.bar,
+        angle: reading.angleDeg,
+        rot: reading.rotationDeg,
+        conf: reading.confidence,
+        like: reading.likeness,
+        warped: reading.warped,
+        ellipse: reading.ellipse,
+        ms: reading.ms,
+      })).toBe(true);
+      expect(Math.abs(reading.bar - bar), `frame ${n} bar ${bar} read ${reading.bar}`).toBeLessThan(0.3);
+    }
+    console.info(`oblique rectify timings ${JSON.stringify(timings)}`);
+  }, 60000);
 
   it('scores a circular rim', () => {
     const frame = syntheticGauge(160, 160, { cx: 80, cy: 80, radius: 36 });

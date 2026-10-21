@@ -5,6 +5,7 @@ import {
   NEEDLE_TRACK_QUALITY,
   DIAL_FACE_VERIFY_MIN,
   DIAL_CANONICAL_VERIFY_MIN,
+  angleToBar,
   wrap360,
   wrapDelta,
 } from './gaugeConfig.js';
@@ -12,9 +13,12 @@ import { prepareEdges } from './framePrep.js';
 import { assessFrameQuality } from './frameQuality.js';
 import { detectNeedleAngle, needleZoomForRadius } from './needleFromFrame.js';
 import {
+  buildFlairCanonicalDialProfile,
   FLAIR_CANONICAL_DIAL_PROFILE,
   FLAIR_CANONICAL_FACE_PROFILE,
+  FLAIR_STATELESS_SESSION,
 } from './canonicalDial.js';
+import { rectifyGaugeFace } from './faceRectify.js';
 import { getOpenCvSync } from './opencvRuntime.js';
 import {
   consumeDiscoveryResult,
@@ -206,13 +210,14 @@ function nearNeedle(deg, needleDeg, halfWidth) {
  * An inner band sits on the white face, away from the black rim. The needle is masked later.
  */
 export function measureRimProfile(edges, width, height, cx, cy, radius, band) {
-  const profile = new Float32Array(PROFILE_BINS);
-  const counts = new Float32Array(PROFILE_BINS);
+  const bins = band?.bins > 7 ? band.bins : PROFILE_BINS;
+  const profile = new Float32Array(bins);
+  const counts = new Float32Array(bins);
   const inner = radius * (band?.innerRatio ?? 0.72);
   const outer = radius * (band?.outerRatio ?? 0.94);
   for (let r = inner; r <= outer; r += 1.5) {
-    for (let i = 0; i < PROFILE_BINS; i += 1) {
-      const angle = (i / PROFILE_BINS) * Math.PI * 2;
+    for (let i = 0; i < bins; i += 1) {
+      const angle = (i / bins) * Math.PI * 2;
       const x = Math.round(cx + r * Math.cos(angle));
       const y = Math.round(cy + r * Math.sin(angle));
       if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
@@ -220,27 +225,35 @@ export function measureRimProfile(edges, width, height, cx, cy, radius, band) {
       counts[i] += 1;
     }
   }
-  for (let i = 0; i < PROFILE_BINS; i += 1) {
+  for (let i = 0; i < bins; i += 1) {
     if (counts[i]) profile[i] /= counts[i];
   }
   return profile;
 }
 
-function cosineCentered(left, right) {
+function correlationAtShift(reference, current, shift, curMask, refMask) {
+  const bins = reference.length;
+  let n = 0;
   let meanL = 0;
   let meanR = 0;
-  for (let i = 0; i < left.length; i += 1) {
-    meanL += left[i];
-    meanR += right[i];
+  for (let i = 0; i < bins; i += 1) {
+    const refIndex = ((i - shift) % bins + bins) % bins;
+    if (curMask[i] || refMask[refIndex]) continue;
+    meanL += reference[refIndex];
+    meanR += current[i];
+    n += 1;
   }
-  meanL /= left.length;
-  meanR /= right.length;
+  if (n < bins * 0.45) return null;
+  meanL /= n;
+  meanR /= n;
   let dot = 0;
   let a2 = 0;
   let b2 = 0;
-  for (let i = 0; i < left.length; i += 1) {
-    const a = left[i] - meanL;
-    const b = right[i] - meanR;
+  for (let i = 0; i < bins; i += 1) {
+    const refIndex = ((i - shift) % bins + bins) % bins;
+    if (curMask[i] || refMask[refIndex]) continue;
+    const a = reference[refIndex] - meanL;
+    const b = current[i] - meanR;
     dot += a * b;
     a2 += a * a;
     b2 += b * b;
@@ -249,9 +262,20 @@ function cosineCentered(left, right) {
   return dot / Math.sqrt(a2 * b2);
 }
 
+/** Fraction of a bin, clamped so the nearest bin does not change. */
+function parabolicBinOffset(left, mid, right) {
+  const denom = left - 2 * mid + right;
+  if (!(denom < -1e-6)) return 0;
+  const delta = (0.5 * (left - right)) / denom;
+  if (!Number.isFinite(delta)) return 0;
+  return Math.max(-0.45, Math.min(0.45, delta));
+}
+
 /**
  * Rotation of `current` relative to `reference`, in degrees clockwise.
  * Bins on the needle and its tail are left out so the pointer cannot rotate the gauge.
+ * The best bin is refined by a parabola on its two neighbours, so a rotation
+ * that is not a multiple of the bin width is not snapped to that width.
  */
 export function matchGaugeRotation(reference, current, {
   previousDeg = 0,
@@ -267,22 +291,18 @@ export function matchGaugeRotation(reference, current, {
   const step = 360 / bins;
   const half = Math.max(1, Math.round(maxShiftDeg / step));
   const centerBin = Math.round(previousDeg / step);
+  const curMask = new Uint8Array(bins);
+  const refMask = new Uint8Array(bins);
+  for (let i = 0; i < bins; i += 1) {
+    const deg = i * step;
+    if (nearNeedle(deg, needleDeg, 16) || nearNeedle(deg, alsoNeedleDeg, 16)) curMask[i] = 1;
+    if (nearNeedle(deg, referenceNeedleDeg, 16)) refMask[i] = 1;
+  }
   const ranked = [];
-
   for (let shift = centerBin - half; shift <= centerBin + half; shift += 1) {
-    const refVals = [];
-    const curVals = [];
-    for (let i = 0; i < bins; i += 1) {
-      const curDeg = i * step;
-      const refIndex = ((i - shift) % bins + bins) % bins;
-      const refDeg = refIndex * step;
-      if (nearNeedle(curDeg, needleDeg, 16) || nearNeedle(curDeg, alsoNeedleDeg, 16)) continue;
-      if (nearNeedle(refDeg, referenceNeedleDeg, 16)) continue;
-      refVals.push(reference[refIndex]);
-      curVals.push(current[i]);
-    }
-    if (refVals.length < bins * 0.45) continue;
-    ranked.push({ shift, corr: cosineCentered(refVals, curVals) });
+    const corr = correlationAtShift(reference, current, shift, curMask, refMask);
+    if (corr == null) continue;
+    ranked.push({ shift, corr });
   }
 
   if (!ranked.length) return { ok: false, rotationDeg: previousDeg, confidence: 0, margin: 0, periodMargin: 0 };
@@ -291,7 +311,10 @@ export function matchGaugeRotation(reference, current, {
   const separated = (minDeg) => ranked.find((item) => Math.abs(wrapDelta(best.shift * step, item.shift * step)) >= minDeg);
   const second = separated(12);
   const periodRival = separated(PERIOD_RIVAL_DEG);
-  const rotationDeg = wrap360(best.shift * step);
+  const left = correlationAtShift(reference, current, best.shift - 1, curMask, refMask);
+  const right = correlationAtShift(reference, current, best.shift + 1, curMask, refMask);
+  const refined = best.shift + parabolicBinOffset(left ?? best.corr, best.corr, right ?? best.corr);
+  const rotationDeg = wrap360(refined * step);
   const margin = second ? best.corr - second.corr : best.corr;
   const periodMargin = periodRival ? best.corr - periodRival.corr : best.corr;
   const median = ranked[Math.floor(ranked.length / 2)].corr;
@@ -2058,6 +2081,11 @@ function smoothProfile(profile, radius = 2) {
   return out;
 }
 
+/** Same ~10° window the 72-bin profiles already use. */
+function angularSmoothRadius(binCount) {
+  return Math.max(1, Math.round((10 * binCount) / 360));
+}
+
 /** Remove a slow angular ramp so a lighting gradient cannot impersonate the printed arc. */
 function highPassProfile(profile, radius = 2) {
   const low = smoothProfile(profile, radius);
@@ -2076,15 +2104,19 @@ export function registerDialRotationFromProfile(profile, needleDeg = null, previ
   if (!profile || profile.length < 8) {
     return { ok: false, rotationDeg: previousDeg, confidence: 0, periodMargin: 0 };
   }
+  const canonical = profile.length === FLAIR_CANONICAL_DIAL_PROFILE.length
+    ? FLAIR_CANONICAL_DIAL_PROFILE
+    : buildFlairCanonicalDialProfile(profile.length);
+  const smooth = angularSmoothRadius(profile.length);
   const opts = { previousDeg, needleDeg, maxShiftDeg: 360 };
   const arc = matchGaugeRotation(
-    smoothProfile(FLAIR_CANONICAL_DIAL_PROFILE),
-    smoothProfile(profile),
+    smoothProfile(canonical, smooth),
+    smoothProfile(profile, smooth),
     opts,
   );
   const ticks = matchGaugeRotation(
-    highPassProfile(FLAIR_CANONICAL_DIAL_PROFILE),
-    highPassProfile(profile),
+    highPassProfile(canonical, smooth),
+    highPassProfile(profile, smooth),
     opts,
   );
   const agree = Math.abs(wrapDelta(arc.estimateDeg ?? 0, ticks.estimateDeg ?? 0)) <= SCALE_AGREEMENT_DEG;
@@ -2099,6 +2131,65 @@ export function registerDialRotationFromProfile(profile, needleDeg = null, previ
     rotationDeg: ok ? arc.estimateDeg : previousDeg,
     confidence: Math.min(arc.confidence, ticks.confidence),
     periodMargin: arc.periodMargin,
+  };
+}
+
+const FINE_PROFILE_BINS = 360;
+
+/**
+ * Rectify an oblique face, then read needle and template rotation on that circle.
+ * Bar is the printed scale (`angleToBar` / `barToDialAngle`), not a guessed hold.
+ */
+export function readRectifiedPressure(image, candidate) {
+  const stamp = () => (typeof performance !== 'undefined' ? performance.now() : 0);
+  const t0 = stamp();
+  const cv = getOpenCvSync();
+  const rectified = rectifyGaugeFace(cv, image, candidate);
+  const tRect = stamp();
+  if (!rectified?.ok) {
+    return { ok: false, reason: 'rectify', bar: null, ms: { rectify: tRect - t0, total: tRect - t0 } };
+  }
+  const sink = {};
+  const needle = detectNeedleAngle(
+    rectified.image,
+    rectified.cx,
+    rectified.cy,
+    rectified.radius * TIP_INNER_RATIO,
+    rectified.radius * OUTER_RADIUS_RATIO,
+    sink,
+  );
+  const tNeedle = stamp();
+  const profile = sink.edges
+    ? measureRimProfile(
+      sink.edges,
+      rectified.image.width,
+      rectified.image.height,
+      rectified.cx,
+      rectified.cy,
+      rectified.radius,
+      { bins: FINE_PROFILE_BINS },
+    )
+    : null;
+  const reg = registerDialRotationFromProfile(profile, needle.angleDeg);
+  const tReg = stamp();
+  const relative = wrap360(needle.angleDeg - (reg.rotationDeg || 0));
+  const bar = reg.ok ? angleToBar(relative, FLAIR_STATELESS_SESSION) : null;
+  return {
+    ok: reg.ok && bar != null,
+    bar,
+    angleDeg: needle.angleDeg,
+    rotationDeg: reg.rotationDeg,
+    relativeAngleDeg: relative,
+    confidence: reg.confidence,
+    likeness: needle.likeness,
+    warped: rectified.warped === true,
+    ellipse: rectified.ellipse,
+    ms: {
+      rectify: tRect - t0,
+      needle: tNeedle - tRect,
+      register: tReg - tNeedle,
+      total: tReg - t0,
+    },
   };
 }
 
@@ -2171,62 +2262,90 @@ function completeReading({
   const localRadius = center.radius * needleScale;
   const localCx = (center.cx - needleCrop.originX) * needleScale;
   const localCy = (center.cy - needleCrop.originY) * needleScale;
+  let readImage = needleImage;
+  let readCx = localCx;
+  let readCy = localCy;
+  let readRadius = localRadius;
+  const cv = getOpenCvSync();
+  if (cv?.fitEllipse && cv?.warpAffine) {
+    const rectified = rectifyGaugeFace(cv, needleImage, { cx: localCx, cy: localCy, radius: localRadius });
+    if (rectified?.ok) {
+      readImage = rectified.image;
+      readCx = rectified.cx;
+      readCy = rectified.cy;
+      readRadius = rectified.radius;
+    }
+  }
   const faceRaw = scoreDialFaceInterior(
-    needleImage.data,
-    needleImage.width,
-    needleImage.height,
-    localCx,
-    localCy,
-    localRadius,
+    readImage.data,
+    readImage.width,
+    readImage.height,
+    readCx,
+    readCy,
+    readRadius,
   );
   const edgeSink = {};
   const detection = detectNeedleAngle(
-    needleImage,
-    localCx,
-    localCy,
-    localRadius * TIP_INNER_RATIO,
-    localRadius * OUTER_RADIUS_RATIO,
+    readImage,
+    readCx,
+    readCy,
+    readRadius * TIP_INNER_RATIO,
+    readRadius * OUTER_RADIUS_RATIO,
     edgeSink,
     tracker.needleHint?.() ?? null,
   );
   const tickEnergy = scoreTickRingEnergy(
     edgeSink.edges,
-    needleImage.width,
-    needleImage.height,
-    localCx,
-    localCy,
-    localRadius,
+    readImage.width,
+    readImage.height,
+    readCx,
+    readCy,
+    readRadius,
   );
   const dialFaceScore = combineDialFaceScore(
     faceRaw,
     tickEnergy,
-    localRadius,
+    readRadius,
     Math.min(videoWidth, videoHeight) * needleScale,
   );
   let orientation;
   let frameQuality = null;
   if (canonicalDial) {
     const bands = measureDialColorBands(
-      needleImage,
-      localCx,
-      localCy,
-      localRadius,
+      readImage,
+      readCx,
+      readCy,
+      readRadius,
       detection.angleDeg,
     );
     if (!qualityImage) {
+      const qualityHere = readImage === needleImage;
       frameQuality = assessFrameQuality(
-        needleImage.data,
-        needleImage.width,
-        needleImage.height,
-        localCx,
-        localCy,
-        localRadius,
-        edgeSink.luma,
+        (qualityHere ? readImage : needleImage).data,
+        (qualityHere ? readImage : needleImage).width,
+        (qualityHere ? readImage : needleImage).height,
+        qualityHere ? readCx : localCx,
+        qualityHere ? readCy : localCy,
+        qualityHere ? readRadius : localRadius,
+        qualityHere ? edgeSink.luma : null,
       );
     }
     let stepped = trackLockedScale(tracker, bands);
     if (stepped.needsFull) {
-      const reg = registerDialFromColorBands(bands);
+      let reg = registerDialFromColorBands(bands);
+      if (edgeSink.edges) {
+        const fine = measureRimProfile(
+          edgeSink.edges,
+          readImage.width,
+          readImage.height,
+          readCx,
+          readCy,
+          readRadius,
+          { bins: 360 },
+        );
+        const fromTemplate = registerDialRotationFromProfile(fine, detection.angleDeg);
+        if (fromTemplate.ok) reg = fromTemplate;
+      }
       // The printed face is the colour bands and the rim. A full search runs
       // only when the frame-to-frame lock has nothing to follow.
       // A red blob with no needle must not lock: the tracker would then
