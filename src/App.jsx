@@ -2749,6 +2749,7 @@ export default function App() {
                         onTransportKindChange={timemoreScale.setTransportKind}
                         connectStatus={timemoreScale.connectStatus}
                         isConnected={timemoreScale.isConnected}
+                        liveWeightG={timemoreScale.liveWeightG}
                         onConnect={timemoreScale.connect}
                         onDisconnect={timemoreScale.disconnect}
                         onTare={timemoreScale.tare}

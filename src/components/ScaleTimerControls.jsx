@@ -1,3 +1,10 @@
+/** @param {number} g */
+export function formatScaleLiveWeightLabel(g) {
+  const n = Number(g);
+  if (!Number.isFinite(n)) return '0.0 g';
+  return `${n.toFixed(1)} g`;
+}
+
 /**
  * Compact scale connect / transport controls for the live shot timer card.
  */
@@ -9,6 +16,7 @@ export function ScaleTimerControls({
   onTransportKindChange,
   connectStatus,
   isConnected,
+  liveWeightG = 0,
   onConnect,
   onDisconnect,
   onTare,
@@ -46,6 +54,14 @@ export function ScaleTimerControls({
       ) : (
         <>
           <span className="text-[10px] font-semibold text-[#8a9d72]">Scale on</span>
+          <span
+            className={`text-[10px] font-semibold tabular-nums ${ui.muted}`}
+            role="status"
+            aria-live="polite"
+            aria-label={`Scale weight ${formatScaleLiveWeightLabel(liveWeightG)}`}
+          >
+            {formatScaleLiveWeightLabel(liveWeightG)}
+          </span>
           <button
             type="button"
             onClick={onTare}
