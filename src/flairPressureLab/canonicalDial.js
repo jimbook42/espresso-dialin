@@ -3,6 +3,8 @@ import {
   barToDialAngle,
   CANONICAL_ZERO_BAR_ANGLE_DEG,
   ESPRESSO_SECTOR,
+  FLAIR_LOGO_ANGLE_DEG,
+  REGISTRATION_PINS,
   STOP_SECTOR,
 } from './dialFaceTemplate.js';
 
@@ -74,6 +76,10 @@ export function buildFlairCanonicalFaceProfile() {
     if (inSector(deg, STOP_SECTOR.startDeg, STOP_SECTOR.endDeg)) v += 0.5;
     v += tickBump(deg, barToDialAngle(5), 6, 0.18);
     v += tickBump(deg, barToDialAngle(10), 6, 0.18);
+    v += tickBump(deg, FLAIR_LOGO_ANGLE_DEG, 14, 0.14);
+    for (const pin of REGISTRATION_PINS) {
+      v += tickBump(deg, pin.angleDeg, 5, 0.1);
+    }
     profile[i] = v;
   }
   return profile;

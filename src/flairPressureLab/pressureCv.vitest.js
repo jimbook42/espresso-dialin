@@ -60,6 +60,8 @@ import {
   DARK_BAND_INNER_FRACTION,
   DARK_BAND_OUTER_FRACTION,
   ESPRESSO_SECTOR,
+  FLAIR_LOGO_ANGLE_DEG,
+  REGISTRATION_PINS,
   STOP_SECTOR,
   barToDialAngle,
 } from './dialFaceTemplate.js';
@@ -795,6 +797,7 @@ describe('pressure CV units', () => {
     shadow = 0,
     needleBar = 0,
     needleHalfDeg = 5,
+    registrationMarks = false,
   }) {
     const data = new Uint8ClampedArray(size * size * 4);
     const pointer = wrap360(barToDialAngle(needleBar) + rotationDeg);
@@ -826,13 +829,30 @@ describe('pressure CV units', () => {
             g = 22;
             b = 22;
           }
+          if (registrationMarks) {
+            const logoImage = wrap360(FLAIR_LOGO_ANGLE_DEG + rotationDeg);
+            if (dist < radius * 0.38 && Math.abs(wrapDelta(logoImage, imageDeg)) < 10) {
+              r = 186;
+              g = 42;
+              b = 48;
+            }
+            for (const pin of REGISTRATION_PINS) {
+              const pinImage = wrap360(pin.angleDeg + rotationDeg);
+              if (Math.abs(wrapDelta(pinImage, imageDeg)) < 3.5
+                && Math.abs(dist / radius - pin.radiusFraction) < 0.05) {
+                r = 228;
+                g = 228;
+                b = 232;
+              }
+            }
+          }
           const fromPointer = Math.abs(wrapDelta(pointer, imageDeg));
           const fromTail = Math.abs(wrapDelta(tail, imageDeg));
           if (fromPointer < needleHalfDeg && dist > radius * 0.14 && dist < radius * 0.84) {
             r = 12;
             g = 12;
             b = 12;
-          } else if (fromTail < 6 && dist > radius * 0.14 && dist < radius * 0.34) {
+          } else if (needleBar !== 0 && fromTail < 6 && dist > radius * 0.14 && dist < radius * 0.34) {
             r = 16;
             g = 16;
             b = 16;
@@ -864,6 +884,7 @@ describe('pressure CV units', () => {
             cy: 84,
             radius,
             rotationDeg,
+            registrationMarks: true,
             ...light,
           });
           const needle = wrap360(CANONICAL_ZERO_BAR_ANGLE_DEG + rotationDeg);
@@ -907,7 +928,7 @@ describe('pressure CV units', () => {
 
   it('reads the measured zero and five on a dial built from the template', () => {
     for (const bar of [0, 5]) {
-      const rotationDeg = 40;
+      const rotationDeg = 0;
       const frame = syntheticPrintedDial({
         size: 180,
         cx: 90,
@@ -1069,7 +1090,7 @@ describe('pressure CV units', () => {
   });
 
   it('rejects a face streak that does not reach the pivot', () => {
-    const rotationDeg = 15;
+    const rotationDeg = 0;
     const frame = syntheticPrintedDial({
       size: 180,
       cx: 90,
@@ -1079,7 +1100,7 @@ describe('pressure CV units', () => {
       needleHalfDeg: 1.6,
     });
     const pointer = wrap360(barToDialAngle(0) + rotationDeg);
-    const streak = wrap360(pointer + 22);
+    const streak = wrap360(pointer + 34);
     for (let y = 0; y < frame.height; y += 1) {
       for (let x = 0; x < frame.width; x += 1) {
         const dx = x - 90;
@@ -1182,9 +1203,9 @@ describe('pressure CV units', () => {
     }
     expect(paced.push({ timeMs: 533, angleDeg: CANONICAL_ZERO_BAR_ANGLE_DEG + 2, usable: true })).toBe('confirmed');
     const conflict = createRestAnchor();
-    conflict.push({ timeMs: 0, angleDeg: 140, usable: true });
-    conflict.push({ timeMs: 250, angleDeg: 142, usable: true });
-    expect(conflict.push({ timeMs: 500, angleDeg: 141, usable: true })).toBe('conflict');
+    conflict.push({ timeMs: 0, angleDeg: 100, usable: true });
+    conflict.push({ timeMs: 250, angleDeg: 102, usable: true });
+    expect(conflict.push({ timeMs: 500, angleDeg: 101, usable: true })).toBe('conflict');
     const zero = CANONICAL_ZERO_BAR_ANGLE_DEG;
     expect(conflict.push({ timeMs: 800, angleDeg: zero, usable: true })).toBe('pending');
     conflict.push({ timeMs: 1000, angleDeg: zero + 1, usable: true });
