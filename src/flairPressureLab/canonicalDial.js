@@ -1,38 +1,79 @@
-import { FLAIR_58_SCALE } from './gaugeConfig.js';
+import { FLAIR_58_SCALE, wrapDelta } from './gaugeConfig.js';
+import {
+  barToDialAngle,
+  CANONICAL_ZERO_BAR_ANGLE_DEG,
+  ESPRESSO_SECTOR,
+  STOP_SECTOR,
+} from './dialFaceTemplate.js';
 
 /** Design-only Flair 58 dial signature (not loaded from photos or manifest). */
 const PROFILE_BINS = 72;
+const BIN_DEG = 360 / PROFILE_BINS;
+const BASELINE = 0.12;
 
-function tickBump(deg, spacing, width) {
-  const phase = ((deg % spacing) + spacing) % spacing;
-  const d = Math.min(phase, spacing - phase);
-  return d <= width ? 1 : 0.15;
+function inSector(deg, startDeg, endDeg) {
+  const span = ((endDeg - startDeg) % 360 + 360) % 360;
+  const offset = ((deg - startDeg) % 360 + 360) % 360;
+  return offset <= span;
+}
+
+function tickBump(deg, tickDeg, halfWidth, peak) {
+  const d = Math.abs(wrapDelta(deg, tickDeg));
+  if (d > halfWidth) return 0;
+  return peak * (1 - d / halfWidth);
+}
+
+function scaleTickAngles() {
+  const majors = [];
+  for (let bar = FLAIR_58_SCALE.minBar; bar <= FLAIR_58_SCALE.maxBar; bar += 1) {
+    majors.push(barToDialAngle(bar));
+  }
+  const minors = [];
+  for (let bar = FLAIR_58_SCALE.minBar + 0.5; bar < FLAIR_58_SCALE.maxBar; bar += 1) {
+    minors.push(barToDialAngle(bar));
+  }
+  return {
+    majors,
+    minors,
+    startDeg: barToDialAngle(FLAIR_58_SCALE.minBar),
+    endDeg: barToDialAngle(FLAIR_58_SCALE.maxBar),
+    stopPinDeg: barToDialAngle(FLAIR_58_SCALE.minBar),
+  };
 }
 
 /**
  * Synthetic rim-edge prior for absolute dial registration.
- * Major ticks, espresso arc, and logo sector weights come from the printed dial layout.
+ * Minor ticks exist only on the printed 0–10 bar arc; nothing past 10 is scaled.
  */
 export function buildFlairCanonicalDialProfile() {
   const profile = new Float32Array(PROFILE_BINS);
+  const { majors, minors, startDeg, endDeg, stopPinDeg } = scaleTickAngles();
   for (let i = 0; i < PROFILE_BINS; i += 1) {
-    const deg = (i / PROFILE_BINS) * 360;
-    let v = tickBump(deg, 30, 5);
-    v += tickBump(deg, 7.5, 2) * 0.35;
-    if (deg >= 205 && deg <= 285) v += 0.55;
-    if (deg >= 295 || deg <= 25) v += 0.35;
+    const deg = i * BIN_DEG;
+    let v = BASELINE;
+    if (inSector(deg, startDeg, endDeg)) {
+      v += 0.2;
+      for (const tick of majors) v += tickBump(deg, tick, 4.5, 0.9);
+      for (const tick of minors) v += tickBump(deg, tick, 2.2, 0.32);
+      v += tickBump(deg, barToDialAngle(5), 5, 0.22);
+      v += tickBump(deg, barToDialAngle(10), 5, 0.28);
+    }
+    v += tickBump(deg, stopPinDeg, 3, 0.45);
     profile[i] = v;
   }
   return profile;
 }
 
+/** Mid-face prior: Espresso block, STOP band, and numeral sectors from the template. */
 export function buildFlairCanonicalFaceProfile() {
   const profile = new Float32Array(PROFILE_BINS);
   for (let i = 0; i < PROFILE_BINS; i += 1) {
-    const deg = (i / PROFILE_BINS) * 360;
-    let v = 0.12;
-    if (deg >= 215 && deg <= 275) v += 0.9;
-    if (deg >= 300 || deg <= 15) v += 0.5;
+    const deg = i * BIN_DEG;
+    let v = BASELINE;
+    if (inSector(deg, ESPRESSO_SECTOR.startDeg, ESPRESSO_SECTOR.endDeg)) v += 0.9;
+    if (inSector(deg, STOP_SECTOR.startDeg, STOP_SECTOR.endDeg)) v += 0.5;
+    v += tickBump(deg, barToDialAngle(5), 6, 0.18);
+    v += tickBump(deg, barToDialAngle(10), 6, 0.18);
     profile[i] = v;
   }
   return profile;
@@ -41,12 +82,7 @@ export function buildFlairCanonicalFaceProfile() {
 export const FLAIR_CANONICAL_DIAL_PROFILE = buildFlairCanonicalDialProfile();
 export const FLAIR_CANONICAL_FACE_PROFILE = buildFlairCanonicalFaceProfile();
 
-/**
- * On the registered dial, needle angle at 0 bar.
- * The design photo's stop pin, long end resting against it.
- * 0° is to the right and angles increase clockwise.
- */
-export const CANONICAL_ZERO_BAR_ANGLE_DEG = 47;
+export { CANONICAL_ZERO_BAR_ANGLE_DEG };
 
 /** Stateless pressure session: zero from dial art, not rest calibration. */
 export const FLAIR_STATELESS_SESSION = {

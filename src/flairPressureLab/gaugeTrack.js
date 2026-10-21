@@ -2069,7 +2069,7 @@ function highPassProfile(profile, radius = 2) {
 /**
  * Per-frame dial rotation from the canonical printed scale (no session template).
  * The wide arc (espresso band and logo) and the tick comb are matched separately.
- * A lighting blob can imitate the arc, and the ticks repeat every 30°, so neither
+ * A lighting blob can imitate the arc, and tick spacing on the arc is periodic, so neither
  * band may publish a rotation on its own.
  */
 export function registerDialRotationFromProfile(profile, needleDeg = null, previousDeg = 0) {

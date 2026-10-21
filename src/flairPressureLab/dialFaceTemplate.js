@@ -1,5 +1,7 @@
-import { CANONICAL_ZERO_BAR_ANGLE_DEG } from './canonicalDial.js';
 import { FLAIR_58_SCALE, wrap360 } from './gaugeConfig.js';
+
+/** Stop pin at 0 bar (design photo, measure-design-dial.py). 0° = right, clockwise. */
+export const CANONICAL_ZERO_BAR_ANGLE_DEG = 47;
 
 /**
  * Unit-circle printed Flair face, measured from the design photo

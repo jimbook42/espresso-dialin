@@ -1,14 +1,23 @@
-# Pressure lab: resumable state (updated 2026-10-17 13:30 NZT)
+# Pressure lab: resumable state (updated 2026-10-22 10:10 NZT)
 
-- Branch: cursor/6-39-pressure-small-gauge (worktree /workspace/cursor-dialin-6.39), off cursor/6-37-pressure-speed @ 91db57b.
-- Last Cursor commit: e510a52; WIP auto-committed and pushed when the running CLI exits.
-- Cursor session for --resume: a648c797-650c-45a6-8dfc-44941bd64a97 (grok-4.7-high). Repairs used: 1/2.
-- Rollback point: 91db57b (6.37 honest timing); preview qa/6-37-pressure-preview @ 1823246.
-- Done: 6.39 small off-centre gauge search, 1 s hold cap, native-scale dial read, full-res locked read. Dry clips: confident-wrong 0.
-- Open: synthetic ~150 px dials gave no readings before repair 1; repair 1 outcome not yet scored.
-- Next:
-  1. Score dry plus synthetic clips.
-  2. If readings appear, run the held-out real-shot exam (/workspace/flair-real, 720p→1280x720@30, run-clip-browser.mjs, 1x and 4x, honest timing) and compare against the 2/10 baseline at 09:38 in log.md.
-  3. Run an overfitting audit vs 9864842.
-- Rules: real clips are held out and must never be given to Cursor. No merge or promote. Isaac's OK is needed for repair 2, xhigh, or any merge.
-- Log: /cursor/stores/store-445de824-e720-4e29-bb73-daa191ac255a/log.md
+- Branch: `cursor/6-40-pressure-rectify` (worktree `/workspace/cursor-dialin-6.39`).
+- Prior doc referred to `cursor/6-39-pressure-small-gauge`; current work is step 1 of the rectify line on this branch.
+
+## Step 1 (canonical dial prior) — done
+
+- Rebuilt `FLAIR_CANONICAL_DIAL_PROFILE` and `FLAIR_CANONICAL_FACE_PROFILE` in `src/flairPressureLab/canonicalDial.js` from `dialFaceTemplate.js`:
+  - Minor/major rim ticks only on the 0–10 bar arc via `barToDialAngle` (half-bar minors, integer majors); baseline elsewhere.
+  - Face prior: `ESPRESSO_SECTOR`, `STOP_SECTOR`, numeral bumps at 5 and 10 bar.
+  - Removed full-360° 30°/7.5° tick comb and ad-hoc arc degree ranges.
+- Moved `CANONICAL_ZERO_BAR_ANGLE_DEG` (47°) into `dialFaceTemplate.js` with the other design-photo constants so `canonicalDial` can import `barToDialAngle` without a circular dependency; still re-exported from `canonicalDial.js`.
+- Updated `syntheticFlairReplayFrame` and the OpenCV discovery vitest to paint/match the template sectors and arc ticks (not 30° spokes).
+- Tests: `/workspace/bin/box-test-slot --build npm run test:vitest -- src/flairPressureLab/pressureCv.vitest.js scripts/pressure-replay/syntheticLayout.vitest.js` — **45/45 passed**.
+
+## Next
+
+- Step 2: refine 72-bin profile (per task plan).
+- Score dry + synthetic clips; held-out real-shot exam still out of scope for Cursor.
+
+## Rules (unchanged)
+
+- No overfitting: geometry from detection or `dialFaceTemplate.js` / `measure-design-dial.py`; no frame upload/cache; ~1 s hold then gap; bench/synthetic clips only; tests via `box-test-slot --build`.

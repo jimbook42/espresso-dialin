@@ -94,6 +94,21 @@ function syntheticGauge(width, height, { cx, cy, radius, needleDeg = 40 }) {
   return { data, width, height };
 }
 
+function inPrintedSector(deg, start, end) {
+  const width = wrap360(end - start);
+  return wrap360(deg - start) <= width;
+}
+
+function rimTickAtDeg(deg) {
+  for (let bar = 0; bar <= 10; bar += 1) {
+    if (Math.abs(wrapDelta(deg, barToDialAngle(bar))) < 3.5) return true;
+  }
+  for (let bar = 0.5; bar < 10; bar += 1) {
+    if (Math.abs(wrapDelta(deg, barToDialAngle(bar))) < 1.8) return true;
+  }
+  return false;
+}
+
 /** Replay-like layout: real dial ~240,355 face r45; clutter arc left at ~190,355 r75. */
 function syntheticFlairReplayFrame() {
   const width = 406;
@@ -105,23 +120,32 @@ function syntheticFlairReplayFrame() {
     data[i + 2] = 20;
     data[i + 3] = 255;
   }
-  const paintDisc = (cx, cy, faceR, bezelR, { redBand = false, ticks = false } = {}) => {
+  const paintDisc = (cx, cy, faceR, bezelR, { printedFace = false, ticks = false } = {}) => {
     for (let y = 0; y < height; y += 1) {
       for (let x = 0; x < width; x += 1) {
         const d = Math.hypot(x - cx, y - cy);
         const o = (y * width + x) * 4;
         if (d > bezelR + 2) continue;
+        const deg = wrap360((Math.atan2(y - cy, x - cx) * 180) / Math.PI);
         if (d >= faceR * 0.88 && d <= bezelR + 1.5) {
           data[o] = 22;
           data[o + 1] = 22;
           data[o + 2] = 24;
         } else if (d < faceR * 0.92) {
           let v = 238;
-          if (redBand) {
-            const deg = ((Math.atan2(y - cy, x - cx) * 180) / Math.PI + 360) % 360;
-            if (deg >= 220 && deg <= 270) {
+          if (printedFace) {
+            const rf = d / faceR;
+            if (rf >= BAND_INNER_FRACTION && rf <= BAND_OUTER_FRACTION
+              && inPrintedSector(deg, ESPRESSO_SECTOR.startDeg, ESPRESSO_SECTOR.endDeg)) {
               data[o] = 200;
               data[o + 1] = 35;
+              data[o + 2] = 30;
+              continue;
+            }
+            if (rf >= DARK_BAND_INNER_FRACTION && rf <= DARK_BAND_OUTER_FRACTION
+              && inPrintedSector(deg, STOP_SECTOR.startDeg, STOP_SECTOR.endDeg)) {
+              data[o] = 28;
+              data[o + 1] = 28;
               data[o + 2] = 30;
               continue;
             }
@@ -130,19 +154,16 @@ function syntheticFlairReplayFrame() {
           data[o + 1] = v;
           data[o + 2] = v;
         }
-        if (ticks && d >= faceR * 0.94 && d <= bezelR) {
-          const deg = ((Math.atan2(y - cy, x - cx) * 180) / Math.PI + 360) % 360;
-          if (deg % 30 < 4) {
-            data[o] = 12;
-            data[o + 1] = 12;
-            data[o + 2] = 12;
-          }
+        if (ticks && d >= faceR * 0.94 && d <= bezelR && rimTickAtDeg(deg)) {
+          data[o] = 12;
+          data[o + 1] = 12;
+          data[o + 2] = 12;
         }
       }
     }
   };
   paintDisc(190, 355, 62, 75, { ticks: false });
-  paintDisc(240, 355, 45, 55, { redBand: true, ticks: true });
+  paintDisc(240, 355, 45, 55, { printedFace: true, ticks: true });
   return { data, width, height };
 }
 
@@ -182,12 +203,12 @@ describe('pressure CV units', () => {
   });
 
   it('discovers via OpenCV HoughCircles when runtime is loaded', () => {
-    const frame = syntheticGauge(200, 280, { cx: 140, cy: 90, radius: 42 });
-    setOpenCvForTests(mockOpenCvForCircles([[140, 90, 42 * 1.02]]));
+    const frame = syntheticFlairReplayFrame();
+    setOpenCvForTests(mockOpenCvForCircles([[240, 355, 45 * 1.02]]));
     const found = discoverGaugeInFrame(frame);
     expect(found?.ok).toBe(true);
     expect(found?.source).toBe('opencv-hough');
-    expect(Math.hypot(found.cx - 140, found.cy - 90)).toBeLessThan(12);
+    expect(Math.hypot(found.cx - 240, found.cy - 355)).toBeLessThan(12);
   });
 
   it('discovers an off-centre gauge circle', () => {
