@@ -19,6 +19,17 @@ import { publishScaleLiveWeight, resetScaleLiveWeightStore } from './scaleLiveWe
 
 const noopAsync = async () => {};
 
+/** @param {boolean} simAllowed */
+export function resolveDefaultTransportKind(simAllowed) {
+  return simAllowed ? 'sim' : 'ble';
+}
+
+/** @param {'sim' | 'ble'} transportKind @param {boolean} simAllowed */
+export function resolveEffectiveTransportKind(transportKind, simAllowed) {
+  if (transportKind === 'sim' && !simAllowed) return 'ble';
+  return transportKind;
+}
+
 /**
  * BLE scale state for the shot timer (no UI — wire into App timer handlers).
  *
@@ -40,7 +51,7 @@ export function useTimemoreScale({
   const simAllowed = enabled && (isScaleSimPickerEnabled() || devUrlSim);
   const bleAvailable = isWebBluetoothAvailable();
 
-  const [transportKind, setTransportKind] = useState('sim');
+  const [transportKind, setTransportKind] = useState(() => resolveDefaultTransportKind(simAllowed));
   const [connectStatus, setConnectStatus] = useState('idle');
   const [liveWeightG, setLiveWeightG] = useState(0);
   const [liveRelativeWeightG, setLiveRelativeWeightG] = useState(0);
@@ -140,8 +151,15 @@ export function useTimemoreScale({
     });
   }, [disposeSession, syncRelativeFromLive]);
 
+  useEffect(() => {
+    if (!simAllowed && transportKind === 'sim') {
+      setTransportKind('ble');
+    }
+  }, [simAllowed, transportKind]);
+
   const buildTransport = useCallback(() => {
-    if (transportKind === 'sim') {
+    const kind = resolveEffectiveTransportKind(transportKind, simAllowed);
+    if (kind === 'sim') {
       return createSimulatedTransport({
         targetYieldG: Number(targetYieldG) || 36,
         preinfusionDurationS: usePreInfusion ? preInfusionDurationS : 0,
@@ -149,7 +167,7 @@ export function useTimemoreScale({
       });
     }
     return createBluetoothScaleTransport(scaleDeviceId);
-  }, [transportKind, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS, devUrlSim]);
+  }, [transportKind, simAllowed, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS, devUrlSim]);
 
   const connect = useCallback(async () => {
     if (!enabled) return;
@@ -287,10 +305,13 @@ export function useTimemoreScale({
     if (!enabled || !transport || connectStatus !== 'connected') return;
     sessionRef.current?.beginExtractionTiming();
     recordingExtractionRef.current = true;
-    if (transportKind === 'sim' && typeof transport.endPreinfusion === 'function') {
+    if (
+      resolveEffectiveTransportKind(transportKind, simAllowed) === 'sim' &&
+      typeof transport.endPreinfusion === 'function'
+    ) {
       transport.endPreinfusion();
     }
-  }, [enabled, connectStatus, transportKind]);
+  }, [enabled, connectStatus, transportKind, simAllowed]);
 
   const notifyShotStopped = useCallback(() => {
     notifyShotYieldSettleBegin();
