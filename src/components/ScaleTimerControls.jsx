@@ -55,9 +55,9 @@ export function ScaleTimerControls({
         <>
           <span className="text-[10px] font-semibold text-[#8a9d72]">Scale on</span>
           <span
-            className={`text-[10px] font-semibold tabular-nums ${ui.muted}`}
+            className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-lg ${ui.chip} ${ui.text}`}
             role="status"
-            aria-live="polite"
+            aria-live="off"
             aria-label={`Scale weight ${formatScaleLiveWeightLabel(liveWeightG)}`}
           >
             {formatScaleLiveWeightLabel(liveWeightG)}
