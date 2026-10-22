@@ -1,10 +1,16 @@
 import { grayscale } from './framePrep.js';
+import { FLAIR_58_SCALE } from './gaugeConfig.js';
 
 /**
  * Turn an oblique gauge face into a front-on circle.
- * The candidate circle is only a search window. Ellipse centre, axes, and
- * tilt come from the bezel edge on this frame (cv.fitEllipse), then
- * cv.warpAffine maps that ellipse onto a circle the size of its major axis.
+ * The candidate circle is only a search window. A full ellipse fit runs on
+ * acquisition and when the tracked rim no longer agrees. Later frames nudge
+ * the centre from a few rim samples and reuse the warp maps.
+ *
+ * An oblique close camera maps the circular face to an ellipse whose centre
+ * is not the needle pivot. Affine axis scaling leaves the half-bar ticks
+ * uneven. A one-parameter disk homography, fit so those ticks land on the
+ * printed spacing, puts the pivot back at the circle centre.
  */
 
 function clamp(value, lo, hi) {
@@ -166,6 +172,274 @@ function cropImage(image, x0, y0, width, height) {
   return { data, width, height };
 }
 
+/** Printed half-bar step. 0–10 bar is twenty of these, from the design sweep. */
+function halfBarSpacingDeg() {
+  const steps = (FLAIR_58_SCALE.maxBar - FLAIR_58_SCALE.minBar) / 0.5;
+  return FLAIR_58_SCALE.sweepDeg / steps;
+}
+
+function lumaAt(image, x, y) {
+  const xi = Math.round(x);
+  const yi = Math.round(y);
+  if (xi < 0 || yi < 0 || xi >= image.width || yi >= image.height) return null;
+  const o = (yi * image.width + xi) * 4;
+  const data = image.data;
+  return data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+}
+
+/** OpenCV RotatedRect: `angle` is degrees, clockwise in y-down image coordinates. */
+function ellipsePoint(ellipse, theta) {
+  const a = ellipse.size.width / 2;
+  const b = ellipse.size.height / 2;
+  const phi = (ellipse.angle * Math.PI) / 180;
+  const cos = Math.cos(phi);
+  const sin = Math.sin(phi);
+  const u = a * Math.cos(theta);
+  const v = b * Math.sin(theta);
+  return {
+    x: ellipse.center.x + u * cos - v * sin,
+    y: ellipse.center.y + u * sin + v * cos,
+  };
+}
+
+/**
+ * Disk automorphism. `d` is the projected circle centre in the unit frame
+ * whose origin is the ellipse centre. Forward maps a frontal point to that frame.
+ */
+function diskForward(fx, fy, dx, dy) {
+  const rho = Math.hypot(dx, dy);
+  if (rho < 1e-8) return { x: fx, y: fy };
+  const phi = Math.atan2(dy, dx);
+  const c = Math.cos(phi);
+  const s = Math.sin(phi);
+  const scale = Math.sqrt(Math.max(0, 1 - rho * rho));
+  const xr = fx * c + fy * s;
+  const yr = -fx * s + fy * c;
+  const den = 1 + rho * xr;
+  if (!(Math.abs(den) > 1e-8)) return { x: fx, y: fy };
+  const ox = (xr + rho) / den;
+  const oy = (scale * yr) / den;
+  return { x: ox * c - oy * s, y: ox * s + oy * c };
+}
+
+function diskInverse(u, v, dx, dy) {
+  const rho = Math.hypot(dx, dy);
+  if (rho < 1e-8) return { x: u, y: v };
+  const phi = Math.atan2(dy, dx);
+  const c = Math.cos(phi);
+  const s = Math.sin(phi);
+  const scale = Math.sqrt(Math.max(0, 1 - rho * rho));
+  const ur = u * c + v * s;
+  const vr = -u * s + v * c;
+  const den = 1 - rho * ur;
+  if (!(Math.abs(den) > 1e-8)) return null;
+  const xr = (ur - rho) / den;
+  const yr = (scale * vr) / den;
+  return { x: xr * c - yr * s, y: xr * s + yr * c };
+}
+
+/** Frontal dial angle → angle on the affinely normalised ellipse. Radians. */
+export function projectDialAngle(frontalRad, dx, dy) {
+  const point = diskForward(Math.cos(frontalRad), Math.sin(frontalRad), dx, dy);
+  return Math.atan2(point.y, point.x);
+}
+
+/** Angle on the affinely normalised ellipse → frontal dial angle. Radians. */
+export function correctObservedAngle(observedRad, dx, dy) {
+  const point = diskInverse(Math.cos(observedRad), Math.sin(observedRad), dx, dy);
+  if (!point) return observedRad;
+  return Math.atan2(point.y, point.x);
+}
+
+/** Unit-circle coordinates of an affinely normalised point → frontal coordinates. */
+export function normalizedToFrontal(u, v, dx, dy) {
+  return diskInverse(u, v, dx, dy);
+}
+
+function wrapDeg(deg) {
+  return ((deg % 360) + 360) % 360;
+}
+
+function latticeFit(angleDegs, spacing) {
+  const n = angleDegs.length;
+  if (n < 6 || !(spacing > 0)) return null;
+  const gate = spacing * 0.28;
+  let phase = 0;
+  let resid = new Array(n).fill(0);
+  let inliers = [];
+  for (let pass = 0; pass < 3; pass += 1) {
+    const use = pass === 0 ? angleDegs : inliers.map((index) => angleDegs[index]);
+    if (use.length < 6) break;
+    const tau = (Math.PI * 2) / spacing;
+    let sx = 0;
+    let sy = 0;
+    for (let i = 0; i < use.length; i += 1) {
+      const mod = wrapDeg(use[i]) % spacing;
+      sx += Math.cos(mod * tau);
+      sy += Math.sin(mod * tau);
+    }
+    phase = Math.atan2(sy, sx) / tau;
+    if (phase < 0) phase += spacing;
+    inliers = [];
+    for (let i = 0; i < n; i += 1) {
+      let rel = wrapDeg(angleDegs[i] - phase) % spacing;
+      if (rel > spacing / 2) rel -= spacing;
+      resid[i] = rel;
+      if (Math.abs(rel) <= gate) inliers.push(i);
+    }
+  }
+  if (inliers.length < 6) {
+    return { rms: 180, inliers: inliers.length, span: 0, phase, resid };
+  }
+  let sum = 0;
+  for (let i = 0; i < inliers.length; i += 1) sum += resid[inliers[i]] ** 2;
+  const angs = inliers.map((index) => wrapDeg(angleDegs[index])).sort((a, b) => a - b);
+  let gap = angs[0] + 360 - angs[angs.length - 1];
+  for (let i = 1; i < angs.length; i += 1) gap = Math.max(gap, angs[i] - angs[i - 1]);
+  return {
+    rms: Math.sqrt(sum / inliers.length),
+    inliers: inliers.length,
+    span: 360 - gap,
+    phase,
+    resid,
+  };
+}
+
+function scoreOffset(observedRad, dx, dy, spacing) {
+  const degs = observedRad.map((rad) => wrapDeg((correctObservedAngle(rad, dx, dy) * 180) / Math.PI));
+  return latticeFit(degs, spacing);
+}
+
+/**
+ * Perspective offset that puts observed tick angles on the printed half-bar lattice.
+ * Returns a zero offset when the affine angles are already uniform.
+ * @param {number[]} observedRad parametric angles on the fitted ellipse
+ */
+export function fitPerspectiveOffset(observedRad) {
+  const spacing = halfBarSpacingDeg();
+  const affine = observedRad?.length
+    ? scoreOffset(observedRad, 0, 0, spacing)
+    : null;
+  const zero = {
+    dx: 0,
+    dy: 0,
+    rms: affine?.rms ?? 180,
+    affineRms: affine?.rms ?? 180,
+    inliers: affine?.inliers ?? 0,
+    span: affine?.span ?? 0,
+    spacing,
+  };
+  if (!affine || affine.inliers < 8) return zero;
+  if (affine.rms <= 1.25 && affine.span >= 100) return zero;
+  let best = { ...zero, fitRms: affine.rms };
+  const consider = (dx, dy) => {
+    const fit = scoreOffset(observedRad, dx, dy, spacing);
+    if (!fit || fit.inliers < 8 || fit.span < 110 || fit.rms > 2.6) return;
+    if (fit.rms < best.rms - 0.05) {
+      best = { dx, dy, rms: fit.rms, affineRms: affine.rms, inliers: fit.inliers, span: fit.span, spacing };
+    }
+  };
+  for (let ir = 1; ir <= 20; ir += 1) {
+    const rho = ir * 0.025;
+    for (let ip = 0; ip < 24; ip += 1) {
+      const phi = (ip / 24) * Math.PI * 2;
+      consider(rho * Math.cos(phi), rho * Math.sin(phi));
+    }
+  }
+  if (best.dx !== 0 || best.dy !== 0) {
+    const rho = Math.hypot(best.dx, best.dy);
+    const phi = Math.atan2(best.dy, best.dx);
+    for (let ir = -4; ir <= 4; ir += 1) {
+      const rhoTry = rho + ir * 0.006;
+      if (rhoTry <= 0.02 || rhoTry >= 0.52) continue;
+      for (let ip = -4; ip <= 4; ip += 1) {
+        const phiTry = phi + ip * (Math.PI / 90);
+        consider(rhoTry * Math.cos(phiTry), rhoTry * Math.sin(phiTry));
+      }
+    }
+  }
+  if (best.rms > affine.rms - 0.8 || best.span < 120 || best.rms > 2.4) return zero;
+  return best;
+}
+
+function meanAlong(gray, width, height, cx, cy, sx, sy, fracs) {
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < fracs.length; i += 1) {
+    const value = sampleGray(gray, width, height, cx + sx * fracs[i], cy + sy * fracs[i]);
+    if (value == null) continue;
+    sum += value;
+    n += 1;
+  }
+  return n ? sum / n : null;
+}
+
+function tickPeakRadians(gray, width, height, ellipse) {
+  const n = 720;
+  const score = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const edge = ellipsePoint(ellipse, (i / n) * Math.PI * 2);
+    const sx = edge.x - ellipse.center.x;
+    const sy = edge.y - ellipse.center.y;
+    const mid = meanAlong(gray, width, height, ellipse.center.x, ellipse.center.y, sx, sy, [0.62, 0.68]);
+    const outer = meanAlong(gray, width, height, ellipse.center.x, ellipse.center.y, sx, sy, [0.78, 0.84, 0.9]);
+    score[i] = mid == null || outer == null ? 0 : mid - outer;
+  }
+  const smooth = new Float32Array(n);
+  let max = 0;
+  for (let i = 0; i < n; i += 1) {
+    let sum = 0;
+    for (let k = -2; k <= 2; k += 1) sum += score[(i + k + n) % n];
+    smooth[i] = sum / 5;
+    if (smooth[i] > max) max = smooth[i];
+  }
+  if (!(max > 6)) return [];
+  const floor = Math.max(6, max * 0.28);
+  const peaks = [];
+  for (let i = 0; i < n; i += 1) {
+    const prev = smooth[(i + n - 1) % n];
+    const next = smooth[(i + 1) % n];
+    if (smooth[i] < floor || smooth[i] < prev || smooth[i] < next) continue;
+    const denom = prev - 2 * smooth[i] + next;
+    let off = 0;
+    if (Math.abs(denom) > 1e-6) off = clamp(0.5 * (prev - next) / denom, -0.5, 0.5);
+    peaks.push({ rad: ((i + off) / n) * Math.PI * 2, strength: smooth[i] });
+  }
+  peaks.sort((a, b) => b.strength - a.strength);
+  return peaks.slice(0, 40).map((peak) => peak.rad);
+}
+
+/**
+ * Uniformity of dark rim marks on an already-circular face.
+ * Residuals are degrees from the printed half-bar lattice (phase is free).
+ */
+export function measurePrintedTickResidual(image, cx, cy, radius) {
+  if (!image?.data || !(radius > 4)) return null;
+  const gray = grayscale(image.data, image.width, image.height);
+  const ellipse = {
+    center: { x: cx, y: cy },
+    size: { width: radius * 2, height: radius * 2 },
+    angle: 0,
+  };
+  const peaks = tickPeakRadians(gray, image.width, image.height, ellipse);
+  if (peaks.length < 8) return null;
+  const spacing = halfBarSpacingDeg();
+  const fit = scoreOffset(peaks, 0, 0, spacing);
+  if (!fit) return null;
+  const inlierResid = [];
+  for (let i = 0; i < fit.resid.length; i += 1) {
+    if (Math.abs(fit.resid[i]) <= spacing * 0.28) inlierResid.push(fit.resid[i]);
+  }
+  return {
+    spacing,
+    rms: fit.rms,
+    inliers: fit.inliers,
+    span: fit.span,
+    count: peaks.length,
+    residuals: inlierResid,
+  };
+}
+
 /**
  * Destination pixel → source pixel. OpenCV's RotatedRect angle is clockwise
  * in image coordinates, which is the standard rotation matrix when y is down.
@@ -189,42 +463,411 @@ function circleToEllipseMatrix(ellipse, outSize) {
   return { radius, values: [m00, m01, m02, m10, m11, m12] };
 }
 
-function warpToCircle(cv, image, ellipse) {
+function shapeKey(ellipse, dx, dy, out) {
+  const q = (value, step) => Math.round(value / step);
+  return [
+    q(ellipse.size.width, 1),
+    q(ellipse.size.height, 1),
+    q(ellipse.angle, 0.5),
+    q(dx, 0.008),
+    q(dy, 0.008),
+    out,
+  ].join(':');
+}
+
+function relativeMaps(ellipse, dx, dy, out) {
+  const mapX = new Float32Array(out * out);
+  const mapY = new Float32Array(out * out);
+  const major = Math.max(ellipse.size.width, ellipse.size.height);
+  const radius = major / 2;
+  const half = out / 2;
+  const parked = {
+    center: { x: 0, y: 0 },
+    size: ellipse.size,
+    angle: ellipse.angle,
+  };
+  const [m00, m01, m02, m10, m11, m12] = circleToEllipseMatrix(parked, out).values;
+  for (let j = 0; j < out; j += 1) {
+    for (let i = 0; i < out; i += 1) {
+      const fx = (i - half) / radius;
+      const fy = (j - half) / radius;
+      const obs = diskForward(fx, fy, dx, dy);
+      const ai = half + obs.x * radius;
+      const aj = half + obs.y * radius;
+      const k = j * out + i;
+      mapX[k] = m00 * ai + m01 * aj + m02;
+      mapY[k] = m10 * ai + m11 * aj + m12;
+    }
+  }
+  return { mapX, mapY, radius };
+}
+
+function mapMat(cv, existing, out, values) {
+  if (
+    existing
+    && existing.rows === out
+    && existing.cols === out
+    && existing.data32F
+    && existing.data32F.length === values.length
+  ) {
+    existing.data32F.set(values);
+    return existing;
+  }
+  existing?.delete?.();
+  return cv.matFromArray(out, out, cv.CV_32FC1, values);
+}
+
+/** Drop cached warp maps. Does not touch image pixels. */
+export function releaseWarpHold(hold) {
+  if (!hold) return;
+  hold.mapXMat?.delete?.();
+  hold.mapYMat?.delete?.();
+  hold.mapXMat = null;
+  hold.mapYMat = null;
+  hold.relX = null;
+  hold.relY = null;
+  hold.shapeKey = '';
+  hold.cx = null;
+  hold.cy = null;
+  hold.out = 0;
+  hold.radius = 0;
+}
+
+function manualWarp(image, mapX, mapY, out) {
+  const data = new Uint8ClampedArray(out * out * 4);
+  const width = image.width;
+  const height = image.height;
+  const src = image.data;
+  for (let j = 0; j < out; j += 1) {
+    for (let i = 0; i < out; i += 1) {
+      const k = j * out + i;
+      const x = mapX[k];
+      const y = mapY[k];
+      const dst = k * 4;
+      if (!(x >= 0) || !(y >= 0) || x >= width - 1 || y >= height - 1) {
+        const xi = clamp(Math.round(x), 0, width - 1);
+        const yi = clamp(Math.round(y), 0, height - 1);
+        const o = (yi * width + xi) * 4;
+        data[dst] = src[o];
+        data[dst + 1] = src[o + 1];
+        data[dst + 2] = src[o + 2];
+        data[dst + 3] = 255;
+        continue;
+      }
+      const x0 = Math.floor(x);
+      const y0 = Math.floor(y);
+      const tx = x - x0;
+      const ty = y - y0;
+      const i00 = (y0 * width + x0) * 4;
+      const i10 = i00 + 4;
+      const i01 = i00 + width * 4;
+      const i11 = i01 + 4;
+      const w00 = (1 - tx) * (1 - ty);
+      const w10 = tx * (1 - ty);
+      const w01 = (1 - tx) * ty;
+      const w11 = tx * ty;
+      data[dst] = src[i00] * w00 + src[i10] * w10 + src[i01] * w01 + src[i11] * w11;
+      data[dst + 1] = src[i00 + 1] * w00 + src[i10 + 1] * w10 + src[i01 + 1] * w01 + src[i11 + 1] * w11;
+      data[dst + 2] = src[i00 + 2] * w00 + src[i10 + 2] * w10 + src[i01 + 2] * w01 + src[i11 + 2] * w11;
+      data[dst + 3] = 255;
+    }
+  }
+  return { data, width: out, height: out };
+}
+
+function warpCircle(cv, image, ellipse, dx, dy, warpHold) {
   const major = Math.max(ellipse.size.width, ellipse.size.height);
   const out = Math.max(16, Math.round(major * 1.08));
-  const { radius, values } = circleToEllipseMatrix(ellipse, out);
-  const src = cv.matFromImageData({ data: image.data, width: image.width, height: image.height });
-  const dst = new cv.Mat();
-  const map = cv.matFromArray(2, 3, cv.CV_64F, values);
-  const size = new cv.Size(out, out);
-  try {
-    const flags = cv.INTER_LINEAR + cv.WARP_INVERSE_MAP;
-    cv.warpAffine(src, dst, map, size, flags, cv.BORDER_REPLICATE);
-    const data = new Uint8ClampedArray(dst.data.length);
-    data.set(dst.data);
+  const key = shapeKey(ellipse, dx, dy, out);
+  const cx = ellipse.center.x;
+  const cy = ellipse.center.y;
+  let relX;
+  let relY;
+  let radius;
+  if (warpHold?.shapeKey === key && warpHold.relX && warpHold.relY) {
+    relX = warpHold.relX;
+    relY = warpHold.relY;
+    radius = warpHold.radius;
+  } else {
+    const built = relativeMaps(ellipse, dx, dy, out);
+    relX = built.mapX;
+    relY = built.mapY;
+    radius = built.radius;
+    if (warpHold) {
+      warpHold.shapeKey = key;
+      warpHold.relX = relX;
+      warpHold.relY = relY;
+      warpHold.radius = radius;
+      warpHold.out = out;
+      warpHold.cx = null;
+    }
+  }
+  const reuseAbs = warpHold?.mapXMat
+    && warpHold.out === out
+    && warpHold.cx != null
+    && Math.abs(warpHold.cx - cx) < 0.35
+    && Math.abs(warpHold.cy - cy) < 0.35
+    && warpHold.shapeKey === key;
+  let mapX = null;
+  let mapY = null;
+  if (!reuseAbs) {
+    mapX = new Float32Array(relX.length);
+    mapY = new Float32Array(relY.length);
+    for (let k = 0; k < relX.length; k += 1) {
+      mapX[k] = relX[k] + cx;
+      mapY[k] = relY[k] + cy;
+    }
+  }
+  const result = {
+    cx: out / 2,
+    cy: out / 2,
+    radius,
+  };
+  if (cv.remap && cv.matFromArray && cv.CV_32FC1 != null) {
+    const src = cv.matFromImageData({ data: image.data, width: image.width, height: image.height });
+    const dst = new cv.Mat();
+    let mx = warpHold?.mapXMat || null;
+    let my = warpHold?.mapYMat || null;
+    let discard = false;
+    try {
+      if (!reuseAbs) {
+        mx = mapMat(cv, mx, out, mapX);
+        my = mapMat(cv, my, out, mapY);
+        if (warpHold) {
+          warpHold.mapXMat = mx;
+          warpHold.mapYMat = my;
+          warpHold.cx = cx;
+          warpHold.cy = cy;
+          warpHold.out = out;
+        } else {
+          discard = true;
+        }
+      }
+      cv.remap(src, dst, mx, my, cv.INTER_LINEAR, cv.BORDER_REPLICATE);
+      const data = new Uint8ClampedArray(dst.data.length);
+      data.set(dst.data);
+      return { ...result, image: { data, width: out, height: out } };
+    } catch {
+      // JS resample below. A broken map must not be reused.
+      if (warpHold) {
+        warpHold.mapXMat = null;
+        warpHold.mapYMat = null;
+        warpHold.cx = null;
+      }
+    } finally {
+      src.delete();
+      dst.delete();
+      if (discard) {
+        mx?.delete?.();
+        my?.delete?.();
+      }
+    }
+  }
+  if (!mapX) {
+    mapX = new Float32Array(relX.length);
+    mapY = new Float32Array(relY.length);
+    for (let k = 0; k < relX.length; k += 1) {
+      mapX[k] = relX[k] + cx;
+      mapY[k] = relY[k] + cy;
+    }
+  }
+  return { ...result, image: manualWarp(image, mapX, mapY, out) };
+}
+
+function sampleRimNarrow(image, ellipse) {
+  const rays = 16;
+  const points = [];
+  for (let i = 0; i < rays; i += 1) {
+    const theta = (i / rays) * Math.PI * 2;
+    const edge = ellipsePoint(ellipse, theta);
+    const dx = edge.x - ellipse.center.x;
+    const dy = edge.y - ellipse.center.y;
+    const pred = Math.hypot(dx, dy);
+    if (!(pred > 4)) continue;
+    const ux = dx / pred;
+    const uy = dy / pred;
+    const gap = Math.max(1, pred * 0.02);
+    const step = Math.max(1, pred / 70);
+    let best = 0;
+    let bestR = 0;
+    for (let r = pred * 0.84; r <= pred * 1.16; r += step) {
+      const inner = lumaAt(image, ellipse.center.x + (r - gap) * ux, ellipse.center.y + (r - gap) * uy);
+      const outer = lumaAt(image, ellipse.center.x + (r + gap) * ux, ellipse.center.y + (r + gap) * uy);
+      if (inner == null || outer == null) continue;
+      const strength = Math.abs(outer - inner);
+      if (strength > best) {
+        best = strength;
+        bestR = r;
+      }
+    }
+    if (best < 8) continue;
+    points.push({
+      x: ellipse.center.x + bestR * ux,
+      y: ellipse.center.y + bestR * uy,
+      strength: best,
+      angle: Math.atan2(uy, ux),
+      r: bestR,
+    });
+  }
+  return points;
+}
+
+function nudgeEllipse(ellipse, samples) {
+  const major = Math.max(ellipse.size.width, ellipse.size.height);
+  let accCC = 0;
+  let accCS = 0;
+  let accSS = 0;
+  let accEC = 0;
+  let accES = 0;
+  let scaleNum = 0;
+  let scaleDen = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = samples[i];
+    const edge = ellipsePoint(ellipse, sample.theta);
+    const pred = Math.hypot(edge.x - ellipse.center.x, edge.y - ellipse.center.y);
+    const err = sample.r - pred;
+    const c = Math.cos(sample.angle);
+    const s = Math.sin(sample.angle);
+    accCC += c * c;
+    accCS += c * s;
+    accSS += s * s;
+    accEC += err * c;
+    accES += err * s;
+    scaleNum += err;
+    scaleDen += pred;
+  }
+  const det = accCC * accSS - accCS * accCS;
+  if (Math.abs(det) < samples.length * 0.12) return { ellipse, held: true };
+  const sx = (accSS * accEC - accCS * accES) / det;
+  const sy = (accCC * accES - accCS * accEC) / det;
+  if (Math.hypot(sx, sy) > major * 0.18) return null;
+  let scale = 1 + clamp(scaleDen > 0 ? scaleNum / scaleDen : 0, -0.04, 0.04);
+  if (Math.abs(ellipse.size.width * (scale - 1)) < 0.45) scale = 1;
+  return {
+    ellipse: {
+      center: { x: ellipse.center.x + sx, y: ellipse.center.y + sy },
+      size: { width: ellipse.size.width * scale, height: ellipse.size.height * scale },
+      angle: ellipse.angle,
+    },
+    held: false,
+  };
+}
+
+function tryTrack(image, candidate, prior) {
+  if (!(prior?.width > 4) || !(prior?.height > 4)) return null;
+  const ellipse = {
+    center: { x: prior.cx, y: prior.cy },
+    size: { width: prior.width, height: prior.height },
+    angle: prior.angleDeg,
+  };
+  const major = Math.max(prior.width, prior.height);
+  if (Math.hypot(prior.cx - candidate.cx, prior.cy - candidate.cy) > candidate.radius * 0.75) return null;
+  const samples = sampleRimNarrow(image, ellipse);
+  if (samples.length < 6) {
+    const misses = (prior.misses || 0) + 1;
+    if (misses >= 5) return null;
+    return { ellipse, misses, held: true };
+  }
+  if (samples.length < 8) return { ellipse, misses: 0, held: true };
+  let current = ellipse;
+  let held = false;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const nudged = nudgeEllipse(current, samples);
+    if (!nudged) return null;
+    current = nudged.ellipse;
+    held = nudged.held;
+  }
+  if (!ellipseUsable(current, samples, candidate)) return null;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i += 1) sum += residualPx(samples[i], current) ** 2;
+  const rms = Math.sqrt(sum / samples.length);
+  if (rms > major * 0.08) return null;
+  return { ellipse: current, misses: 0, held };
+}
+
+function publicEllipse(ellipse) {
+  return {
+    cx: ellipse.center.x,
+    cy: ellipse.center.y,
+    width: ellipse.size.width,
+    height: ellipse.size.height,
+    angleDeg: ellipse.angle,
+  };
+}
+
+function finishEllipse(cv, image, ellipse, dx, dy, warpHold, meta, full) {
+  const major = Math.max(ellipse.size.width, ellipse.size.height);
+  const minor = Math.min(ellipse.size.width, ellipse.size.height);
+  const ellipseOut = publicEllipse(ellipse);
+  const geometry = {
+    dx,
+    dy,
+    fit: meta.fit,
+    misses: meta.misses,
+    tick: meta.tick,
+  };
+  if (!(major > 4)) return null;
+  if (minor / major > 0.985) {
+    if (full?.crop) {
+      return {
+        ok: true,
+        image: full.crop,
+        cx: full.local.cx,
+        cy: full.local.cy,
+        radius: (major + minor) / 4,
+        ellipse: ellipseOut,
+        warped: false,
+        geometry,
+      };
+    }
     return {
-      image: { data, width: out, height: out },
-      cx: out / 2,
-      cy: out / 2,
-      radius,
+      ok: true,
+      image,
+      cx: ellipse.center.x,
+      cy: ellipse.center.y,
+      radius: (major + minor) / 4,
+      ellipse: ellipseOut,
+      warped: false,
+      geometry,
     };
-  } finally {
-    src.delete();
-    dst.delete();
-    map.delete();
+  }
+  try {
+    const warped = warpCircle(cv, image, ellipse, dx, dy, warpHold);
+    if (!warped?.image) return null;
+    return { ok: true, ...warped, ellipse: ellipseOut, warped: true, geometry };
+  } catch {
+    return null;
   }
 }
 
 /**
- * @returns {null | { ok: true, image, cx, cy, radius, ellipse, warped }}
- * `ellipse` is in the same pixel space as `image`. The returned bitmap is a
- * new buffer; the source frame is not kept.
+ * @param {{ prior?: object, warpHold?: object, perspective?: boolean }} [options]
+ * `prior` is an ellipse in the same pixel space as `image` (`cx`, `cy`, `width`,
+ * `height`, `angleDeg`, `dx`, `dy`). `warpHold` keeps warp maps between frames.
+ * @returns {null | { ok: true, image, cx, cy, radius, ellipse, warped, geometry }}
+ * The returned bitmap is a new buffer; the source frame is not kept.
  */
-export function rectifyGaugeFace(cv, image, candidate) {
-  if (!cv?.fitEllipse || !cv?.warpAffine || !image?.data || !candidate) return null;
+export function rectifyGaugeFace(cv, image, candidate, options = {}) {
+  if (!cv?.fitEllipse || !image?.data || !candidate) return null;
   const { width, height } = image;
   const radius = candidate.radius;
   if (!(radius > 4) || !(width > 0) || !(height > 0)) return null;
+  const warpHold = options.warpHold || null;
+  const perspective = options.perspective !== false;
+  if (options.prior && options.track !== false) {
+    const tracked = tryTrack(image, candidate, options.prior);
+    if (tracked) {
+      return finishEllipse(
+        cv,
+        image,
+        tracked.ellipse,
+        options.prior.dx || 0,
+        options.prior.dy || 0,
+        warpHold,
+        { fit: tracked.held ? 'hold' : 'track', misses: tracked.misses, tick: null },
+      );
+    }
+  }
   const pad = radius * 1.9;
   const x0 = clamp(Math.floor(candidate.cx - pad), 0, width - 2);
   const y0 = clamp(Math.floor(candidate.cy - pad), 0, height - 2);
@@ -235,32 +878,31 @@ export function rectifyGaugeFace(cv, image, candidate) {
   const points = collectBezelPoints(crop, local.cx, local.cy, local.radius);
   const fitted = fitBezelEllipse(cv, points);
   if (!fitted || !ellipseUsable(fitted.ellipse, fitted.points, local)) return null;
+  const imageEllipse = {
+    center: {
+      x: fitted.ellipse.center.x + x0,
+      y: fitted.ellipse.center.y + y0,
+    },
+    size: fitted.ellipse.size,
+    angle: fitted.ellipse.angle,
+  };
   const major = Math.max(fitted.ellipse.size.width, fitted.ellipse.size.height);
   const minor = Math.min(fitted.ellipse.size.width, fitted.ellipse.size.height);
-  const ellipse = {
-    cx: fitted.ellipse.center.x + x0,
-    cy: fitted.ellipse.center.y + y0,
-    width: fitted.ellipse.size.width,
-    height: fitted.ellipse.size.height,
-    angleDeg: fitted.ellipse.angle,
-  };
-  if (minor / major > 0.985) {
-    return {
-      ok: true,
-      image: crop,
-      cx: local.cx,
-      cy: local.cy,
-      radius: (major + minor) / 4,
-      ellipse,
-      warped: false,
-    };
+  let dx = 0;
+  let dy = 0;
+  let tick = null;
+  if (perspective && minor / major <= 0.985) {
+    const gray = grayscale(crop.data, crop.width, crop.height);
+    const peaks = tickPeakRadians(gray, crop.width, crop.height, fitted.ellipse);
+    tick = fitPerspectiveOffset(peaks);
+    dx = tick.dx;
+    dy = tick.dy;
   }
-  try {
-    const warped = warpToCircle(cv, crop, fitted.ellipse);
-    return { ok: true, ...warped, ellipse, warped: true };
-  } catch {
-    return null;
-  }
+  return finishEllipse(cv, image, imageEllipse, dx, dy, warpHold, {
+    fit: 'full',
+    misses: 0,
+    tick,
+  }, { crop, local, minor, major });
 }
 
 /**
