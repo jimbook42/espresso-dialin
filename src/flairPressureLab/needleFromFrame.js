@@ -550,6 +550,63 @@ const raySlab = { samples: new Float32Array(0), probes: new Float32Array(0) };
 let rayColumn = new Float32Array(0);
 const rayRaw = new Float32Array(360);
 
+/**
+ * The tip is the narrow dark lobe at the hub. The counterweight is the wide one,
+ * and a printed mark beside it is wider still. Mean darkness picks that blob.
+ */
+function narrowHubLobe(luma, width, height, cx, cy, innerR) {
+  const bins = 180;
+  const vals = new Float64Array(bins);
+  const r0 = innerR * 0.75;
+  const r1 = innerR * 1.55;
+  for (let i = 0; i < bins; i += 1) {
+    const rad = ((i * 2) * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    let acc = 0;
+    let n = 0;
+    for (let s = 0; s < 6; s += 1) {
+      const r = r0 + (r1 - r0) * ((s + 0.5) / 6);
+      const x = (cx + r * cos + 0.5) | 0;
+      const y = (cy + r * sin + 0.5) | 0;
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      acc += luma[y * width + x];
+      n += 1;
+    }
+    vals[i] = n ? acc / n : 255;
+  }
+  const sorted = Float64Array.from(vals);
+  sorted.sort();
+  const median = sorted[bins >> 1];
+  let darkest = 255;
+  for (let i = 0; i < bins; i += 1) if (vals[i] < darkest) darkest = vals[i];
+  if (median - darkest < 10) return null;
+  const floor = median - 8;
+  const runs = [];
+  for (let i = 0; i < bins; i += 1) {
+    if (!(vals[i] < floor) || vals[(i - 1 + bins) % bins] < floor) continue;
+    let widthBins = 0;
+    let best = i;
+    let bestV = vals[i];
+    for (let k = 0; k < bins; k += 1) {
+      const j = (i + k) % bins;
+      if (!(vals[j] < floor)) break;
+      widthBins += 1;
+      if (vals[j] < bestV) {
+        bestV = vals[j];
+        best = j;
+      }
+    }
+    if (widthBins < 2 || widthBins > 40) continue;
+    if (bestV > darkest + 10) continue;
+    runs.push({ deg: best * 2, widthBins, lum: bestV });
+  }
+  if (!runs.length) return null;
+  runs.sort((a, b) => a.widthBins - b.widthBins || a.lum - b.lum);
+  if (process.env.LOBE) console.error(JSON.stringify(runs));
+  return runs[0].deg;
+}
+
 export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hintDeg = null) {
   if (!(outerR > innerR + 1)) return emptyDetection();
   const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
@@ -644,45 +701,17 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
   }
 
   const hubOf = (deg) => hubConnection(rawLuma, width, height, cx, cy, deg, innerR);
-  // A thick pointer is flat black, so a narrow contrast probe scores a thin tick
-  // higher. The pointer is the darkest full ray, not the sharpest edge.
-  const meanLuma = (deg) => {
-    const rad = (deg * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    let acc = 0;
-    let n = 0;
-    const span = outerR - innerR;
-    for (let i = 0; i < 8; i += 1) {
-      const r = innerR + span * ((i + 0.5) / 8);
-      const x = (cx + r * cos + 0.5) | 0;
-      const y = (cy + r * sin + 0.5) | 0;
-      if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      acc += rawLuma[y * width + x];
-      n += 1;
-    }
-    return n ? acc / n : 255;
-  };
-  let darkest = best;
-  let darkestLuma = meanLuma(best);
-  const lumaSamples = [];
-  for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
-    const luma = meanLuma(deg);
-    lumaSamples.push(luma);
-    if (luma < darkestLuma) {
-      darkestLuma = luma;
-      darkest = deg;
-    }
+  const lobe = narrowHubLobe(rawLuma, width, height, cx, cy, innerR);
+  if (lobe != null) {
+    best = lobe;
+    bestProfile = keepSamples(scoreAngle(lobe, null));
   }
-  lumaSamples.sort((a, b) => a - b);
-  const lumaMid = lumaSamples[lumaSamples.length >> 1];
-  if (lumaMid - darkestLuma >= 18) best = darkest;
 
   const opposite = (best + 180) % 360;
   const oppositeIndex = scan.angles.indexOf(opposite);
   const oppositeProfile = keepSamples(scoreAngle(opposite, oppositeIndex >= 0 ? evidence[oppositeIndex] : null));
   const chosenEnd = selectPointerEnd(bestProfile, oppositeProfile);
-  if (chosenEnd.takeOpposite) {
+  if (chosenEnd.takeOpposite && lobe == null) {
     best = opposite;
     bestProfile = oppositeProfile;
   }

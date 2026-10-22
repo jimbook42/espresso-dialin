@@ -44,14 +44,17 @@ const SHOTS = [
   { clip: '20261018_160844', phase: 'peak', t: 20, expect: 8 },
   { clip: '20261017_084814', phase: 'rest', t: 4, expect: 0 },
   { clip: '20261017_084814', phase: 'peak', t: 22, expect: 8 },
+  { clip: '20261015_225307', phase: 'dry', t: 1, expect: 0, file: '/workspace/flair-train/dry/20261015_225307.mp4', scale: true },
 ];
 
-function grab(file, t) {
-  const result = spawnSync('ffmpeg', [
+function grab(file, t, scale) {
+  const args = [
     '-hide_banner', '-loglevel', 'error', '-noautorotate',
     '-i', file, '-ss', String(t), '-frames:v', '1',
-    '-f', 'rawvideo', '-pix_fmt', 'rgba', '-',
-  ], { maxBuffer: 16 * 1024 * 1024 });
+  ];
+  if (scale) args.push('-vf', 'scale=1280:720');
+  args.push('-f', 'rawvideo', '-pix_fmt', 'rgba', '-');
+  const result = spawnSync('ffmpeg', args, { maxBuffer: 16 * 1024 * 1024 });
   if (result.status !== 0 || result.stdout.length !== 1280 * 720 * 4) {
     throw new Error(`frame ${file} @ ${t}s is ${result.stdout?.length || 0} bytes`);
   }
@@ -138,7 +141,7 @@ function savePng(path, rgba, w, h) {
 
 const rows = [];
 for (const shot of SHOTS) {
-  const image = grab(`/workspace/flair-train/real/${shot.clip}.mp4`, shot.t);
+  const image = grab(shot.file || `/workspace/flair-train/real/${shot.clip}.mp4`, shot.t, shot.scale);
   const found = discoverGaugeInFrame(image);
   if (!found?.ok) {
     rows.push({ ...shot, error: 'no gauge' });
@@ -171,7 +174,9 @@ for (const shot of SHOTS) {
     profile,
     { maxShiftDeg: 360, needleDeg: needle.angleDeg },
   );
-  const rot = reg.ok ? reg.rotationDeg : (arc.estimateDeg ?? 0);
+  const bands = measureDialColorBands(face.image, face.cx, face.cy, face.radius, needle.angleDeg);
+  const color = registerDialFromColorBands(bands);
+  const rot = color.ok ? color.rotationDeg : (reg.ok ? reg.rotationDeg : (arc.estimateDeg ?? 0));
   const relative = wrap360(needle.angleDeg - rot);
   const flipped = wrap360(needle.angleDeg + 180 - rot);
   const swapped = wrap360(rot - needle.angleDeg);

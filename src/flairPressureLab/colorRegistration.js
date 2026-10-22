@@ -84,7 +84,7 @@ export function measureDialColorBands(image, cx, cy, radius, needleDeg = null) {
   const red = new Float32Array(BINS);
   const dark = new Float32Array(BINS);
   const redN = sampleAnnulus(
-    image, cx, cy, radius, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, null, redAnnulus,
+    image, cx, cy, radius, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, needleDeg, redAnnulus,
   );
   const darkN = sampleAnnulus(
     image, cx, cy, radius, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION, needleDeg, darkAnnulus,

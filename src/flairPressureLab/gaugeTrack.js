@@ -2449,7 +2449,7 @@ function completeReading({
           { bins: 360, innerRatio: 0.76, outerRatio: 0.88 },
         );
         const fromTemplate = registerDialRotationFromProfile(fine, detection.angleDeg);
-        if (fromTemplate.ok) reg = fromTemplate;
+        if (fromTemplate.ok && !reg.ok) reg = fromTemplate;
       }
       // The printed face is the colour bands and the rim. A full search runs
       // only when the frame-to-frame lock has nothing to follow.

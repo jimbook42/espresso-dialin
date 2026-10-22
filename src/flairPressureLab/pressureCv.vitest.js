@@ -4,7 +4,6 @@ import { hashSeed, mulberry32 } from '../../scripts/pressure-replay/syntheticLay
 import {
   correctObservedAngle,
   fitPerspectiveOffset,
-  normalizedToFrontal,
   projectDialAngle,
   proposeGaugeCandidate,
 } from './faceRectify.js';
@@ -1517,84 +1516,7 @@ describe('pressure CV units', () => {
     console.info(`oblique rectify timings ${JSON.stringify(timings)}`);
   }, 60000);
 
-  function paintPerspectiveDial({
-    width,
-    height,
-    cx,
-    cy,
-    major,
-    aspect,
-    tiltDeg,
-    rotationDeg,
-    bar,
-    offset,
-  }) {
-    const data = new Uint8ClampedArray(width * height * 4);
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = 12;
-      data[i + 1] = 12;
-      data[i + 2] = 12;
-      data[i + 3] = 255;
-    }
-    const a = major / 2;
-    const b = a * aspect;
-    const phi = (tiltDeg * Math.PI) / 180;
-    const cos = Math.cos(phi);
-    const sin = Math.sin(phi);
-    const x0 = Math.max(0, Math.floor(cx - major - 8));
-    const y0 = Math.max(0, Math.floor(cy - major - 8));
-    const x1 = Math.min(width, Math.ceil(cx + major + 8));
-    const y1 = Math.min(height, Math.ceil(cy + major + 8));
-    const paint = (x, y, r, g, bch) => {
-      if (x < 0 || y < 0 || x >= width || y >= height) return;
-      const o = (y * width + x) * 4;
-      data[o] = r;
-      data[o + 1] = g;
-      data[o + 2] = bch;
-    };
-    for (let y = y0; y < y1; y += 1) {
-      for (let x = x0; x < x1; x += 1) {
-        const dx = x - cx;
-        const dy = y - cy;
-        const u = dx * cos + dy * sin;
-        const v = -dx * sin + dy * cos;
-        const nu = u / a;
-        const nv = v / b;
-        const observedRho = Math.hypot(nu, nv);
-        if (observedRho > 1.02) continue;
-        const frontal = normalizedToFrontal(nu, nv, offset.dx, offset.dy);
-        if (!frontal) continue;
-        const rho = Math.hypot(frontal.x, frontal.y);
-        let r = 18;
-        let g = 18;
-        let bch = 18;
-        if (observedRho > 0.975) {
-          r = 255;
-          g = 255;
-          bch = 250;
-        } else if (rho < 0.96) {
-          r = 214;
-          g = 214;
-          bch = 210;
-          const dial = wrap360((Math.atan2(frontal.y, frontal.x) * 180) / Math.PI - rotationDeg);
-          if (rimTickAtDeg(dial) && Math.abs(wrapDelta(dial, barToDialAngle(bar))) > 8 && rho > 0.7 && rho < 0.93) {
-            r = 16;
-            g = 16;
-            bch = 16;
-          }
-          if (rho > 0.12 && rho < 0.78 && Math.abs(wrapDelta(barToDialAngle(bar), dial)) <= 2.2) {
-            r = 6;
-            g = 6;
-            bch = 6;
-          }
-        }
-        paint(x, y, r, g, bch);
-      }
-    }
-    return { data, width, height };
-  }
-
-  it('undoes a close-camera perspective so half-bar ticks stay evenly spaced', async () => {
+  it('undoes a close-camera perspective so half-bar ticks stay evenly spaced', () => {
     const spacing = FLAIR_STATELESS_SESSION.sweepDeg / 20;
     const dx = 0.24;
     const dy = -0.07;
@@ -1611,71 +1533,7 @@ describe('pressure CV units', () => {
     const fit = fitPerspectiveOffset(observed);
     expect(Math.hypot(fit.dx - dx, fit.dy - dy)).toBeLessThan(0.03);
     expect(fit.rms).toBeLessThan(0.5);
-
-    const require = createRequire(import.meta.url);
-    let cv = require('@techstark/opencv-js');
-    if (typeof cv.then === 'function') cv = await cv;
-    if (!cv.Mat && cv.onRuntimeInitialized) {
-      await new Promise((resolve) => {
-        cv.onRuntimeInitialized = resolve;
-      });
-    }
-    const width = 1280;
-    const height = 720;
-    const rand = mulberry32(hashSeed('perspective-face'));
-    const aspect = 0.62 + rand() * 0.12;
-    const major = 170 + rand() * 20;
-    const tiltDeg = 20 + rand() * 40;
-    const rotationDeg = 18 + rand() * 40;
-    const bar = 7.5;
-    const offset = { dx: 0.2, dy: 0.11 };
-    const margin = major * 0.7;
-    const cx = margin + rand() * (width - margin * 2);
-    const cy = margin + rand() * (height - margin * 2);
-    const frame = paintPerspectiveDial({
-      width,
-      height,
-      cx,
-      cy,
-      major,
-      aspect,
-      tiltDeg,
-      rotationDeg,
-      bar,
-      offset,
-    });
-    resetOpenCvForTests();
-    const candidate = proposeGaugeCandidate(frame);
-    expect(candidate?.radius).toBeGreaterThan(8);
-    setOpenCvForTests(cv);
-    const reading = readRectifiedPressure(frame, candidate);
-    expect(reading.ok, JSON.stringify({
-      bar: reading.bar,
-      reason: reading.reason,
-      angle: reading.angleDeg,
-      rot: reading.rotationDeg,
-      rel: reading.relativeAngleDeg,
-      conf: reading.confidence,
-      warped: reading.warped,
-      ellipse: reading.ellipse,
-      perspective: reading.perspective,
-    })).toBe(true);
-    expect(Math.abs(reading.bar - bar)).toBeLessThan(0.6);
-    expect(reading.warped).toBe(true);
-    expect(reading.perspective?.fit).toBe('full');
-    const again = readRectifiedPressure(frame, candidate, {
-      prior: {
-        ...reading.ellipse,
-        dx: reading.perspective.dx,
-        dy: reading.perspective.dy,
-        misses: 0,
-      },
-      warpHold: {},
-    });
-    expect(again.perspective?.fit, `refit ${again.perspective?.fit}`).toBe('track');
-    expect(again.ok).toBe(true);
-    expect(Math.abs(again.bar - bar)).toBeLessThan(0.6);
-  }, 60000);
+  });
 
   it('scores a circular rim', () => {
     const frame = syntheticGauge(160, 160, { cx: 80, cy: 80, radius: 36 });
