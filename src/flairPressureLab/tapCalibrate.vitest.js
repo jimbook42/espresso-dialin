@@ -5,9 +5,11 @@ import {
   MARK_SWEEP_DEG,
   barFromRestSpan,
   calibrateFromTaps,
+  captureTipTemplate,
   detectBadTap,
   fiveCheckBar,
   markResidualPx,
+  matchTipAngle,
   parseTapCalQuery,
   snapHub,
   tapsFromReplayHook,
@@ -155,6 +157,48 @@ describe('snapHub', () => {
     const image = paintDial(240, { x: 120, y: 110 }, 72);
     const snapped = snapHub(image, { x: 20, y: 24 });
     expect(snapped.ok).toBe(false);
+  });
+});
+
+describe('matchTipAngle', () => {
+  it('follows the tip template and leaves the tail and a tick alone', () => {
+    const size = 240;
+    const hub = { x: 120, y: 120 };
+    const data = new Uint8ClampedArray(size * size * 4);
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 210;
+      data[i + 1] = 208;
+      data[i + 2] = 200;
+      data[i + 3] = 255;
+    }
+    const image = { width: size, height: size, data };
+    const paint = (deg, r0, r1, half) => {
+      const rad = (deg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      for (let r = r0; r <= r1; r += 0.5) {
+        const x = hub.x + r * cos;
+        const y = hub.y + r * sin;
+        for (let off = -half; off <= half; off += 0.5) {
+          const px = Math.round(x - sin * off);
+          const py = Math.round(y + cos * off);
+          if (px < 0 || py < 0 || px >= size || py >= size) continue;
+          const o = (py * size + px) * 4;
+          data[o] = 16;
+          data[o + 1] = 16;
+          data[o + 2] = 16;
+        }
+      }
+    };
+    paint(30, 22, 78, 1.5);
+    paint(210, 16, 38, 1.5);
+    paint(110, 62, 78, 1);
+    const template = captureTipTemplate(image, hub.x, hub.y, 30, 90);
+    const matched = matchTipAngle(image, hub.x, hub.y, 90, template, 30, 30 + 170, 30, 0);
+    expect(matched).not.toBeNull();
+    expect(matched.angleDeg).toBeGreaterThan(26);
+    expect(matched.angleDeg).toBeLessThan(34);
+    expect(barFromRestSpan(matched.angleDeg, 30, 200)).toBeLessThan(1);
   });
 });
 

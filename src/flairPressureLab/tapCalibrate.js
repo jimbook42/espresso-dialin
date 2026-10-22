@@ -399,6 +399,201 @@ export function readNeedleAt(image, cx, cy, radius, hintDeg = null) {
   return found;
 }
 
+const TIP_BINS = 8;
+const tipSamples = new Float64Array(17);
+const tipSides = new Float64Array(8);
+const tipDepths = new Float64Array(TIP_BINS);
+
+/**
+ * Dark valley along one direction. The samples sit on the tip side of the
+ * hub (inner face out toward the numerals), never on the tail. Depth is how
+ * far the centre sits below the face on either side, and only a narrow
+ * valley counts — a tick is short, a printed band is wide.
+ */
+function tipValley(image, cx, cy, deg, radius, offsetPx) {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const ox = cx - sin * offsetPx;
+  const oy = cy + cos * offsetPx;
+  const { data, width, height } = image;
+  let acc = 0;
+  let bins = 0;
+  let widthSum = 0;
+  for (let i = 0; i < TIP_BINS; i += 1) {
+    const r = radius * (0.26 + 0.52 * ((i + 0.5) / TIP_BINS));
+    const x = ox + r * cos;
+    const y = oy + r * sin;
+    let ok = true;
+    for (let s = 0; s < 17; s += 1) {
+      const off = s - 8;
+      const lum = lumaAt(data, width, height, Math.round(x - sin * off), Math.round(y + cos * off));
+      if (lum == null) {
+        ok = false;
+        break;
+      }
+      tipSamples[s] = lum;
+    }
+    if (!ok) {
+      tipDepths[i] = 0;
+      continue;
+    }
+    const center = Math.min(tipSamples[7], tipSamples[8], tipSamples[9]);
+    let nSide = 0;
+    for (let s = 0; s < 17; s += 1) {
+      if (Math.abs(s - 8) < 5) continue;
+      tipSides[nSide] = tipSamples[s];
+      nSide += 1;
+    }
+    for (let a = 1; a < nSide; a += 1) {
+      const value = tipSides[a];
+      let b = a;
+      while (b > 0 && tipSides[b - 1] > value) {
+        tipSides[b] = tipSides[b - 1];
+        b -= 1;
+      }
+      tipSides[b] = value;
+    }
+    const side = tipSides[nSide >> 1];
+    const depth = side - center;
+    tipDepths[i] = depth;
+    let dark = 0;
+    for (let s = 0; s < 17; s += 1) if (tipSamples[s] < side - 4) dark += 1;
+    if (depth > 5 && dark >= 2 && dark <= 8) {
+      acc += depth;
+      bins += 1;
+      widthSum += dark;
+    }
+  }
+  return { acc, bins, width: bins ? widthSum / bins : 0 };
+}
+
+function tipCorr(template) {
+  if (!template || template.energy < 30) return 1;
+  let dot = 0;
+  let energy = 0;
+  for (let i = 0; i < TIP_BINS; i += 1) {
+    const value = tipDepths[i];
+    dot += template.depths[i] * value;
+    energy += value * value;
+  }
+  return dot / Math.sqrt(template.energy * energy + 1e-6);
+}
+
+/** Appearance of the resting tip. The tail is not part of the template. */
+export function captureTipTemplate(image, cx, cy, deg, radius) {
+  const measured = tipValley(image, cx, cy, deg, radius, 0);
+  const depths = Array.from(tipDepths);
+  let energy = 0;
+  for (let i = 0; i < TIP_BINS; i += 1) energy += depths[i] * depths[i];
+  return {
+    depths,
+    energy,
+    bins: measured.bins,
+    width: measured.width,
+    score: measured.acc,
+  };
+}
+
+function keepTip(row) {
+  if (!row) return false;
+  if (row.bins >= 5 && row.corr >= 0.84 && Math.abs(row.off) <= 6) return true;
+  return row.bins >= 4 && row.corr >= 0.9 && Math.abs(row.off) <= 6;
+}
+
+function scanTip(image, cx, cy, radius, template, angles, priorDeg) {
+  let byScore = null;
+  let byCorr = null;
+  for (let i = 0; i < angles.length; i += 1) {
+    const deg = angles[i];
+    for (let off = -8; off <= 8; off += 2) {
+      const measured = tipValley(image, cx, cy, deg, radius, off);
+      if (measured.bins < 4) continue;
+      const corr = Math.max(0, tipCorr(template));
+      let raw = measured.acc + measured.bins * 4 - Math.abs(off) * 1.4;
+      if (priorDeg != null && Math.abs(wrapDelta(deg, priorDeg)) <= 12) raw += 8;
+      const row = { deg, off, raw, bins: measured.bins, corr };
+      if (!byScore || raw > byScore.raw) byScore = row;
+      if (corr >= 0.72 && (!byCorr || corr > byCorr.corr + 0.02 || (corr >= byCorr.corr && raw > byCorr.raw))) {
+        byCorr = row;
+      }
+    }
+  }
+  if (globalThis.__tipDebug) {
+    const brief = (row) => (row ? `${row.deg.toFixed(1)} c${row.corr.toFixed(2)} b${row.bins} o${row.off} r${row.raw.toFixed(0)}` : 'none');
+    console.log('tip', brief(byScore), 'corrW', brief(byCorr));
+  }
+  if (byCorr && byScore && Math.abs(wrapDelta(byCorr.deg, byScore.deg)) > 12) {
+    if (byCorr.corr >= byScore.corr + 0.12 && byCorr.corr >= 0.9 && Math.abs(byCorr.off) <= 6) return byCorr;
+    if (keepTip(byScore)) return byScore;
+    return null;
+  }
+  if (keepTip(byScore)) return byScore;
+  if (keepTip(byCorr)) return byCorr;
+  return null;
+}
+
+function anglesNear(prior, half, zero, ten) {
+  const span = clockwiseDeg(zero, ten);
+  const angles = [];
+  for (let delta = -half; delta <= half; delta += 2) {
+    const deg = wrap360(prior + delta);
+    const along = clockwiseDeg(zero, deg);
+    if (along <= span + 18 || along >= 360 - 18) angles.push(deg);
+  }
+  return angles;
+}
+
+function anglesOnArc(zero, ten) {
+  const span = clockwiseDeg(zero, ten);
+  const angles = [];
+  for (let delta = -16; delta <= span + 16; delta += 2) angles.push(wrap360(zero + delta));
+  return angles;
+}
+
+function refineTip(image, cx, cy, radius, template, rough) {
+  let best = rough;
+  for (let delta = -2; delta <= 2; delta += 0.5) {
+    const deg = wrap360(rough.deg + delta);
+    for (let off = rough.off - 2; off <= rough.off + 2; off += 2) {
+      if (Math.abs(off) > 8) continue;
+      const measured = tipValley(image, cx, cy, deg, radius, off);
+      if (measured.bins < 4) continue;
+      const corr = Math.max(0, tipCorr(template));
+      if (corr + 0.08 < rough.corr) continue;
+      const raw = measured.acc + measured.bins * 4 - Math.abs(off) * 1.4;
+      if (raw > best.raw) best = { deg, off, raw, bins: measured.bins, corr };
+    }
+  }
+  return best;
+}
+
+/**
+ * Match the calibrated tip inside the 0–10 arc.
+ * A narrow window around the last angle is enough while the needle is
+ * moving slowly. A miss widens the window, and a jump falls through to the
+ * whole arc in the same frame. Nothing outside the arc is returned.
+ */
+export function matchTipAngle(image, cx, cy, radius, template, zeroDeg, tenDeg, priorDeg = null, misses = 0) {
+  if (!template || !(radius > 12) || zeroDeg == null || tenDeg == null) return null;
+  const half = misses >= 2 ? 64 : (misses === 1 ? 36 : 18);
+  let found = null;
+  if (priorDeg != null) {
+    const near = scanTip(image, cx, cy, radius, template, anglesNear(priorDeg, half, zeroDeg, tenDeg), priorDeg);
+    if (near && Math.abs(wrapDelta(near.deg, priorDeg)) <= half - 4) found = near;
+  }
+  if (!found) found = scanTip(image, cx, cy, radius, template, anglesOnArc(zeroDeg, tenDeg), priorDeg);
+  if (!found || barFromRestSpan(found.deg, zeroDeg, tenDeg) == null) return null;
+  const refined = refineTip(image, cx, cy, radius, template, found);
+  if (barFromRestSpan(refined.deg, zeroDeg, tenDeg) == null) return null;
+  return {
+    angleDeg: refined.deg,
+    quality: Math.max(NEEDLE_LOST_QUALITY, Math.min(1, refined.corr)),
+    corr: refined.corr,
+    bins: refined.bins,
+  };
+}
+
 function featureMissPx(hub, tap, projected) {
   const fraction = pointDist(hub, tap) / Math.max(1, hub.radius);
   // A purely radial miss stays on the template ray. Only a tap that leaves
@@ -635,6 +830,7 @@ export function calibrateFromTaps(image, taps) {
       bezelScore: hub.score,
       margin: marks.margin,
       template: templateBands,
+      needleTemplate: captureTipTemplate(image, hub.x, hub.y, zeroAngleDeg, hub.radius),
       needleQuality: needle.quality,
     },
   };
@@ -651,6 +847,7 @@ export function createCalibratedTracker(calibration) {
       shiftDeg: 0,
     },
     needleDeg: calibration.zeroAngleDeg,
+    needleMisses: 0,
     score: 1,
   };
 }
@@ -733,9 +930,41 @@ export function readCalibratedFrame(image, tracker) {
   const pose = bezelOk ? found : tracker.pose;
   const scale = tracker.calibration.radius > 1 ? pose.radius / tracker.calibration.radius : 1;
   const colorRadius = tracker.calibration.colorRadius * scale;
-  const needle = bezelOk
-    ? readNeedleAt(image, pose.x, pose.y, pose.radius)
-    : { angleDeg: null, quality: 0, likeness: 0 };
+  const prevShift = tracker.pose.shiftDeg || 0;
+  const zeroPrior = wrap360(tracker.calibration.zeroAngleDeg + prevShift);
+  const tenPrior = wrap360(tracker.calibration.tenAngleDeg + prevShift);
+  let needle = { angleDeg: null, quality: 0, likeness: 0 };
+  if (bezelOk) {
+    needle = readNeedleAt(image, pose.x, pose.y, pose.radius);
+    const detectorOnArc = barFromRestSpan(needle.angleDeg, zeroPrior, tenPrior) != null
+      && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY;
+    if (detectorOnArc) {
+      tracker.needleMisses = 0;
+    } else if (tracker.calibration.needleTemplate) {
+      const matched = matchTipAngle(
+        image,
+        pose.x,
+        pose.y,
+        pose.radius,
+        tracker.calibration.needleTemplate,
+        zeroPrior,
+        tenPrior,
+        tracker.needleDeg,
+        tracker.needleMisses || 0,
+      );
+      if (matched) {
+        const gap = Math.abs(wrapDelta(matched.angleDeg, tracker.needleDeg));
+        const angleDeg = gap <= 4
+          ? wrap360(tracker.needleDeg + wrapDelta(matched.angleDeg, tracker.needleDeg) * 0.7)
+          : matched.angleDeg;
+        needle = { angleDeg, quality: matched.quality, likeness: matched.corr };
+        tracker.needleMisses = 0;
+      } else {
+        tracker.needleMisses = Math.min(4, (tracker.needleMisses || 0) + 1);
+        needle = { angleDeg: null, quality: 0, likeness: 0 };
+      }
+    }
+  }
   const bands = fixedBands(
     image,
     pose.x,
