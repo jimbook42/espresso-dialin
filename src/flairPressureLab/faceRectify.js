@@ -428,22 +428,20 @@ function wedgePeakDegrees(score) {
 function frontalTickDegrees(luma, grid, dx, dy) {
   const n = 360;
   const score = new Float32Array(n);
-  const radii = [0.82, 0.9];
+  const radii = [0.78];
   for (let i = 0; i < n; i += 1) {
     const ang = (i / n) * Math.PI * 2;
     const c = Math.cos(ang);
     const s = Math.sin(ang);
     let dark = 0;
-    let count = 0;
     for (let r = 0; r < radii.length; r += 1) {
       const obs = diskForward(radii[r] * c, radii[r] * s, dx, dy);
       if (obs.x * obs.x + obs.y * obs.y > 0.97) continue;
       const value = cachedLuma(luma, grid, obs.x, obs.y);
       if (value == null) continue;
-      dark += 255 - value;
-      count += 1;
+      dark = Math.max(dark, 255 - value);
     }
-    score[i] = count ? dark / count : 0;
+    score[i] = dark;
   }
   return wedgePeakDegrees(score);
 }
@@ -462,12 +460,13 @@ function fitPerspectiveOnEllipse(gray, width, height, ellipse) {
     spacing,
     peaks: affineFit?.inliers ?? 0,
   };
-  if (!affineFit || affineFit.inliers < 6 || affineFit.rms <= 1.15) return zero;
+  if (affineFit && affineFit.inliers >= 6 && affineFit.rms <= 1.15) return zero;
+  const affineRms = affineFit?.rms ?? 180;
   const pack = (dx, dy, fit) => ({
     dx,
     dy,
     rms: fit.rms,
-    affineRms: affineFit.rms,
+    affineRms,
     inliers: fit.inliers,
     span: fit.span,
     spacing,
@@ -475,8 +474,13 @@ function fitPerspectiveOnEllipse(gray, width, height, ellipse) {
     score: fit.rms + Math.max(0, 18 - fit.inliers) * 0.45 + Math.max(0, 160 - fit.span) * 0.02,
   });
   const ranked = [];
+  let loose = null;
   const push = (dx, dy) => {
-    const fit = chainFit(frontalTickDegrees(luma, 128, dx, dy), spacing);
+    const peaks = frontalTickDegrees(luma, 128, dx, dy);
+    const fit = chainFit(peaks, spacing);
+    if (fit && (!loose || fit.inliers > loose.inliers || (fit.inliers === loose.inliers && fit.rms < loose.rms))) {
+      loose = { dx, dy, rms: fit.rms, span: fit.span, inliers: fit.inliers, peaks: peaks.length };
+    }
     if (!fit || fit.inliers < 8 || fit.span < 70 || fit.rms > 2.4) return;
     ranked.push(pack(dx, dy, fit));
     ranked.sort((a, b) => a.score - b.score);
@@ -503,8 +507,8 @@ function fitPerspectiveOnEllipse(gray, width, height, ellipse) {
     }
   }
   const best = ranked[0];
-  if (!best || best.rms > affineFit.rms - 0.8 || best.span < 150 || best.rms > 1.4 || best.inliers < 16) {
-    return zero;
+  if (!best || best.rms > affineRms - 0.8 || best.span < 150 || best.rms > 1.4 || best.inliers < 16) {
+    return { ...zero, loose };
   }
   return best;
 }
@@ -1093,7 +1097,7 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
   const radius = candidate.radius;
   if (!(radius > 4) || !(width > 0) || !(height > 0)) return null;
   const warpHold = options.warpHold || null;
-  const perspective = options.perspective !== false;
+  const perspective = options.perspective !== false && !options.forceOffset;
   if (options.prior && options.track !== false) {
     const tracked = tryTrack(image, candidate, options.prior);
     if (tracked) {
@@ -1128,9 +1132,9 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
   };
   const major = Math.max(fitted.ellipse.size.width, fitted.ellipse.size.height);
   const minor = Math.min(fitted.ellipse.size.width, fitted.ellipse.size.height);
-  let dx = 0;
-  let dy = 0;
-  let tick = null;
+  let dx = options.forceOffset?.dx || 0;
+  let dy = options.forceOffset?.dy || 0;
+  let tick = options.forceOffset ? { dx, dy, forced: true } : null;
   if (perspective && minor / major <= 0.985) {
     const gray = grayscale(crop.data, crop.width, crop.height);
     tick = fitPerspectiveOnEllipse(gray, crop.width, crop.height, fitted.ellipse);

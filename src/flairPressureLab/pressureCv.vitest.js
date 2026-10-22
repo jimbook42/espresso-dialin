@@ -1566,10 +1566,14 @@ describe('pressure CV units', () => {
         const frontal = normalizedToFrontal(nu, nv, offset.dx, offset.dy);
         if (!frontal) continue;
         const rho = Math.hypot(frontal.x, frontal.y);
-        let r = 255;
-        let g = 255;
-        let bch = 250;
-        if (rho < 0.96) {
+        let r = 18;
+        let g = 18;
+        let bch = 18;
+        if (observedRho > 0.975) {
+          r = 255;
+          g = 255;
+          bch = 250;
+        } else if (rho < 0.96) {
           r = 214;
           g = 214;
           bch = 210;
