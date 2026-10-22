@@ -18,7 +18,7 @@ import {
   FLAIR_CANONICAL_FACE_PROFILE,
   FLAIR_STATELESS_SESSION,
 } from './canonicalDial.js';
-import { rectifyGaugeFace } from './faceRectify.js';
+import { rectifyGaugeFace, releaseWarpHold } from './faceRectify.js';
 import { getOpenCvSync } from './opencvRuntime.js';
 import {
   consumeDiscoveryResult,
@@ -1142,6 +1142,13 @@ export function createGaugeTracker() {
   let pendingJump = false;
   let printedFace = false;
   let scaleLock = null;
+  let faceModel = null;
+  const faceWarp = {};
+
+  const clearFaceModel = () => {
+    releaseWarpHold(faceWarp);
+    faceModel = null;
+  };
 
   const clearVerification = () => {
     framesSinceDiscovery = 0;
@@ -1152,6 +1159,7 @@ export function createGaugeTracker() {
     bridgedReading = null;
     idleFrames = 0;
     scaleLock = null;
+    clearFaceModel();
   };
 
   const clearPoseMemory = () => {
@@ -1521,6 +1529,15 @@ export function createGaugeTracker() {
     captureSpec() {
       if (mode !== 'searching') return { pad: 1.9, maxOutput: 188 };
       return { pad: 1 + searchFraction + 0.45, maxOutput: 320 };
+    },
+    faceModel() {
+      return faceModel;
+    },
+    setFaceModel(model) {
+      faceModel = model;
+    },
+    faceWarp() {
+      return faceWarp;
     },
     /**
      * @param mapping image pixel = (video pixel - origin) * scale
@@ -2159,11 +2176,50 @@ const FINE_PROFILE_BINS = 360;
  * Rectify an oblique face, then read needle and template rotation on that circle.
  * Bar is the printed scale (`angleToBar` / `barToDialAngle`), not a guessed hold.
  */
-export function readRectifiedPressure(image, candidate) {
+function facePriorForCandidate(model, candidate, mapping) {
+  if (!model || !candidate || !(mapping?.scale > 0)) return null;
+  const videoCx = mapping.originX + candidate.cx / mapping.scale;
+  const videoCy = mapping.originY + candidate.cy / mapping.scale;
+  const videoR = candidate.radius / mapping.scale;
+  const follow = model.anchorRadius > 0 ? videoR / model.anchorRadius : 1;
+  const predCx = videoCx + (model.cx - model.anchorCx) * follow;
+  const predCy = videoCy + (model.cy - model.anchorCy) * follow;
+  return {
+    cx: (predCx - mapping.originX) * mapping.scale,
+    cy: (predCy - mapping.originY) * mapping.scale,
+    width: model.width * follow * mapping.scale,
+    height: model.height * follow * mapping.scale,
+    angleDeg: model.angleDeg,
+    dx: model.dx || 0,
+    dy: model.dy || 0,
+    misses: model.misses || 0,
+  };
+}
+
+function faceModelFromRectified(rectified, candidate, mapping) {
+  const ellipse = rectified?.ellipse;
+  if (!ellipse || !(mapping?.scale > 0) || !candidate) return null;
+  const scale = mapping.scale;
+  return {
+    cx: mapping.originX + ellipse.cx / scale,
+    cy: mapping.originY + ellipse.cy / scale,
+    width: ellipse.width / scale,
+    height: ellipse.height / scale,
+    angleDeg: ellipse.angleDeg,
+    dx: rectified.geometry?.dx || 0,
+    dy: rectified.geometry?.dy || 0,
+    misses: rectified.geometry?.misses || 0,
+    anchorCx: mapping.originX + candidate.cx / scale,
+    anchorCy: mapping.originY + candidate.cy / scale,
+    anchorRadius: candidate.radius / scale,
+  };
+}
+
+export function readRectifiedPressure(image, candidate, options = null) {
   const stamp = () => (typeof performance !== 'undefined' ? performance.now() : 0);
   const t0 = stamp();
   const cv = getOpenCvSync();
-  const rectified = rectifyGaugeFace(cv, image, candidate);
+  const rectified = rectifyGaugeFace(cv, image, candidate, options || undefined);
   const tRect = stamp();
   if (!rectified?.ok) {
     return { ok: false, reason: 'rectify', bar: null, ms: { rectify: tRect - t0, total: tRect - t0 } };
@@ -2212,6 +2268,7 @@ export function readRectifiedPressure(image, candidate) {
     likeness: needle.likeness,
     warped: rectified.warped === true,
     ellipse: rectified.ellipse,
+    perspective: rectified.geometry || null,
     ms: {
       rectify: tRect - t0,
       needle: tNeedle - tRect,
@@ -2297,14 +2354,28 @@ function completeReading({
   let readRadius = localRadius;
   let usedRectified = false;
   const cv = getOpenCvSync();
-  if (cv?.fitEllipse && cv?.warpAffine) {
-    const rectified = rectifyGaugeFace(cv, needleImage, { cx: localCx, cy: localCy, radius: localRadius });
+  if (cv?.fitEllipse && (cv.remap || cv.warpAffine)) {
+    const candidateLocal = { cx: localCx, cy: localCy, radius: localRadius };
+    const mapping = {
+      originX: needleCrop.originX,
+      originY: needleCrop.originY,
+      scale: needleScale,
+    };
+    const prior = facePriorForCandidate(tracker.faceModel?.(), candidateLocal, mapping);
+    const rectified = rectifyGaugeFace(cv, needleImage, candidateLocal, {
+      prior,
+      warpHold: tracker.faceWarp?.() ?? null,
+    });
     if (rectified?.ok) {
       usedRectified = true;
       readImage = rectified.image;
       readCx = rectified.cx;
       readCy = rectified.cy;
       readRadius = rectified.radius;
+      const nextModel = faceModelFromRectified(rectified, candidateLocal, mapping);
+      if (nextModel) tracker.setFaceModel?.(nextModel);
+    } else {
+      tracker.setFaceModel?.(null);
     }
   }
   const faceRaw = scoreDialFaceInterior(

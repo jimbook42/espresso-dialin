@@ -260,54 +260,67 @@ function wrapDeg(deg) {
   return ((deg % 360) + 360) % 360;
 }
 
-function latticeFit(angleDegs, spacing) {
-  const n = angleDegs.length;
-  if (n < 6 || !(spacing > 0)) return null;
-  const gate = spacing * 0.28;
-  let phase = 0;
-  let resid = new Array(n).fill(0);
-  let inliers = [];
-  for (let pass = 0; pass < 3; pass += 1) {
-    const use = pass === 0 ? angleDegs : inliers.map((index) => angleDegs[index]);
-    if (use.length < 6) break;
-    const tau = (Math.PI * 2) / spacing;
-    let sx = 0;
-    let sy = 0;
-    for (let i = 0; i < use.length; i += 1) {
-      const mod = wrapDeg(use[i]) % spacing;
-      sx += Math.cos(mod * tau);
-      sy += Math.sin(mod * tau);
+/**
+ * Walk successive marks about one half-bar apart and score them against a
+ * fixed spacing. A lattice that only keeps the nearest hits hides a stretch.
+ */
+function chainFit(angleDegs, spacing) {
+  if (!angleDegs || angleDegs.length < 6 || !(spacing > 0)) return null;
+  const sorted = angleDegs.map((deg) => wrapDeg(deg)).sort((a, b) => a - b);
+  const ring = sorted.concat(sorted.map((deg) => deg + 360));
+  const tol = spacing * 0.85;
+  let best = null;
+  for (let start = 0; start < sorted.length; start += 1) {
+    const seq = [{ deg: sorted[start], step: 0 }];
+    let expected = sorted[start] + spacing;
+    let from = start + 1;
+    let step = 1;
+    let skips = 0;
+    while (seq.length < 24 && step < 24) {
+      let pick = -1;
+      let dist = tol;
+      for (let j = from; j < ring.length; j += 1) {
+        const delta = ring[j] - expected;
+        if (delta > tol) break;
+        const absDelta = Math.abs(delta);
+        if (absDelta < dist) {
+          dist = absDelta;
+          pick = j;
+        }
+      }
+      if (pick < 0) {
+        skips += 1;
+        if (skips > 2) break;
+        expected += spacing;
+        step += 1;
+        continue;
+      }
+      skips = 0;
+      seq.push({ deg: ring[pick], step });
+      from = pick + 1;
+      expected += spacing;
+      step += 1;
     }
-    phase = Math.atan2(sy, sx) / tau;
-    if (phase < 0) phase += spacing;
-    inliers = [];
-    for (let i = 0; i < n; i += 1) {
-      let rel = wrapDeg(angleDegs[i] - phase) % spacing;
-      if (rel > spacing / 2) rel -= spacing;
-      resid[i] = rel;
-      if (Math.abs(rel) <= gate) inliers.push(i);
+    if (seq.length < 6) continue;
+    let acc = 0;
+    for (let k = 0; k < seq.length; k += 1) acc += seq[k].deg - seq[k].step * spacing;
+    const phase = acc / seq.length;
+    const resid = seq.map((item) => item.deg - (phase + item.step * spacing));
+    let sum = 0;
+    for (let k = 0; k < resid.length; k += 1) sum += resid[k] * resid[k];
+    const rms = Math.sqrt(sum / resid.length);
+    const span = seq[seq.length - 1].deg - seq[0].deg;
+    const score = rms + Math.max(0, 12 - seq.length) * 0.35;
+    if (!best || score < best.score) {
+      best = { rms, inliers: seq.length, span, phase, resid, score };
     }
   }
-  if (inliers.length < 6) {
-    return { rms: 180, inliers: inliers.length, span: 0, phase, resid };
-  }
-  let sum = 0;
-  for (let i = 0; i < inliers.length; i += 1) sum += resid[inliers[i]] ** 2;
-  const angs = inliers.map((index) => wrapDeg(angleDegs[index])).sort((a, b) => a - b);
-  let gap = angs[0] + 360 - angs[angs.length - 1];
-  for (let i = 1; i < angs.length; i += 1) gap = Math.max(gap, angs[i] - angs[i - 1]);
-  return {
-    rms: Math.sqrt(sum / inliers.length),
-    inliers: inliers.length,
-    span: 360 - gap,
-    phase,
-    resid,
-  };
+  return best;
 }
 
 function scoreOffset(observedRad, dx, dy, spacing) {
   const degs = observedRad.map((rad) => wrapDeg((correctObservedAngle(rad, dx, dy) * 180) / Math.PI));
-  return latticeFit(degs, spacing);
+  return chainFit(degs, spacing);
 }
 
 /**
@@ -320,6 +333,9 @@ export function fitPerspectiveOffset(observedRad) {
   const affine = observedRad?.length
     ? scoreOffset(observedRad, 0, 0, spacing)
     : null;
+  const degs = (observedRad || []).map((rad) => wrapDeg((rad * 180) / Math.PI)).sort((a, b) => a - b);
+  const gaps = [];
+  for (let i = 1; i < degs.length; i += 1) gaps.push(Math.round((degs[i] - degs[i - 1]) * 10) / 10);
   const zero = {
     dx: 0,
     dy: 0,
@@ -328,14 +344,18 @@ export function fitPerspectiveOffset(observedRad) {
     inliers: affine?.inliers ?? 0,
     span: affine?.span ?? 0,
     spacing,
+    peaks: degs.length,
+    gaps,
   };
-  if (!affine || affine.inliers < 8) return zero;
-  if (affine.rms <= 1.25 && affine.span >= 100) return zero;
+  if (!affine || affine.inliers < 6) return zero;
+  if (affine.rms <= 0.9 && affine.inliers >= 12 && affine.span >= 100) return zero;
   let best = { ...zero, fitRms: affine.rms };
   const consider = (dx, dy) => {
     const fit = scoreOffset(observedRad, dx, dy, spacing);
-    if (!fit || fit.inliers < 8 || fit.span < 110 || fit.rms > 2.6) return;
-    if (fit.rms < best.rms - 0.05) {
+    if (!fit || fit.inliers < 6 || fit.span < 40 || fit.rms > 2.6) return;
+    const fitScore = fit.rms + Math.max(0, 12 - fit.inliers) * 0.35;
+    const bestScore = best.rms + Math.max(0, 12 - (best.inliers || 0)) * 0.35;
+    if (fitScore < bestScore - 0.05) {
       best = { dx, dy, rms: fit.rms, affineRms: affine.rms, inliers: fit.inliers, span: fit.span, spacing };
     }
   };
@@ -358,7 +378,7 @@ export function fitPerspectiveOffset(observedRad) {
       }
     }
   }
-  if (best.rms > affine.rms - 0.8 || best.span < 120 || best.rms > 2.4) return zero;
+  if (best.rms > affine.rms - 0.4 || best.span < 40 || best.rms > 1.8 || best.inliers < 6) return zero;
   return best;
 }
 
@@ -381,9 +401,22 @@ function tickPeakRadians(gray, width, height, ellipse) {
     const edge = ellipsePoint(ellipse, (i / n) * Math.PI * 2);
     const sx = edge.x - ellipse.center.x;
     const sy = edge.y - ellipse.center.y;
-    const mid = meanAlong(gray, width, height, ellipse.center.x, ellipse.center.y, sx, sy, [0.62, 0.68]);
-    const outer = meanAlong(gray, width, height, ellipse.center.x, ellipse.center.y, sx, sy, [0.78, 0.84, 0.9]);
-    score[i] = mid == null || outer == null ? 0 : mid - outer;
+    // The tick radius is not a fixed fraction once the pivot leaves the ellipse centre.
+    let best = 0;
+    for (let f = 0.58; f <= 0.96; f += 0.025) {
+      const here = sampleGray(gray, width, height, ellipse.center.x + sx * f, ellipse.center.y + sy * f);
+      const inner = sampleGray(
+        gray,
+        width,
+        height,
+        ellipse.center.x + sx * (f - 0.07),
+        ellipse.center.y + sy * (f - 0.07),
+      );
+      if (here == null || inner == null) continue;
+      const contrast = inner - here;
+      if (contrast > best) best = contrast;
+    }
+    score[i] = best;
   }
   const smooth = new Float32Array(n);
   let max = 0;
@@ -406,7 +439,23 @@ function tickPeakRadians(gray, width, height, ellipse) {
     peaks.push({ rad: ((i + off) / n) * Math.PI * 2, strength: smooth[i] });
   }
   peaks.sort((a, b) => b.strength - a.strength);
-  return peaks.slice(0, 40).map((peak) => peak.rad);
+  const minSep = (halfBarSpacingDeg() * Math.PI) / 180 * 0.55;
+  const kept = [];
+  for (let i = 0; i < peaks.length; i += 1) {
+    const rad = peaks[i].rad;
+    let crowded = false;
+    for (let j = 0; j < kept.length; j += 1) {
+      let delta = Math.abs(rad - kept[j]);
+      if (delta > Math.PI) delta = Math.PI * 2 - delta;
+      if (delta < minSep) {
+        crowded = true;
+        break;
+      }
+    }
+    if (!crowded) kept.push(rad);
+    if (kept.length >= 24) break;
+  }
+  return kept;
 }
 
 /**
@@ -426,17 +475,13 @@ export function measurePrintedTickResidual(image, cx, cy, radius) {
   const spacing = halfBarSpacingDeg();
   const fit = scoreOffset(peaks, 0, 0, spacing);
   if (!fit) return null;
-  const inlierResid = [];
-  for (let i = 0; i < fit.resid.length; i += 1) {
-    if (Math.abs(fit.resid[i]) <= spacing * 0.28) inlierResid.push(fit.resid[i]);
-  }
   return {
     spacing,
     rms: fit.rms,
     inliers: fit.inliers,
     span: fit.span,
     count: peaks.length,
-    residuals: inlierResid,
+    residuals: fit.resid || [],
   };
 }
 
@@ -650,9 +695,12 @@ function warpCircle(cv, image, ellipse, dx, dy, warpHold) {
     } catch {
       // JS resample below. A broken map must not be reused.
       if (warpHold) {
+        warpHold.mapXMat?.delete?.();
+        warpHold.mapYMat?.delete?.();
         warpHold.mapXMat = null;
         warpHold.mapYMat = null;
         warpHold.cx = null;
+        discard = false;
       }
     } finally {
       src.delete();
@@ -707,6 +755,7 @@ function sampleRimNarrow(image, ellipse) {
       strength: best,
       angle: Math.atan2(uy, ux),
       r: bestR,
+      pred,
     });
   }
   return points;
@@ -723,9 +772,7 @@ function nudgeEllipse(ellipse, samples) {
   let scaleDen = 0;
   for (let i = 0; i < samples.length; i += 1) {
     const sample = samples[i];
-    const edge = ellipsePoint(ellipse, sample.theta);
-    const pred = Math.hypot(edge.x - ellipse.center.x, edge.y - ellipse.center.y);
-    const err = sample.r - pred;
+    const err = sample.r - sample.pred;
     const c = Math.cos(sample.angle);
     const s = Math.sin(sample.angle);
     accCC += c * c;
@@ -769,20 +816,21 @@ function tryTrack(image, candidate, prior) {
     return { ellipse, misses, held: true };
   }
   if (samples.length < 8) return { ellipse, misses: 0, held: true };
-  let current = ellipse;
-  let held = false;
-  for (let pass = 0; pass < 2; pass += 1) {
-    const nudged = nudgeEllipse(current, samples);
-    if (!nudged) return null;
-    current = nudged.ellipse;
-    held = nudged.held;
+  const nudged = nudgeEllipse(ellipse, samples);
+  if (!nudged) return null;
+  const current = nudged.ellipse;
+  const minor = Math.min(current.size.width, current.size.height);
+  if (minor / major < 0.28) return null;
+  if (Math.hypot(current.center.x - candidate.cx, current.center.y - candidate.cy) > candidate.radius * 0.6) {
+    return null;
   }
-  if (!ellipseUsable(current, samples, candidate)) return null;
+  const check = sampleRimNarrow(image, current);
+  const used = check.length >= 8 ? check : samples;
   let sum = 0;
-  for (let i = 0; i < samples.length; i += 1) sum += residualPx(samples[i], current) ** 2;
-  const rms = Math.sqrt(sum / samples.length);
+  for (let i = 0; i < used.length; i += 1) sum += residualPx(used[i], current) ** 2;
+  const rms = Math.sqrt(sum / used.length);
   if (rms > major * 0.08) return null;
-  return { ellipse: current, misses: 0, held };
+  return { ellipse: current, misses: 0, held: nudged.held };
 }
 
 function publicEllipse(ellipse) {
@@ -945,10 +993,4 @@ export function proposeGaugeCandidate(image) {
   const cx = sx / n;
   const cy = sy / n;
   const dists = new Float64Array(n);
-  for (let i = 0; i < n; i += 1) dists[i] = Math.hypot(xs[i] - cx, ys[i] - cy);
-  dists.sort();
-  const radius = dists[Math.floor(n * 0.82)];
-  const minDim = Math.min(width, height);
-  if (!(radius > 8) || radius < minDim * 0.02 || radius > minDim * 0.48) return null;
-  return { ok: true, cx, cy, radius, source: 'face-blob' };
-}
+  for (let i = 0; i 
