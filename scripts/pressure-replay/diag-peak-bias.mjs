@@ -15,6 +15,7 @@ import {
 } from '../../src/flairPressureLab/gaugeTrack.js';
 import { detectNeedleAngle, refineNeedleAngle } from '../../src/flairPressureLab/needleFromFrame.js';
 import { prepareEdges } from '../../src/flairPressureLab/framePrep.js';
+import { measureDialColorBands, registerDialFromColorBands } from '../../src/flairPressureLab/colorRegistration.js';
 import {
   FLAIR_58_SCALE,
   OUTER_RADIUS_RATIO,
@@ -110,6 +111,20 @@ function blit(dst, dw, dh, dx, dy, src) {
       dst[dO + 3] = 255;
     }
   }
+}
+
+function darkReach(image, cx, cy, radius, deg) {
+  const rad = (deg * Math.PI) / 180;
+  let far = 0;
+  for (let f = 0.2; f <= 0.9; f += 0.02) {
+    const x = Math.round(cx + radius * f * Math.cos(rad));
+    const y = Math.round(cy + radius * f * Math.sin(rad));
+    if (x < 0 || y < 0 || x >= image.width || y >= image.height) break;
+    const o = (y * image.width + x) * 4;
+    const luma = image.data[o] * 0.299 + image.data[o + 1] * 0.587 + image.data[o + 2] * 0.114;
+    if (luma < 90) far = f;
+  }
+  return Math.round(far * 100) / 100;
 }
 
 function savePng(path, rgba, w, h) {
@@ -232,6 +247,19 @@ for (const shot of SHOTS) {
     tailDeg: Math.round(wrap360(needle.angleDeg + 180) * 10) / 10,
     needleEnd: needle.needleEnd,
     hub: needle.hub,
+    tipReach: darkReach(face.image, face.cx, face.cy, face.radius, needle.angleDeg),
+    tailReach: darkReach(face.image, face.cx, face.cy, face.radius, needle.angleDeg + 180),
+    colorRot: (() => {
+      const bands = measureDialColorBands(face.image, face.cx, face.cy, face.radius, needle.angleDeg);
+      const color = registerDialFromColorBands(bands);
+      const rel = wrap360(needle.angleDeg - (color.rotationDeg || 0));
+      return {
+        ok: color.ok,
+        rot: Math.round((color.rotationDeg || 0) * 10) / 10,
+        bar: barOf(rel, true),
+        barFlip: barOf(wrap360(needle.angleDeg + 180 - (color.rotationDeg || 0)), true),
+      };
+    })(),
     rotDeg: Math.round(rot * 10) / 10,
     regOk: reg.ok,
     zeroRayDeg: Math.round(zeroRay * 10) / 10,

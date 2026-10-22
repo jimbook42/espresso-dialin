@@ -121,7 +121,9 @@ function lateralProbes(span, stepDeg = ANGLE_STEP) {
   const halfStep = Math.sin((stepDeg * Math.PI) / 360);
   const missPx = Math.max(1, Math.round(span * radiusOverSpan * halfStep));
   const comfortable = Math.max(needlePx, 2) + missPx;
-  const far = Math.min(10, comfortable + 4);
+  // A phone-sized face has a pointer many pixels wide. A 10px cap never
+  // reaches the lit face, so the black centre scores nothing and a thin tick wins.
+  const far = Math.min(32, Math.max(comfortable + 4, Math.round(span * 0.2)));
   // A face under about 48px has a pointer thinner than the old 2px probe.
   // That probe steps over the ridge and the ray is refused. A wider face
   // keeps the 2px start so a dry dial is scored the same way.
@@ -131,7 +133,7 @@ function lateralProbes(span, stepDeg = ANGLE_STEP) {
   return { offsets, comfortable };
 }
 
-const contrastScratch = new Float32Array(16);
+const contrastScratch = new Float32Array(32);
 const probeCache = new Map();
 const DEG_COS = new Float64Array(360);
 const DEG_SIN = new Float64Array(360);
@@ -140,8 +142,8 @@ for (let deg = 0; deg < 360; deg += 1) {
   DEG_COS[deg] = Math.cos(rad);
   DEG_SIN[deg] = Math.sin(rad);
 }
-const lateralX = new Float64Array(16);
-const lateralY = new Float64Array(16);
+const lateralX = new Float64Array(32);
+const lateralY = new Float64Array(32);
 
 function cachedLateralProbes(span, stepDeg) {
   const key = `${span}:${stepDeg}`;
@@ -502,7 +504,7 @@ export function hubConnection(raw, width, height, cx, cy, angleDeg, innerR) {
   const r1 = innerR;
   if (!(r1 > r0 + 1)) return 1;
   const span = faceR * (OUTER_RADIUS_RATIO - TIP_INNER_RATIO);
-  const offsets = span < 30 ? [1, 2] : [2, 3];
+  const offsets = span < 30 ? [1, 2] : [2, 4, 8, 14];
   const rad = (angleDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
@@ -642,6 +644,39 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
   }
 
   const hubOf = (deg) => hubConnection(rawLuma, width, height, cx, cy, deg, innerR);
+  // A thick pointer is flat black, so a narrow contrast probe scores a thin tick
+  // higher. The pointer is the darkest full ray, not the sharpest edge.
+  const meanLuma = (deg) => {
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    let acc = 0;
+    let n = 0;
+    const span = outerR - innerR;
+    for (let i = 0; i < 8; i += 1) {
+      const r = innerR + span * ((i + 0.5) / 8);
+      const x = (cx + r * cos + 0.5) | 0;
+      const y = (cy + r * sin + 0.5) | 0;
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      acc += rawLuma[y * width + x];
+      n += 1;
+    }
+    return n ? acc / n : 255;
+  };
+  let darkest = best;
+  let darkestLuma = meanLuma(best);
+  const lumaSamples = [];
+  for (let deg = 0; deg < 360; deg += ANGLE_STEP) {
+    const luma = meanLuma(deg);
+    lumaSamples.push(luma);
+    if (luma < darkestLuma) {
+      darkestLuma = luma;
+      darkest = deg;
+    }
+  }
+  lumaSamples.sort((a, b) => a - b);
+  const lumaMid = lumaSamples[lumaSamples.length >> 1];
+  if (lumaMid - darkestLuma >= 18) best = darkest;
 
   const opposite = (best + 180) % 360;
   const oppositeIndex = scan.angles.indexOf(opposite);
