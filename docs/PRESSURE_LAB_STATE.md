@@ -1,4 +1,4 @@
-# Pressure lab: resumable state (updated 2026-10-22 16:05 NZT)
+# Pressure lab: resumable state (updated 2026-10-22 20:15 NZT)
 
 - Branch: `cursor/6-40-pressure-rectify` (worktree `/workspace/cursor-dialin-6.39`).
 - Step 1 (repair 2): **angle-to-bar map** from half-bar ticks, sweep **179.52°**.
@@ -72,6 +72,25 @@ PyTorch BSD-3-Clause, ONNX Apache-2.0, NumPy BSD, Pillow HPND, onnxruntime-web M
 
 - Phone photo is canonical: 21 half-bar ticks, spacing 8.976°, sweep 179.52°. Product photo disagreed (~190°) and was not used.
 - Oblique synthetic reader (classical, before this model), largest error about 0.55 bar on the four seeded frames.
+
+## Phase 5a (in progress, 2026-10-22 20:15 NZT)
+
+Fit-once ellipse plus a disk homography, gated on the printed half-bar lattice. Synthetic close-camera frame reads 7.5 bar within 0.6, and the affine oblique frames stay within 0.6. `run-clip-browser.mjs` writes replay stills under `/workspace/pl-data/frames`, not `/tmp`.
+
+Measured `20261018_160844` (sanity peak ~8 bar at 20 s, preinfusion end ~2 bar at 16 s) through the replay harness, 4× CPU throttle:
+
+| | |
+| --- | ---: |
+| e2e median | 22.8 ms |
+| e2e p95 | 1061 ms |
+| frames processed | 100% |
+| privacy | passed |
+
+The median is under the 33 ms budget. The p95 is a full ellipse refit.
+
+On that clip the locked face (about x=630, y=170, radius 100) reads 0.1–0.5 bar before the shot, with rotation near 303°. At 18.8 s the same rotation and a classical needle at about 191° publish **5.67 bar**, then the trace sits near 4.4–4.6. Relative to zero at 145°, 5.67 bar is about 102° along the sweep; 8 bar is 144°. The shortfall is that needle ray, about 42°.
+
+The same frame’s edge marks do not form a 21-tick comb. The best half-bar chain keeps 8 marks over 192° at 1.6° rms, short of the accept gate (16 marks, 160° span, rms ≤ 1.15°, shear ≤ 3°). No perspective offset is applied, so the runtime stays on the affine warp. An edge-magnitude search was tried and removed: it did not clear that gate, and it would add a second full search on every real refit.
 
 ## Rules (unchanged)
 
