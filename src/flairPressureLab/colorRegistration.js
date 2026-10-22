@@ -3,6 +3,7 @@ import {
   DARK_BAND_INNER_FRACTION,
   DARK_BAND_OUTER_FRACTION,
   ESPRESSO_SECTOR,
+  FLAIR_LOGO_ANGLE_DEG,
   RED_BAND_INNER_FRACTION,
   RED_BAND_OUTER_FRACTION,
   STOP_SECTOR,
@@ -112,13 +113,76 @@ export function measureDialColorBands(image, cx, cy, radius, needleDeg = null) {
       darkMass += 1;
     }
   }
+  // The script is dark and wide, inside the red block. A bright end of the
+  // espresso sector pulls the red centroid; the script does not.
+  const logoHist = new Float32Array(BINS);
+  const logoN = sampleAnnulus(image, cx, cy, radius, 0.28, 0.48, needleDeg, darkAnnulus);
+  let logoMass = 0;
+  if (logoN) {
+    const lumSort = darkAnnulus.lumSort;
+    for (let i = 0; i < logoN; i += 1) lumSort[i] = darkAnnulus.lum[i];
+    lumSort.subarray(0, logoN).sort((a, b) => a - b);
+    const cut = lumSort[Math.floor(logoN / 2)] * 0.75;
+    for (let i = 0; i < logoN; i += 1) {
+      if (darkAnnulus.chroma[i] >= CHROMA_MIN || darkAnnulus.lum[i] > cut) continue;
+      const bin = Math.round(darkAnnulus.deg[i] / BIN_DEG) % BINS;
+      logoHist[bin] += 1;
+      logoMass += 1;
+    }
+  }
   return {
     red,
     dark,
     redMass,
     darkMass,
-    samples: redN + darkN,
+    samples: redN + darkN + logoN,
+    logoDeg: logoMass >= 6 ? wideDarkMidpoint(logoHist) : null,
   };
+}
+
+function inSector(deg, startDeg, endDeg) {
+  return wrap360(deg - startDeg) <= wrap360(endDeg - startDeg);
+}
+
+/** Midpoint of the widest dark run that is a script, not a thin pointer or a shadow. */
+function wideDarkMidpoint(hist) {
+  let max = 0;
+  for (let i = 0; i < BINS; i += 1) if (hist[i] > max) max = hist[i];
+  if (max <= 0) return null;
+  const floor = max * 0.35;
+  const active = [];
+  for (let i = 0; i < BINS; i += 1) active.push(hist[i] >= floor);
+  let origin = 0;
+  while (origin < BINS && active[origin]) origin += 1;
+  if (origin === BINS) return null;
+  let best = null;
+  for (let k = 0; k < BINS; k += 1) {
+    const i = (origin + k) % BINS;
+    if (!active[i] || active[(i - 1 + BINS) % BINS]) continue;
+    let width = 0;
+    for (let t = 0; t < BINS; t += 1) {
+      if (!active[(i + t) % BINS]) break;
+      width += 1;
+    }
+    const widthDeg = width * BIN_DEG;
+    if (widthDeg < 18 || widthDeg > 70) continue;
+    if (!best || width > best.width) {
+      best = { width, deg: wrap360(i * BIN_DEG + widthDeg / 2) };
+    }
+  }
+  return best ? best.deg : null;
+}
+
+function massNearSector(hist, startDeg, endDeg, padDeg) {
+  let inside = 0;
+  let total = 0;
+  for (let i = 0; i < BINS; i += 1) {
+    const weight = hist[i];
+    if (weight <= 0) continue;
+    total += weight;
+    if (inSector(i * BIN_DEG, startDeg - padDeg, endDeg + padDeg)) inside += weight;
+  }
+  return total > 0 ? inside / total : 0;
 }
 
 function sectorMidpoint(startDeg, endDeg) {
@@ -211,7 +275,21 @@ export function registerDialFromColorBands(bands) {
   if (red.concentration < 0.45) {
     return { ...empty, confidence: red.concentration, periodMargin: red.concentration };
   }
-  const rotationDeg = wrap360(red.deg - ESPRESSO_MID);
+  let rotationDeg = wrap360(red.deg - ESPRESSO_MID);
+  // The red centroid is the bright end of the block when one side is in shadow.
+  // The script is a fixed offset from zero, so it wins when the two disagree
+  // and the block still sits on that same rotation.
+  if (Number.isFinite(bands.logoDeg)) {
+    const fromScript = wrap360(bands.logoDeg - FLAIR_LOGO_ANGLE_DEG);
+    const pulled = Math.abs(wrapDelta(fromScript, rotationDeg));
+    const cover = massNearSector(
+      bands.red,
+      ESPRESSO_SECTOR.startDeg + fromScript,
+      ESPRESSO_SECTOR.endDeg + fromScript,
+      40,
+    );
+    if (pulled > 25 && cover >= 0.45) rotationDeg = fromScript;
+  }
   let periodMargin = red.concentration;
   if (bands.darkMass >= 4) {
     const dark = circularPeak(bands.dark);

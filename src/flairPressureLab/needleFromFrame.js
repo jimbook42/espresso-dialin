@@ -556,74 +556,74 @@ let rayColumn = new Float32Array(0);
 const rayRaw = new Float32Array(360);
 
 /**
- * The tip is the narrow dark lobe at the hub. The counterweight is the wide one,
- * and a printed mark beside it is wider still. Mean darkness picks that blob.
+ * The tip is a thin dark ridge that still touches the hub.
+ * A printed numeral is dark on the ray without being a ridge. The script is wide.
  */
 function narrowHubLobe(luma, width, height, cx, cy, innerR) {
   const bins = 180;
-  const vals = new Float64Array(bins);
+  const hubMin = new Float64Array(bins);
   const r0 = innerR * 0.75;
   const r1 = innerR * 1.55;
   for (let i = 0; i < bins; i += 1) {
     const rad = ((i * 2) * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
-    let acc = 0;
+    let darkest = 255;
     let n = 0;
     for (let s = 0; s < 6; s += 1) {
       const r = r0 + (r1 - r0) * ((s + 0.5) / 6);
       const x = (cx + r * cos + 0.5) | 0;
       const y = (cy + r * sin + 0.5) | 0;
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      acc += luma[y * width + x];
+      const lum = luma[y * width + x];
+      if (lum < darkest) darkest = lum;
       n += 1;
     }
-    vals[i] = n ? acc / n : 255;
+    hubMin[i] = n ? darkest : 255;
   }
-  const sorted = Float64Array.from(vals);
+  const sorted = Float64Array.from(hubMin);
   sorted.sort();
   const median = sorted[bins >> 1];
   let darkest = 255;
-  for (let i = 0; i < bins; i += 1) if (vals[i] < darkest) darkest = vals[i];
+  for (let i = 0; i < bins; i += 1) if (hubMin[i] < darkest) darkest = hubMin[i];
   if (median - darkest < 10) return null;
   const floor = median - 8;
-  const runs = [];
+  const radius = innerR / TIP_INNER_RATIO;
+  const off = Math.max(2, radius * 0.04);
+  let bestDeg = null;
+  let bestRidge = 0;
   for (let i = 0; i < bins; i += 1) {
-    if (!(vals[i] < floor) || vals[(i - 1 + bins) % bins] < floor) continue;
+    if (!(hubMin[i] < floor)) continue;
     let widthBins = 0;
-    let best = i;
-    let bestV = vals[i];
-    for (let k = 0; k < bins; k += 1) {
-      const j = (i + k) % bins;
-      if (!(vals[j] < floor)) break;
-      widthBins += 1;
-      if (vals[j] < bestV) {
-        bestV = vals[j];
-        best = j;
-      }
+    for (let k = -12; k <= 12; k += 1) {
+      if (hubMin[(i + k + bins) % bins] < floor) widthBins += 1;
     }
-    if (widthBins < 2 || widthBins > 40) continue;
-    if (bestV > darkest + 7) continue;
-    const deg = best * 2;
-    const radius = innerR / TIP_INNER_RATIO;
+    if (widthBins > 20) continue;
+    const deg = i * 2;
     const rad = (deg * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
-    let dark = 0;
+    let ridge = 0;
     let seen = 0;
     for (let s = 0; s < 8; s += 1) {
-      const r = radius * (0.42 + 0.36 * ((s + 0.5) / 8));
-      const x = (cx + r * cos + 0.5) | 0;
-      const y = (cy + r * sin + 0.5) | 0;
-      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      const r = radius * (0.32 + 0.4 * ((s + 0.5) / 8));
+      const x = cx + r * cos;
+      const y = cy + r * sin;
+      const center = sample(luma, width, height, x, y);
+      const left = sample(luma, width, height, x - sin * off, y + cos * off);
+      const right = sample(luma, width, height, x + sin * off, y - cos * off);
+      if (center == null || left == null || right == null) continue;
       seen += 1;
-      if (luma[y * width + x] <= darkest + 14) dark += 1;
+      const contrast = Math.min(left - center, right - center);
+      if (contrast > 2) ridge += contrast;
     }
-    runs.push({ deg, widthBins, lum: bestV, reach: seen ? dark / seen : 0 });
+    const reach = seen ? ridge / seen : 0;
+    if (reach > bestRidge) {
+      bestRidge = reach;
+      bestDeg = deg;
+    }
   }
-  if (!runs.length) return null;
-  runs.sort((a, b) => b.reach - a.reach || a.widthBins - b.widthBins || a.lum - b.lum);
-  return runs[0].deg;
+  return bestRidge > 1 ? bestDeg : null;
 }
 
 export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hintDeg = null) {
