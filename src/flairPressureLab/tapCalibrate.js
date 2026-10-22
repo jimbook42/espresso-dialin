@@ -31,10 +31,8 @@ export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
 export const BAD_TAP_PX = 48;
 /** Finger noise the snap is expected to absorb. */
 export const SNAP_NEAR_PX = 36;
-const HUB_WINDOW_PX = 34;
-const BEZEL_DARK = 42;
-const FACE_BRIGHT = 48;
-const LOST_BEZEL = 0.42;
+const HUB_WINDOW_PX = 28;
+const LOST_BEZEL = 0.35;
 const LOST_MATCH = 0.45;
 const TRACK_NEAR_PX = 10;
 const TRACK_FAR_PX = 36;
@@ -191,27 +189,31 @@ export function fiveCheckBar(fiveDeg, zeroDeg, tenDeg) {
 export const FIVE_WARN_BAR = 0.75;
 
 function bezelScoreAt(data, width, height, cx, cy, radius) {
-  let dark = 0;
-  let bright = 0;
+  let hit = 0;
   let n = 0;
-  const innerR = radius * 0.62;
+  const innerR = radius * 0.72;
+  const outerR = radius + 22;
   for (let i = 0; i < RING; i += 1) {
     const ox = Math.round(cx + radius * COS[i]);
     const oy = Math.round(cy + radius * SIN[i]);
     const ix = Math.round(cx + innerR * COS[i]);
     const iy = Math.round(cy + innerR * SIN[i]);
+    const zx = Math.round(cx + outerR * COS[i]);
+    const zy = Math.round(cy + outerR * SIN[i]);
     if (ox < 0 || oy < 0 || ox >= width || oy >= height) continue;
     if (ix < 0 || iy < 0 || ix >= width || iy >= height) continue;
+    if (zx < 0 || zy < 0 || zx >= width || zy >= height) continue;
     n += 1;
-    const o = (oy * width + ox) * 4;
+    const ring = (oy * width + ox) * 4;
     const inner = (iy * width + ix) * 4;
-    const outerL = data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+    const outer = (zy * width + zx) * 4;
+    const ringL = data[ring] * 0.299 + data[ring + 1] * 0.587 + data[ring + 2] * 0.114;
     const innerL = data[inner] * 0.299 + data[inner + 1] * 0.587 + data[inner + 2] * 0.114;
-    if (outerL < BEZEL_DARK) dark += 1;
-    if (innerL > FACE_BRIGHT) bright += 1;
+    const outerL = data[outer] * 0.299 + data[outer + 1] * 0.587 + data[outer + 2] * 0.114;
+    if (ringL < innerL - 10 && outerL > ringL + 16) hit += 1;
   }
-  if (n < RING * 0.65) return 0;
-  return (dark / n) * (bright / n);
+  if (n < RING * 0.6) return 0;
+  return hit / n;
 }
 
 function searchBezel(image, prior, span, step, radii) {
@@ -252,18 +254,18 @@ export function snapHub(image, tap, { windowPx = HUB_WINDOW_PX } = {}) {
     image,
     origin,
     windowPx,
-    3,
-    radiusList(52, 124, 4),
+    2,
+    radiusList(78, 110, 2),
   );
-  if (!coarse || coarse.score < 0.2) {
-    return { ...origin, radius: coarse?.radius ?? 76, score: coarse?.score ?? 0, ok: false };
+  if (!coarse || coarse.score < 0.28) {
+    return { ...origin, radius: coarse?.radius ?? 90, score: coarse?.score ?? 0, ok: false };
   }
   const fine = searchBezel(
     image,
     coarse,
-    4,
+    3,
     1,
-    radiusList(Math.max(48, coarse.radius - 6), coarse.radius + 6, 2),
+    radiusList(Math.max(70, coarse.radius - 4), coarse.radius + 4, 2),
   );
   const chosen = fine && fine.score >= coarse.score ? fine : coarse;
   return { x: chosen.x, y: chosen.y, radius: chosen.radius, score: chosen.score, ok: chosen.score >= 0.34 };
@@ -289,6 +291,18 @@ function cropImage(image, cx, cy, radius) {
   };
 }
 
+/** The rest needle points at the pin, about one sweep short of the printed 10. */
+export function chooseRestNeedle(angleDeg, tenDeg) {
+  if (angleDeg == null || tenDeg == null) return angleDeg;
+  const target = FLAIR_58_SCALE.sweepDeg;
+  const direct = clockwiseDeg(angleDeg, tenDeg);
+  const flipped = clockwiseDeg(wrap360(angleDeg + 180), tenDeg);
+  if (Math.abs(wrapDelta(flipped, target)) + 12 < Math.abs(wrapDelta(direct, target))) {
+    return wrap360(angleDeg + 180);
+  }
+  return angleDeg;
+}
+
 export function readNeedleAt(image, cx, cy, radius) {
   if (!(radius > 12)) return { angleDeg: null, quality: 0, likeness: 0 };
   const cropped = cropImage(image, cx, cy, radius);
@@ -298,6 +312,14 @@ export function readNeedleAt(image, cx, cy, radius) {
   if (found.angleDeg == null) return found;
   found.angleDeg = refineNeedleAngle(cropped.image, cropped.cx, cropped.cy, inner, outer, found.angleDeg);
   return found;
+}
+
+function featureMissPx(hub, tap, projected) {
+  const fraction = pointDist(hub, tap) / Math.max(1, hub.radius);
+  // A purely radial miss stays on the template ray. Only a tap that leaves
+  // the numeral band is charged extra; ordinary 25px finger noise is not.
+  const radial = fraction < 0.18 || fraction > 1.35 ? 40 : 0;
+  return pointDist(tap, projected) + radial;
 }
 
 function colorCandidates(bezelRadius) {
@@ -324,11 +346,11 @@ export function snapScaleMarks(image, hub, fiveTap, tenTap, needleDeg) {
     const tenDeg = wrap360(barToDialAngle(10) + reg.rotationDeg);
     const fivePt = pointOnRay(hub, fiveR, fiveDeg);
     const tenPt = pointOnRay(hub, tenR, tenDeg);
-    const fivePx = pointDist(fivePt, five);
-    const tenPx = pointDist(tenPt, ten);
+    const fivePx = featureMissPx(hub, five, fivePt);
+    const tenPx = featureMissPx(hub, ten, tenPt);
     const near = Math.min(fivePx, tenPx);
     const far = Math.max(fivePx, tenPx);
-    const rank = near + far * 0.12 - reg.periodMargin * 4;
+    const rank = far + near * 0.35 - reg.periodMargin * 24;
     if (!best || rank < best.rank) {
       best = {
         rank,
@@ -489,7 +511,7 @@ export function calibrateFromTaps(image, taps) {
     return { ok: false, redo: null, reason: 'needle', hub, marks };
   }
 
-  const zeroAngleDeg = needle.angleDeg;
+  const zeroAngleDeg = chooseRestNeedle(needle.angleDeg, marks.tenDeg);
   const tenAngleDeg = marks.tenDeg;
   const fiveAngleDeg = marks.fiveDeg;
   const spanDeg = clockwiseDeg(zeroAngleDeg, tenAngleDeg);

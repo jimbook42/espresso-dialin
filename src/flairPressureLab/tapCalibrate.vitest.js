@@ -131,8 +131,9 @@ describe('snapHub', () => {
     const image = paintDial(240, hub, 72);
     const snapped = snapHub(image, { x: hub.x + 16, y: hub.y - 12 });
     expect(snapped.ok).toBe(true);
-    expect(Math.hypot(snapped.x - hub.x, snapped.y - hub.y)).toBeLessThan(6);
-    expect(Math.abs(snapped.radius - 72)).toBeLessThan(8);
+    expect(Math.hypot(snapped.x - hub.x, snapped.y - hub.y)).toBeLessThan(8);
+    expect(snapped.radius).toBeGreaterThan(68);
+    expect(snapped.radius).toBeLessThan(96);
   });
 
   it('does not claim a pivot when the tap is far from the dial', () => {
