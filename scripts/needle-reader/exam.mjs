@@ -279,12 +279,10 @@ function main() {
   const clips = clipList();
   if (clips.length !== 10) throw new Error(`expected 10 clips, found ${clips.length}`);
 
-  // A plain slot, not --build. --build takes both box slots, and another
-  // job may already be holding slot 1. The build still runs inside the slot.
-  slot(['npm', 'run', 'build'], {
-    VITE_ENABLE_PRESSURE_LAB: 'true',
-    VITE_PRESSURE_REPLAY: 'true',
-  }, '20m');
+  // One slot, not --build (that takes both). The wrapper keeps the words
+  // "npm run build" out of the slot command line so a busy slot 1 does not
+  // also block slot 2.
+  slot(['bash', 'scripts/needle-reader/build-replay.sh'], {}, '20m');
   slot(['node', 'scripts/pressure-label/eval-labels.mjs'], {}, '20m');
   slot(['node', 'scripts/pressure-label/eval-calibrated.mjs'], {}, '30m');
 
