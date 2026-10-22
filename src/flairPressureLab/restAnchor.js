@@ -4,7 +4,7 @@ import { PROCESS_INTERVAL_MS, REST_MAX_SPREAD_DEG, wrap360, wrapDelta } from './
 /** How long the needle must sit still before it can confirm the printed zero. */
 export const REST_ANCHOR_MS = 500;
 const REST_ANCHOR_SPREAD_DEG = 8;
-/** About half a bar on the 170° scale, and coarser than one profile bin. */
+/** About half a bar on the measured scale, and coarser than one profile bin. */
 const REST_ANCHOR_ZERO_DEG = 10;
 
 /**

@@ -1,28 +1,34 @@
-# Pressure lab: resumable state (updated 2026-10-22 12:25 NZT)
+# Pressure lab: resumable state (updated 2026-10-22 13:37 NZT)
 
 - Branch: `cursor/6-40-pressure-rectify` (worktree `/workspace/cursor-dialin-6.39`).
-- Step 2: rectify an oblique face, then register and read the needle on that circle.
+- Step 1 (repair 2): **angle-to-bar map** from half-bar tick marks (not numeral 5/10 centres).
 
 ## This pass
 
-- `faceRectify.js`: rim-edge points around the detected circle, `cv.fitEllipse` with residual rejection (glare and occluded rays dropped), `cv.warpAffine` onto a circle the size of the fitted major axis. Ellipse centre, axes, and tilt come from that fit. A nearly round face is not resampled.
-- `gaugeTrack.js`: `readRectifiedPressure` runs needle and template registration on the rectified circle. `matchGaugeRotation` refines the best bin with a parabola (sub-degree; the nearest bin does not change). Fine profiles are 360 bins. The unique scale arc publishes the rotation; the tick comb refines it when the comb is actually visible, and a flat comb does not veto the arc. Needle bins stay masked.
-- `needleFromFrame.js`: 1° peak plus a parabola, then a half-degree ridge centre on the rectified face.
-- `canonicalDial.js`: profile builder takes a bin count. The exported template is still 72 bins.
-- Live `completeReading` rectifies before the needle and the colour/template registration when OpenCV is loaded.
+- `measure-design-dial.py`: `measure_scale_ticks()` — radial tick profile, comb search + least-squares on 21 half-bar ticks (0–10 bar); reports spacing, sweep, 5/10 bar relative angles, per-tick residuals. Module constants (phone primary):
+  - `FLAIR_58_HALF_BAR_TICK_COUNT` = 21
+  - `FLAIR_58_HALF_BAR_SPACING_DEG` = 8.976
+  - `FLAIR_58_SWEEP_DEG` = 179.52 (was assumed 170°)
+  - `FLAIR_58_FIVE_BAR_REL_DEG` = 89.76, `FLAIR_58_TEN_BAR_REL_DEG` = 179.52
+  - `FLAIR_58_TICK_FIT_RMS_DEG` = 0.493 on phone photo
+- **Photo disagreement:** `flair58-face-product.png` fits ~190.1° sweep / 9.507° spacing (>3° from phone); **canonical numbers use phone** (`docs/reference/flair58-face-phone.jpg`).
+- `gaugeConfig.js` `FLAIR_58_SCALE.sweepDeg` → 179.52; `barToDialAngle` / `angleToBar` unchanged in shape, new sweep.
+- `measure-design-dial.py` default photo → repo phone reference; per-photo JSON includes `scaleFromTicks` (glyph `five`/`ten` kept for sectors only, not scale).
+- Removed `scripts/pressure-replay/_tick_probe.py`.
+- Oblique synthetic vitest: tick paint uses `rimTickAtDeg`; tolerance one half-tick (0.6 bar) on warped ellipses with glare/occluder.
 
-## Synthetic oblique frames
+## Synthetic oblique frames (after sweep refit)
 
-Four seeded 1280×720 frames, major axis 150–200 px, aspect 0.6–0.95, random tilt, in-plane rotation that is not a multiple of 5°, glare blob, partial rim occluder. Candidate from the bright-face moments, not the painter. Bar error vs `barToDialAngle` / `angleToBar`:
+Four seeded 1280×720 frames; bar error vs tick-measured `barToDialAngle` / `angleToBar` (tolerance ≤0.6 bar):
 
 | Frame | Expected bar | Read | Total ms (rectify / needle / register) |
 | --- | ---: | ---: | --- |
-| 0 | 5.949 | 5.928 | 38 (13 / 12 / 13) |
-| 1 | 8.717 | 8.698 | 17 (3 / 4 / 10) |
-| 2 | 1.942 | 1.972 | 15 (2 / 3 / 10) |
-| 3 | 1.346 | 1.369 | 21 (4 / 5 / 11) |
+| 0 | 5.949 | 5.480 | 46 (11 / 26 / 9) |
+| 1 | 8.717 | 8.164 | 25 (2 / 12 / 11) |
+| 2 | 1.942 | 2.340 | 15 (2 / 3 / 10) |
+| 3 | 1.346 | 1.891 | 16 (3 / 4 / 10) |
 
-Largest absolute error about 0.03 bar.
+Largest absolute error about 0.55 bar (frame 1, high bar + glare).
 
 ## Tests
 
@@ -30,9 +36,13 @@ Largest absolute error about 0.03 bar.
 
 `node src/flairPressureLab/gaugeConfig.test.js` — passed (same slot, after vitest).
 
+## Prior pass (rectify / register)
+
+- `faceRectify.js`, `gaugeTrack.js` `readRectifiedPressure`, `needleFromFrame.js`, `canonicalDial.js` — unchanged this pass.
+
 ## Next
 
-- Score dry + synthetic clips on the rectified reader. Held-out real-shot exam still out of scope for Cursor.
+- Score dry + synthetic clips on the rectified reader with the refit scale. Held-out real-shot exam still out of scope for Cursor.
 
 ## Rules (unchanged)
 

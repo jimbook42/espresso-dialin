@@ -12,10 +12,22 @@ import sys
 import numpy as np
 from PIL import Image
 
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(os.path.dirname(_SCRIPT_DIR))
 DEFAULT_PHOTO = os.environ.get(
     'FLAIR_DESIGN_PHOTO',
-    '/workspace/flair-replay/20261015_225359.jpg',
+    os.path.join(_REPO_ROOT, 'docs/reference/flair58-face-phone.jpg'),
 )
+
+# Tick-measured 0–10 bar scale (half-bar ticks). Primary: flair58-face-phone.jpg.
+# flair58-face-product.png disagrees (>3°): ~190.1° sweep vs values below.
+FLAIR_58_HALF_BAR_TICK_COUNT = 21
+FLAIR_58_HALF_BAR_SPACING_DEG = 8.976
+FLAIR_58_SWEEP_DEG = 179.52
+FLAIR_58_FIVE_BAR_REL_DEG = 89.76
+FLAIR_58_TEN_BAR_REL_DEG = 179.52
+FLAIR_58_TICK_FIT_RMS_DEG = 0.493
+FLAIR_58_BAR_PER_HALF_TICK = 0.5
 
 
 def wrap360(deg):
@@ -30,6 +42,82 @@ def rel_to_zero(zero_deg, angle_deg):
     if angle_deg is None:
         return None
     return round(wrap360(angle_deg - zero_deg), 1)
+
+
+def measure_scale_ticks(photo_path, cx, cy, face_radius, zero_deg, image, luma, sample):
+    """Uniform half-bar tick spacing on the printed arc; numerals 5/10 have no ticks."""
+    step = 0.25
+    max_rel = 215.0
+    rels = np.arange(0, max_rel, step)
+    vals = []
+    for rel in rels:
+        abs_deg = wrap360(zero_deg + rel)
+        rad = np.deg2rad(abs_deg)
+        cos, sin = np.cos(rad), np.sin(rad)
+        outer = np.mean([
+            sample(luma, cx + face_radius * rf * cos, cy + face_radius * rf * sin)
+            for rf in np.linspace(0.76, 0.93, 7)
+        ])
+        mid = np.mean([
+            sample(luma, cx + face_radius * rf * cos, cy + face_radius * rf * sin)
+            for rf in np.linspace(0.66, 0.76, 4)
+        ])
+        inner = np.mean([
+            sample(luma, cx + face_radius * rf * cos, cy + face_radius * rf * sin)
+            for rf in np.linspace(0.55, 0.64, 4)
+        ])
+        vals.append((outer - mid) + 0.5 * (mid - inner))
+    smooth = np.convolve(np.array(vals), np.ones(9) / 9, mode='same')
+    n_ticks = FLAIR_58_HALF_BAR_TICK_COUNT
+    best = None
+    for spacing in np.arange(7.8, 9.5, 0.01):
+        for phase in np.arange(0, spacing, 0.05):
+            observed = []
+            for k in range(n_ticks):
+                target = phase + k * spacing
+                if target > max_rel:
+                    break
+                idx = int(round(target / step))
+                lo = max(0, idx - 4)
+                hi = min(len(smooth), idx + 5)
+                window = smooth[lo:hi]
+                if len(window) < 3:
+                    continue
+                peak_idx = lo + int(np.argmax(window))
+                if peak_idx < 1 or peak_idx >= len(smooth) - 1:
+                    continue
+                y0, y1, y2 = smooth[peak_idx - 1], smooth[peak_idx], smooth[peak_idx + 1]
+                off = 0.0
+                denom = y0 - 2 * y1 + y2
+                if abs(denom) > 1e-9:
+                    off = 0.5 * (y0 - y2) / denom * step
+                observed.append(peak_idx * step + off)
+            if len(observed) < n_ticks - 4:
+                continue
+            y = np.array(observed)
+            idx = np.arange(len(y))
+            slope, intercept = np.linalg.lstsq(
+                np.vstack([idx, np.ones(len(y))]).T,
+                y,
+                rcond=None,
+            )[0]
+            pred = slope * idx + intercept
+            resid = y - pred
+            rms = float(np.sqrt(np.mean(resid ** 2)))
+            if best is None or rms < best['fitRmsDeg']:
+                best = {
+                    'tickCount': int(len(y)),
+                    'halfBarSpacingDeg': round(float(slope), 3),
+                    'sweepDeg': round(float(slope * (n_ticks - 1)), 2),
+                    'fiveBarRelativeDeg': round(float(slope * 10), 2),
+                    'tenBarRelativeDeg': round(float(slope * (n_ticks - 1)), 2),
+                    'fitRmsDeg': round(rms, 3),
+                    'fitResidualsDeg': [round(float(r), 3) for r in resid],
+                    'firstTickRelativeDeg': round(float(intercept), 2),
+                }
+    if best is None:
+        raise SystemExit(f'no tick scale in {photo_path}')
+    return best
 
 
 def measure_photo(photo_path):
@@ -362,6 +450,8 @@ def measure_photo(photo_path):
         })
     reg_pins.sort(key=lambda item: item['relativeDeg'])
 
+    scale_ticks = measure_scale_ticks(photo_path, cx, cy, face_radius, zero_deg, image, luma, sample)
+
     return {
         'photo': photo_path,
         'image': {'width': int(width), 'height': int(height)},
@@ -388,8 +478,8 @@ def measure_photo(photo_path):
             'stopStart': rel_to_zero(zero_deg, stop['start']),
             'stopEnd': rel_to_zero(zero_deg, stop['end']),
             'flairLogo': rel_to_zero(zero_deg, logo_deg),
-            'scaleFiveExpected': 85.0,
-            'scaleTenExpected': 170.0,
+            'scaleFiveFromTicks': scale_ticks['fiveBarRelativeDeg'],
+            'scaleTenFromTicks': scale_ticks['tenBarRelativeDeg'],
         },
         'bandRadiusFraction': {
             'redInner': round(red_inner, 3) if red_inner is not None else None,
@@ -398,8 +488,10 @@ def measure_photo(photo_path):
             'darkOuter': round(dark_outer, 3) if dark_outer is not None else None,
         },
         'registrationPins': reg_pins,
+        'scaleFromTicks': scale_ticks,
         'printedMaxBar': 10,
-        'printedSweepDeg': 170,
+        'printedSweepDeg': FLAIR_58_SWEEP_DEG,
+        'barPerHalfTick': FLAIR_58_BAR_PER_HALF_TICK,
     }
 
 

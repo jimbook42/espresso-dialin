@@ -1,13 +1,13 @@
 /**
  * Flair 58 session model.
- * The printed scale is 0–10 bar over 170°, measured on the design dial.
+ * The printed scale is 0–10 bar over 179.52°, measured from half-bar ticks on the design dial.
  * 0 is the stop pin, 5 and 10 are the numbered ticks, and the arc past 10
  * is the unnumbered STOP band. Angles: 0° = right, clockwise (y down).
  */
 export const FLAIR_58_SCALE = {
   minBar: 0,
   maxBar: 10,
-  sweepDeg: 170,
+  sweepDeg: 179.52,
   clockwise: true,
 };
 
