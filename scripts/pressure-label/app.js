@@ -17,6 +17,8 @@ const promptEl = $('prompt');
 const progressEl = $('progress');
 const metaEl = $('meta');
 
+let hosted = false;
+let storageKey = 'plabel-labels-v1';
 let manifest = [];
 let labels = { frames: {} };
 let frameIdx = 0;
@@ -36,17 +38,58 @@ function api(path, opts) {
   return fetch(`${path}${apiQ}`, opts);
 }
 
+function setHostedUi(on) {
+  for (const el of document.querySelectorAll('.hosted-only')) {
+    el.classList.toggle('hidden', !on);
+  }
+}
+
+async function detectHosted() {
+  if (window.PLABEL_CONFIG?.hosted) return true;
+  try {
+    const r = await fetch(`/api/labels${apiQ}`, { method: 'GET' });
+    if (r.ok) return false;
+  } catch {
+    /* no local labels API */
+  }
+  return true;
+}
+
 async function loadAll() {
-  const [mRes, lRes] = await Promise.all([
-    api('/api/manifest'),
-    api('/api/labels'),
-  ]);
-  if (!mRes.ok || !lRes.ok) throw new Error('API failed (check token)');
-  manifest = await mRes.json();
-  labels = await lRes.json();
-  if (!labels.frames) labels.frames = {};
+  hosted = await detectHosted();
+  setHostedUi(hosted);
+  if (hosted) {
+    storageKey = window.PLABEL_CONFIG?.storageKey || storageKey;
+    const manifestPath = window.PLABEL_CONFIG?.manifestPath || 'manifest.json';
+    const mRes = await fetch(manifestPath);
+    if (!mRes.ok) throw new Error('manifest load failed');
+    manifest = await mRes.json();
+    try {
+      labels = JSON.parse(localStorage.getItem(storageKey) || '{"frames":{}}');
+    } catch {
+      labels = { frames: {} };
+    }
+    if (!labels.frames) labels.frames = {};
+  } else {
+    const [mRes, lRes] = await Promise.all([
+      api('/api/manifest'),
+      api('/api/labels'),
+    ]);
+    if (!mRes.ok || !lRes.ok) throw new Error('API failed (check token)');
+    manifest = await mRes.json();
+    labels = await lRes.json();
+    if (!labels.frames) labels.frames = {};
+  }
   resumePosition();
   await showFrame(frameIdx);
+}
+
+function logTapFireAndForget(frameId, record) {
+  fetch('./api/log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'tap', frameId, record }),
+  }).catch(() => {});
 }
 
 function emptyRecord(entry) {
@@ -91,12 +134,27 @@ function resumePosition() {
   stepIdx = 0;
 }
 
-async function persist() {
+async function persist(frameId) {
+  const id = frameId || currentEntry()?.id;
+  const record = id ? labels.frames[id] : null;
+  if (hosted) {
+    localStorage.setItem(storageKey, JSON.stringify(labels));
+    if (id && record) logTapFireAndForget(id, record);
+    return;
+  }
   await api('/api/labels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(labels),
   });
+}
+
+function frameSrc(entry) {
+  if (hosted) {
+    const base = window.PLABEL_CONFIG?.framesPath || 'frames';
+    return `${base}/${entry.file}`;
+  }
+  return `/frames/${entry.file}${apiQ}`;
 }
 
 function currentEntry() {
@@ -147,8 +205,6 @@ function layout() {
 
 function applyTransform() {
   const scale = fitScale * zoom;
-  const w = nw * scale;
-  const h = nh * scale;
   const tx = panX;
   const ty = panY;
   const t = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(${scale})`;
@@ -205,7 +261,7 @@ async function showFrame(idx) {
   zoom = 1;
   panX = 0;
   panY = 0;
-  frameEl.src = `/frames/${entry.file}${apiQ}`;
+  frameEl.src = frameSrc(entry);
   await new Promise((res, rej) => {
     frameEl.onload = () => res();
     frameEl.onerror = () => rej(new Error('image load failed'));
@@ -248,7 +304,7 @@ async function placePoint(ix, iy) {
   r[step.key] = [x, y];
   r.updatedAt = new Date().toISOString();
   r.unclear = false;
-  await persist();
+  await persist(entry.id);
   drawOverlay();
   advanceStepOrFrame();
 }
@@ -261,7 +317,7 @@ async function skipStep() {
   if (!step) return;
   r[step.key] = null;
   r.updatedAt = new Date().toISOString();
-  await persist();
+  await persist(entry.id);
   advanceStepOrFrame();
 }
 
@@ -277,7 +333,7 @@ async function undoStep() {
     if (r[prev.key] !== undefined) r[prev.key] = undefined;
   }
   r.updatedAt = new Date().toISOString();
-  await persist();
+  await persist(entry.id);
   updatePrompt();
   drawOverlay();
 }
@@ -287,12 +343,33 @@ async function markUnclear() {
   const r = ensureRecord(entry);
   r.unclear = true;
   r.updatedAt = new Date().toISOString();
-  await persist();
+  await persist(entry.id);
   updatePrompt();
   if (frameIdx < manifest.length - 1) {
     frameIdx += 1;
     stepIdx = 0;
     await showFrame(frameIdx);
+  }
+}
+
+async function sendAllLabels() {
+  const status = $('send-status');
+  status.textContent = 'Sending…';
+  status.className = 'send-status';
+  try {
+    const r = await fetch('./api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'all', labels }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    if (!j.ok) throw new Error('server rejected');
+    status.textContent = 'Labels sent successfully';
+    status.className = 'send-status send-ok';
+  } catch (err) {
+    status.textContent = `Send failed (${err.message}). Data kept in browser — tap Send again.`;
+    status.className = 'send-status send-err';
   }
 }
 
@@ -311,6 +388,7 @@ $('btn-next').addEventListener('click', () => {
     showFrame(frameIdx + 1);
   }
 });
+$('btn-send').addEventListener('click', () => sendAllLabels());
 
 const stage = $('stage');
 

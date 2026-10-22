@@ -1,5 +1,6 @@
 /**
- * Extract ~30 JPEG frames for manual gauge labelling. Output only under pl-state/label-frames.
+ * Extract ~34 JPEG frames for manual gauge labelling. Output only under pl-state/label-frames.
+ * f001–f030 unchanged semantics; f031+ are real-clip taper frames.
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -163,6 +164,20 @@ function main() {
       extractJpeg(videoPath, times[i], path.join(OUT_DIR, outFile));
       manifest.push({ id, file: outFile, clip: stem, t: times[i], phase });
     }
+  }
+
+  for (const file of realFiles) {
+    const stem = stemFromMp4(file);
+    const key = `real_${stem}`;
+    const phases = truth[key];
+    if (!phases) throw new Error(`missing truth for ${key}`);
+    const videoPath = path.join(REAL_DIR, file);
+    const t = mid(phases.taper, phases.end);
+    seq += 1;
+    const id = `f${String(seq).padStart(3, '0')}`;
+    const outFile = `${id}.jpg`;
+    extractJpeg(videoPath, t, path.join(OUT_DIR, outFile));
+    manifest.push({ id, file: outFile, clip: stem, t, phase: 'taper' });
   }
 
   writeFileSync(

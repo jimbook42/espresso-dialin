@@ -7,7 +7,7 @@ Standalone Node server + static page for marking hub, needle tip, and dial pins 
 - `ffmpeg` / `ffprobe` on PATH
 - Clips under `/workspace/flair-train/` (see `extract-frames.mjs`)
 
-## Extract frames (~30 JPEGs)
+## Extract frames (~34 JPEGs; f031+ taper on real clips)
 
 ```bash
 node scripts/pressure-label/extract-frames.mjs
@@ -43,3 +43,13 @@ curl -s -X POST "http://127.0.0.1:8787/api/labels?k=test-token" \
 ```
 
 Labels are written atomically to `/workspace/pl-state/labels.json` on each POST.
+
+## Hosted (Vercel) deploy
+
+```bash
+node scripts/pressure-label/extract-frames.mjs
+node scripts/pressure-label/build-vercel.mjs
+# deploy /workspace/pl-state/label-deploy/ (static + api/log.js)
+```
+
+Hosted mode uses `localStorage`, logs taps to `/api/log`, and **Send labels** for a full snapshot. Recover labels from Vercel runtime logs — see `fetch-labels.md` and `merge-logs.mjs`.
