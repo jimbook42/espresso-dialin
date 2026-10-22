@@ -28,6 +28,11 @@ import {
 } from './discoveryClient.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
+import {
+  applyNeedleModelReading,
+  isNeedleModelReady,
+  predictRegisteredNeedle,
+} from './needleModel.js';
 
 /**
  * Gauge pose for the pressure lab.
@@ -2280,6 +2285,7 @@ function completeReading({
   qualityImage = null,
   qualityCrop = null,
   qualityScale = null,
+  faceHold = null,
 }) {
   const center = position.pose;
   const localRadius = center.radius * needleScale;
@@ -2289,10 +2295,12 @@ function completeReading({
   let readCx = localCx;
   let readCy = localCy;
   let readRadius = localRadius;
+  let usedRectified = false;
   const cv = getOpenCvSync();
   if (cv?.fitEllipse && cv?.warpAffine) {
     const rectified = rectifyGaugeFace(cv, needleImage, { cx: localCx, cy: localCy, radius: localRadius });
     if (rectified?.ok) {
+      usedRectified = true;
       readImage = rectified.image;
       readCx = rectified.cx;
       readCy = rectified.cy;
@@ -2448,6 +2456,13 @@ function completeReading({
   const publishedNeedle = pressureHold && orientation.stableNeedleDeg != null
     ? orientation.stableNeedleDeg
     : detection.angleDeg;
+  if (faceHold && usedRectified && orientation?.dialRegistered) {
+    faceHold.image = readImage;
+    faceHold.cx = readCx;
+    faceHold.cy = readCy;
+    faceHold.radius = readRadius;
+    faceHold.rotationDeg = orientation.rotationDeg || 0;
+  }
   return {
     ...detection,
     relativeAngleDeg: wrap360(publishedNeedle - orientation.rotationDeg),
@@ -2649,7 +2664,7 @@ export function mainThreadDiscoveryAction({ havePose, discoveryDue, hasAsyncResu
   return 'defer';
 }
 
-export function readTrackedGauge(video, canvas, region, tracker) {
+export async function readTrackedGauge(video, canvas, region, tracker) {
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;
   if (!videoWidth || !videoHeight) return null;
@@ -2672,6 +2687,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
   let trackMs;
   let needleDrawMs = 0;
   let needleMs = 0;
+  let modelMs = 0;
   const finishProfile = (path) => {
     lastReadProfile.path = path;
     lastReadProfile.syncMs = discoveryMs;
@@ -2908,6 +2924,7 @@ export function readTrackedGauge(video, canvas, region, tracker) {
     const needle = drawCrop(video, scratchCanvas('needle') || canvas, needleCrop, needleMax, needleMin);
     needleDrawMs = stamp() - tNeedleDraw;
     const tNeedle = stamp();
+    const faceHold = {};
     reading = completeReading({
       videoWidth,
       videoHeight,
@@ -2920,8 +2937,20 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       qualityImage,
       qualityCrop,
       qualityScale,
+      faceHold,
     });
     needleMs = stamp() - tNeedle;
+    if (faceHold.image && isNeedleModelReady()) {
+      const tModel = stamp();
+      try {
+        const pred = await predictRegisteredNeedle(faceHold);
+        if (pred) applyNeedleModelReading(reading, pred);
+      } catch {
+        applyNeedleModelReading(reading, { ok: false, confidence: 0 });
+      }
+      modelMs = stamp() - tModel;
+    }
+    faceHold.image = null;
   }
   const faceScore = reading.gauge?.dialFaceScore ?? 0;
   if (faceScore < DIAL_FACE_VERIFY_MIN) {
@@ -2992,14 +3021,16 @@ export function readTrackedGauge(video, canvas, region, tracker) {
       trackDraw: roundTrace(trackDrawMs),
       track: roundTrace(trackMs),
       needleDraw: roundTrace(needleDrawMs),
-      needle: roundTrace(needleMs),
-    },
-  });
+    needle: roundTrace(needleMs),
+    model: roundTrace(modelMs),
+  },
+});
   reading.stageMs = {
     trackDraw: trackDrawMs,
     track: trackMs,
     needleDraw: needleDrawMs,
     needle: needleMs,
+    model: modelMs,
     discovery: discoveryMs,
     trackBlit: trackBlitMs,
     trackRead: trackReadMs,

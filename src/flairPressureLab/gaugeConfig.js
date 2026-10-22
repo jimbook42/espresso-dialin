@@ -74,6 +74,12 @@ export function angleToBar(angleDeg, session) {
   return null;
 }
 
+/** Live pressure text. One decimal; a missing bar is a gap. */
+export function formatPressureBar(bar) {
+  if (bar == null || Number.isNaN(Number(bar))) return '—';
+  return Number(bar).toFixed(1);
+}
+
 export function classifyTrackingStatus({
   calibrated,
   quality,

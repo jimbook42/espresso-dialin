@@ -12,6 +12,7 @@ import {
   REST_STABLE_SAMPLES,
   angleToBar,
   classifyTrackingStatus,
+  formatPressureBar,
   clockwiseDelta,
   selectForwardAngle,
   uncertaintyReason,
@@ -34,6 +35,7 @@ import {
   qualityBlocksSample,
 } from './frameQuality.js';
 import { HUB_CONNECTION_MIN, minReadableDialRadiusPx } from './needleFromFrame.js';
+import { loadNeedleModel } from './needleModel.js';
 import { REST_ANCHOR_MS, confidentAngleWindow, createRestAnchor, templateConflictDeg } from './restAnchor.js';
 import {
   createGaugeTracker,
@@ -233,6 +235,10 @@ export function FlairPressureLab() {
   }, []);
 
   useEffect(() => {
+    loadNeedleModel();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     warmDiscoveryWorker();
     loadOpenCv()
@@ -381,6 +387,7 @@ export function FlairPressureLab() {
         stageTrack: partial.stageTrack ?? null,
         stageTrackDraw: partial.stageTrackDraw ?? null,
         stageNeedle: partial.stageNeedle ?? null,
+        stageModel: partial.stageModel ?? null,
         stageNeedleDraw: partial.stageNeedleDraw ?? null,
         stageDiscovery: partial.stageDiscovery ?? null,
         stageTrackBlit: partial.stageTrackBlit ?? null,
@@ -438,7 +445,7 @@ export function FlairPressureLab() {
       let reading;
       try {
         const tRead = performance.now();
-        reading = readTrackedGauge(video, canvas, null, trackerRef.current);
+        reading = await readTrackedGauge(video, canvas, null, trackerRef.current);
         readWall = performance.now() - tRead;
       } catch (err) {
         restAnchorRef.current.reset();
@@ -676,11 +683,12 @@ export function FlairPressureLab() {
               bar: null,
               confidence: gauge.confidence,
               conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
-              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}`,
+              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}${reading.model ? `|model:${reading.model.used ? 'yes' : 'gap'}` : ''}`,
               tracking: 'CALIBRATING',
               stageTrack: reading.stageMs?.track ?? null,
               stageTrackDraw: reading.stageMs?.trackDraw ?? null,
               stageNeedle: reading.stageMs?.needle ?? null,
+              stageModel: reading.stageMs?.model ?? null,
               stageNeedleDraw: reading.stageMs?.needleDraw ?? null,
               stageDiscovery: reading.stageMs?.discovery ?? null,
               stageTrackBlit: reading.stageMs?.trackBlit ?? null,
@@ -720,7 +728,8 @@ export function FlairPressureLab() {
         && gauge.dialRegistered === true
         && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE * 0.5;
       const glareHidden = frameQuality.flags.includes('glare');
-      const qualityBlocked = qualityBlocksSample({
+      const modelSure = reading.model?.used === true;
+      const qualityBlocked = !modelSure && qualityBlocksSample({
         flags: frameQuality.flags,
         likeness: reading.likeness ?? 0,
         likenessGate: NEEDLE_LIKENESS_GATE,
@@ -945,11 +954,12 @@ export function FlairPressureLab() {
           holdMs: gated.holdMs,
           confidence: publishedConfidence,
           conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
-          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}|hub:${reading.hub == null ? 'na' : reading.hub.toFixed(2)}`,
+          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}|hub:${reading.hub == null ? 'na' : reading.hub.toFixed(2)}${reading.model ? `|model:${reading.model.used ? 'yes' : 'gap'}` : ''}`,
           tracking,
           stageTrack: reading.stageMs?.track ?? null,
           stageTrackDraw: reading.stageMs?.trackDraw ?? null,
           stageNeedle: reading.stageMs?.needle ?? null,
+          stageModel: reading.stageMs?.model ?? null,
           stageNeedleDraw: reading.stageMs?.needleDraw ?? null,
           stageDiscovery: reading.stageMs?.discovery ?? null,
           stageTrackBlit: reading.stageMs?.trackBlit ?? null,
@@ -1156,7 +1166,7 @@ export function FlairPressureLab() {
   const needleAngle = previewAngleDeg(live.displayAngle, mirrorPreview);
   const needleRad = ((needleAngle ?? 0) * Math.PI) / 180;
   const badge = cameraLive ? live.tracking : 'CALIBRATING';
-  const pressureText = cameraLive && live.displayBar != null ? live.displayBar.toFixed(1) : '—';
+  const pressureText = cameraLive ? formatPressureBar(live.displayBar) : '—';
   const caption = !cameraLive
     ? 'Start the front camera with the whole gauge in frame.'
     : !session
@@ -1338,9 +1348,9 @@ export function FlairPressureLab() {
             <dt>Clockwise from rest</dt>
             <dd className={ui.text}>{session && live.smoothedAngle != null ? `${clockwiseDelta(live.smoothedAngle, session.zeroAngleDeg).toFixed(1)}°` : '—'}</dd>
             <dt>Calculated pressure</dt>
-            <dd className={ui.text}>{formatNum(live.rawBar, 2)} bar</dd>
+            <dd className={ui.text}>{formatPressureBar(live.rawBar)} bar</dd>
             <dt>Smoothed pressure</dt>
-            <dd className={ui.text}>{formatNum(live.pressureBar, 2)} bar</dd>
+            <dd className={ui.text}>{formatPressureBar(live.pressureBar)} bar</dd>
             <dt>Tracking state</dt>
             <dd className={ui.text}>{badge}</dd>
             <dt>Build</dt>
