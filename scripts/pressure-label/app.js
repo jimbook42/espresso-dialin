@@ -60,10 +60,14 @@ async function loadAll() {
   setHostedUi(hosted);
   if (hosted) {
     storageKey = window.PLABEL_CONFIG?.storageKey || storageKey;
-    const manifestPath = window.PLABEL_CONFIG?.manifestPath || 'manifest.json';
-    const mRes = await fetch(manifestPath);
-    if (!mRes.ok) throw new Error('manifest load failed');
-    manifest = await mRes.json();
+    if (window.PLABEL_MANIFEST) {
+      manifest = window.PLABEL_MANIFEST;
+    } else {
+      const manifestPath = window.PLABEL_CONFIG?.manifestPath || 'manifest.json';
+      const mRes = await fetch(manifestPath);
+      if (!mRes.ok) throw new Error('manifest load failed');
+      manifest = await mRes.json();
+    }
     try {
       labels = JSON.parse(localStorage.getItem(storageKey) || '{"frames":{}}');
     } catch {
@@ -150,6 +154,8 @@ async function persist(frameId) {
 }
 
 function frameSrc(entry) {
+  const inlined = window.PLABEL_FRAMES?.[entry.file];
+  if (inlined) return inlined;
   if (hosted) {
     const base = window.PLABEL_CONFIG?.framesPath || 'frames';
     return `${base}/${entry.file}`;

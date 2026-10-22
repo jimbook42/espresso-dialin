@@ -49,7 +49,7 @@ Labels are written atomically to `/workspace/pl-state/labels.json` on each POST.
 ```bash
 node scripts/pressure-label/extract-frames.mjs
 node scripts/pressure-label/build-vercel.mjs
-# deploy /workspace/pl-state/label-deploy/ (static + api/log.js)
+# deploy /workspace/pl-state/label-deploy/ (index.html, app.js, frames.js, api/log.js, …)
 ```
 
 Hosted mode uses `localStorage`, logs taps to `/api/log`, and **Send labels** for a full snapshot. Recover labels from Vercel runtime logs — see `fetch-labels.md` and `merge-logs.mjs`.
