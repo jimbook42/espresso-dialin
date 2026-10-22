@@ -1531,9 +1531,9 @@ describe('pressure CV units', () => {
   }) {
     const data = new Uint8ClampedArray(width * height * 4);
     for (let i = 0; i < data.length; i += 4) {
-      data[i] = 28;
-      data[i + 1] = 28;
-      data[i + 2] = 28;
+      data[i] = 12;
+      data[i + 1] = 12;
+      data[i + 2] = 12;
       data[i + 3] = 255;
     }
     const a = major / 2;
@@ -1561,29 +1561,29 @@ describe('pressure CV units', () => {
         const v = -dx * sin + dy * cos;
         const nu = u / a;
         const nv = v / b;
-        if (Math.hypot(nu, nv) > 1.02) continue;
+        const observedRho = Math.hypot(nu, nv);
+        if (observedRho > 1.02) continue;
         const frontal = normalizedToFrontal(nu, nv, offset.dx, offset.dy);
         if (!frontal) continue;
         const rho = Math.hypot(frontal.x, frontal.y);
-        if (rho > 1.02) continue;
-        let r = 16;
-        let g = 16;
-        let bch = 16;
+        let r = 255;
+        let g = 255;
+        let bch = 250;
         if (rho < 0.96) {
-          r = 228;
-          g = 228;
-          bch = 226;
+          r = 214;
+          g = 214;
+          bch = 210;
           const dial = wrap360((Math.atan2(frontal.y, frontal.x) * 180) / Math.PI - rotationDeg);
           if (rimTickAtDeg(dial) && Math.abs(wrapDelta(dial, pointer)) > 8 && rho > 0.7 && rho < 0.93) {
             r = 16;
             g = 16;
             bch = 16;
           }
-        }
-        if (rho > 0.12 && rho < 0.78 && Math.abs(wrapDelta(pointer, wrap360((Math.atan2(frontal.y, frontal.x) * 180) / Math.PI))) <= 2.2) {
-          r = 6;
-          g = 6;
-          bch = 6;
+          if (rho > 0.12 && rho < 0.78 && Math.abs(wrapDelta(pointer, dial)) <= 2.2) {
+            r = 6;
+            g = 6;
+            bch = 6;
+          }
         }
         paint(x, y, r, g, bch);
       }

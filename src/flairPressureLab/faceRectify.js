@@ -356,7 +356,7 @@ export function fitPerspectiveOffset(observedRad) {
     gaps,
   };
   if (!affine || affine.inliers < 6) return zero;
-  if (affine.rms <= 0.9 && affine.inliers >= 12 && affine.span >= 100) return zero;
+  if (affine.rms <= 1.15) return zero;
   let best = { ...zero, fitRms: affine.rms };
   const consider = (dx, dy) => {
     const fit = scoreOffset(observedRad, dx, dy, spacing);
@@ -966,10 +966,11 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
       const improved = Boolean(
         perspOut
         && affineOut
+        && affineOut.rms >= 1.5
         && perspOut.inliers >= 10
-        && perspOut.span >= 120
-        && perspOut.rms <= 1.6
-        && perspOut.rms <= affineOut.rms - 0.4,
+        && perspOut.span >= 140
+        && perspOut.rms <= 1.35
+        && perspOut.rms <= affineOut.rms - 0.7,
       );
       tick = {
         ...tick,
