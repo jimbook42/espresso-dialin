@@ -2,7 +2,10 @@
 export const FLOW_AUTO_STOP_ARM_MIN_GS = 1;
 
 /** End shot when smoothed flow falls below this fraction of peak smoothed flow. */
-export const FLOW_AUTO_STOP_PEAK_END_FRACTION = 0.25;
+export const FLOW_AUTO_STOP_PEAK_END_FRACTION = 0.2;
+
+/** Cap on end threshold (g/s); end uses min(peak × fraction, this value). */
+export const FLOW_AUTO_STOP_END_ABS_MAX_GS = 0.3;
 
 /** Smoothed flow must stay below the end threshold for this long (s). */
 export const FLOW_AUTO_STOP_CONFIRM_S = 1.5;
@@ -60,7 +63,10 @@ export function stepFlowEndAutoStop(state, input) {
   }
 
   next.peakSmoothedGs = Math.max(next.peakSmoothedGs, flow);
-  const endThreshold = next.peakSmoothedGs * FLOW_AUTO_STOP_PEAK_END_FRACTION;
+  const endThreshold = Math.min(
+    next.peakSmoothedGs * FLOW_AUTO_STOP_PEAK_END_FRACTION,
+    FLOW_AUTO_STOP_END_ABS_MAX_GS,
+  );
 
   if (flow >= endThreshold) {
     next.recordedEndExtractionS = null;
