@@ -278,19 +278,16 @@ function chainFit(angleDegs, spacing) {
     let skips = 0;
     while (seq.length < 24 && step < 24) {
       let pick = -1;
-      let dist = tol;
       for (let j = from; j < ring.length; j += 1) {
         const delta = ring[j] - expected;
         if (delta > tol) break;
-        const absDelta = Math.abs(delta);
-        if (absDelta < dist) {
-          dist = absDelta;
-          pick = j;
-        }
+        if (-delta > tol) continue;
+        pick = j;
+        break;
       }
       if (pick < 0) {
         skips += 1;
-        if (skips > 2) break;
+        if (skips > 8) break;
         expected += spacing;
         step += 1;
         continue;
@@ -298,7 +295,7 @@ function chainFit(angleDegs, spacing) {
       skips = 0;
       seq.push({ deg: ring[pick], step });
       from = pick + 1;
-      expected += spacing;
+      expected = ring[pick] + spacing;
       step += 1;
     }
     if (seq.length < 6) continue;
@@ -318,8 +315,16 @@ function chainFit(angleDegs, spacing) {
   return best;
 }
 
+function observedMarkAngle(mark, dx, dy) {
+  const rad = typeof mark === 'number' ? mark : mark.rad;
+  const frac = typeof mark === 'number' ? 1 : (mark.frac || 1);
+  const point = diskInverse(frac * Math.cos(rad), frac * Math.sin(rad), dx, dy);
+  if (!point) return rad;
+  return Math.atan2(point.y, point.x);
+}
+
 function scoreOffset(observedRad, dx, dy, spacing) {
-  const degs = observedRad.map((rad) => wrapDeg((correctObservedAngle(rad, dx, dy) * 180) / Math.PI));
+  const degs = observedRad.map((mark) => wrapDeg((observedMarkAngle(mark, dx, dy) * 180) / Math.PI));
   return chainFit(degs, spacing);
 }
 
@@ -333,7 +338,10 @@ export function fitPerspectiveOffset(observedRad) {
   const affine = observedRad?.length
     ? scoreOffset(observedRad, 0, 0, spacing)
     : null;
-  const degs = (observedRad || []).map((rad) => wrapDeg((rad * 180) / Math.PI)).sort((a, b) => a - b);
+  const degs = (observedRad || []).map((mark) => {
+    const rad = typeof mark === 'number' ? mark : mark.rad;
+    return wrapDeg((rad * 180) / Math.PI);
+  }).sort((a, b) => a - b);
   const gaps = [];
   for (let i = 1; i < degs.length; i += 1) gaps.push(Math.round((degs[i] - degs[i - 1]) * 10) / 10);
   const zero = {
@@ -382,27 +390,17 @@ export function fitPerspectiveOffset(observedRad) {
   return best;
 }
 
-function meanAlong(gray, width, height, cx, cy, sx, sy, fracs) {
-  let sum = 0;
-  let n = 0;
-  for (let i = 0; i < fracs.length; i += 1) {
-    const value = sampleGray(gray, width, height, cx + sx * fracs[i], cy + sy * fracs[i]);
-    if (value == null) continue;
-    sum += value;
-    n += 1;
-  }
-  return n ? sum / n : null;
-}
-
 function tickPeakRadians(gray, width, height, ellipse) {
   const n = 720;
   const score = new Float32Array(n);
+  const fracAt = new Float32Array(n);
   for (let i = 0; i < n; i += 1) {
     const edge = ellipsePoint(ellipse, (i / n) * Math.PI * 2);
     const sx = edge.x - ellipse.center.x;
     const sy = edge.y - ellipse.center.y;
     // Tick radius moves when the pivot is not the ellipse centre, so follow the ray.
     let best = 0;
+    let bestF = 0.8;
     for (let f = 0.5; f <= 0.94; f += 0.02) {
       const here = sampleGray(gray, width, height, ellipse.center.x + sx * f, ellipse.center.y + sy * f);
       const inner = sampleGray(
@@ -414,9 +412,13 @@ function tickPeakRadians(gray, width, height, ellipse) {
       );
       if (here == null || inner == null) continue;
       const contrast = inner - here;
-      if (contrast > best) best = contrast;
+      if (contrast > best) {
+        best = contrast;
+        bestF = f;
+      }
     }
     score[i] = best;
+    fracAt[i] = bestF;
   }
   const smooth = new Float32Array(n);
   let max = 0;
@@ -426,34 +428,43 @@ function tickPeakRadians(gray, width, height, ellipse) {
     smooth[i] = sum / 5;
     if (smooth[i] > max) max = smooth[i];
   }
-  if (!(max > 6)) return [];
-  const floor = Math.max(6, max * 0.28);
-  const peaks = [];
-  for (let i = 0; i < n; i += 1) {
-    const prev = smooth[(i + n - 1) % n];
-    const next = smooth[(i + 1) % n];
-    if (smooth[i] < floor || smooth[i] < prev || smooth[i] < next) continue;
-    const denom = prev - 2 * smooth[i] + next;
-    let off = 0;
-    if (Math.abs(denom) > 1e-6) off = clamp(0.5 * (prev - next) / denom, -0.5, 0.5);
-    peaks.push({ rad: ((i + off) / n) * Math.PI * 2, strength: smooth[i] });
-  }
-  peaks.sort((a, b) => b.strength - a.strength);
-  const minSep = (halfBarSpacingDeg() * Math.PI) / 180 * 0.55;
-  const kept = [];
-  for (let i = 0; i < peaks.length; i += 1) {
-    const rad = peaks[i].rad;
-    let crowded = false;
-    for (let j = 0; j < kept.length; j += 1) {
-      let delta = Math.abs(rad - kept[j]);
-      if (delta > Math.PI) delta = Math.PI * 2 - delta;
-      if (delta < minSep) {
-        crowded = true;
-        break;
-      }
+  if (!(max > 8)) return [];
+  // One centroid per dark wedge. Edge peaks of a wide numeral tick are not extra marks.
+  const floor = Math.max(8, max * 0.42);
+  const runs = [];
+  let run = null;
+  for (let i = 0; i <= n; i += 1) {
+    const on = i < n && smooth[i] >= floor;
+    if (on) {
+      if (!run) run = { w: 0, sum: 0, start: i, end: i };
+      run.w += smooth[i];
+      run.sum += smooth[i] * i;
+      run.end = i;
+    } else if (run) {
+      runs.push(run);
+      run = null;
     }
-    if (!crowded) kept.push(rad);
-    if (kept.length >= 24) break;
+  }
+  if (runs.length >= 2 && smooth[0] >= floor && smooth[n - 1] >= floor) {
+    const tail = runs[runs.length - 1];
+    const head = runs[0];
+    head.w += tail.w;
+    head.sum += tail.sum - tail.w * n;
+    head.start = tail.start - n;
+    runs.pop();
+  }
+  const kept = [];
+  for (let i = 0; i < runs.length; i += 1) {
+    const item = runs[i];
+    if (!(item.w > 0)) continue;
+    const widthDeg = ((item.end - item.start) / n) * 360;
+    if (widthDeg < 0.5 || widthDeg > 18) continue;
+    const centre = item.sum / item.w;
+    const idx = ((Math.round(centre) % n) + n) % n;
+    kept.push({
+      rad: ((centre / n) * Math.PI * 2 + Math.PI * 2) % (Math.PI * 2),
+      frac: fracAt[idx] || 0.8,
+    });
   }
   return kept;
 }
