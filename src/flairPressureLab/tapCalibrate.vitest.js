@@ -11,7 +11,11 @@ import {
   markResidualPx,
   matchTipAngle,
   parseTapCalQuery,
+  replayMediaTimeSec,
+  replayTapWindowOpen,
+  shouldDeferLegacyLock,
   snapHub,
+  tapAnchorRecord,
   tapsFromReplayHook,
 } from './tapCalibrate.js';
 
@@ -109,6 +113,82 @@ describe('tapsFromReplayHook', () => {
       atSec: 0.4,
     });
     expect(tapsFromReplayHook({})).toBeNull();
+  });
+});
+
+describe('replay tap window', () => {
+  const slot = 0.125;
+  const samplesFrom = (index0) => {
+    const hits = [];
+    for (let index = index0; index < 400; index += 1) {
+      const t = index * slot;
+      if (replayTapWindowOpen(t, null)) hits.push(t);
+      if (t > 30) break;
+    }
+    return hits;
+  };
+
+  it('uses the still clock, not a missing video.currentTime of 0', () => {
+    expect(replayMediaTimeSec(1.875, 0)).toBeCloseTo(1.875, 6);
+    expect(replayMediaTimeSec(0, 1875)).toBe(0);
+    expect(replayMediaTimeSec(null, 1875)).toBeCloseTo(1.875, 6);
+    expect(replayTapWindowOpen(0, 1.8)).toBe(false);
+    expect(replayTapWindowOpen(replayMediaTimeSec(null, 1875), 1.8)).toBe(true);
+  });
+
+  it('hits the half-second window on the 8 Hz replay grid', () => {
+    const hitsAt = (atSec) => {
+      const hits = [];
+      for (let index = 4; index < 800; index += 1) {
+        const t = index * slot;
+        if (t > atSec + 1) break;
+        if (replayTapWindowOpen(t, atSec)) hits.push(Number(t.toFixed(4)));
+      }
+      return hits;
+    };
+    expect(hitsAt(1.8)).toEqual([1.875, 2, 2.125, 2.25]);
+    expect(hitsAt(1).length).toBeGreaterThan(0);
+    expect(hitsAt(7.5813165).length).toBeGreaterThan(0);
+    expect(hitsAt(1.8).every((t) => t >= 1.8 && t < 2.3)).toBe(true);
+  });
+
+  it('stays open when atSec is omitted so the first frame can lock', () => {
+    expect(replayTapWindowOpen(0.5, null)).toBe(true);
+    expect(samplesFrom(4)[0]).toBeCloseTo(0.5, 6);
+  });
+
+  it('defers the legacy lock until the tap window has had its frames', () => {
+    const injected = { atSec: 1.8, centre: { x: 1, y: 2 }, five: { x: 3, y: 4 }, ten: { x: 5, y: 6 } };
+    expect(shouldDeferLegacyLock({ injected, applied: false, sampleT: 0.5 })).toBe(true);
+    expect(shouldDeferLegacyLock({ injected, applied: false, sampleT: 1.875 })).toBe(true);
+    expect(shouldDeferLegacyLock({ injected, applied: false, sampleT: 2.3 })).toBe(false);
+    expect(shouldDeferLegacyLock({ injected, applied: true, sampleT: 0.5 })).toBe(false);
+    expect(shouldDeferLegacyLock({ injected: { atSec: null }, applied: false, sampleT: 0.5 })).toBe(false);
+    expect(shouldDeferLegacyLock({ injected: null, applied: false, sampleT: 0.5 })).toBe(false);
+  });
+
+  it('records anchors without the image templates', () => {
+    expect(tapAnchorRecord({
+      hub: { x: 624, y: 310 },
+      five: { x: 661, y: 270 },
+      ten: { x: 662, y: 338 },
+      zeroAngleDeg: 12,
+      fiveAngleDeg: 80,
+      tenAngleDeg: 170,
+      spanDeg: 158,
+      radius: 90,
+      template: { red: [1], dark: [2] },
+      needleTemplate: [3],
+    })).toEqual({
+      centre: { x: 624, y: 310 },
+      five: { x: 661, y: 270 },
+      ten: { x: 662, y: 338 },
+      zeroAngleDeg: 12,
+      fiveAngleDeg: 80,
+      tenAngleDeg: 170,
+      spanDeg: 158,
+      radius: 90,
+    });
   });
 });
 

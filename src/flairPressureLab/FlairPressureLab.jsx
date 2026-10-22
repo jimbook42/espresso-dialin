@@ -60,6 +60,11 @@ import {
   createCalibratedTracker,
   parseTapCalQuery,
   readCalibratedFrame,
+  replayMediaTimeSec,
+  replayTapWindowOpen,
+  shouldDeferLegacyLock,
+  TAP_CAL_WINDOW_S,
+  tapAnchorRecord,
   tapsFromReplayHook,
 } from './tapCalibrate.js';
 import {
@@ -209,6 +214,7 @@ export function FlairPressureLab() {
   const resizeObserverRef = useRef(null);
   const copyTimerRef = useRef(null);
   const tapTrackerRef = useRef(null);
+  const tapCalRef = useRef({ applied: false, atSec: null, anchors: null, reason: 'no-taps' });
   const pendingCalRef = useRef(null);
   const frozenRef = useRef(null);
   const freezeCanvasRef = useRef(null);
@@ -566,27 +572,72 @@ export function FlairPressureLab() {
       dialRegistered: gauge.dialRegistered === true,
     });
 
-    const processSample = async (video, now, wallNow, { grabAt = null } = {}) => {
+    const publishTapCal = (next) => {
+      tapCalRef.current = next;
+      window.__pressureLabTapCalResult = next;
+    };
+    publishTapCal({ applied: false, atSec: null, anchors: null, reason: 'no-taps' });
+
+    const processSample = async (video, now, wallNow, { grabAt = null, mediaTimeS = null } = {}) => {
       if (!video || video.readyState < 2) return;
       const useTap = !REPLAY_BUILD || tapTrackerRef.current || tapPhase !== 'legacy';
+      let deferLegacyLock = false;
       if (REPLAY_BUILD && !tapTrackerRef.current) {
+        // The still canvas has no currentTime. The replay loop passes the
+        // frame's media time; a currentTime read stays 0 and misses atSec.
         const injected = tapsFromReplayHook() || parseTapCalQuery(window.location.search);
-        const atSec = injected?.atSec;
-        const sampleT = Number(video.currentTime) || 0;
-        const tapWindowOpen = atSec == null || (sampleT + 1e-3 >= atSec && sampleT < atSec + 0.5);
-        if (injected && tapWindowOpen) {
-          const image = grabSourceImage(video);
-          const calibrated = image && calibrateFromTaps(image, injected);
-          if (calibrated?.ok) {
-            tapTrackerRef.current = createCalibratedTracker(calibrated.calibration);
-            const next = {
-              ...FLAIR_STATELESS_SESSION,
-              zeroAngleDeg: calibrated.calibration.zeroAngleDeg,
-              sweepDeg: calibrated.calibration.spanDeg || sweepRef.current,
-            };
-            sessionRef.current = next;
-            setSession(next);
-            setTapPhase('tracking');
+        const sampleT = replayMediaTimeSec(mediaTimeS, now);
+        if (!injected) {
+          publishTapCal({ applied: false, atSec: null, anchors: null, reason: 'no-taps' });
+        } else {
+          deferLegacyLock = shouldDeferLegacyLock({
+            injected,
+            applied: tapCalRef.current.applied === true,
+            sampleT,
+          });
+          if (replayTapWindowOpen(sampleT, injected.atSec)) {
+            const image = grabSourceImage(video);
+            const calibrated = image && calibrateFromTaps(image, injected);
+            if (calibrated?.ok) {
+              tapTrackerRef.current = createCalibratedTracker(calibrated.calibration);
+              const next = {
+                ...FLAIR_STATELESS_SESSION,
+                zeroAngleDeg: calibrated.calibration.zeroAngleDeg,
+                sweepDeg: calibrated.calibration.spanDeg || sweepRef.current,
+              };
+              sessionRef.current = next;
+              setSession(next);
+              setTapPhase('tracking');
+              deferLegacyLock = false;
+              publishTapCal({
+                applied: true,
+                atSec: sampleT,
+                anchors: tapAnchorRecord(calibrated.calibration),
+                reason: null,
+              });
+            } else if (!tapCalRef.current.applied) {
+              publishTapCal({
+                applied: false,
+                atSec: null,
+                anchors: null,
+                reason: calibrated?.reason || 'calibrate-failed',
+              });
+            }
+          } else if (
+            injected.atSec != null
+            && Number.isFinite(sampleT)
+            && sampleT >= Number(injected.atSec) + TAP_CAL_WINDOW_S
+            && !tapCalRef.current.applied
+          ) {
+            const prior = tapCalRef.current.reason;
+            publishTapCal({
+              applied: false,
+              atSec: null,
+              anchors: null,
+              reason: prior && prior !== 'no-taps' && prior !== 'waiting' ? prior : 'window-missed',
+            });
+          } else if (!tapCalRef.current.applied && sampleT + 1e-3 < Number(injected.atSec)) {
+            publishTapCal({ applied: false, atSec: null, anchors: null, reason: 'waiting' });
           }
         }
       }
@@ -860,7 +911,7 @@ export function FlairPressureLab() {
       const confidentDial = gaugeAllowsConfidentReading(gate);
 
       if (!sessionRef.current) {
-        if (!canRead || gauge.held) {
+        if (!canRead || gauge.held || deferLegacyLock) {
           const uncertainty = record({
             tracking: 'CALIBRATING',
             smoothedAngle: null,
@@ -912,7 +963,7 @@ export function FlairPressureLab() {
               bar: null,
               confidence: gauge.confidence,
               conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
-              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}${reading.model ? `|model:${reading.model.used ? 'yes' : 'gap'}` : ''}`,
+              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}${reading.model ? `|model:${reading.model.used ? 'yes' : 'gap'}` : ''}${deferLegacyLock ? '|tap-wait' : ''}`,
               tracking: 'CALIBRATING',
               stageTrack: reading.stageMs?.track ?? null,
               stageTrackDraw: reading.stageMs?.trackDraw ?? null,
@@ -1352,10 +1403,13 @@ export function FlairPressureLab() {
           // needs one, and apply whatever circle is already back. Do not wait.
           // The live tick also leaves PROCESS_INTERVAL_MS between reads, which
           // is long enough for the search to finish before the next frame.
+          // Stamp the still clock. The canvas has no currentTime, and the tap
+          // window is half a second of media time, not wall time.
+          frame.currentTime = still.t;
           const grabAt = performance.now();
           slots += 1;
           window.__pressureReplaySlots = slots;
-          await processSample(frame, Math.round(still.t * 1000), performance.now(), { grabAt });
+          await processSample(frame, Math.round(still.t * 1000), performance.now(), { grabAt, mediaTimeS: still.t });
           const remain = PROCESS_INTERVAL_MS - (performance.now() - grabAt);
           if (remain > 0) await new Promise((resolve) => { setTimeout(resolve, remain); });
         }

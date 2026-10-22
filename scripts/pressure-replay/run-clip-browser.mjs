@@ -24,9 +24,13 @@ if (!y4mPath || !durationS || !mp4Path) {
  *   a 6th argument that is a taps.json path
  *   or <mp4>.taps.json beside the source video
  * JSON: { "atSec": 0, "centre": [x, y], "five": [x, y], "ten": [x, y] }
- * Pixels are unmirrored video pixels. atSec is the rest moment; the lab
- * calibrates only inside the half-second that starts there. Omit atSec to
- * calibrate on the first frame that locks (clips that open on the rest shot).
+ * Pixels are unmirrored video pixels. atSec is the rest moment on the clip
+ * clock (seconds from the start of the file). The lab opens that half-second
+ * on the replay still's media time. The still canvas has no currentTime, so
+ * a video.currentTime read stays 0 and any atSec after the first half-second
+ * never opens. Omit atSec to calibrate on the first frame (clips that open
+ * on the rest shot). The result JSON records tapCalibration from
+ * window.__pressureLabTapCalResult.
  * This file is copied onto window.__pressureLabTapCal before the page boots.
  */
 function loadTapCal() {
@@ -139,8 +143,14 @@ async function captureClip(context, previewUrl, { cpuThrottleRate = 1, durationS
   const frames = await page.evaluate(() => window.__pressureLabReplay.getFrames());
   const storage = await page.evaluate(() => window.__pressureLabPrivacy || { localStorageWrites: 0, indexedDbWrites: 0 });
   const smoothness = await page.evaluate(() => window.__pressureReplaySmoothness?.() || { longTasks: 0, scaleTicks: 0, slots: 0 });
+  const tapCalibration = await page.evaluate(() => window.__pressureLabTapCalResult || {
+    applied: false,
+    atSec: null,
+    anchors: null,
+    reason: 'missing',
+  });
   await page.close();
-  return { frames, requests, storage, smoothness };
+  return { frames, requests, storage, smoothness, tapCalibration };
 }
 
 function extractReplayFrames(src) {
@@ -196,12 +206,18 @@ async function main() {
 
     const payload = {
       frames: mainRun.frames,
+      tapCalibration: mainRun.tapCalibration,
+      tapCalibration4x: throttleRun.tapCalibration,
       privacy,
       timing: {
         processMsMedian: percentile(series(mainRun, 'processMs'), 50),
         processMsP95: percentile(series(mainRun, 'processMs'), 95),
         throttled4xMedian: percentile(series(throttleRun, 'processMs'), 50),
         throttled4xP95: percentile(series(throttleRun, 'processMs'), 95),
+        stageModelMedian: percentile(series(mainRun, 'stageModel'), 50),
+        stageModelP95: percentile(series(mainRun, 'stageModel'), 95),
+        stageModel4xMedian: percentile(series(throttleRun, 'stageModel'), 50),
+        stageModel4xP95: percentile(series(throttleRun, 'stageModel'), 95),
         e2eMedian: percentile(series(mainRun, 'e2eMs'), 50),
         e2eP95: percentile(series(mainRun, 'e2eMs'), 95),
         e2e4xMedian: percentile(series(throttleRun, 'e2eMs'), 50),

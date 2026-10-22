@@ -1064,3 +1064,60 @@ export function tapsFromReplayHook(target = typeof window !== 'undefined' ? wind
   const atSec = Number(hook.atSec);
   return { centre, five, ten, atSec: Number.isFinite(atSec) ? atSec : null };
 }
+
+/** Half-second after atSec. The replay still clock is 8 Hz, so the window holds a few frames. */
+export const TAP_CAL_WINDOW_S = 0.5;
+
+/**
+ * Replay media time in seconds. Prefer the still's own timestamp.
+ * `video.currentTime` on the canvas stand-in is missing, and `Number(missing) || 0`
+ * keeps the window shut for every atSec after the first half-second.
+ */
+export function replayMediaTimeSec(mediaTimeS, mediaNowMs) {
+  if (mediaTimeS != null && mediaTimeS !== '' && Number.isFinite(Number(mediaTimeS))) {
+    return Number(mediaTimeS);
+  }
+  const ms = Number(mediaNowMs);
+  if (Number.isFinite(ms)) return ms / 1000;
+  return 0;
+}
+
+/** Open when atSec is omitted (first frame) or sampleT sits in [atSec, atSec + 0.5). */
+export function replayTapWindowOpen(sampleT, atSec) {
+  if (atSec == null || !Number.isFinite(Number(atSec))) return true;
+  if (!Number.isFinite(sampleT)) return false;
+  const start = Number(atSec);
+  return sampleT + 1e-3 >= start && sampleT < start + TAP_CAL_WINDOW_S;
+}
+
+/**
+ * Hold the legacy lock until the tap window has closed.
+ * A clip that is readable on frame one (084814) otherwise locks before atSec
+ * and never spends a sample in CALIBRATING.
+ */
+export function shouldDeferLegacyLock({ injected, applied, sampleT }) {
+  if (applied || !injected) return false;
+  const atSec = Number(injected.atSec);
+  if (!Number.isFinite(atSec)) return false;
+  return Number(sampleT) < atSec + TAP_CAL_WINDOW_S;
+}
+
+/** Anchors the replay JSON records after a tap calibration. No image templates. */
+export function tapAnchorRecord(calibration) {
+  if (!calibration) return null;
+  const pt = (point) => (
+    point && Number.isFinite(point.x) && Number.isFinite(point.y)
+      ? { x: point.x, y: point.y }
+      : null
+  );
+  return {
+    centre: pt(calibration.hub),
+    five: pt(calibration.five),
+    ten: pt(calibration.ten),
+    zeroAngleDeg: calibration.zeroAngleDeg ?? null,
+    fiveAngleDeg: calibration.fiveAngleDeg ?? null,
+    tenAngleDeg: calibration.tenAngleDeg ?? null,
+    spanDeg: calibration.spanDeg ?? null,
+    radius: calibration.radius ?? null,
+  };
+}
