@@ -227,11 +227,12 @@ function lumaAt(data, width, height, x, y) {
  * A real pivot has one crossing radius. An offset centre swings.
  * Returns null when the surround is not brighter than the face.
  */
-export function rimMeasure(image, cx, cy) {
+export function rimMeasure(image, cx, cy, angles = 36, rStep = 1) {
   const { data, width, height } = image;
   const radii = [];
-  for (let i = 0; i < 36; i += 1) {
-    const angle = (i / 36) * Math.PI * 2;
+  const prevGap = Math.max(2, rStep);
+  for (let i = 0; i < angles; i += 1) {
+    const angle = (i / angles) * Math.PI * 2;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const at = (r) => lumaAt(data, width, height, Math.round(cx + r * cos), Math.round(cy + r * sin));
@@ -243,9 +244,9 @@ export function rimMeasure(image, cx, cy) {
     if (outside < face + 12) continue;
     const mid = face + (outside - face) * 0.55;
     let cross = 0;
-    for (let r = 70; r <= 115; r += 1) {
+    for (let r = 70; r <= 115; r += rStep) {
       const cur = at(r);
-      const prev = at(r - 2);
+      const prev = at(r - prevGap);
       if (cur != null && prev != null && cur >= mid && prev < mid) {
         cross = r;
         break;
@@ -253,13 +254,13 @@ export function rimMeasure(image, cx, cy) {
     }
     if (cross) radii.push(cross);
   }
-  if (radii.length < 18) return null;
+  if (radii.length < angles * 0.5) return null;
   const mean = radii.reduce((sum, r) => sum + r, 0) / radii.length;
   const variance = radii.reduce((sum, r) => sum + (r - mean) ** 2, 0) / radii.length;
   return { std: Math.sqrt(variance), radius: mean * 0.9, n: radii.length };
 }
 
-function searchRim(image, prior, span, step, radiusPrior = 0) {
+function searchRim(image, prior, span, step, radiusPrior = 0, angles = 36, rStep = 1) {
   let best = null;
   const x0 = prior.x;
   const y0 = prior.y;
@@ -268,7 +269,7 @@ function searchRim(image, prior, span, step, radiusPrior = 0) {
     for (let dx = -span; dx <= span; dx += step) {
       const cx = x0 + dx;
       if (dx * dx + dy * dy > span * span) continue;
-      const measured = rimMeasure(image, cx, cy);
+      const measured = rimMeasure(image, cx, cy, angles, rStep);
       if (!measured) continue;
       if (radiusPrior > 20) {
         const scale = measured.radius / radiusPrior;
@@ -648,16 +649,40 @@ export function createCalibratedTracker(calibration) {
   };
 }
 
+function asPose(prior, measured) {
+  return {
+    x: prior.x,
+    y: prior.y,
+    radius: measured.radius,
+    std: measured.std,
+    score: Math.max(0, (12 - measured.std) / 12),
+  };
+}
+
 function trackPose(image, tracker) {
   const prior = tracker.pose;
+  const here = rimMeasure(image, prior.x, prior.y);
   let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius);
-  if (!found || found.std > LOST_RIM_STD) {
-    const far = searchRim(image, prior, TRACK_FAR_PX, 4, prior.radius);
-    if (far && (!found || far.std < found.std)) found = far;
+  // A weak local rim means the gauge moved. Look further, cheaply, and only
+  // accept a centre that is clearly rounder than staying put.
+  if (!found || found.std > 5.4) {
+    const far = searchRim(image, prior, 48, 6, prior.radius, 16, 2);
+    if (far && (!found || far.std + 0.8 < found.std)) found = far;
+  }
+  if (!found || found.std > 5.4) {
+    const wider = searchRim(image, prior, 96, 8, prior.radius, 16, 2);
+    if (wider && (!found || wider.std + 0.8 < (found?.std ?? 99))) found = wider;
+  }
+  if (found && found.std <= LOST_RIM_STD) {
+    const checked = rimMeasure(image, found.x, found.y);
+    if (checked) found = { ...found, std: checked.std, radius: checked.radius, score: Math.max(0, (12 - checked.std) / 12) };
+  }
+  if (here && here.std <= LOST_RIM_STD && (!found || found.std > here.std - 0.8)) {
+    found = asPose(prior, here);
   }
   if (found && found.std <= LOST_RIM_STD) {
     const fine = searchRim(image, found, 3, 1, prior.radius);
-    if (fine && fine.std <= found.std) found = fine;
+    if (fine && fine.std + 0.3 < found.std) found = fine;
     return found;
   }
   const near = searchBezel(
