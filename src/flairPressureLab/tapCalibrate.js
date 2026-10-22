@@ -33,7 +33,7 @@ export const BAD_TAP_PX = 48;
 export const SNAP_NEAR_PX = 36;
 const HUB_WINDOW_PX = 28;
 const LOST_BEZEL = 0.35;
-const LOST_MATCH = 0.45;
+const LOST_RIM_STD = 10;
 const TRACK_NEAR_PX = 10;
 const TRACK_FAR_PX = 36;
 
@@ -216,6 +216,76 @@ function bezelScoreAt(data, width, height, cx, cy, radius) {
   return hit / n;
 }
 
+function lumaAt(data, width, height, x, y) {
+  if (x < 0 || y < 0 || x >= width || y >= height) return null;
+  const p = (y * width + x) * 4;
+  return data[p] * 0.299 + data[p + 1] * 0.587 + data[p + 2] * 0.114;
+}
+
+/**
+ * How circular the bright outer edge is around this centre.
+ * A real pivot has one crossing radius. An offset centre swings.
+ * Returns null when the surround is not brighter than the face.
+ */
+function rimMeasure(image, cx, cy) {
+  const { data, width, height } = image;
+  const radii = [];
+  for (let i = 0; i < 36; i += 1) {
+    const angle = (i / 36) * Math.PI * 2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const at = (r) => lumaAt(data, width, height, Math.round(cx + r * cos), Math.round(cy + r * sin));
+    const faceSamples = [at(48), at(56), at(64)].filter((v) => v != null);
+    const outsideSamples = [at(112), at(120)].filter((v) => v != null);
+    if (faceSamples.length < 2 || outsideSamples.length < 1) continue;
+    const face = faceSamples.reduce((s, v) => s + v, 0) / faceSamples.length;
+    const outside = outsideSamples.reduce((s, v) => s + v, 0) / outsideSamples.length;
+    if (outside < face + 12) continue;
+    const mid = face + (outside - face) * 0.55;
+    let cross = 0;
+    for (let r = 70; r <= 115; r += 1) {
+      const cur = at(r);
+      const prev = at(r - 2);
+      if (cur != null && prev != null && cur >= mid && prev < mid) {
+        cross = r;
+        break;
+      }
+    }
+    if (cross) radii.push(cross);
+  }
+  if (radii.length < 18) return null;
+  const mean = radii.reduce((sum, r) => sum + r, 0) / radii.length;
+  const variance = radii.reduce((sum, r) => sum + (r - mean) ** 2, 0) / radii.length;
+  return { std: Math.sqrt(variance), radius: mean * 0.9, n: radii.length };
+}
+
+function searchRim(image, prior, span, step) {
+  let best = null;
+  const x0 = prior.x;
+  const y0 = prior.y;
+  for (let dy = -span; dy <= span; dy += step) {
+    const cy = y0 + dy;
+    for (let dx = -span; dx <= span; dx += step) {
+      const cx = x0 + dx;
+      if (dx * dx + dy * dy > span * span) continue;
+      const measured = rimMeasure(image, cx, cy);
+      if (!measured) continue;
+      const nearer = best && measured.std === best.std && (dx * dx + dy * dy) < best.dist;
+      if (!best || measured.std < best.std || nearer) {
+        best = {
+          x: cx,
+          y: cy,
+          radius: measured.radius,
+          std: measured.std,
+          score: Math.max(0, (12 - measured.std) / 12),
+          dist: dx * dx + dy * dy,
+        };
+      }
+    }
+  }
+  return best;
+}
+
 function searchBezel(image, prior, span, step, radii) {
   const { data, width, height } = image;
   let best = null;
@@ -248,15 +318,8 @@ function radiusList(minR, maxR, step) {
  * Pull a centre tap onto the bezel pivot. The screw is the centre of that
  * circle; at replay size the screw itself is only a couple of pixels.
  */
-export function snapHub(image, tap, { windowPx = HUB_WINDOW_PX } = {}) {
-  const origin = pointOf(tap);
-  const coarse = searchBezel(
-    image,
-    origin,
-    windowPx,
-    2,
-    radiusList(78, 110, 2),
-  );
+function snapHubContrast(image, origin, windowPx) {
+  const coarse = searchBezel(image, origin, windowPx, 2, radiusList(78, 110, 2));
   if (!coarse || coarse.score < 0.28) {
     return { ...origin, radius: coarse?.radius ?? 90, score: coarse?.score ?? 0, ok: false };
   }
@@ -269,6 +332,17 @@ export function snapHub(image, tap, { windowPx = HUB_WINDOW_PX } = {}) {
   );
   const chosen = fine && fine.score >= coarse.score ? fine : coarse;
   return { x: chosen.x, y: chosen.y, radius: chosen.radius, score: chosen.score, ok: chosen.score >= 0.34 };
+}
+
+export function snapHub(image, tap, { windowPx = HUB_WINDOW_PX } = {}) {
+  const origin = pointOf(tap);
+  const coarse = searchRim(image, origin, Math.max(windowPx, 32), 4);
+  const fine = coarse && coarse.std <= LOST_RIM_STD ? searchRim(image, coarse, 4, 1) : null;
+  const rim = fine && fine.std <= coarse.std ? fine : coarse;
+  if (rim && rim.std <= 8.5) {
+    return { x: rim.x, y: rim.y, radius: rim.radius, score: rim.score, ok: true };
+  }
+  return snapHubContrast(image, origin, windowPx);
 }
 
 function cropImage(image, cx, cy, radius) {
@@ -303,12 +377,12 @@ export function chooseRestNeedle(angleDeg, tenDeg) {
   return angleDeg;
 }
 
-export function readNeedleAt(image, cx, cy, radius) {
+export function readNeedleAt(image, cx, cy, radius, hintDeg = null) {
   if (!(radius > 12)) return { angleDeg: null, quality: 0, likeness: 0 };
   const cropped = cropImage(image, cx, cy, radius);
   const inner = radius * TIP_INNER_RATIO;
   const outer = radius * OUTER_RADIUS_RATIO;
-  const found = detectNeedleAngle(cropped.image, cropped.cx, cropped.cy, inner, outer);
+  const found = detectNeedleAngle(cropped.image, cropped.cx, cropped.cy, inner, outer, null, hintDeg);
   if (found.angleDeg == null) return found;
   found.angleDeg = refineNeedleAngle(cropped.image, cropped.cx, cropped.cy, inner, outer, found.angleDeg);
   return found;
@@ -375,8 +449,8 @@ export function snapScaleMarks(image, hub, fiveTap, tenTap, needleDeg) {
       ten,
       fiveDeg: pointAngle(hub, five),
       tenDeg: pointAngle(hub, ten),
-      fivePx: 0,
-      tenPx: 0,
+      fivePx: null,
+      tenPx: null,
       rotationDeg: 0,
       colorRadius: hub.radius,
       margin: 0,
@@ -491,6 +565,16 @@ export function calibrateFromTaps(image, taps) {
 
   const needle = readNeedleAt(image, hub.x, hub.y, hub.radius);
   const marks = snapScaleMarks(image, hub, fiveTap, tenTap, needle.angleDeg);
+  if (!marks.ok) {
+    return {
+      ok: false,
+      redo: null,
+      reason: 'unregistered',
+      hub,
+      marks,
+      snapPx: { centre: hubPx, five: null, ten: null },
+    };
+  }
   const named = detectBadTap(centreTap, fiveTap, tenTap, {
     hubPx,
     fivePx: marks.fivePx,
@@ -562,6 +646,16 @@ export function createCalibratedTracker(calibration) {
 
 function trackPose(image, tracker) {
   const prior = tracker.pose;
+  let found = searchRim(image, prior, TRACK_NEAR_PX, 2);
+  if (!found || found.std > LOST_RIM_STD) {
+    const far = searchRim(image, prior, TRACK_FAR_PX, 4);
+    if (far && (!found || far.std < found.std)) found = far;
+  }
+  if (found && found.std <= LOST_RIM_STD) {
+    const fine = searchRim(image, found, 2, 1);
+    if (fine && fine.std <= found.std) found = fine;
+    return found;
+  }
   const near = searchBezel(
     image,
     prior,
@@ -569,7 +663,7 @@ function trackPose(image, tracker) {
     2,
     radiusList(Math.max(48, prior.radius - 6), prior.radius + 6, 3),
   );
-  let found = near;
+  found = near;
   if (!found || found.score < LOST_BEZEL) {
     found = searchBezel(
       image,
@@ -598,7 +692,9 @@ function trackPose(image, tracker) {
  */
 export function readCalibratedFrame(image, tracker) {
   const found = trackPose(image, tracker);
-  const bezelOk = Boolean(found && found.score >= LOST_BEZEL);
+  const bezelOk = Boolean(
+    found && (found.std != null ? found.std <= LOST_RIM_STD : found.score >= LOST_BEZEL),
+  );
   const pose = bezelOk ? found : tracker.pose;
   const scale = tracker.calibration.radius > 1 ? pose.radius / tracker.calibration.radius : 1;
   const colorRadius = tracker.calibration.colorRadius * scale;
@@ -614,15 +710,15 @@ export function readCalibratedFrame(image, tracker) {
   );
   const redShift = correlateShift(tracker.calibration.template.red, bands.red);
   const darkShift = correlateShift(tracker.calibration.template.dark, bands.dark);
-  const redOk = bands.redMass > 1.2 && redShift.corr >= LOST_MATCH;
-  const shiftDeg = redOk ? redShift.shiftDeg : tracker.pose.shiftDeg;
-  const shiftDisagree = redOk && darkShift.corr > 0.5
-    ? Math.abs(wrapDelta(redShift.shiftDeg, darkShift.shiftDeg))
-    : 0;
-  const match = redOk ? redShift.corr * (shiftDisagree > 25 ? 0.45 : 1) : 0;
-  const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * match);
-  const lost = !bezelOk || match < LOST_MATCH;
-  if (!lost) {
+  const shiftDisagree = Math.abs(wrapDelta(redShift.shiftDeg, darkShift.shiftDeg));
+  const shiftSmall = Math.abs(wrapDelta(redShift.shiftDeg, 0)) <= 14;
+  const shiftAgrees = darkShift.corr < 0.45 || shiftDisagree <= 12;
+  const shiftOk = bands.redMass > 1.2 && redShift.corr >= 0.72 && shiftSmall && shiftAgrees;
+  const shiftDeg = shiftOk ? redShift.shiftDeg : tracker.pose.shiftDeg;
+  const match = redShift.corr;
+  const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
+  const lost = !bezelOk;
+  if (bezelOk) {
     tracker.pose = {
       x: pose.x,
       y: pose.y,
@@ -630,14 +726,14 @@ export function readCalibratedFrame(image, tracker) {
       rotationDeg: wrap360(tracker.calibration.rotationDeg + shiftDeg),
       shiftDeg,
     };
-    if (needle.angleDeg != null) tracker.needleDeg = needle.angleDeg;
-    tracker.score = score;
-  } else {
-    tracker.score = score;
+    if (needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY) {
+      tracker.needleDeg = needle.angleDeg;
+    }
   }
-  const zero = wrap360(tracker.calibration.zeroAngleDeg + (lost ? tracker.pose.shiftDeg : shiftDeg));
-  const ten = wrap360(tracker.calibration.tenAngleDeg + (lost ? tracker.pose.shiftDeg : shiftDeg));
-  const five = wrap360(tracker.calibration.fiveAngleDeg + (lost ? tracker.pose.shiftDeg : shiftDeg));
+  tracker.score = score;
+  const zero = wrap360(tracker.calibration.zeroAngleDeg + shiftDeg);
+  const ten = wrap360(tracker.calibration.tenAngleDeg + shiftDeg);
+  const five = wrap360(tracker.calibration.fiveAngleDeg + shiftDeg);
   const bar = !lost && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY
     ? barFromRestSpan(needle.angleDeg, zero, ten)
     : null;
