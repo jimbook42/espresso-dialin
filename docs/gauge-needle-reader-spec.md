@@ -58,7 +58,7 @@ Design rules:
 }
 ```
 
-PM edit: Flair 58 anchors above come from the 34 hand labels (median over frames, degrees clockwise on screen from the rest needle; the needle rests ON the 0 pin, rest needle ≈ pin + 5.8°): 0 bar = 0°, 5 bar ≈ 74.1°, 10 bar ≈ 161.8° (label pin→10 ≈ 167.6°). So 0→10 spans about 161°, about 16–17°/bar, and 0.1 bar ≈ 1.7°. At runtime the anchors are filled per session from the tap calibration (rest needle, 5 and 10 taps). Piecewise anchors handle non-linear scales on other gauges. Piecewise anchors handle non-linear scales on other gauges.
+PM edit: Flair 58 anchors above come from the 34 hand labels (median over frames, degrees clockwise on screen from the rest needle; the needle rests ON the 0 pin, rest needle ≈ pin + 5.8°): 0 bar = 0°, 5 bar ≈ 74.1°, 10 bar ≈ 161.8° (label pin→10 ≈ 167.6°). So 0→10 spans about 161°, about 16–17°/bar, and 0.1 bar ≈ 1.7°. Reference-photo sanity check (PM, by eye on flair-train/dry/20261015_225359.jpg, coarse ±3°): pin→5 ≈ 82°, pin→10 ≈ 170°, rest needle ≈ pin + 7°, consistent with the label fit. The rest pin sits slightly off the true 0, which is why 0 bar is defined as the rest NEEDLE direction, not the pin. Phase 1 must re-fit the 0/5/10 anchors from the labels with a proper fit (LOCO spread reported) and check them against the reference photo programmatically. At runtime the anchors are filled per session from the tap calibration (rest needle, 5 and 10 taps). Piecewise anchors handle non-linear scales on other gauges. Piecewise anchors handle non-linear scales on other gauges.
 
 ## 4. Training data engine (this is the hands-off part)
 
@@ -134,13 +134,21 @@ Also include the synthetic validation set (exact truth) for precision, since han
 
 ## 8. Phases and gates
 
-**Phase 0: Baseline and harness.** PM edit: reuse the existing harnesses (`scripts/pressure-label/eval-labels.mjs`, `eval-calibrated.mjs` → eval-6.41, and the PM's `qc.sh` replay). First fix the replay so the tap calibration actually applies: in the qc_s641r2 run the real clip 084814 never showed CALIBRATING (check the `atSec` half-second window, timing base and the hook in `run-clip-browser.mjs` / `tapCalibrate.js`), and the replay result JSON must record that calibration applied. Wire the harness to the current build. Record all metrics for it as the baseline. Gate: harness runs end to end on all clips with one command, and baseline numbers are saved.
+**Phase 0: Baseline and harness.** FIRST GATE (reviewer): the replay must demonstrably apply the tap calibration (result JSON records it; 084814 shows CALIBRATING then TRACKING). No baseline counts until this passes. PM edit: reuse the existing harnesses (`scripts/pressure-label/eval-labels.mjs`, `eval-calibrated.mjs` → eval-6.41, and the PM's `qc.sh` replay). First fix the replay so the tap calibration actually applies: in the qc_s641r2 run the real clip 084814 never showed CALIBRATING (check the `atSec` half-second window, timing base and the hook in `run-clip-browser.mjs` / `tapCalibrate.js`), and the replay result JSON must record that calibration applied. Wire the harness to the current build. Record all metrics for it as the baseline. Gate: harness runs end to end on all clips with one command, and baseline numbers are saved.
+
+Phase 0 exam, from the repo root:
+
+```
+TZ=UTC node scripts/needle-reader/exam.mjs
+```
+
+The build, both label evals, and each browser replay run under `/workspace/bin/box-test-slot` with `TZ=UTC`. Baseline: `/workspace/pl-state/nr/baseline.txt` and `/workspace/pl-state/nr/baseline.json`.
 
 **Phase 1: Gauge profile, rectify, preprocessing parity.** Implement the profile schema, rectified crop and polar option in both Python and TypeScript. Gate: parity test passes on at least 200 frames.
 
 **Phase 2: Synthetic generator.** Implement section 4.2–4.4 with a CLI to preview samples as a contact sheet (the bots should review it for realism against real frames). Gate: sample sheet reviewed, deterministic from seed, at least 200 samples/s on CPU with multiprocessing.
 
-**Phase 3: Train v1 (synthetic only) and A/B Cartesian vs polar.** Gate (synthetic val): median error ≤ 0.1 bar, wild ≤ 0.2%, flip 0. Gate (real clips, no real training data yet): report coverage, median/P90, wild, flip. This is the synthetic-to-real transfer check. PM edit: Phase 3 also includes ONE small self-training round (section 4.5 rules: confident real frames whose forward/backward smoothed readings agree and whose frame-to-frame step is plausible, from /workspace/flair-train clips only, never hand labels); report metrics before and after it. If it is poor, fix the renderer (more realism, better tracking-error simulation) before anything else.
+**Phase 3: Train v1 (synthetic only) and A/B Cartesian vs polar.** Gate (synthetic val): median angular error ≤ about 1.5° (0.1 bar ≈ 1.6–1.7° on the Flair), wild ≤ 0.2%, flip 0. Gate (real clips, no real training data yet): report coverage, median/P90, wild, flip. This is the synthetic-to-real transfer check. PM edit: Phase 3 is split. **3a** = synthetic-only model, real-clip transfer recorded clean BEFORE any pseudo-labels (Cartesian vs polar A/B decided here). **3b** = ONE small self-training round (section 4.5 rules: confident real frames whose forward/backward smoothed readings agree and whose frame-to-frame step is plausible, from /workspace/flair-train clips only, never hand labels); report metrics before and after it. In leave-one-clip-out evaluation, the held-out clip must be excluded from the pseudo-labels used to train the model evaluated on it. If it is poor, fix the renderer (more realism, better tracking-error simulation) before anything else.
 
 **Phase 4: Runtime integration and temporal filter.** ONNX Runtime Web in a worker, section 6 logic, UI states (value, "--", low confidence). Gate: real-clip replay, coverage ≥ 90% (≥ 85% on used-puck clips), median ≤ 0.30 vs hand labels (about the label noise floor), wild ≤ 1%, flip 0, rest offset within ±0.15 bar on every clip, total under 33 ms at 4x throttle.
 
@@ -149,6 +157,16 @@ Also include the synthetic validation set (exact truth) for precision, since han
 **Phase 6: Hardening.** Low light, glare, fast lever pulls, a dry run, a stalled shot. Fail-safe behaviour: never show an implausible number, and recover cleanly after a lost track. Gate: no reading above plausible bounds in any clip, graceful "--" on lost tracking.
 
 **Phase 7 (DEFERRED by PM, not in this build): New-gauge enrolment CLI.** Described in section 9. Gate: enrol a second gauge from one photo and run the harness on synthetic frames only.
+
+### Phase 3 go/no-go (written before any results; firm up after the Phase 0 baseline)
+Measured after 3b on held-out clips (LOCO):
+- **Continue** to Phase 4: coverage ≥ 85%, wild ≤ 2%, flips 0, rest offset within ±0.2 bar on every clip.
+- **Fix the renderer first**: coverage < 70% or wild > 5%.
+- **Anything in between**: Isaac's call.
+
+### Interfaces (reviewer)
+- The generator's needle parameters (width, length, tail ratio, shade, softness, hub) are configurable from the profile/config, not hard-coded.
+- The model interface is angle-only: input crop → tip-angle distribution + confidence. No bar values, anchors or gauge-specific logic inside the model.
 
 ## 9. Scaling to other gauges
 
