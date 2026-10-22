@@ -279,7 +279,9 @@ function main() {
   const clips = clipList();
   if (clips.length !== 10) throw new Error(`expected 10 clips, found ${clips.length}`);
 
-  slot(['--build', 'npm', 'run', 'build'], {
+  // A plain slot, not --build. --build takes both box slots, and another
+  // job may already be holding slot 1. The build still runs inside the slot.
+  slot(['npm', 'run', 'build'], {
     VITE_ENABLE_PRESSURE_LAB: 'true',
     VITE_PRESSURE_REPLAY: 'true',
   }, '20m');
