@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { smoothFlowSeriesForPlot } from '../scales/flowMetrics.js';
 import {
   flairProfileMarkerProgress,
   flairProfileTaperStartChartProgress,
@@ -109,11 +110,12 @@ const FLOW_GREEN = '#8a9d72';
  */
 function buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec) {
   if (!liveFlowSamples?.length || !built) return null;
-  const maxFlow = Math.max(...liveFlowSamples.map((p) => p.flowGs), 0.5);
+  const plotted = smoothFlowSeriesForPlot(liveFlowSamples);
+  const maxFlow = Math.max(...plotted.map((p) => p.flowGs), 0.5);
   const { padL, padT, chartH, chartW, totalSec } = built;
   const xFor = (tSec) => padL + (Math.min(tSec, totalSec) / totalSec) * chartW;
   const yForFlow = (flow) => padT + chartH - (flow / maxFlow) * chartH * 0.85;
-  const path = liveFlowSamples
+  const path = plotted
     .map((p, i) => {
       const tSec = flowTimeOffsetSec + p.tS;
       return `${i === 0 ? 'M' : 'L'} ${xFor(tSec).toFixed(1)} ${yForFlow(p.flowGs).toFixed(1)}`;
