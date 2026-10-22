@@ -428,22 +428,44 @@ function wedgePeakDegrees(score) {
 function frontalTickDegrees(luma, grid, dx, dy) {
   const n = 360;
   const score = new Float32Array(n);
-  const radii = [0.78];
   for (let i = 0; i < n; i += 1) {
     const ang = (i / n) * Math.PI * 2;
     const c = Math.cos(ang);
     const s = Math.sin(ang);
-    let dark = 0;
-    for (let r = 0; r < radii.length; r += 1) {
-      const obs = diskForward(radii[r] * c, radii[r] * s, dx, dy);
-      if (obs.x * obs.x + obs.y * obs.y > 0.97) continue;
-      const value = cachedLuma(luma, grid, obs.x, obs.y);
-      if (value == null) continue;
-      dark = Math.max(dark, 255 - value);
+    let best = 0;
+    for (let f = 0.64; f <= 0.9; f += 0.04) {
+      const here = diskForward(f * c, f * s, dx, dy);
+      const inner = diskForward((f - 0.06) * c, (f - 0.06) * s, dx, dy);
+      if (here.x * here.x + here.y * here.y > 0.96) continue;
+      const hereL = cachedLuma(luma, grid, here.x, here.y);
+      const innerL = cachedLuma(luma, grid, inner.x, inner.y);
+      if (hereL == null || innerL == null) continue;
+      const contrast = innerL - hereL;
+      if (contrast > best) best = contrast;
     }
-    score[i] = dark;
+    score[i] = best;
   }
   return wedgePeakDegrees(score);
+}
+
+function peakAlignment(inner, outer) {
+  if (!inner?.length || !outer?.length) return 30;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < outer.length; i += 1) {
+    let best = 180;
+    for (let j = 0; j < inner.length; j += 1) {
+      const delta = Math.abs(outer[i] - inner[j]);
+      const wrapped = Math.min(delta, 360 - delta);
+      if (wrapped < best) best = wrapped;
+    }
+    if (best < 14) {
+      sum += best;
+      n += 1;
+    }
+  }
+  if (n < 6) return 30;
+  return sum / n;
 }
 
 function fitPerspectiveOnEllipse(gray, width, height, ellipse) {
@@ -474,15 +496,11 @@ function fitPerspectiveOnEllipse(gray, width, height, ellipse) {
     score: fit.rms + Math.max(0, 18 - fit.inliers) * 0.45 + Math.max(0, 160 - fit.span) * 0.02,
   });
   const ranked = [];
-  let loose = null;
   const push = (dx, dy) => {
-    const peaks = frontalTickDegrees(luma, 128, dx, dy);
-    const fit = chainFit(peaks, spacing);
-    if (fit && (!loose || fit.inliers > loose.inliers || (fit.inliers === loose.inliers && fit.rms < loose.rms))) {
-      loose = { dx, dy, rms: fit.rms, span: fit.span, inliers: fit.inliers, peaks: peaks.length };
-    }
-    if (!fit || fit.inliers < 8 || fit.span < 70 || fit.rms > 2.4) return;
-    ranked.push(pack(dx, dy, fit));
+    const fit = chainFit(frontalTickDegrees(luma, 128, dx, dy), spacing);
+    if (!fit || fit.inliers < 8 || fit.span < 80 || fit.rms > 3.2) return;
+    const packed = pack(dx, dy, fit);
+    ranked.push(packed);
     ranked.sort((a, b) => a.score - b.score);
     if (ranked.length > 4) ranked.length = 4;
   };
@@ -506,11 +524,7 @@ function fitPerspectiveOnEllipse(gray, width, height, ellipse) {
       }
     }
   }
-  const best = ranked[0];
-  if (!best || best.rms > affineRms - 0.8 || best.span < 150 || best.rms > 1.4 || best.inliers < 16) {
-    return { ...zero, loose };
-  }
-  return best;
+  return { ...zero, list: ranked.slice(0, 3) };
 }
 
 /**
@@ -658,6 +672,43 @@ function tickPeakRadians(gray, width, height, ellipse) {
  * Uniformity of dark rim marks on an already-circular face.
  * Residuals are degrees from the printed half-bar lattice (phase is free).
  */
+function ringMarkDegrees(image, cx, cy, radius, frac) {
+  const n = 360;
+  const on = new Uint8Array(n);
+  const { data, width, height } = image;
+  for (let i = 0; i < n; i += 1) {
+    const ang = (i / n) * Math.PI * 2;
+    const x = Math.round(cx + radius * frac * Math.cos(ang));
+    const y = Math.round(cy + radius * frac * Math.sin(ang));
+    if (x < 0 || y < 0 || x >= width || y >= height) continue;
+    const o = (y * width + x) * 4;
+    const luma = data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+    if (luma < 70) on[i] = 1;
+  }
+  const degs = [];
+  let run = null;
+  const close = () => {
+    if (!run || run.w < 1) return;
+    const widthDeg = run.w;
+    if (widthDeg >= 1 && widthDeg <= 16) degs.push(wrapDeg((run.sum / run.w)));
+  };
+  for (let i = 0; i < n; i += 1) {
+    if (on[i]) {
+      if (!run) run = { w: 0, sum: 0 };
+      run.w += 1;
+      run.sum += i;
+    } else if (run) {
+      close();
+      run = null;
+    }
+  }
+  if (run && on[0]) {
+    // merged below if both ends are dark; a single end-run is enough here
+  }
+  close();
+  return degs;
+}
+
 export function measurePrintedTickResidual(image, cx, cy, radius) {
   if (!image?.data || !(radius > 4)) return null;
   const gray = grayscale(image.data, image.width, image.height);
@@ -1137,39 +1188,74 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
   let tick = options.forceOffset ? { dx, dy, forced: true } : null;
   if (perspective && minor / major <= 0.985) {
     const gray = grayscale(crop.data, crop.width, crop.height);
-    tick = fitPerspectiveOnEllipse(gray, crop.width, crop.height, fitted.ellipse);
-    if (tick && (tick.dx !== 0 || tick.dy !== 0)) {
-      const affineTry = warpCircle(cv, image, imageEllipse, 0, 0, null);
-      const perspTry = warpCircle(cv, image, imageEllipse, tick.dx, tick.dy, null);
+    const found = fitPerspectiveOnEllipse(gray, crop.width, crop.height, fitted.ellipse);
+    const list = [];
+    if (found?.list?.[0]) {
+      const seed = found.list[0];
+      const rho = Math.hypot(seed.dx, seed.dy);
+      const phi = Math.atan2(seed.dy, seed.dx);
+      for (let ir = -2; ir <= 2; ir += 1) {
+        for (let ip = -2; ip <= 2; ip += 1) {
+          const rhoTry = rho + ir * 0.01;
+          const phiTry = phi + ip * (Math.PI / 72);
+          list.push({
+            ...seed,
+            dx: rhoTry * Math.cos(phiTry),
+            dy: rhoTry * Math.sin(phiTry),
+          });
+        }
+      }
+    }
+    tick = found;
+    let bestOut = null;
+    for (let c = 0; c < list.length; c += 1) {
+      const cand = list[c];
+      const affineTry = c === 0 ? warpCircle(cv, image, imageEllipse, 0, 0, null) : null;
+      const perspTry = warpCircle(cv, image, imageEllipse, cand.dx, cand.dy, null);
       const affineOut = affineTry
         ? measurePrintedTickResidual(affineTry.image, affineTry.cx, affineTry.cy, affineTry.radius)
-        : null;
+        : bestOut?.affineOut ?? null;
       const perspOut = perspTry
         ? measurePrintedTickResidual(perspTry.image, perspTry.cx, perspTry.cy, perspTry.radius)
         : null;
+      const shear = perspTry
+        ? peakAlignment(
+          ringMarkDegrees(perspTry.image, perspTry.cx, perspTry.cy, perspTry.radius, 0.72),
+          ringMarkDegrees(perspTry.image, perspTry.cx, perspTry.cy, perspTry.radius, 0.86),
+        )
+        : 30;
       const improved = Boolean(
         perspOut
-        && tick.affineRms - tick.rms >= 1.5
-        && tick.rms <= 1.2
-        && tick.span >= 150
-        && tick.inliers >= 16
         && perspOut.inliers >= 16
-        && perspOut.span >= 150
-        && perspOut.rms <= 1.3
-        && (affineOut == null || perspOut.rms <= affineOut.rms - 0.7),
+        && perspOut.span >= 160
+        && perspOut.rms <= 1.15
+        && shear <= 3
+        && (affineOut == null || perspOut.rms <= affineOut.rms - 0.6),
       );
+      if (perspOut) perspOut.shear = shear;
+      if (!bestOut) {
+        bestOut = { cand, perspOut, affineOut, improved, perspTry };
+      } else if (improved && (!bestOut.improved || perspOut.rms < bestOut.perspOut.rms)) {
+        bestOut = { cand, perspOut, affineOut: bestOut.affineOut || affineOut, improved, perspTry };
+      }
+    }
+    if (bestOut) {
       tick = {
-        ...tick,
-        affineOutRms: affineOut?.rms ?? null,
-        outRms: perspOut?.rms ?? null,
-        outInliers: perspOut?.inliers ?? 0,
-        outSpan: perspOut?.span ?? 0,
-        outCount: perspOut?.count ?? 0,
-        accepted: improved,
+        ...bestOut.cand,
+        affineOutRms: bestOut.affineOut?.rms ?? null,
+        outRms: bestOut.perspOut?.rms ?? null,
+        outInliers: bestOut.perspOut?.inliers ?? 0,
+        outSpan: bestOut.perspOut?.span ?? 0,
+        outCount: bestOut.perspOut?.count ?? 0,
+        shear: bestOut.perspOut?.shear ?? null,
+        hub: bestOut.perspTry
+          ? ringMarkDegrees(bestOut.perspTry.image, bestOut.perspTry.cx, bestOut.perspTry.cy, bestOut.perspTry.radius, 0.5).slice(0, 4)
+          : null,
+        accepted: bestOut.improved,
       };
-      if (improved) {
-        dx = tick.dx;
-        dy = tick.dy;
+      if (bestOut.improved) {
+        dx = bestOut.cand.dx;
+        dy = bestOut.cand.dy;
       }
     }
   }

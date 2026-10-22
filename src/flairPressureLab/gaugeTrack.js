@@ -2159,6 +2159,17 @@ export function registerDialRotationFromProfile(profile, needleDeg = null, previ
     && agree
     && arc.confidence >= DIAL_REGISTER_MIN
     && arc.periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
+  if (!ok && arc.confidence > 0.8) {
+    console.info(`REG ${JSON.stringify({
+      arcOk: arc.ok,
+      margin: Math.round(arc.margin * 1000) / 1000,
+      period: Math.round(arc.periodMargin * 1000) / 1000,
+      arcEst: arc.estimateDeg,
+      tickOk: ticks.ok,
+      tickConf: Math.round(ticks.confidence * 100) / 100,
+      tickEst: ticks.estimateDeg,
+    })}`);
+  }
   const rotationDeg = ok
     ? (tickMeasurable ? ticks.estimateDeg : arc.estimateDeg)
     : previousDeg;
