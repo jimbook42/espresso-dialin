@@ -1578,12 +1578,12 @@ describe('pressure CV units', () => {
           g = 214;
           bch = 210;
           const dial = wrap360((Math.atan2(frontal.y, frontal.x) * 180) / Math.PI - rotationDeg);
-          if (rimTickAtDeg(dial) && Math.abs(wrapDelta(dial, pointer)) > 8 && rho > 0.7 && rho < 0.93) {
+          if (rimTickAtDeg(dial) && Math.abs(wrapDelta(dial, barToDialAngle(bar))) > 8 && rho > 0.7 && rho < 0.93) {
             r = 16;
             g = 16;
             bch = 16;
           }
-          if (rho > 0.12 && rho < 0.78 && Math.abs(wrapDelta(pointer, dial)) <= 2.2) {
+          if (rho > 0.12 && rho < 0.78 && Math.abs(wrapDelta(barToDialAngle(bar), dial)) <= 2.2) {
             r = 6;
             g = 6;
             bch = 6;
