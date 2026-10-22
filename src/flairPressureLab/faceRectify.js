@@ -328,6 +328,187 @@ function scoreOffset(observedRad, dx, dy, spacing) {
   return chainFit(degs, spacing);
 }
 
+/** Unit-disk coordinate on the fitted ellipse → image pixel. */
+function ellipseUnitPoint(ellipse, u, v) {
+  const a = ellipse.size.width / 2;
+  const b = ellipse.size.height / 2;
+  const phi = (ellipse.angle * Math.PI) / 180;
+  const cos = Math.cos(phi);
+  const sin = Math.sin(phi);
+  const px = a * u;
+  const py = b * v;
+  return {
+    x: ellipse.center.x + px * cos - py * sin,
+    y: ellipse.center.y + px * sin + py * cos,
+  };
+}
+
+function cacheEllipseLuma(gray, width, height, ellipse, grid) {
+  const luma = new Float32Array(grid * grid);
+  for (let j = 0; j < grid; j += 1) {
+    const v = ((j + 0.5) / grid) * 2 - 1;
+    for (let i = 0; i < grid; i += 1) {
+      const u = ((i + 0.5) / grid) * 2 - 1;
+      const point = ellipseUnitPoint(ellipse, u, v);
+      const value = sampleGray(gray, width, height, point.x, point.y);
+      luma[j * grid + i] = value == null ? 255 : value;
+    }
+  }
+  return luma;
+}
+
+function cachedLuma(luma, grid, u, v) {
+  const x = (u + 1) * 0.5 * grid - 0.5;
+  const y = (v + 1) * 0.5 * grid - 0.5;
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  if (x0 < 0 || y0 < 0 || x0 >= grid - 1 || y0 >= grid - 1) return null;
+  const tx = x - x0;
+  const ty = y - y0;
+  const row = y0 * grid;
+  const next = row + grid;
+  const i00 = luma[row + x0];
+  const i10 = luma[row + x0 + 1];
+  const i01 = luma[next + x0];
+  const i11 = luma[next + x0 + 1];
+  return i00 * (1 - tx) * (1 - ty) + i10 * tx * (1 - ty) + i01 * (1 - tx) * ty + i11 * tx * ty;
+}
+
+function wedgePeakDegrees(score) {
+  const n = score.length;
+  const smooth = new Float32Array(n);
+  let max = 0;
+  for (let i = 0; i < n; i += 1) {
+    let sum = 0;
+    for (let k = -2; k <= 2; k += 1) sum += score[(i + k + n) % n];
+    smooth[i] = sum / 5;
+    if (smooth[i] > max) max = smooth[i];
+  }
+  if (!(max > 8)) return [];
+  const floor = Math.max(8, max * 0.42);
+  const runs = [];
+  let run = null;
+  for (let i = 0; i <= n; i += 1) {
+    const on = i < n && smooth[i] >= floor;
+    if (on) {
+      if (!run) run = { w: 0, sum: 0, start: i, end: i };
+      run.w += smooth[i];
+      run.sum += smooth[i] * i;
+      run.end = i;
+    } else if (run) {
+      runs.push(run);
+      run = null;
+    }
+  }
+  if (runs.length >= 2 && smooth[0] >= floor && smooth[n - 1] >= floor) {
+    const tail = runs[runs.length - 1];
+    const head = runs[0];
+    head.w += tail.w;
+    head.sum += tail.sum - tail.w * n;
+    head.start = tail.start - n;
+    runs.pop();
+  }
+  const kept = [];
+  for (let i = 0; i < runs.length; i += 1) {
+    const item = runs[i];
+    if (!(item.w > 0)) continue;
+    const widthDeg = ((item.end - item.start) / n) * 360;
+    if (widthDeg < 0.5 || widthDeg > 18) continue;
+    const centre = item.sum / item.w;
+    kept.push(wrapDeg((centre / n) * 360));
+  }
+  return kept;
+}
+
+/**
+ * Darkness along frontal rays through a hypothesized pivot.
+ * Printed ticks point at the pivot, which is not the ellipse centre, so a
+ * ray from the ellipse centre misses them.
+ */
+function frontalTickDegrees(luma, grid, dx, dy) {
+  const n = 360;
+  const score = new Float32Array(n);
+  const radii = [0.82, 0.9];
+  for (let i = 0; i < n; i += 1) {
+    const ang = (i / n) * Math.PI * 2;
+    const c = Math.cos(ang);
+    const s = Math.sin(ang);
+    let dark = 0;
+    let count = 0;
+    for (let r = 0; r < radii.length; r += 1) {
+      const obs = diskForward(radii[r] * c, radii[r] * s, dx, dy);
+      if (obs.x * obs.x + obs.y * obs.y > 0.97) continue;
+      const value = cachedLuma(luma, grid, obs.x, obs.y);
+      if (value == null) continue;
+      dark += 255 - value;
+      count += 1;
+    }
+    score[i] = count ? dark / count : 0;
+  }
+  return wedgePeakDegrees(score);
+}
+
+function fitPerspectiveOnEllipse(gray, width, height, ellipse) {
+  const spacing = halfBarSpacingDeg();
+  const luma = cacheEllipseLuma(gray, width, height, ellipse, 128);
+  const affineFit = chainFit(frontalTickDegrees(luma, 128, 0, 0), spacing);
+  const zero = {
+    dx: 0,
+    dy: 0,
+    rms: affineFit?.rms ?? 180,
+    affineRms: affineFit?.rms ?? 180,
+    inliers: affineFit?.inliers ?? 0,
+    span: affineFit?.span ?? 0,
+    spacing,
+    peaks: affineFit?.inliers ?? 0,
+  };
+  if (!affineFit || affineFit.inliers < 6 || affineFit.rms <= 1.15) return zero;
+  const pack = (dx, dy, fit) => ({
+    dx,
+    dy,
+    rms: fit.rms,
+    affineRms: affineFit.rms,
+    inliers: fit.inliers,
+    span: fit.span,
+    spacing,
+    peaks: fit.inliers,
+    score: fit.rms + Math.max(0, 18 - fit.inliers) * 0.45 + Math.max(0, 160 - fit.span) * 0.02,
+  });
+  const ranked = [];
+  const push = (dx, dy) => {
+    const fit = chainFit(frontalTickDegrees(luma, 128, dx, dy), spacing);
+    if (!fit || fit.inliers < 8 || fit.span < 70 || fit.rms > 2.4) return;
+    ranked.push(pack(dx, dy, fit));
+    ranked.sort((a, b) => a.score - b.score);
+    if (ranked.length > 4) ranked.length = 4;
+  };
+  for (let ir = 1; ir <= 16; ir += 1) {
+    const rho = ir * 0.03;
+    for (let ip = 0; ip < 24; ip += 1) {
+      const phi = (ip / 24) * Math.PI * 2;
+      push(rho * Math.cos(phi), rho * Math.sin(phi));
+    }
+  }
+  const seeds = ranked.map((item) => ({ dx: item.dx, dy: item.dy }));
+  for (let s = 0; s < seeds.length; s += 1) {
+    const rho = Math.hypot(seeds[s].dx, seeds[s].dy);
+    const phi = Math.atan2(seeds[s].dy, seeds[s].dx);
+    for (let ir = -3; ir <= 3; ir += 1) {
+      const rhoTry = rho + ir * 0.008;
+      if (rhoTry <= 0.02 || rhoTry >= 0.55) continue;
+      for (let ip = -4; ip <= 4; ip += 1) {
+        const phiTry = phi + ip * (Math.PI / 120);
+        push(rhoTry * Math.cos(phiTry), rhoTry * Math.sin(phiTry));
+      }
+    }
+  }
+  const best = ranked[0];
+  if (!best || best.rms > affineFit.rms - 0.8 || best.span < 150 || best.rms > 1.4 || best.inliers < 16) {
+    return zero;
+  }
+  return best;
+}
+
 /**
  * Perspective offset that puts observed tick angles on the printed half-bar lattice.
  * Returns a zero offset when the affine angles are already uniform.
@@ -952,8 +1133,7 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
   let tick = null;
   if (perspective && minor / major <= 0.985) {
     const gray = grayscale(crop.data, crop.width, crop.height);
-    const peaks = tickPeakRadians(gray, crop.width, crop.height, fitted.ellipse);
-    tick = fitPerspectiveOffset(peaks);
+    tick = fitPerspectiveOnEllipse(gray, crop.width, crop.height, fitted.ellipse);
     if (tick && (tick.dx !== 0 || tick.dy !== 0)) {
       const affineTry = warpCircle(cv, image, imageEllipse, 0, 0, null);
       const perspTry = warpCircle(cv, image, imageEllipse, tick.dx, tick.dy, null);
@@ -965,12 +1145,14 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
         : null;
       const improved = Boolean(
         perspOut
-        && affineOut
-        && affineOut.rms >= 1.5
-        && perspOut.inliers >= 10
-        && perspOut.span >= 140
-        && perspOut.rms <= 1.35
-        && perspOut.rms <= affineOut.rms - 0.7,
+        && tick.affineRms - tick.rms >= 1.5
+        && tick.rms <= 1.2
+        && tick.span >= 150
+        && tick.inliers >= 16
+        && perspOut.inliers >= 16
+        && perspOut.span >= 150
+        && perspOut.rms <= 1.3
+        && (affineOut == null || perspOut.rms <= affineOut.rms - 0.7),
       );
       tick = {
         ...tick,
@@ -978,6 +1160,7 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
         outRms: perspOut?.rms ?? null,
         outInliers: perspOut?.inliers ?? 0,
         outSpan: perspOut?.span ?? 0,
+        outCount: perspOut?.count ?? 0,
         accepted: improved,
       };
       if (improved) {
