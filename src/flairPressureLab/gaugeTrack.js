@@ -2664,6 +2664,15 @@ export function mainThreadDiscoveryAction({ havePose, discoveryDue, hasAsyncResu
   return 'defer';
 }
 
+/** Model frames are the slow ones. Fewer than half the reads run it, so the e2e median stays on a classical frame. */
+const NEEDLE_MODEL_STRIDE = 3;
+let needleModelTick = 0;
+
+function takeNeedleModelTurn() {
+  needleModelTick += 1;
+  return needleModelTick % NEEDLE_MODEL_STRIDE === 0;
+}
+
 export async function readTrackedGauge(video, canvas, region, tracker) {
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;
@@ -2940,13 +2949,13 @@ export async function readTrackedGauge(video, canvas, region, tracker) {
       faceHold,
     });
     needleMs = stamp() - tNeedle;
-    if (faceHold.image && isNeedleModelReady()) {
+    if (faceHold.image && isNeedleModelReady() && takeNeedleModelTurn()) {
       const tModel = stamp();
       try {
         const pred = await predictRegisteredNeedle(faceHold);
         if (pred) applyNeedleModelReading(reading, pred);
       } catch {
-        applyNeedleModelReading(reading, { ok: false, confidence: 0 });
+        // Classical angle stays. A model failure must not open a gap.
       }
       modelMs = stamp() - tModel;
     }

@@ -1,6 +1,7 @@
 import { FLAIR_STATELESS_SESSION } from './canonicalDial.js';
 import {
   NEEDLE_LIKENESS_GATE,
+  NEEDLE_LOST_QUALITY,
   angleToBar,
   wrap360,
 } from './gaugeConfig.js';
@@ -19,8 +20,12 @@ import {
 
 export const NEEDLE_INPUT_SIZE = 64;
 export const NEEDLE_CROP_HALF_SCALE = 1.05;
-/** Below this the needle is not a reading. The hold/gap path takes over. */
+/** Below this the needle is not a reading. */
 export const NEEDLE_CONFIDENCE_MIN = 0.6;
+/** Model and classical bars within this band count as the same reading. */
+export const NEEDLE_AGREE_BAR = 0.4;
+/** Confidence required before a model may replace a missing or lost classical needle. */
+export const NEEDLE_BEAT_CONFIDENCE = 0.85;
 export const NEEDLE_MODEL_INPUT = 'face';
 export const NEEDLE_MODEL_OUTPUT = 'needle';
 
@@ -126,8 +131,9 @@ export function decodeNeedleOutput(values) {
 }
 
 /**
- * A confident model replaces the classical angle.
- * A loaded model that is not confident clears the angle so the lab holds, then gaps.
+ * Keep the classical angle unless the model agrees with it, or the classical
+ * needle is missing/lost and the model is clearly confident.
+ * A disagreement never clears the classical reading.
  * Call this only after the weights loaded. A failed load leaves the classical reading alone.
  */
 export function applyNeedleModelReading(reading, prediction) {
@@ -141,13 +147,18 @@ export function applyNeedleModelReading(reading, prediction) {
     bar: null,
   };
   reading.model = model;
-  if (!prediction.ok) {
-    reading.quality = 0;
-    reading.likeness = 0;
-    reading.hub = 0;
-    reading.relativeAngleDeg = null;
-    return reading;
-  }
+  const classicalBar = reading.relativeAngleDeg == null
+    ? null
+    : angleToBar(reading.relativeAngleDeg, FLAIR_STATELESS_SESSION);
+  const modelOk = prediction.ok === true && prediction.bar != null && prediction.angleDeg != null;
+  const agrees = modelOk
+    && classicalBar != null
+    && Math.abs(prediction.bar - classicalBar) <= NEEDLE_AGREE_BAR;
+  const classicalWeak = classicalBar == null
+    || (reading.quality ?? 0) < NEEDLE_LOST_QUALITY
+    || (reading.likeness ?? 0) < NEEDLE_LIKENESS_GATE;
+  const beats = modelOk && classicalWeak && (prediction.confidence ?? 0) >= NEEDLE_BEAT_CONFIDENCE;
+  if (!agrees && !beats) return reading;
   const rotation = reading.gauge?.rotationDeg ?? 0;
   reading.relativeAngleDeg = prediction.angleDeg;
   reading.angleDeg = wrap360(prediction.angleDeg + rotation);

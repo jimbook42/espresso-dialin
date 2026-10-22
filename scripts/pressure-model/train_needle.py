@@ -57,6 +57,23 @@ def load_split(name):
     return images, labels
 
 
+def with_rest(images, labels):
+    rest_path = os.path.join(DATA, 'rest-labels.json')
+    if not os.path.exists(rest_path):
+        return images, labels
+    rest_images, rest_labels = load_split('rest')
+    count = int(rest_labels['count'])
+    if count < 1:
+        return images, labels
+    reps = max(1, min(12, 480 // count))
+    images = np.concatenate([images, np.tile(rest_images, (reps, 1, 1, 1))], axis=0)
+    for key in ('angleDeg', 'confidence', 'easy'):
+        labels[key] = list(labels[key]) + list(rest_labels[key]) * reps
+    labels['count'] = int(images.shape[0])
+    labels['restCopies'] = count * reps
+    return images, labels
+
+
 def jpeg_roundtrip(rgb, quality, rng):
     im = Image.fromarray(rgb, mode='RGB')
     import io
@@ -185,8 +202,9 @@ def main():
         sys.exit('missing crops; run node scripts/pressure-model/synthesize-crops.mjs')
     torch.manual_seed(0)
     np.random.seed(0)
-    train_images, train_labels = load_split('train')
+    train_images, train_labels = with_rest(*load_split('train'))
     val_images, val_labels = load_split('val')
+    print(f'train {train_labels["count"]} restCopies {train_labels.get("restCopies", 0)}')
     train_loader = torch.utils.data.DataLoader(
         Crops(train_images, train_labels, True, 1),
         batch_size=BATCH,
@@ -241,6 +259,20 @@ def main():
     model.load_state_dict(best_state)
     plain = evaluate(model, val_clean)
     aug = evaluate(model, val_aug)
+    rest_metrics = None
+    if os.path.exists(os.path.join(DATA, 'rest-labels.json')):
+        rest_images, rest_labels = load_split('rest')
+        if rest_labels['count'] > 0:
+            rest_loader = torch.utils.data.DataLoader(
+                Crops(rest_images, rest_labels, False, 4),
+                batch_size=BATCH,
+                shuffle=False,
+            )
+            rest_metrics = evaluate(model, rest_loader)
+            print(
+                f'rest {rest_metrics["angleMaeDeg"]}°/{rest_metrics["barMae"]} bar '
+                f'n {rest_metrics["visibleCount"]} conf {rest_metrics["posConfidenceMean"]}'
+            )
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     model.eval()
     dummy = torch.zeros(1, 3, SIZE, SIZE)
@@ -269,6 +301,7 @@ def main():
         'bytes': os.path.getsize(OUT),
         'valPlain': plain,
         'valAugmented': aug,
+        'rest': rest_metrics,
         'sweepDeg': SWEEP_DEG,
     }
     with open(os.path.join(DATA, 'metrics.json'), 'w', encoding='utf-8') as handle:

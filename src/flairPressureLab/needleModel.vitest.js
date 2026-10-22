@@ -6,6 +6,7 @@ import {
   NEEDLE_CONFIDENCE_MIN,
   NEEDLE_CROP_HALF_SCALE,
   NEEDLE_INPUT_SIZE,
+  NEEDLE_BEAT_CONFIDENCE,
   applyNeedleModelReading,
   decodeNeedleOutput,
   prepareRegisteredFace,
@@ -51,25 +52,64 @@ describe('needle model pre/post', () => {
     expect(hidden.confidence).toBeLessThan(NEEDLE_CONFIDENCE_MIN);
   });
 
-  it('clears a low-confidence reading and keeps a confident one', () => {
-    const classical = { relativeAngleDeg: 200, angleDeg: 200, quality: 0.5, likeness: 0.5, gauge: { rotationDeg: 10 } };
-    applyNeedleModelReading(classical, { ok: false, confidence: 0.2, angleDeg: 10, bar: 0 });
-    expect(classical.relativeAngleDeg).toBeNull();
-    expect(classical.quality).toBe(0);
+  it('keeps a classical reading unless the model agrees or the classical needle is lost', () => {
+    const classical = {
+      relativeAngleDeg: barToDialAngle(0),
+      angleDeg: barToDialAngle(0),
+      quality: 0.5,
+      likeness: 0.5,
+      gauge: { rotationDeg: 10 },
+    };
+    applyNeedleModelReading(classical, { ok: false, confidence: 0.2, angleDeg: 10, bar: 5 });
+    expect(classical.relativeAngleDeg).toBeCloseTo(barToDialAngle(0), 5);
+    expect(classical.quality).toBe(0.5);
     expect(classical.model.used).toBe(false);
 
-    const reading = { relativeAngleDeg: 10, quality: 0.2, likeness: 0.2, gauge: { rotationDeg: 15 } };
-    const five = barToDialAngle(5);
-    applyNeedleModelReading(reading, {
+    const disagree = {
+      relativeAngleDeg: barToDialAngle(0),
+      angleDeg: barToDialAngle(0),
+      quality: 0.7,
+      likeness: 0.7,
+      gauge: { rotationDeg: 0 },
+    };
+    applyNeedleModelReading(disagree, {
+      ok: true,
+      confidence: 0.95,
+      angleDeg: barToDialAngle(5),
+      bar: 5,
+    });
+    expect(disagree.model.used).toBe(false);
+    expect(disagree.relativeAngleDeg).toBeCloseTo(barToDialAngle(0), 5);
+
+    const agree = {
+      relativeAngleDeg: barToDialAngle(5),
+      angleDeg: barToDialAngle(5),
+      quality: 0.4,
+      likeness: 0.5,
+      gauge: { rotationDeg: 15 },
+    };
+    const nudged = barToDialAngle(5.2);
+    applyNeedleModelReading(agree, {
       ok: true,
       confidence: 0.9,
+      angleDeg: nudged,
+      bar: registeredAngleToBar(nudged),
+    });
+    expect(agree.model.used).toBe(true);
+    expect(agree.relativeAngleDeg).toBeCloseTo(nudged, 5);
+    expect(agree.angleDeg).toBeCloseTo((nudged + 15) % 360, 4);
+
+    const lost = { relativeAngleDeg: null, quality: 0, likeness: 0, gauge: { rotationDeg: 15 } };
+    const five = barToDialAngle(5);
+    applyNeedleModelReading(lost, {
+      ok: true,
+      confidence: NEEDLE_BEAT_CONFIDENCE,
       angleDeg: five,
       bar: registeredAngleToBar(five),
     });
-    expect(reading.model.used).toBe(true);
-    expect(reading.relativeAngleDeg).toBeCloseTo(five, 5);
-    expect(reading.angleDeg).toBeCloseTo((five + 15) % 360, 4);
-    expect(reading.model.bar).toBeCloseTo(5, 2);
+    expect(lost.model.used).toBe(true);
+    expect(lost.relativeAngleDeg).toBeCloseTo(five, 5);
+    expect(lost.model.bar).toBeCloseTo(5, 2);
   });
 
   it('packs RGB in NCHW and undoes a clockwise registration', () => {

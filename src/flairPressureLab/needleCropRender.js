@@ -176,6 +176,73 @@ function addGlare(rgb, mask, rng) {
   }
 }
 
+function blurHi(rgb, radius) {
+  const src = rgb.slice();
+  const k = radius * 2 + 1;
+  const area = k * k;
+  for (let y = 0; y < HI; y += 1) {
+    for (let x = 0; x < HI; x += 1) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        const yy = Math.max(0, Math.min(HI - 1, y + dy));
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const xx = Math.max(0, Math.min(HI - 1, x + dx));
+          const o = (yy * HI + xx) * 3;
+          r += src[o];
+          g += src[o + 1];
+          b += src[o + 2];
+        }
+      }
+      const o = (y * HI + x) * 3;
+      rgb[o] = r / area;
+      rgb[o + 1] = g / area;
+      rgb[o + 2] = b / area;
+    }
+  }
+}
+
+/** A ~150–200 px face sampled into 64 px, plus a short smear and a channel split. */
+function photoDegrade(rgb, rng) {
+  blurHi(rgb, 1);
+  const src = rgb.slice();
+  const steps = 3;
+  const ang = rng() * Math.PI * 2;
+  const reach = lerp(rng, 0.8, 2.6);
+  for (let y = 0; y < HI; y += 1) {
+    for (let x = 0; x < HI; x += 1) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let s = 0; s < steps; s += 1) {
+        const t = (s / (steps - 1) - 0.5) * reach;
+        const xx = Math.max(0, Math.min(HI - 1, Math.round(x + Math.cos(ang) * t)));
+        const yy = Math.max(0, Math.min(HI - 1, Math.round(y + Math.sin(ang) * t)));
+        const o = (yy * HI + xx) * 3;
+        r += src[o];
+        g += src[o + 1];
+        b += src[o + 2];
+      }
+      const o = (y * HI + x) * 3;
+      rgb[o] = r / steps;
+      rgb[o + 1] = g / steps;
+      rgb[o + 2] = b / steps;
+    }
+  }
+  const shifted = rgb.slice();
+  const split = rng() < 0.5 ? 1 : -1;
+  for (let y = 0; y < HI; y += 1) {
+    for (let x = 0; x < HI; x += 1) {
+      const xr = Math.max(0, Math.min(HI - 1, x + split));
+      const xb = Math.max(0, Math.min(HI - 1, x - split));
+      const o = (y * HI + x) * 3;
+      rgb[o] = shifted[(y * HI + xr) * 3];
+      rgb[o + 2] = shifted[(y * HI + xb) * 3 + 2];
+    }
+  }
+}
+
 function downsample(rgb) {
   const out = new Uint8ClampedArray(OUT * OUT * 4);
   for (let y = 0; y < OUT; y += 1) {
@@ -252,7 +319,9 @@ export function renderNeedleCrop({
     drawNeedle: !blank && !noNeedle,
     needleHalf: clean ? 0.05 : lerp(rng, 0.038, 0.07),
     face: [lerp(rng, 176, 236), lerp(rng, 170, 228), lerp(rng, 160, 214)],
-    bezel: [lerp(rng, 28, 80), lerp(rng, 28, 76), lerp(rng, 30, 78)],
+    bezel: clean
+      ? [lerp(rng, 28, 80), lerp(rng, 28, 76), lerp(rng, 30, 78)]
+      : [lerp(rng, 4, 22), lerp(rng, 4, 20), lerp(rng, 4, 18)],
     outside: [lerp(rng, 12, 48), lerp(rng, 12, 44), lerp(rng, 12, 42)],
     red: [lerp(rng, 150, 210), lerp(rng, 28, 70), lerp(rng, 28, 64)],
     stop: [lerp(rng, 8, 36), lerp(rng, 8, 32), lerp(rng, 8, 30)],
@@ -274,7 +343,8 @@ export function renderNeedleCrop({
     }
   } else {
     paintDial(rgb, mask, params);
-    if (!clean && rng() < 0.55) addGlare(rgb, mask, rng);
+    if (!clean) photoDegrade(rgb, rng);
+    if (!clean && rng() < 0.72) addGlare(rgb, mask, rng);
     if (covered) {
       blendDisc(rgb, mask, HI * 0.5, HI * 0.5, HI * 0.46, HI * 0.42, [20, 16, 14], true);
     } else if (!clean && rng() < 0.45) {
@@ -293,11 +363,11 @@ export function renderNeedleCrop({
       }
     }
     if (!clean) {
-      const gain = lerp(rng, 0.72, 1.28);
-      const bias = lerp(rng, -18, 18);
+      const gains = [lerp(rng, 0.68, 1.38), lerp(rng, 0.72, 1.28), lerp(rng, 0.62, 1.42)];
+      const bias = lerp(rng, -22, 22);
       for (let i = 0; i < rgb.length; i += 1) {
-        const noise = lerp(rng, -10, 10);
-        rgb[i] = clampByte(rgb[i] * gain + bias + noise);
+        const noise = lerp(rng, -12, 12);
+        rgb[i] = clampByte(rgb[i] * gains[i % 3] + bias + noise);
       }
     }
   }
