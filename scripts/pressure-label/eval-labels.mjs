@@ -364,8 +364,11 @@ function foldParams(holdClip) {
   const deltas = train
     .filter((row) => REST_PHASES.has(row.phase))
     .map((row) => clockwise(row.labelZero, row.labelNeedle));
-  const spans = train.map((row) => clockwise(row.labelZero, row.labelTen));
-  return { delta: medianOf(deltas), sweep: medianOf(spans) };
+  const delta = medianOf(deltas);
+  // The 0 mark is the rest needle, so the sweep is that direction to the 10
+  // tick. Pin-to-10 still includes the pin radius and reads low.
+  const spans = train.map((row) => clockwise(wrap360(row.labelZero + (delta || 0)), row.labelTen));
+  return { delta, sweep: medianOf(spans) };
 }
 
 const locoByClip = [];
@@ -457,8 +460,8 @@ const lines = [
   'Ground truth 0 is the rest needle, not the pin-centre tap. The needle lies on the pin,',
   'so the shaft is clockwise of the pin centre. That offset is the median clockwise',
   'pin→needle angle on rest, dry, and used_1 frames of the other clips (leave-one-clip-out).',
-  'Five and ten stay the printed taps. Predicted bar uses the same fold\'s median pin-to-10',
-  'span as the sweep, because that is the printed arc in the image the taps were made on.',
+  'Five and ten stay the printed taps. Predicted bar divides the finder angle by the',
+  'same fold\'s median rest-needle-to-10 span. That is the printed arc from the 0 the needle rests on.',
   'hubPx: detected centre vs labelled hub. needle: degrees vs hub→tip. zero: degrees vs the rest-calibrated 0.',
   'Bar error median/p90 are over frames that published a number. within-0.5 and no-reading are over every labelled frame.',
   '',
