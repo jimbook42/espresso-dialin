@@ -84,7 +84,7 @@ export function measureDialColorBands(image, cx, cy, radius, needleDeg = null) {
   const red = new Float32Array(BINS);
   const dark = new Float32Array(BINS);
   const redN = sampleAnnulus(
-    image, cx, cy, radius, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, needleDeg, redAnnulus,
+    image, cx, cy, radius, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, null, redAnnulus,
   );
   const darkN = sampleAnnulus(
     image, cx, cy, radius, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION, needleDeg, darkAnnulus,
@@ -149,9 +149,18 @@ function dominantRunCentroid(hist) {
     let mass = 0;
     let sin = 0;
     let cos = 0;
+    let gap = 0;
+    // A pointer on the block opens a short hole. Bridge it. The Flair script
+    // sits far from the block, so a long gap still ends the run.
+    const maxGap = 4;
     for (let t = 0; t < BINS; t += 1) {
       const j = (i + t) % BINS;
-      if (!active[j]) break;
+      if (!active[j]) {
+        gap += 1;
+        if (gap > maxGap) break;
+        continue;
+      }
+      gap = 0;
       const weight = hist[j];
       const rad = ((j * BIN_DEG) * Math.PI) / 180;
       sin += weight * Math.sin(rad);

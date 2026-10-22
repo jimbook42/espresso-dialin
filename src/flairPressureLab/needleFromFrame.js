@@ -1,4 +1,9 @@
-import { NEEDLE_LIKENESS_GATE, OUTER_RADIUS_RATIO, TIP_INNER_RATIO } from './gaugeConfig.js';
+import {
+  NEEDLE_LIKENESS_GATE,
+  NEEDLE_TRACK_QUALITY,
+  OUTER_RADIUS_RATIO,
+  TIP_INNER_RATIO,
+} from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
 
 /**
@@ -598,12 +603,26 @@ function narrowHubLobe(luma, width, height, cx, cy, innerR) {
       }
     }
     if (widthBins < 2 || widthBins > 40) continue;
-    if (bestV > darkest + 10) continue;
-    runs.push({ deg: best * 2, widthBins, lum: bestV });
+    if (bestV > darkest + 7) continue;
+    const deg = best * 2;
+    const radius = innerR / TIP_INNER_RATIO;
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    let dark = 0;
+    let seen = 0;
+    for (let s = 0; s < 8; s += 1) {
+      const r = radius * (0.42 + 0.36 * ((s + 0.5) / 8));
+      const x = (cx + r * cos + 0.5) | 0;
+      const y = (cy + r * sin + 0.5) | 0;
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      seen += 1;
+      if (luma[y * width + x] <= darkest + 14) dark += 1;
+    }
+    runs.push({ deg, widthBins, lum: bestV, reach: seen ? dark / seen : 0 });
   }
   if (!runs.length) return null;
-  runs.sort((a, b) => a.widthBins - b.widthBins || a.lum - b.lum);
-  if (process.env.LOBE) console.error(JSON.stringify(runs));
+  runs.sort((a, b) => b.reach - a.reach || a.widthBins - b.widthBins || a.lum - b.lum);
   return runs[0].deg;
 }
 
@@ -741,7 +760,15 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     }
   }
   const margin = bestScore <= 1e-4 ? 0 : Math.max(0, Math.min(1, (bestScore - second) / bestScore));
-  const quality = margin * Math.min(1, bestLikeness / NEEDLE_LIKENESS_GATE);
+  let likenessOut = bestLikeness;
+  let quality = margin * Math.min(1, bestLikeness / NEEDLE_LIKENESS_GATE);
+  const hub = hubOf(best);
+  // A thick pointer is flat black, so the edge likeness stays low and the
+  // tracker drops a reading the hub lobe already locked.
+  if (lobe != null && hub >= 0.5) {
+    if (likenessOut < NEEDLE_LIKENESS_GATE) likenessOut = NEEDLE_LIKENESS_GATE;
+    if (quality < NEEDLE_TRACK_QUALITY) quality = NEEDLE_TRACK_QUALITY;
+  }
   const subDegree = needleSubDegree(scoreAngle, best, bestScore);
   return {
     angleDeg: subDegree,
@@ -751,14 +778,14 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     oppositeScore,
     secondAngleDeg: secondAngle,
     margin,
-    likeness: bestLikeness,
+    likeness: likenessOut,
     innerReach: bestProfile.innerReach,
     coverage: bestProfile.coverage,
     continuity: bestProfile.continuity,
     startRadius: startRadiusOf(bestProfile.startIndex, innerR, outerR),
     probePx: bestProfile.probePx,
     needleEnd: chosenEnd.needleEnd,
-    hub: hubOf(best),
+    hub,
   };
 }
 

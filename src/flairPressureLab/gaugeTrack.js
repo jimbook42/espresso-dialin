@@ -2435,7 +2435,7 @@ function completeReading({
     let stepped = trackLockedScale(tracker, bands);
     if (stepped.needsFull) {
       let reg = registerDialFromColorBands(bands);
-      if (edgeSink.edges) {
+      if (!reg.ok && edgeSink.edges) {
         const fineEdges = prepareEdges(readImage, {
           contrastRadius: Math.max(2, Math.round(readRadius * 0.05)),
         }).edges;
