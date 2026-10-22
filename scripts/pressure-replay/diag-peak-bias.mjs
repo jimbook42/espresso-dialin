@@ -49,7 +49,7 @@ const SHOTS = [
 function grab(file, t) {
   const result = spawnSync('ffmpeg', [
     '-hide_banner', '-loglevel', 'error', '-noautorotate',
-    '-ss', String(t), '-i', file, '-frames:v', '1',
+    '-i', file, '-ss', String(t), '-frames:v', '1',
     '-f', 'rawvideo', '-pix_fmt', 'rgba', '-',
   ], { maxBuffer: 16 * 1024 * 1024 });
   if (result.status !== 0 || result.stdout.length !== 1280 * 720 * 4) {
