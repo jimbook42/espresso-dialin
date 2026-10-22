@@ -75,7 +75,7 @@ PyTorch BSD-3-Clause, ONNX Apache-2.0, NumPy BSD, Pillow HPND, onnxruntime-web M
 
 ## Phase 5a repair 1 (2026-10-22 21:30 NZT)
 
-The 5.67 bar peak was the wide hub blob (counterweight and a printed mark), not a projective warp. The tip is the dark lobe that reaches out from the hub. On `20261018_160844` that ray plus the red-sector rotation reads **2.56 bar** at 16 s (sanity ~2) and **7.32 bar** at 20 s (sanity ~8). The needle hole was splitting the red run; a short gap is bridged, and the tick comb no longer replaces a colour lock. Dry clip `20261015_225307` at 1 s reads **0 bar** (it was the short end of the same hub pair, about 9 bar).
+The 7.32 bar figure at 20 s is withdrawn. Isaac's marks on that rectified frame put the needle up-left and the printed 0 on the left by the Flair script, about 2–3 bar, not 8. The 7.32 ray was the bright end of the espresso block used as the sector midpoint, so zero landed on the needle and the tip landed on the 10. A later pass anchors zero on the script when that centroid disagrees, and scores the tip as a thin ridge. The overlays still do not line up. See `/workspace/pl-state/diag/ROOT_CAUSE.md`. Dry `20261015_225307` at 1 s still reads 0.
 
 The disk-homography search is gone. A full refit is the affine ellipse. On the 20 s frame, unthrottled, the ellipse is about 5–9 ms and a cold rectify-plus-needle-plus-tick read is about 19 ms after warmup. At 4× that is under the old 1061 ms p95. The browser harness was not re-run this pass. The previous track-path median on this clip was 22.8 ms at 4×.
 
