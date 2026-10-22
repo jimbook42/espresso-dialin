@@ -227,7 +227,7 @@ function lumaAt(data, width, height, x, y) {
  * A real pivot has one crossing radius. An offset centre swings.
  * Returns null when the surround is not brighter than the face.
  */
-function rimMeasure(image, cx, cy) {
+export function rimMeasure(image, cx, cy) {
   const { data, width, height } = image;
   const radii = [];
   for (let i = 0; i < 36; i += 1) {
@@ -259,7 +259,7 @@ function rimMeasure(image, cx, cy) {
   return { std: Math.sqrt(variance), radius: mean * 0.9, n: radii.length };
 }
 
-function searchRim(image, prior, span, step) {
+function searchRim(image, prior, span, step, radiusPrior = 0) {
   let best = null;
   const x0 = prior.x;
   const y0 = prior.y;
@@ -270,8 +270,12 @@ function searchRim(image, prior, span, step) {
       if (dx * dx + dy * dy > span * span) continue;
       const measured = rimMeasure(image, cx, cy);
       if (!measured) continue;
-      const nearer = best && measured.std === best.std && (dx * dx + dy * dy) < best.dist;
-      if (!best || measured.std < best.std || nearer) {
+      if (radiusPrior > 20) {
+        const scale = measured.radius / radiusPrior;
+        if (scale < 0.88 || scale > 1.14) continue;
+      }
+      const nearer = best && Math.abs(measured.std - best.std) < 0.35 && (dx * dx + dy * dy) < best.dist;
+      if (!best || measured.std < best.std - 0.35 || nearer) {
         best = {
           x: cx,
           y: cy,
@@ -646,13 +650,13 @@ export function createCalibratedTracker(calibration) {
 
 function trackPose(image, tracker) {
   const prior = tracker.pose;
-  let found = searchRim(image, prior, TRACK_NEAR_PX, 2);
+  let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius);
   if (!found || found.std > LOST_RIM_STD) {
-    const far = searchRim(image, prior, TRACK_FAR_PX, 4);
+    const far = searchRim(image, prior, TRACK_FAR_PX, 4, prior.radius);
     if (far && (!found || far.std < found.std)) found = far;
   }
   if (found && found.std <= LOST_RIM_STD) {
-    const fine = searchRim(image, found, 2, 1);
+    const fine = searchRim(image, found, 3, 1, prior.radius);
     if (fine && fine.std <= found.std) found = fine;
     return found;
   }
