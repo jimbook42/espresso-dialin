@@ -626,96 +626,8 @@ function narrowHubLobe(luma, width, height, cx, cy, innerR) {
   return bestRidge > 1 ? bestDeg : null;
 }
 
-/**
- * The pivot is the dark screw, not the bezel-fit centre.
- * A bezel pulled toward the stem still leaves the screw inside this window.
- * The screw is a small dark disk on a lighter face. A needle is a line, so
- * the ring around it is not bright all the way round and loses.
- */
-export function refinePivot(image, cx, cy, radius) {
-  if (!image?.data || !(radius > 12)) return { cx, cy };
-  const { data, width, height } = image;
-  const search = radius * 0.28;
-  const inner = Math.max(1.5, radius * 0.04);
-  const outer = inner * 2.4;
-  const step = Math.max(1, Math.round(radius * 0.02));
-  const lumAt = (x, y) => {
-    const xi = (x + 0.5) | 0;
-    const yi = (y + 0.5) | 0;
-    if (xi < 0 || yi < 0 || xi >= width || yi >= height) return null;
-    const o = (yi * width + xi) * 4;
-    return data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
-  };
-  let bestScore = 12;
-  let best = null;
-  for (let dy = -search; dy <= search; dy += step) {
-    for (let dx = -search; dx <= search; dx += step) {
-      if (dx * dx + dy * dy > search * search) continue;
-      const x = cx + dx;
-      const y = cy + dy;
-      let core = 0;
-      let coreN = 0;
-      let ring = 0;
-      let ringN = 0;
-      for (let a = 0; a < 10; a += 1) {
-        const ang = (a / 10) * Math.PI * 2;
-        const c = Math.cos(ang);
-        const s = Math.sin(ang);
-        const innerLum = lumAt(x + c * inner * 0.3, y + s * inner * 0.3);
-        const outerLum = lumAt(x + c * outer, y + s * outer);
-        if (innerLum != null) { core += innerLum; coreN += 1; }
-        if (outerLum != null) { ring += outerLum; ringN += 1; }
-      }
-      if (coreN < 6 || ringN < 6) continue;
-      const coreMean = core / coreN;
-      const ringMean = ring / ringN;
-      const contrast = ringMean - coreMean;
-      if (contrast < 16 || coreMean > 85) continue;
-      const score = contrast - Math.hypot(dx, dy) * 0.2;
-      if (score > bestScore) {
-        bestScore = score;
-        best = { cx: x, cy: y };
-      }
-    }
-  }
-  return best || { cx, cy };
-}
-
-/** Black pointer versus a red script. High chroma along the ray is not the needle. */
-function rayInk(image, cx, cy, angleDeg, innerR, outerR) {
-  const { data, width, height } = image;
-  const rad = (angleDeg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const span = outerR - innerR;
-  let red = 0;
-  let neutral = 0;
-  let n = 0;
-  for (let i = 0; i < 10; i += 1) {
-    const r = innerR + span * ((i + 0.5) / 10);
-    const x = (cx + r * cos + 0.5) | 0;
-    const y = (cy + r * sin + 0.5) | 0;
-    if (x < 0 || y < 0 || x >= width || y >= height) continue;
-    const o = (y * width + x) * 4;
-    const rv = data[o];
-    const gv = data[o + 1];
-    const bv = data[o + 2];
-    const lum = rv * 0.299 + gv * 0.587 + bv * 0.114;
-    const excess = rv - Math.max(gv, bv);
-    const chroma = excess > 0 ? excess / ((rv + gv + bv) / 3 + 1) : 0;
-    n += 1;
-    if (chroma > 0.16 && excess > 16) red += 1;
-    else if (lum < 120) neutral += 1;
-  }
-  if (!n) return { red: 0, neutral: 0 };
-  return { red: red / n, neutral: neutral / n };
-}
-
 export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hintDeg = null) {
   if (!(outerR > innerR + 1)) return emptyDetection();
-  const pivot = refinePivot(image, cx, cy, innerR / TIP_INNER_RATIO);
-  cx = pivot.cx;
-  cy = pivot.cy;
   const contrastRadius = Math.max(3, Math.round((outerR - innerR) / 3));
   const prepared = prepareEdges(image, { contrastRadius });
   const { gray, edges, width, height } = prepared;
@@ -830,33 +742,6 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     bestProfile = oppositeProfile;
   }
 
-  // The Flair script is red. A black pointer on the white face is not.
-  // When the winning ray is that script, take the strongest neutral ridge.
-  const inkOf = (deg) => rayInk(image, cx, cy, deg, innerR, outerR);
-  const winnerInk = inkOf(best);
-  if (winnerInk.red >= 0.4 && winnerInk.neutral < 0.35) {
-    let alt = null;
-    let altScore = -1;
-    const consider = (deg, score) => {
-      if (deg == null || !(score > 0)) return;
-      let distance = Math.abs(deg - best);
-      if (distance > 180) distance = 360 - distance;
-      if (distance <= 8) return;
-      const ink = inkOf(deg);
-      if (ink.red >= 0.35 || ink.neutral < 0.2) return;
-      if (score > altScore) {
-        altScore = score;
-        alt = deg;
-      }
-    };
-    for (const item of measured) consider(item.angle, item.score);
-    consider((best + 180) % 360, oppositeScore);
-    if (alt != null) {
-      best = alt;
-      bestProfile = keepSamples(scoreAngle(alt, null));
-    }
-  }
-
   const bestScore = bestProfile.score < 0 ? 0 : bestProfile.score;
   const bestLikeness = bestProfile.likeness;
   const oppositeScore = oppositeProfile.score;
@@ -908,8 +793,6 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
     probePx: bestProfile.probePx,
     needleEnd: chosenEnd.needleEnd,
     hub,
-    pivotX: cx,
-    pivotY: cy,
   };
 }
 

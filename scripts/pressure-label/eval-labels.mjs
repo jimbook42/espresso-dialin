@@ -123,24 +123,43 @@ function clockwise(fromDeg, toDeg) {
   return wrap360(toDeg - fromDeg);
 }
 
-/** Piecewise-linear bar: 0 at the pin, 5 and 10 at the printed marks, clockwise. */
-export function labelledBar(hub, tip, zero, five, ten) {
-  const aN = imageAngle(hub, tip);
-  const a0 = imageAngle(hub, zero);
-  const a5 = imageAngle(hub, five);
-  const a10 = imageAngle(hub, ten);
-  const span05 = clockwise(a0, a5);
-  const span510 = clockwise(a5, a10);
+/**
+ * Piecewise-linear bar. `zeroOffsetDeg` moves the 0° mark clockwise off the
+ * pin-centre tap onto the needle centreline. The needle rests on top of the
+ * pin, so the shaft does not point at the pin centre. Five and ten stay the
+ * printed marks.
+ */
+export function barFromAngles(needleDeg, zeroDeg, fiveDeg, tenDeg) {
+  const span05 = clockwise(zeroDeg, fiveDeg);
+  const span510 = clockwise(fiveDeg, tenDeg);
   if (!(span05 > 1) || !(span510 > 1)) return null;
-  const from0 = clockwise(a0, aN);
+  const from0 = clockwise(zeroDeg, needleDeg);
   const span = span05 + span510;
   if (from0 <= span05) return (from0 / span05) * 5;
   if (from0 <= span) return 5 + ((from0 - span05) / span510) * 5;
   const past = from0 - span;
   if (past <= 14) return Math.min(10.6, 10 + (past / span510) * 5);
-  const before = clockwise(aN, a0);
+  const before = clockwise(needleDeg, zeroDeg);
   if (before <= 14) return Math.max(-0.6, -(before / span05) * 5);
   return null;
+}
+
+export function labelledBar(hub, tip, zero, five, ten, zeroOffsetDeg = 0) {
+  return barFromAngles(
+    imageAngle(hub, tip),
+    wrap360(imageAngle(hub, zero) + (zeroOffsetDeg || 0)),
+    imageAngle(hub, five),
+    imageAngle(hub, ten),
+  );
+}
+
+/** Frames where the needle is sitting on the pin, not a mid-shot sample. */
+const REST_PHASES = new Set(['rest', 'dry_1', 'used_1']);
+
+function medianOf(values) {
+  const sorted = values.filter((value) => value != null && !Number.isNaN(value)).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
 /**
@@ -206,8 +225,10 @@ export function readFinderFrame(image) {
   const inner = face.radius * TIP_INNER_RATIO;
   const outer = face.radius * OUTER_RADIUS_RATIO;
   const needle = detectNeedleAngle(face.image, face.cx, face.cy, inner, outer);
-  needle.angleDeg = refineNeedleAngle(face.image, face.cx, face.cy, inner, outer, needle.angleDeg);
-  const bands = measureDialColorBands(face.image, face.cx, face.cy, face.radius, needle.angleDeg);
+  const px = Number.isFinite(needle.pivotX) ? needle.pivotX : face.cx;
+  const py = Number.isFinite(needle.pivotY) ? needle.pivotY : face.cy;
+  needle.angleDeg = refineNeedleAngle(face.image, px, py, inner, outer, needle.angleDeg);
+  const bands = measureDialColorBands(face.image, px, py, face.radius, needle.angleDeg);
   let reg = registerDialFromColorBands(bands);
   let regSource = reg.ok ? 'color' : null;
   if (!reg.ok) {
@@ -284,9 +305,11 @@ for (const entry of manifest) {
   const zero = scalePoint(mark.zero, replay.sx, replay.sy);
   const five = scalePoint(mark.five, replay.sx, replay.sy);
   const ten = scalePoint(mark.ten, replay.sx, replay.sy);
-  const labelBar = labelledBar(hub, tip, zero, five, ten);
   const labelNeedle = imageAngle(hub, tip);
   const labelZero = imageAngle(hub, zero);
+  const labelFive = imageAngle(hub, five);
+  const labelTen = imageAngle(hub, ten);
+  const pinBar = labelledBar(hub, tip, zero, five, ten);
   const t0 = performance.now();
   const read = readFinderFrame(replay.image);
   const ms = performance.now() - t0;
@@ -295,7 +318,7 @@ for (const entry of manifest) {
   const predZero = detectorAngleToSource(read.ellipse, read.warped, read.zeroDeg);
   const needleErr = predNeedle == null ? null : Math.abs(wrapDelta(labelNeedle, predNeedle));
   const zeroErr = predZero == null ? null : Math.abs(wrapDelta(labelZero, predZero));
-  const barErr = read.bar == null || labelBar == null ? null : read.bar - labelBar;
+  const barErr = read.bar == null || pinBar == null ? null : read.bar - pinBar;
   rows.push({
     id: entry.id,
     clip: entry.clip,
@@ -305,7 +328,11 @@ for (const entry of manifest) {
     native: `${native.width}x${native.height}`,
     sx: round(replay.sx, 4),
     sy: round(replay.sy, 4),
-    labelBar: round(labelBar, 3),
+    pinBar: round(pinBar, 3),
+    labelBar: round(pinBar, 3),
+    labelFive: round(labelFive, 2),
+    labelTen: round(labelTen, 2),
+    runtimeBar: round(read.bar, 3),
     predBar: round(read.bar, 3),
     barErr: round(barErr, 3),
     hubPx: round(hubPx, 2),
@@ -332,6 +359,58 @@ for (const entry of manifest) {
   );
 }
 
+function foldParams(holdClip) {
+  const train = rows.filter((row) => row.clip !== holdClip && row.labelZero != null);
+  const deltas = train
+    .filter((row) => REST_PHASES.has(row.phase))
+    .map((row) => clockwise(row.labelZero, row.labelNeedle));
+  const spans = train.map((row) => clockwise(row.labelZero, row.labelTen));
+  return { delta: medianOf(deltas), sweep: medianOf(spans) };
+}
+
+const locoByClip = [];
+for (const row of rows) {
+  if (row.labelZero == null) continue;
+  const { delta, sweep } = foldParams(row.clip);
+  row.restOffsetDeg = round(delta, 2);
+  row.locoSweepDeg = round(sweep, 2);
+  const zero = wrap360(row.labelZero + delta);
+  row.labelBar = round(barFromAngles(row.labelNeedle, zero, row.labelFive, row.labelTen), 3);
+  row.zeroErr = row.predZero == null ? null : round(Math.abs(wrapDelta(zero, row.predZero)), 2);
+  let pred = null;
+  if (row.predNeedle != null && row.predZero != null && sweep > 0) {
+    pred = angleToBar(clockwise(row.predZero, row.predNeedle), {
+      ...FLAIR_STATELESS_SESSION,
+      zeroAngleDeg: 0,
+      sweepDeg: sweep,
+    });
+  }
+  row.predBar = round(pred, 3);
+  row.barErr = pred == null || row.labelBar == null ? null : round(pred - row.labelBar, 3);
+  if (pred == null) row.reason = row.reason || 'off-scale';
+  else row.reason = null;
+}
+
+const clips = [...new Set(rows.map((row) => row.clip))];
+for (const clip of clips) {
+  const held = rows.filter((row) => row.clip === clip);
+  const errs = held.map((row) => (row.barErr == null ? null : Math.abs(row.barErr))).filter((v) => v != null);
+  const miss = held.filter((row) => row.predBar == null).length;
+  const sample = held.find((row) => row.restOffsetDeg != null);
+  locoByClip.push({
+    clip,
+    n: held.length,
+    readings: errs.length,
+    noReading: miss,
+    noReadingPct: round((100 * miss) / held.length, 1),
+    medianAbsBar: round(quantile(errs, 0.5), 3),
+    p90AbsBar: round(quantile(errs, 0.9), 3),
+    restOffsetDeg: sample?.restOffsetDeg ?? null,
+    sweepDeg: sample?.locoSweepDeg ?? null,
+    medianMs: round(quantile(held.map((row) => row.ms).filter((v) => v != null), 0.5), 1),
+  });
+}
+
 const readable = rows.filter((row) => row.barErr != null);
 const absBar = readable.map((row) => Math.abs(row.barErr));
 const n = rows.length;
@@ -356,6 +435,7 @@ const summary = {
   p90ZeroErr: round(quantile(rows.map((r) => r.zeroErr).filter((v) => v != null), 0.9), 2),
   medianMs: round(quantile(rows.map((r) => r.ms).filter((v) => v != null), 0.5), 1),
   p95Ms: round(quantile(rows.map((r) => r.ms).filter((v) => v != null), 0.95), 1),
+  locoMedianOfClipMedians: round(quantile(locoByClip.map((c) => c.medianAbsBar).filter((v) => v != null), 0.5), 3),
 };
 
 const header = [
@@ -374,8 +454,12 @@ const header = [
 
 const lines = [
   'Pressure finder vs hand labels. Replay space 1280x720.',
-  'hubPx: detected centre vs labelled hub. needle/zero: absolute degrees vs hub->mark direction.',
-  'pred: colour registration, else rim template. No reading when registration fails or the angle is off the printed scale.',
+  'Ground truth 0 is the rest needle, not the pin-centre tap. The needle lies on the pin,',
+  'so the shaft is clockwise of the pin centre. That offset is the median clockwise',
+  'pin→needle angle on rest, dry, and used_1 frames of the other clips (leave-one-clip-out).',
+  'Five and ten stay the printed taps. Predicted bar uses the same fold\'s median pin-to-10',
+  'span as the sweep, because that is the printed arc in the image the taps were made on.',
+  'hubPx: detected centre vs labelled hub. needle: degrees vs hub→tip. zero: degrees vs the rest-calibrated 0.',
   'Bar error median/p90 are over frames that published a number. within-0.5 and no-reading are over every labelled frame.',
   '',
   header,
@@ -402,9 +486,26 @@ lines.push(`within0.5=${summary.within0_5} (${summary.within0_5Pct}% of frames, 
 lines.push(`medianHubPx=${summary.medianHubPx} p90HubPx=${summary.p90HubPx}`);
 lines.push(`medianNeedleErr=${summary.medianNeedleErr} p90NeedleErr=${summary.p90NeedleErr}`);
 lines.push(`medianZeroErr=${summary.medianZeroErr} p90ZeroErr=${summary.p90ZeroErr}`);
-lines.push(`unthrottled medianMs=${summary.medianMs} p95Ms=${summary.p95Ms}`);
+lines.push(`unthrottled cold-read medianMs=${summary.medianMs} p95Ms=${summary.p95Ms} (discovery+rectify+needle+register, not the tracked frame)`);
+lines.push('');
+lines.push('Leave-one-clip-out. Offset and sweep are fit on the other clips only.');
+lines.push('clip             n read miss%  median  p90   offset sweep  ms');
+for (const clip of locoByClip) {
+  lines.push([
+    clip.clip.padEnd(16),
+    String(clip.n).padStart(2),
+    String(clip.readings).padStart(4),
+    fmt(clip.noReadingPct, 6, 0),
+    fmt(clip.medianAbsBar, 7, 3),
+    fmt(clip.p90AbsBar, 6, 3),
+    fmt(clip.restOffsetDeg, 7, 1),
+    fmt(clip.sweepDeg, 6, 1),
+    fmt(clip.medianMs, 6, 1),
+  ].join(' '));
+}
+lines.push(`median of held-out clip medians=${summary.locoMedianOfClipMedians}`);
 
 const text = `${lines.join('\n')}\n`;
 writeFileSync(`${outBase}.txt`, text);
-writeFileSync(`${outBase}.json`, JSON.stringify({ summary, frames: rows }, null, 2));
+writeFileSync(`${outBase}.json`, JSON.stringify({ summary, loco: locoByClip, frames: rows }, null, 2));
 process.stdout.write(text);
