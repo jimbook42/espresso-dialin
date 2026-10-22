@@ -721,16 +721,23 @@ export function detectNeedleAngle(image, cx, cy, innerR, outerR, sink = null, hi
 
   const hubOf = (deg) => hubConnection(rawLuma, width, height, cx, cy, deg, innerR);
   const lobe = narrowHubLobe(rawLuma, width, height, cx, cy, innerR);
+  // The darkest hub ridge is often the short tail or a numeral. It may
+  // break a reach tie. It must not replace a pointer that continues further.
   if (lobe != null) {
-    best = lobe;
-    bestProfile = keepSamples(scoreAngle(lobe, null));
+    const lobeProfile = keepSamples(scoreAngle(lobe, null));
+    const lobeEnd = coherentEndIndex(lobeProfile.samples);
+    const reachEnd = coherentEndIndex(bestProfile.samples);
+    if (lobeEnd >= reachEnd) {
+      best = lobe;
+      bestProfile = lobeProfile;
+    }
   }
 
   const opposite = (best + 180) % 360;
   const oppositeIndex = scan.angles.indexOf(opposite);
   const oppositeProfile = keepSamples(scoreAngle(opposite, oppositeIndex >= 0 ? evidence[oppositeIndex] : null));
   const chosenEnd = selectPointerEnd(bestProfile, oppositeProfile);
-  if (chosenEnd.takeOpposite && lobe == null) {
+  if (chosenEnd.takeOpposite) {
     best = opposite;
     bestProfile = oppositeProfile;
   }
