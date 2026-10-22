@@ -497,20 +497,21 @@ export function captureTipTemplate(image, cx, cy, deg, radius) {
 
 function keepTip(row) {
   if (!row) return false;
-  if (row.bins >= 5 && row.corr >= 0.84 && Math.abs(row.off) <= 6) return true;
-  return row.bins >= 4 && row.corr >= 0.9 && Math.abs(row.off) <= 6;
+  if (row.bins >= 6 && row.corr >= 0.92 && Math.abs(row.off) <= 8) return true;
+  if (row.bins >= 5 && row.corr >= 0.86 && Math.abs(row.off) <= 6 && row.raw >= 80) return true;
+  return row.bins >= 5 && row.corr >= 0.9 && Math.abs(row.off) <= 4;
 }
 
-function scanTip(image, cx, cy, radius, template, angles, priorDeg) {
+function gatherTip(image, cx, cy, radius, template, angles, priorDeg, offStep) {
   let byScore = null;
   let byCorr = null;
   for (let i = 0; i < angles.length; i += 1) {
     const deg = angles[i];
-    for (let off = -8; off <= 8; off += 2) {
+    for (let off = -8; off <= 8; off += offStep) {
       const measured = tipValley(image, cx, cy, deg, radius, off);
       if (measured.bins < 4) continue;
       const corr = Math.max(0, tipCorr(template));
-      let raw = measured.acc + measured.bins * 4 - Math.abs(off) * 1.4;
+      let raw = measured.acc + measured.bins * 4 - Math.abs(off) * 2.8;
       if (priorDeg != null && Math.abs(wrapDelta(deg, priorDeg)) <= 12) raw += 8;
       const row = { deg, off, raw, bins: measured.bins, corr };
       if (!byScore || raw > byScore.raw) byScore = row;
@@ -519,18 +520,29 @@ function scanTip(image, cx, cy, radius, template, angles, priorDeg) {
       }
     }
   }
-  if (globalThis.__tipDebug) {
-    const brief = (row) => (row ? `${row.deg.toFixed(1)} c${row.corr.toFixed(2)} b${row.bins} o${row.off} r${row.raw.toFixed(0)}` : 'none');
-    console.log('tip', brief(byScore), 'corrW', brief(byCorr));
-  }
+  return { byScore, byCorr };
+}
+
+function chooseTip(byScore, byCorr) {
   if (byCorr && byScore && Math.abs(wrapDelta(byCorr.deg, byScore.deg)) > 12) {
-    if (byCorr.corr >= byScore.corr + 0.12 && byCorr.corr >= 0.9 && Math.abs(byCorr.off) <= 6) return byCorr;
+    const corrStrong = byCorr.corr >= byScore.corr + 0.12
+      && byCorr.corr >= 0.9
+      && byCorr.bins >= 5
+      && byCorr.raw >= 80
+      && byCorr.raw >= byScore.raw * 0.75
+      && Math.abs(byCorr.off) <= 6;
+    if (corrStrong) return byCorr;
     if (keepTip(byScore)) return byScore;
     return null;
   }
   if (keepTip(byScore)) return byScore;
   if (keepTip(byCorr)) return byCorr;
   return null;
+}
+
+function scanTip(image, cx, cy, radius, template, angles, priorDeg) {
+  const found = gatherTip(image, cx, cy, radius, template, angles, priorDeg, 2);
+  return chooseTip(found.byScore, found.byCorr);
 }
 
 function anglesNear(prior, half, zero, ten) {
@@ -561,7 +573,7 @@ function refineTip(image, cx, cy, radius, template, rough) {
       if (measured.bins < 4) continue;
       const corr = Math.max(0, tipCorr(template));
       if (corr + 0.08 < rough.corr) continue;
-      const raw = measured.acc + measured.bins * 4 - Math.abs(off) * 1.4;
+      const raw = measured.acc + measured.bins * 4 - Math.abs(off) * 2.8;
       if (raw > best.raw) best = { deg, off, raw, bins: measured.bins, corr };
     }
   }
@@ -586,6 +598,12 @@ export function matchTipAngle(image, cx, cy, radius, template, zeroDeg, tenDeg, 
   if (!found || barFromRestSpan(found.deg, zeroDeg, tenDeg) == null) return null;
   const refined = refineTip(image, cx, cy, radius, template, found);
   if (barFromRestSpan(refined.deg, zeroDeg, tenDeg) == null) return null;
+  const jump = priorDeg == null ? 0 : Math.abs(wrapDelta(refined.deg, priorDeg));
+  const jumpLimit = misses >= 2 ? 150 : 85;
+  if (jump > jumpLimit) return null;
+  // A line that barely leaves the last angle is usually the tail or the pin.
+  // The detector already had that neighbourhood and declined it.
+  if (jump < 30 && refined.corr < 0.95 && refined.bins < 7) return null;
   return {
     angleDeg: refined.deg,
     quality: Math.max(NEEDLE_LOST_QUALITY, Math.min(1, refined.corr)),
