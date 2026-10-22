@@ -3,7 +3,7 @@
  */
 
 /** ~1–1.5 s time constant for plotted flow curves (live + history). */
-export const FLOW_PLOT_SMOOTH_WINDOW_S = 1.25;
+export const FLOW_PLOT_SMOOTH_WINDOW_S = 1.75;
 
 /**
  * @typedef {{ tS: number, weightG: number }} ScaleFlowSample
