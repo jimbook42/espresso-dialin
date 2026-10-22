@@ -3,6 +3,7 @@ import {
   createFlowEndAutoStopState,
   FLOW_AUTO_STOP_ARM_MIN_GS,
   FLOW_AUTO_STOP_CONFIRM_S,
+  FLOW_AUTO_STOP_END_ABS_MAX_GS,
   FLOW_AUTO_STOP_PEAK_END_FRACTION,
   flowEndAutoStopRecordedEndExtractionS,
   flowEndAutoStopShouldFreezeTimer,
@@ -17,6 +18,13 @@ const baseInput = {
   tExtractionS: 0,
   smoothedFlowGs: 0,
 };
+
+function flowEndThreshold(peakSmoothedGs) {
+  return Math.min(
+    peakSmoothedGs * FLOW_AUTO_STOP_PEAK_END_FRACTION,
+    FLOW_AUTO_STOP_END_ABS_MAX_GS,
+  );
+}
 
 function runSeries(steps) {
   let state = createFlowEndAutoStopState();
@@ -41,10 +49,10 @@ describe('flowEndAutoStop', () => {
     const state = runSeries([
       { tExtractionS: 5, smoothedFlowGs: FLOW_AUTO_STOP_ARM_MIN_GS },
       { tExtractionS: 15, smoothedFlowGs: peak },
-      { tExtractionS: dropT, smoothedFlowGs: peak * FLOW_AUTO_STOP_PEAK_END_FRACTION - 0.01 },
+      { tExtractionS: dropT, smoothedFlowGs: flowEndThreshold(peak) - 0.01 },
       {
         tExtractionS: dropT + FLOW_AUTO_STOP_CONFIRM_S,
-        smoothedFlowGs: peak * FLOW_AUTO_STOP_PEAK_END_FRACTION - 0.01,
+        smoothedFlowGs: flowEndThreshold(peak) - 0.01,
       },
     ]);
     expect(flowEndAutoStopShouldStop(state)).toBe(true);
@@ -80,10 +88,10 @@ describe('flowEndAutoStop', () => {
     const state = runSeries([
       { tExtractionS: 5, smoothedFlowGs: FLOW_AUTO_STOP_ARM_MIN_GS },
       { tExtractionS: 15, smoothedFlowGs: peak },
-      { tExtractionS: dipT, smoothedFlowGs: peak * FLOW_AUTO_STOP_PEAK_END_FRACTION - 0.01 },
+      { tExtractionS: dipT, smoothedFlowGs: flowEndThreshold(peak) - 0.01 },
       {
         tExtractionS: dipT + 0.5,
-        smoothedFlowGs: peak * FLOW_AUTO_STOP_PEAK_END_FRACTION - 0.01,
+        smoothedFlowGs: flowEndThreshold(peak) - 0.01,
       },
       { tExtractionS: dipT + 1, smoothedFlowGs: peak },
       { tExtractionS: 40, smoothedFlowGs: peak },
@@ -91,6 +99,21 @@ describe('flowEndAutoStop', () => {
     expect(flowEndAutoStopShouldStop(state)).toBe(false);
     expect(flowEndAutoStopRecordedEndExtractionS(state)).toBe(null);
     expect(flowEndAutoStopShouldFreezeTimer(state)).toBe(false);
+  });
+
+  it('does not stop on high peak while flow is between abs cap and peak fraction', () => {
+    const peak = 5;
+    const betweenCapAndFraction = 0.5;
+    expect(betweenCapAndFraction).toBeGreaterThan(FLOW_AUTO_STOP_END_ABS_MAX_GS);
+    expect(betweenCapAndFraction).toBeLessThan(peak * FLOW_AUTO_STOP_PEAK_END_FRACTION);
+    const state = runSeries([
+      { tExtractionS: 5, smoothedFlowGs: FLOW_AUTO_STOP_ARM_MIN_GS },
+      { tExtractionS: 15, smoothedFlowGs: peak },
+      { tExtractionS: 40, smoothedFlowGs: betweenCapAndFraction },
+      { tExtractionS: 60, smoothedFlowGs: betweenCapAndFraction },
+    ]);
+    expect(flowEndAutoStopShouldStop(state)).toBe(false);
+    expect(flowEndAutoStopRecordedEndExtractionS(state)).toBe(null);
   });
 
   it('does not stop when disabled', () => {
