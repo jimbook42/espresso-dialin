@@ -152,7 +152,11 @@ function dominantRunCentroid(hist) {
     let gap = 0;
     // A pointer on the block opens a short hole. Bridge it. The Flair script
     // sits far from the block, so a long gap still ends the run.
-    const maxGap = 4;
+    // Four bins is 20°. A pointer lying on the block, plus the shadow beside
+    // it, is wider than that and was splitting the run so the centroid sat
+    // on one end. Six bins still cannot reach the script, which sits off
+    // the block by a sector.
+    const maxGap = 6;
     for (let t = 0; t < BINS; t += 1) {
       const j = (i + t) % BINS;
       if (!active[j]) {
