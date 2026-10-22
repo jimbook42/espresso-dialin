@@ -73,24 +73,13 @@ PyTorch BSD-3-Clause, ONNX Apache-2.0, NumPy BSD, Pillow HPND, onnxruntime-web M
 - Phone photo is canonical: 21 half-bar ticks, spacing 8.976°, sweep 179.52°. Product photo disagreed (~190°) and was not used.
 - Oblique synthetic reader (classical, before this model), largest error about 0.55 bar on the four seeded frames.
 
-## Phase 5a (in progress, 2026-10-22 20:15 NZT)
+## Phase 5a repair 1 (2026-10-22 21:30 NZT)
 
-Fit-once ellipse plus a disk homography, gated on the printed half-bar lattice. Synthetic close-camera frame reads 7.5 bar within 0.6, and the affine oblique frames stay within 0.6. `run-clip-browser.mjs` writes replay stills under `/workspace/pl-data/frames`, not `/tmp`.
+The 5.67 bar peak was the wide hub blob (counterweight and a printed mark), not a projective warp. The tip is the dark lobe that reaches out from the hub. On `20261018_160844` that ray plus the red-sector rotation reads **2.56 bar** at 16 s (sanity ~2) and **7.32 bar** at 20 s (sanity ~8). The needle hole was splitting the red run; a short gap is bridged, and the tick comb no longer replaces a colour lock. Dry clip `20261015_225307` at 1 s reads **0 bar** (it was the short end of the same hub pair, about 9 bar).
 
-Measured `20261018_160844` (sanity peak ~8 bar at 20 s, preinfusion end ~2 bar at 16 s) through the replay harness, 4× CPU throttle:
+The disk-homography search is gone. A full refit is the affine ellipse. On the 20 s frame, unthrottled, the ellipse is about 5–9 ms and a cold rectify-plus-needle-plus-tick read is about 19 ms after warmup. At 4× that is under the old 1061 ms p95. The browser harness was not re-run this pass. The previous track-path median on this clip was 22.8 ms at 4×.
 
-| | |
-| --- | ---: |
-| e2e median | 22.8 ms |
-| e2e p95 | 1061 ms |
-| frames processed | 100% |
-| privacy | passed |
-
-The median is under the 33 ms budget. The p95 is a full ellipse refit.
-
-On that clip the locked face (about x=630, y=170, radius 100) reads 0.1–0.5 bar before the shot, with rotation near 303°. At 18.8 s the same rotation and a classical needle at about 191° publish **5.67 bar**, then the trace sits near 4.4–4.6. Relative to zero at 145°, 5.67 bar is about 102° along the sweep; 8 bar is 144°. The shortfall is that needle ray, about 42°.
-
-The same frame’s edge marks do not form a 21-tick comb. The best half-bar chain keeps 8 marks over 192° at 1.6° rms, short of the accept gate (16 marks, 160° span, rms ≤ 1.15°, shear ≤ 3°). No perspective offset is applied, so the runtime stays on the affine warp. An edge-magnitude search was tried and removed: it did not clear that gate, and it would add a second full search on every real refit.
+Offline overlays and the write-up are in `/workspace/pl-state/diag/` (`ROOT_CAUSE.md`). The diagnostic is `scripts/pressure-replay/diag-peak-bias.mjs`. It is not on the runtime path.
 
 ## Rules (unchanged)
 
