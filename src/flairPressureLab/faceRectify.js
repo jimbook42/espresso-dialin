@@ -401,9 +401,22 @@ function tickPeakRadians(gray, width, height, ellipse) {
     const edge = ellipsePoint(ellipse, (i / n) * Math.PI * 2);
     const sx = edge.x - ellipse.center.x;
     const sy = edge.y - ellipse.center.y;
-    const mid = meanAlong(gray, width, height, ellipse.center.x, ellipse.center.y, sx, sy, [0.62, 0.68]);
-    const outer = meanAlong(gray, width, height, ellipse.center.x, ellipse.center.y, sx, sy, [0.78, 0.84, 0.9]);
-    score[i] = mid == null || outer == null ? 0 : mid - outer;
+    // Tick radius moves when the pivot is not the ellipse centre, so follow the ray.
+    let best = 0;
+    for (let f = 0.5; f <= 0.94; f += 0.02) {
+      const here = sampleGray(gray, width, height, ellipse.center.x + sx * f, ellipse.center.y + sy * f);
+      const inner = sampleGray(
+        gray,
+        width,
+        height,
+        ellipse.center.x + sx * (f - 0.06),
+        ellipse.center.y + sy * (f - 0.06),
+      );
+      if (here == null || inner == null) continue;
+      const contrast = inner - here;
+      if (contrast > best) best = contrast;
+    }
+    score[i] = best;
   }
   const smooth = new Float32Array(n);
   let max = 0;
@@ -930,8 +943,36 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
     const gray = grayscale(crop.data, crop.width, crop.height);
     const peaks = tickPeakRadians(gray, crop.width, crop.height, fitted.ellipse);
     tick = fitPerspectiveOffset(peaks);
-    dx = tick.dx;
-    dy = tick.dy;
+    if (tick && (tick.dx !== 0 || tick.dy !== 0)) {
+      const affineTry = warpCircle(cv, image, imageEllipse, 0, 0, null);
+      const perspTry = warpCircle(cv, image, imageEllipse, tick.dx, tick.dy, null);
+      const affineOut = affineTry
+        ? measurePrintedTickResidual(affineTry.image, affineTry.cx, affineTry.cy, affineTry.radius)
+        : null;
+      const perspOut = perspTry
+        ? measurePrintedTickResidual(perspTry.image, perspTry.cx, perspTry.cy, perspTry.radius)
+        : null;
+      const improved = Boolean(
+        perspOut
+        && affineOut
+        && perspOut.inliers >= 10
+        && perspOut.span >= 120
+        && perspOut.rms <= 1.6
+        && perspOut.rms <= affineOut.rms - 0.4,
+      );
+      tick = {
+        ...tick,
+        affineOutRms: affineOut?.rms ?? null,
+        outRms: perspOut?.rms ?? null,
+        outInliers: perspOut?.inliers ?? 0,
+        outSpan: perspOut?.span ?? 0,
+        accepted: improved,
+      };
+      if (improved) {
+        dx = tick.dx;
+        dy = tick.dy;
+      }
+    }
   }
   return finishEllipse(cv, image, imageEllipse, dx, dy, warpHold, {
     fit: 'full',
