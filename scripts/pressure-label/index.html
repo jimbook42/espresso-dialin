@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Pressure gauge label</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header id="top">
+    <div id="progress">—</div>
+    <div id="meta"></div>
+  </header>
+  <main id="stage-wrap">
+    <div id="stage">
+      <img id="frame" alt="" draggable="false" />
+      <canvas id="overlay"></canvas>
+    </div>
+  </main>
+  <footer id="controls">
+    <p id="prompt" class="prompt">Loading…</p>
+    <div class="btn-row">
+      <button type="button" id="btn-skip-step">Skip step</button>
+      <button type="button" id="btn-undo">Undo</button>
+    </div>
+    <div class="btn-row">
+      <button type="button" id="btn-unclear" class="warn">Unclear / skip frame</button>
+    </div>
+    <div class="btn-row nav">
+      <button type="button" id="btn-prev">Prev</button>
+      <button type="button" id="btn-next">Next</button>
+    </div>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>
