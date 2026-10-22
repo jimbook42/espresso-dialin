@@ -10,6 +10,7 @@ import {
   markResidualPx,
   parseTapCalQuery,
   snapHub,
+  tapsFromReplayHook,
 } from './tapCalibrate.js';
 
 function point(angleDeg, radius, origin = { x: 200, y: 180 }) {
@@ -92,6 +93,20 @@ describe('parseTapCalQuery', () => {
     });
     expect(parseTapCalQuery('')).toBeNull();
     expect(parseTapCalQuery('?tapcal=1,2,3')).toBeNull();
+  });
+});
+
+describe('tapsFromReplayHook', () => {
+  it('keeps an optional rest time with the three taps', () => {
+    expect(tapsFromReplayHook({
+      __pressureLabTapCal: { atSec: 0.4, centre: [1, 2], five: [3, 4], ten: [5, 6] },
+    })).toEqual({
+      centre: { x: 1, y: 2 },
+      five: { x: 3, y: 4 },
+      ten: { x: 5, y: 6 },
+      atSec: 0.4,
+    });
+    expect(tapsFromReplayHook({})).toBeNull();
   });
 });
 

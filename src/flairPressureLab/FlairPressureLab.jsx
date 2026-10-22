@@ -571,7 +571,10 @@ export function FlairPressureLab() {
       const useTap = !REPLAY_BUILD || tapTrackerRef.current || tapPhase !== 'legacy';
       if (REPLAY_BUILD && !tapTrackerRef.current) {
         const injected = tapsFromReplayHook() || parseTapCalQuery(window.location.search);
-        if (injected) {
+        const atSec = injected?.atSec;
+        const sampleT = Number(video.currentTime) || 0;
+        const tapWindowOpen = atSec == null || (sampleT + 1e-3 >= atSec && sampleT < atSec + 0.5);
+        if (injected && tapWindowOpen) {
           const image = grabSourceImage(video);
           const calibrated = image && calibrateFromTaps(image, injected);
           if (calibrated?.ok) {

@@ -260,7 +260,7 @@ export function rimMeasure(image, cx, cy, angles = 36, rStep = 1) {
   return { std: Math.sqrt(variance), radius: mean * 0.9, n: radii.length };
 }
 
-function searchRim(image, prior, span, step, radiusPrior = 0, angles = 36, rStep = 1) {
+function searchRim(image, prior, span, step, radiusPrior = 0, angles = 36, rStep = 1, strictMin = false) {
   let best = null;
   const x0 = prior.x;
   const y0 = prior.y;
@@ -275,15 +275,21 @@ function searchRim(image, prior, span, step, radiusPrior = 0, angles = 36, rStep
         const scale = measured.radius / radiusPrior;
         if (scale < 0.88 || scale > 1.14) continue;
       }
-      const nearer = best && Math.abs(measured.std - best.std) < 0.35 && (dx * dx + dy * dy) < best.dist;
-      if (!best || measured.std < best.std - 0.35 || nearer) {
+      const dist = dx * dx + dy * dy;
+      const nearer = !strictMin && best && Math.abs(measured.std - best.std) < 0.35 && dist < best.dist;
+      const stricter = strictMin && (
+        !best
+        || measured.std < best.std - 0.05
+        || (Math.abs(measured.std - best.std) <= 0.05 && dist < best.dist)
+      );
+      if (!best || measured.std < best.std - 0.35 || nearer || stricter) {
         best = {
           x: cx,
           y: cy,
           radius: measured.radius,
           std: measured.std,
           score: Math.max(0, (12 - measured.std) / 12),
-          dist: dx * dx + dy * dy,
+          dist,
         };
       }
     }
@@ -661,56 +667,38 @@ function asPose(prior, measured) {
 
 function trackPose(image, tracker) {
   const prior = tracker.pose;
+  const velocity = tracker.velocity || { x: 0, y: 0 };
+  const predict = {
+    x: prior.x + clamp(velocity.x, -24, 24),
+    y: prior.y + clamp(velocity.y, -24, 24),
+    radius: prior.radius,
+  };
   const here = rimMeasure(image, prior.x, prior.y);
-  let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius);
-  // A weak local rim means the gauge moved. Look further, cheaply, and only
-  // accept a centre that is clearly rounder than staying put.
-  if (!found || found.std > 5.4) {
-    const far = searchRim(image, prior, 48, 6, prior.radius, 16, 2);
-    if (far && (!found || far.std + 0.8 < found.std)) found = far;
+  const locked = here && here.std <= 5.2;
+  let found = searchRim(image, predict, TRACK_NEAR_PX, 2, prior.radius);
+  // A locked rim stays put. A lost one (the gauge jumped) gets one coarse
+  // search out to 84px, and only a clearly rounder circle is accepted.
+  if (!locked) {
+    const wide = searchRim(image, predict, 84, 8, prior.radius, 16, 2, true);
+    if (wide && (!here || wide.std + 1.0 < here.std) && (!found || wide.std <= found.std)) {
+      found = wide;
+    }
   }
-  if (!found || found.std > 5.4) {
-    const wider = searchRim(image, prior, 96, 8, prior.radius, 16, 2);
-    if (wider && (!found || wider.std + 0.8 < (found?.std ?? 99))) found = wider;
-  }
-  if (found && found.std <= LOST_RIM_STD) {
+  if (found && (!locked || Math.hypot(found.x - prior.x, found.y - prior.y) > 2)) {
     const checked = rimMeasure(image, found.x, found.y);
     if (checked) found = { ...found, std: checked.std, radius: checked.radius, score: Math.max(0, (12 - checked.std) / 12) };
   }
-  if (here && here.std <= LOST_RIM_STD && (!found || found.std > here.std - 0.8)) {
+  if (found) {
+    const moved = Math.hypot(found.x - prior.x, found.y - prior.y);
+    if (moved > 40 && found.std > 3.2) found = locked ? asPose(prior, here) : null;
+  }
+  if (locked && (!found || found.std > here.std - 0.35)) {
     found = asPose(prior, here);
   }
   if (found && found.std <= LOST_RIM_STD) {
-    const fine = searchRim(image, found, 3, 1, prior.radius);
-    if (fine && fine.std + 0.3 < found.std) found = fine;
+    const fine = searchRim(image, found, 4, 2, prior.radius);
+    if (fine && fine.std + 0.2 < found.std) found = fine;
     return found;
-  }
-  const near = searchBezel(
-    image,
-    prior,
-    TRACK_NEAR_PX,
-    2,
-    radiusList(Math.max(48, prior.radius - 6), prior.radius + 6, 3),
-  );
-  found = near;
-  if (!found || found.score < LOST_BEZEL) {
-    found = searchBezel(
-      image,
-      prior,
-      TRACK_FAR_PX,
-      3,
-      radiusList(Math.max(48, prior.radius - 14), prior.radius + 14, 4),
-    );
-  }
-  if (found && found.score >= LOST_BEZEL) {
-    const fine = searchBezel(
-      image,
-      found,
-      3,
-      1,
-      [found.radius - 2, found.radius, found.radius + 2],
-    );
-    if (fine && fine.score >= found.score) found = fine;
   }
   return found;
 }
@@ -747,7 +735,14 @@ export function readCalibratedFrame(image, tracker) {
   const match = redShift.corr;
   const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
   const lost = !bezelOk;
+  const zero = wrap360(tracker.calibration.zeroAngleDeg + shiftDeg);
+  const ten = wrap360(tracker.calibration.tenAngleDeg + shiftDeg);
+  const five = wrap360(tracker.calibration.fiveAngleDeg + shiftDeg);
+  const needleDeg = needle.angleDeg;
+  const usable = !lost && needleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY;
+  const bar = usable ? barFromRestSpan(needleDeg, zero, ten) : null;
   if (bezelOk) {
+    tracker.velocity = { x: pose.x - tracker.pose.x, y: pose.y - tracker.pose.y };
     tracker.pose = {
       x: pose.x,
       y: pose.y,
@@ -755,17 +750,11 @@ export function readCalibratedFrame(image, tracker) {
       rotationDeg: wrap360(tracker.calibration.rotationDeg + shiftDeg),
       shiftDeg,
     };
-    if (needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY) {
-      tracker.needleDeg = needle.angleDeg;
+    if (needleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY) {
+      tracker.needleDeg = needleDeg;
     }
   }
   tracker.score = score;
-  const zero = wrap360(tracker.calibration.zeroAngleDeg + shiftDeg);
-  const ten = wrap360(tracker.calibration.tenAngleDeg + shiftDeg);
-  const five = wrap360(tracker.calibration.fiveAngleDeg + shiftDeg);
-  const bar = !lost && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY
-    ? barFromRestSpan(needle.angleDeg, zero, ten)
-    : null;
   return {
     ok: bar != null,
     lost,
@@ -776,7 +765,7 @@ export function readCalibratedFrame(image, tracker) {
     shiftDeg: lost ? tracker.pose.shiftDeg : shiftDeg,
     hub: { x: tracker.pose.x, y: tracker.pose.y },
     radius: tracker.pose.radius,
-    needleDeg: needle.angleDeg,
+    needleDeg,
     needleQuality: needle.quality ?? 0,
     likeness: needle.likeness ?? 0,
     zeroDeg: zero,
@@ -808,5 +797,6 @@ export function tapsFromReplayHook(target = typeof window !== 'undefined' ? wind
   const five = pointOf(taps.five ?? taps[1]);
   const ten = pointOf(taps.ten ?? taps[2]);
   if (!centre || !five || !ten) return null;
-  return { centre, five, ten };
+  const atSec = Number(hook.atSec);
+  return { centre, five, ten, atSec: Number.isFinite(atSec) ? atSec : null };
 }

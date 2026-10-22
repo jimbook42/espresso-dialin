@@ -24,6 +24,7 @@ const MANIFEST_PATH = '/workspace/pl-state/label-frames/manifest.json';
 const FRAMES_DIR = '/workspace/pl-state/label-frames';
 const OUT_BASE = '/workspace/pl-state/eval-6.41';
 const OVERLAY_DIR = '/workspace/pl-state/diag/641';
+const REPAIR_OVERLAY_DIR = '/workspace/pl-state/diag/641r1';
 const REST_PHASES = new Set(['rest', 'dry_1', 'used_1']);
 const SEEDS = [1, 2, 3, 4, 5];
 
@@ -306,13 +307,15 @@ function drawOverlay(frame, read, file) {
 }
 
 mkdirSync(OVERLAY_DIR, { recursive: true });
-const overlayIds = ['f002', 'f004', 'f008', 'f014', 'f016', 'f018', 'f027', 'f032'];
+mkdirSync(REPAIR_OVERLAY_DIR, { recursive: true });
+const overlayIds = ['f002', 'f004', 'f008', 'f010', 'f014', 'f015', 'f016', 'f018', 'f021', 'f027', 'f032', 'f034'];
 const overlaid = [];
 for (const id of overlayIds) {
   const row = rows.find((item) => item.id === id && item.seed === 1 && item.read);
   if (!row) continue;
   const file = `${OVERLAY_DIR}/${id}.png`;
   drawOverlay(row.frame, row.read, file);
+  drawOverlay(row.frame, row.read, `${REPAIR_OVERLAY_DIR}/${id}.png`);
   overlaid.push(id);
 }
 

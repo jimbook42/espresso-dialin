@@ -12,9 +12,45 @@ const port = Number(process.argv[4] || 4176);
 const mp4Path = process.argv[5];
 
 if (!y4mPath || !durationS || !mp4Path) {
-  console.error('usage: run-clip-browser.mjs <y4m> <durationS> [port] <mp4>');
+  console.error('usage: run-clip-browser.mjs <y4m> <durationS> [port] <mp4> [taps.json]');
   process.exit(2);
 }
+
+/**
+ * How qc.sh turns on tap tracking. The lab has no clip names in it.
+ * Pass one of:
+ *   PRESSURE_TAP_CAL=/path/to/taps.json
+ *   PRESSURE_TAP_CAL=cx,cy,fx,fy,tx,ty
+ *   a 6th argument that is a taps.json path
+ *   or <mp4>.taps.json beside the source video
+ * JSON: { "atSec": 0, "centre": [x, y], "five": [x, y], "ten": [x, y] }
+ * Pixels are unmirrored video pixels. atSec is the rest moment; the lab
+ * calibrates only inside the half-second that starts there. Omit atSec to
+ * calibrate on the first frame that locks (clips that open on the rest shot).
+ * This file is copied onto window.__pressureLabTapCal before the page boots.
+ */
+function loadTapCal() {
+  const raw = process.env.PRESSURE_TAP_CAL || process.argv[6] || '';
+  if (!raw) {
+    const sidecar = `${mp4Path}.taps.json`;
+    if (!fs.existsSync(sidecar)) return null;
+    return JSON.parse(fs.readFileSync(sidecar, 'utf8'));
+  }
+  if (raw.includes(',')) {
+    const nums = raw.split(/[,\s]+/).map(Number);
+    if (nums.length < 6 || nums.some((n) => !Number.isFinite(n))) {
+      throw new Error('PRESSURE_TAP_CAL needs cx,cy,fx,fy,tx,ty');
+    }
+    return {
+      centre: [nums[0], nums[1]],
+      five: [nums[2], nums[3]],
+      ten: [nums[4], nums[5]],
+    };
+  }
+  return JSON.parse(fs.readFileSync(raw, 'utf8'));
+}
+
+const tapCal = loadTapCal();
 
 function percentile(sorted, p) {
   if (!sorted.length) return null;
@@ -48,11 +84,13 @@ async function captureClip(context, previewUrl, { cpuThrottleRate = 1, durationS
     window.__pressureReplayUntilS = cfg.untilS;
     window.__pressureReplayFrameCount = cfg.frameCount;
     window.__pressureReplayFrameBase = cfg.frameBase;
+    if (cfg.tapCal) window.__pressureLabTapCal = cfg.tapCal;
   }, {
     durationS,
     untilS,
     frameCount,
     frameBase: new URL('/replay-frames/', previewUrl).href,
+    tapCal,
   });
 
   await page.addInitScript(() => {
