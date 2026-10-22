@@ -1,16 +1,18 @@
-# Pressure lab: resumable state (updated 2026-10-22 15:30 NZT)
+# Pressure lab: resumable state (updated 2026-10-22 16:05 NZT)
 
 - Branch: `cursor/6-40-pressure-rectify` (worktree `/workspace/cursor-dialin-6.39`).
 - Step 1 (repair 2): **angle-to-bar map** from half-bar ticks, sweep **179.52°**.
-- This pass: **on-device needle model** on the rectified, rotation-registered face.
+- This pass: **needle model repair** — crop convention, real rest crops, classical fallback, slower model cadence.
 
 ## This pass
 
-Small CNN reads needle angle from the registered crop. Classical needle code still finds the dial and registers rotation. If the weights load, a confident model replaces that angle. If the load fails, the classical reader stays in place. A loaded model that is not confident clears the angle: the existing hold (≤1 s) then a gap. No guess. Live bar text is one decimal (`formatPressureBar`).
+Small CNN reads needle angle from the registered crop. Classical needle code still finds the dial and registers rotation. The model runs on at most one frame in three. It replaces the classical angle only when the two bars agree (within **0.4 bar**) or the classical needle is missing/lost and model confidence is at least **0.85**. A low-confidence or disagreeing model leaves the classical reading in place (no forced gap). If the weights fail to load, the classical reader is unchanged. Live bar text is one decimal (`formatPressureBar`).
+
+Dry-bench check (in memory, no frames written): after colour registration the classical relative bar is the manifest rest value, and the retrained model on that same crop reads the same bar at confidence about **1.0**. The earlier ~5–6 bar readings were the model looking at a real rectified face it had never been trained on, then clearing the classical angle whenever confidence was low. Unrotation sign matches the classical subtraction (`image angle − rotationDeg`).
 
 - Model: `public/flair-pressure-lab/needle.onnx` (opset 17, float32). **138,843** params, **557,891** bytes. Not quantised; already under 1 MB.
 - Input `face` float32 `[1,3,64,64]` in `[0,1]`, NCHW. Output `needle` `[sin, cos, visibility logit]`. Angle is `atan2(sin, cos)` in the registered crop (0° = right, clockwise), then `angleToBar` / `registeredAngleToBar` with `CANONICAL_ZERO_BAR_ANGLE_DEG`.
-- Confidence gate: sigmoid ≥ **0.6** (`NEEDLE_CONFIDENCE_MIN`) and the angle on the printed scale.
+- Decode gate: sigmoid ≥ **0.6** (`NEEDLE_CONFIDENCE_MIN`) and the angle on the printed scale. Adoption still requires agreement (`NEEDLE_AGREE_BAR` 0.4) or a lost classical needle (`NEEDLE_BEAT_CONFIDENCE` 0.85).
 - Runtime: `onnxruntime-web` **1.22.0** (MIT), dynamic import only from the pressure lab, WASM, `numThreads = 1`. Weights and the WASM runtime are same-origin (`/flair-pressure-lab/needle.onnx`, `/flair-pressure-lab/ort/`). The crop tensor is dropped after the run. It is not stored on the bridge.
 - WASM files are copied at build/postinstall by `scripts/copy-needle-ort.mjs` (gitignored, same idea as `opencv.js`).
 
@@ -21,6 +23,7 @@ python3 -m venv scripts/pressure-model/.venv
 scripts/pressure-model/.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
 scripts/pressure-model/.venv/bin/pip install onnx pillow
 node scripts/pressure-model/synthesize-crops.mjs
+node scripts/pressure-model/collect-rest-crops.mjs
 scripts/pressure-model/.venv/bin/python scripts/pressure-model/train_needle.py
 ```
 
@@ -28,23 +31,26 @@ Crops stay in `scripts/pressure-model/data/` (gitignored). The script writes the
 
 ### Dataset
 
-8,000 train / 1,200 val, 64×64 RGB, painted from `dialFaceTemplate.js` and `gaugeConfig.js` (21 half-bar ticks, sweep 179.52°, zero at `CANONICAL_ZERO_BAR_ANGLE_DEG`, espresso and stop sectors, needle span `TIP_INNER_RATIO`–`OUTER_RADIUS_RATIO`). Seeds: train 1000+, val 50000+. The mixture roll uses a different seed stream from the crop, so the needle bar is uniform on about **−0.45…10.45** (sharing one seed had skipped the rest pin). About 12% negatives (no face, no needle, or covered), about 34% nearly registered, the rest with residual rotation about ±10°, ellipse aspect about 0.86–1.16, shift, blur-free photometric noise. Python then adds brightness, contrast, channel gain, noise, box blur, JPEG, and a mild glare blob. Angle loss is masked when the visibility target is low. Dry bench clips were not mixed in.
+8,000 train / 1,200 val, 64×64 RGB, painted from `dialFaceTemplate.js` and `gaugeConfig.js` (21 half-bar ticks, sweep 179.52°, zero at `CANONICAL_ZERO_BAR_ANGLE_DEG`, espresso and stop sectors, needle span `TIP_INNER_RATIO`–`OUTER_RADIUS_RATIO`). Seeds: train 1000+, val 50000+. The mixture roll uses a different seed stream from the crop, so the needle bar is uniform on about **−0.45…10.45**. About 12% negatives (this export: blank, no needle, or a needle under a cover; the renderer now omits the needle on every negative), about 34% nearly registered, the rest with residual rotation about ±10°, ellipse aspect about 0.86–1.16, a darker bezel, and a photo pass (box blur, short motion smear, red/blue split, white-balance, specular glare). Python then adds brightness, contrast, channel gain, noise, box blur, JPEG, and a mild glare blob.
+
+**34** registered rest crops from the dry bench clips are mixed into training (12 copies each, 408 of 8,408). A crop is kept only when template registration, or else colour registration, already puts the classical relative bar inside the manifest tolerance. The tensor is the same `prepareRegisteredFace` square the runtime feeds. No frames are written.
 
 ### Validation (best epoch, 14)
 
 | Set | Angle MAE | Bar MAE |
 | --- | ---: | ---: |
-| Plain val (visible needles) | 2.46° | 0.137 |
-| Plain, easy registered subset | 1.47° | 0.082 |
-| Photometric aug on val | 2.86° | 0.159 |
+| Plain val (visible needles) | 3.48° | 0.194 |
+| Plain, easy registered subset | 1.87° | 0.104 |
+| Photometric aug on val | 3.92° | 0.218 |
+| Dry rest crops (in the training mix) | 2.17° | 0.121 |
 
-Visibility: mean confidence **0.992** on clear needles, **0.081** on negatives.
+Visibility: mean confidence **0.985** on clear needles, **0.138** on negatives. Rest crops sit at **0.998**.
 
 Node WASM check (`needleModel.onnx.test.js`): 8 held-out clean crops, bars 0, 1.5, 3.2, 5, 6.8, 8.4, 10, and 4.2 bar with 6° residual. Each under **0.3 bar**. One negative stays under the confidence gate.
 
 ### Speed
 
-Crop pack + WASM inference, one thread, unthrottled: median **1.8 ms**, first call **9.9 ms**. At a 4× CPU throttle that is about **7 ms** steady, under the 33 ms budget. The full throttled replay harness was not run.
+The model runs on every third tracked frame (`NEEDLE_MODEL_STRIDE` 3), so two frames in three are classical-only and the e2e median is a classical frame. Crop pack + WASM inference, one thread, unthrottled median **1.9 ms**, first call **9.0 ms**. `run-clip-browser.mjs` and `run-replay.mjs` were not changed and were not re-run.
 
 ### Replay harness
 
@@ -56,9 +62,9 @@ PyTorch BSD-3-Clause, ONNX Apache-2.0, NumPy BSD, Pillow HPND, onnxruntime-web M
 
 ## Tests
 
-`/workspace/bin/box-test-slot --build npm run test:vitest -- src/flairPressureLab/needleModel.vitest.js src/flairPressureLab/pressureCv.vitest.js src/flairPressureLab/replayGaugeSemantics.vitest.js scripts/pressure-replay/syntheticLayout.vitest.js scripts/pressure-replay/privacyAssert.vitest.js` — **58/58 passed**.
+`/workspace/bin/box-test-slot --build npm run test:vitest -- src/flairPressureLab/needleModel.vitest.js src/flairPressureLab/pressureCv.vitest.js src/flairPressureLab/replayGaugeSemantics.vitest.js scripts/pressure-replay/syntheticLayout.vitest.js scripts/pressure-replay/privacyAssert.vitest.js` — **58/58 passed**. Needle vitest re-run after the negative-crop fix: **6/6**.
 
-`/workspace/bin/box-test-slot node src/flairPressureLab/needleModel.onnx.test.js` — passed (error < 0.3 bar).
+`/workspace/bin/box-test-slot node src/flairPressureLab/needleModel.onnx.test.js` — passed (error < 0.3 bar, unthrottled median 1.9 ms).
 
 `/workspace/bin/box-test-slot node src/flairPressureLab/gaugeConfig.test.js` — passed.
 

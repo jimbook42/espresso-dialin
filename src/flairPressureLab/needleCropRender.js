@@ -293,8 +293,8 @@ export function renderNeedleCrop({
 } = {}) {
   const rng = mulberry32(seed >>> 0);
   const blank = negative && rng() < 0.42;
-  const noNeedle = negative && !blank && rng() < 0.55;
-  const covered = negative && !blank && !noNeedle;
+  const noNeedle = negative && !blank;
+  const covered = noNeedle && rng() < 0.55;
   const drawnBar = bar != null
     ? bar
     : lerp(rng, -0.45, FLAIR_58_SCALE.maxBar + 0.45);
