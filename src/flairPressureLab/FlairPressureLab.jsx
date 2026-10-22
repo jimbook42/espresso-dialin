@@ -22,7 +22,7 @@ import {
 import { DiagnosticTrace } from './DiagnosticTrace';
 import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { buildDiagnosticReport } from './diagnosticReport';
-import { objectCoverMap, previewAngleDeg, videoPointToPreview } from './geometry';
+import { objectCoverMap, previewAngleDeg, previewPointToVideo, videoPointToPreview } from './geometry';
 import {
   GLARE_SETUP_HINT,
   MOVE_CLOSER_HINT,
@@ -55,6 +55,13 @@ import {
   createRisingThreshold,
 } from './smoothPressure';
 import { isPressureReplayBuild } from '../config/pressureReplayFlag.js';
+import {
+  calibrateFromTaps,
+  createCalibratedTracker,
+  parseTapCalQuery,
+  readCalibratedFrame,
+  tapsFromReplayHook,
+} from './tapCalibrate.js';
 import {
   completeReplaySearch,
   installPressureReplayHook,
@@ -171,6 +178,9 @@ export function FlairPressureLab() {
   const [videoSize, setVideoSize] = useState(null);
   const [session, setSession] = useState(null);
   const [live, setLive] = useState(EMPTY_LIVE);
+  const [tapPhase, setTapPhase] = useState(REPLAY_BUILD ? 'legacy' : 'aim');
+  const [tapNote, setTapNote] = useState('');
+  const [reviewPose, setReviewPose] = useState(null);
 
   const sessionRef = useRef(null);
   const sweepRef = useRef(sweepDeg);
@@ -198,6 +208,11 @@ export function FlairPressureLab() {
   const tracePublishRef = useRef(0);
   const resizeObserverRef = useRef(null);
   const copyTimerRef = useRef(null);
+  const tapTrackerRef = useRef(null);
+  const pendingCalRef = useRef(null);
+  const frozenRef = useRef(null);
+  const freezeCanvasRef = useRef(null);
+  const tapsRef = useRef({ centre: null, five: null, ten: null });
   const [trace, setTrace] = useState([]);
   const [copyNote, setCopyNote] = useState('');
   const [reportFallback, setReportFallback] = useState('');
@@ -240,7 +255,7 @@ export function FlairPressureLab() {
 
   useEffect(() => {
     let cancelled = false;
-    warmDiscoveryWorker();
+    if (REPLAY_BUILD) warmDiscoveryWorker();
     loadOpenCv()
       .then(() => {
         if (!cancelled) {
@@ -316,9 +331,144 @@ export function FlairPressureLab() {
     setVideoSize(null);
   };
 
+  const clearFrozenFrame = () => {
+    frozenRef.current = null;
+    pendingCalRef.current = null;
+    tapsRef.current = { centre: null, five: null, ten: null };
+    const canvas = freezeCanvasRef.current;
+    if (canvas) {
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+  };
+
+  const beginTapAim = () => {
+    tapTrackerRef.current = null;
+    clearFrozenFrame();
+    readingHoldRef.current.reset();
+    sessionRef.current = null;
+    setSession(null);
+    setLive(EMPTY_LIVE);
+    setTapNote('');
+    setReviewPose(null);
+    setTapPhase(REPLAY_BUILD ? 'legacy' : 'aim');
+  };
+
   const handleRecalibrate = () => {
     if (status !== 'live') return;
+    if (!REPLAY_BUILD || tapTrackerRef.current) {
+      beginTapAim();
+      return;
+    }
     resetReading({ clearHistory: false, clearTracker: false });
+  };
+
+  const acceptTapCalibration = () => {
+    const pending = pendingCalRef.current;
+    if (!pending?.ok) return;
+    tapTrackerRef.current = createCalibratedTracker(pending.calibration);
+    const next = {
+      ...FLAIR_STATELESS_SESSION,
+      zeroAngleDeg: pending.calibration.zeroAngleDeg,
+      sweepDeg: pending.calibration.spanDeg || sweepRef.current,
+    };
+    sessionRef.current = next;
+    setSession(next);
+    clearFrozenFrame();
+    readingHoldRef.current.reset();
+    setTapPhase('tracking');
+    setTapNote('');
+  };
+
+  const grabSourceImage = (source) => {
+    const width = source.videoWidth || source.width;
+    const height = source.videoHeight || source.height;
+    if (!width || !height) return null;
+    const canvas = qualityCanvasRef.current || document.createElement('canvas');
+    qualityCanvasRef.current = canvas;
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(source, 0, 0, width, height);
+    return context.getImageData(0, 0, width, height);
+  };
+
+  const pointFromEvent = (event) => {
+    const node = frameNodeRef.current;
+    const size = videoSizeRef.current;
+    if (!node || !size?.w) return null;
+    const rect = node.getBoundingClientRect();
+    const mapped = previewPointToVideo(
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+      size.w,
+      size.h,
+      rect.width,
+      rect.height,
+      mirrorRef.current,
+    );
+    if (!mapped) return null;
+    return { x: mapped.nx * size.w, y: mapped.ny * size.h };
+  };
+
+  const runTapCalibration = () => {
+    const image = frozenRef.current;
+    const taps = tapsRef.current;
+    if (!image || !taps.centre || !taps.five || !taps.ten) return;
+    const result = calibrateFromTaps(image, taps);
+    if (!result.ok) {
+      const again = result.redo || 'centre';
+      taps[again] = null;
+      setTapPhase(again);
+      setTapNote(again === 'centre'
+        ? 'That centre tap missed the pivot. Tap it again.'
+        : `That ${again === 'five' ? '5' : '10'} missed the numeral. Tap it again.`);
+      return;
+    }
+    pendingCalRef.current = result;
+    setReviewPose(result.calibration);
+    setTapPhase('review');
+    setTapNote(result.fiveWarn
+      ? 'The printed 5 is off the rest-to-10 line. Retry if the rays look wrong.'
+      : 'Rest needle is 0. The ray to 10 is full scale.');
+  };
+
+  const onPreviewPointer = (event) => {
+    if (REPLAY_BUILD && tapPhase === 'legacy') return;
+    if (tapPhase === 'tracking' || tapPhase === 'review') return;
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) return;
+    if (tapPhase === 'aim') {
+      const image = grabSourceImage(video);
+      if (!image) return;
+      frozenRef.current = image;
+      const canvas = freezeCanvasRef.current;
+      if (canvas) {
+        canvas.width = image.width;
+        canvas.height = image.height;
+        canvas.getContext('2d').putImageData(image, 0, 0);
+      }
+      const size = { w: image.width, h: image.height };
+      videoSizeRef.current = size;
+      setVideoSize(size);
+      setTapPhase('centre');
+      setTapNote('Frame held. Tap the gauge centre.');
+      return;
+    }
+    const point = pointFromEvent(event);
+    if (!point) return;
+    tapsRef.current = { ...tapsRef.current, [tapPhase]: point };
+    if (tapPhase === 'centre') {
+      setTapPhase('five');
+      setTapNote('Tap the printed 5.');
+      return;
+    }
+    if (tapPhase === 'five') {
+      setTapPhase('ten');
+      setTapNote('Tap the printed 10.');
+      return;
+    }
+    if (tapPhase === 'ten') runTapCalibration();
   };
 
   const handleCopyReport = async () => {
@@ -357,8 +507,9 @@ export function FlairPressureLab() {
   };
 
   useEffect(() => {
-    if (status !== 'live' || !opencvReady) return undefined;
-    warmDiscoveryWorker();
+    if (status !== 'live') return undefined;
+    if (REPLAY_BUILD && !opencvReady) return undefined;
+    if (REPLAY_BUILD) warmDiscoveryWorker();
     const canvas = qualityCanvasRef.current || document.createElement('canvas');
     qualityCanvasRef.current = canvas;
     let raf = 0;
@@ -417,6 +568,81 @@ export function FlairPressureLab() {
 
     const processSample = async (video, now, wallNow, { grabAt = null } = {}) => {
       if (!video || video.readyState < 2) return;
+      const useTap = !REPLAY_BUILD || tapTrackerRef.current || tapPhase !== 'legacy';
+      if (REPLAY_BUILD && !tapTrackerRef.current) {
+        const injected = tapsFromReplayHook() || parseTapCalQuery(window.location.search);
+        if (injected) {
+          const image = grabSourceImage(video);
+          const calibrated = image && calibrateFromTaps(image, injected);
+          if (calibrated?.ok) {
+            tapTrackerRef.current = createCalibratedTracker(calibrated.calibration);
+            const next = {
+              ...FLAIR_STATELESS_SESSION,
+              zeroAngleDeg: calibrated.calibration.zeroAngleDeg,
+              sweepDeg: calibrated.calibration.spanDeg || sweepRef.current,
+            };
+            sessionRef.current = next;
+            setSession(next);
+            setTapPhase('tracking');
+          }
+        }
+      }
+      if (!REPLAY_BUILD || tapTrackerRef.current) {
+        if (!tapTrackerRef.current) return;
+        const grab = grabAt ?? performance.now();
+        const image = grabSourceImage(video);
+        if (!image) return;
+        const read = readCalibratedFrame(image, tapTrackerRef.current);
+        const held = readingHoldRef.current.push({
+          bar: read.ok ? read.bar : null,
+          fresh: read.ok === true,
+          now: wallNow,
+        });
+        const tracking = !read.lost && read.ok ? 'TRACKING' : (held.gap ? 'LOST' : 'UNCERTAIN');
+        const ms = Math.max(0, performance.now() - grab);
+        setLive({
+          ...EMPTY_LIVE,
+          tracking,
+          displayBar: held.bar,
+          pressureBar: held.bar,
+          rawBar: read.bar,
+          displayAngle: read.needleDeg,
+          screenAngle: read.needleDeg,
+          rawAngle: read.needleDeg,
+          gaugeX: read.hub?.x ?? null,
+          gaugeY: read.hub?.y ?? null,
+          gaugeRadius: read.radius ?? null,
+          gaugeRotation: read.shiftDeg ?? null,
+          quality: read.needleQuality ?? null,
+          likeness: read.likeness ?? null,
+          gaugeConfidence: read.score ?? null,
+          uncertainty: read.lost ? 'weak' : 'tracking',
+          frame: { w: image.width, h: image.height },
+          referenceCaptured: true,
+        });
+        if (REPLAY_BUILD) {
+          pushReplayFrame({
+            gaugeFound: read.lost !== true,
+            centreFromGuide: false,
+            centreX: read.hub?.x ?? null,
+            centreY: read.hub?.y ?? null,
+            radius: read.radius ?? null,
+            gaugeRotationDeg: read.shiftDeg ?? null,
+            needleAngleDeg: read.needleDeg ?? null,
+            bar: held.bar,
+            confidence: read.score ?? null,
+            processMs: ms,
+            e2eMs: ms,
+            mainThreadMs: ms,
+            cvMs: ms,
+            flags: read.lost ? 'tap-lost' : 'tap-track',
+            tracking,
+            readPath: 'tap',
+          }, now);
+        }
+        return;
+      }
+      if (useTap) return;
       const grab = grabAt ?? performance.now();
       let readWall = 0;
       let cvDone = 0;
@@ -1170,7 +1396,9 @@ export function FlairPressureLab() {
   const caption = !cameraLive
     ? 'Start the front camera with the whole gauge in frame.'
     : !session
-      ? `At rest. Calibrating ${live.calibCount}/${REST_STABLE_SAMPLES}`
+      ? (tapPhase === 'legacy'
+        ? `At rest. Calibrating ${live.calibCount}/${REST_STABLE_SAMPLES}`
+        : (tapNote || 'Tap the centre of the gauge to freeze the rest frame.'))
       : live.tracking === 'TRACKING'
         ? 'Ready'
         : live.gaugeHeld
@@ -1205,13 +1433,17 @@ export function FlairPressureLab() {
 
       <main className="flex-1 max-w-xl mx-auto w-full px-4 py-4 space-y-4 pb-10">
         <ol className={`text-sm ${ui.sub} space-y-1.5 list-decimal pl-5`}>
-          <li>Put the phone where the whole gauge stays in frame. Beside the Flair is fine. Small movement is ok.</li>
-          <li>The lab finds the dial automatically — no guide ring. The overlay shows the detected circle and needle.</li>
-          <li>At rest, calibration starts on its own once the needle is steady.</li>
+          <li>Put the phone where the whole gauge stays in frame, needle resting on the 0 pin.</li>
+          <li>Tap the centre of the gauge to freeze that frame.</li>
+          <li>On the still, tap the centre, the printed 5, and the printed 10. Rough taps are pulled onto the marks.</li>
         </ol>
-        <p className={`text-xs ${ui.muted}`}>Nothing is saved. A large or sudden move drops tracking and holds the last pressure until the gauge is found again.</p>
+        <p className={`text-xs ${ui.muted}`}>Nothing is saved. The frame stays in memory only until you accept or retry. A lost gauge holds the last pressure for about a second, then leaves a gap.</p>
 
-        <div ref={frameRef} className={`relative ${ui.card} rounded-2xl overflow-hidden aspect-[3/4] max-h-[62vh] mx-auto bg-black`}>
+        <div
+          ref={frameRef}
+          className={`relative ${ui.card} rounded-2xl overflow-hidden aspect-[3/4] max-h-[62vh] mx-auto bg-black`}
+          onPointerDown={onPreviewPointer}
+        >
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
@@ -1226,6 +1458,47 @@ export function FlairPressureLab() {
               setVideoSize(next);
             }}
           />
+          <canvas
+            ref={freezeCanvasRef}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              transform: mirrorPreview ? 'scaleX(-1)' : undefined,
+              display: tapPhase === 'centre' || tapPhase === 'five' || tapPhase === 'ten' || tapPhase === 'review' ? 'block' : 'none',
+            }}
+          />
+          {tapPhase === 'review' && reviewPose && videoSize && frameBox.w ? (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+              {(() => {
+                const hub = videoPointToPreview(
+                  reviewPose.hub.x, reviewPose.hub.y, videoSize.w, videoSize.h, frameBox.w, frameBox.h, mirrorPreview,
+                );
+                const map = objectCoverMap(videoSize.w, videoSize.h, frameBox.w, frameBox.h);
+                if (!hub || !map) return null;
+                const ray = (deg, length, color) => {
+                  const rad = ((previewAngleDeg(deg, mirrorPreview) ?? 0) * Math.PI) / 180;
+                  const span = length * map.scale;
+                  return (
+                    <line
+                      x1={hub.x}
+                      y1={hub.y}
+                      x2={hub.x + span * Math.cos(rad)}
+                      y2={hub.y + span * Math.sin(rad)}
+                      stroke={color}
+                      strokeWidth="2"
+                    />
+                  );
+                };
+                return (
+                  <>
+                    {ray(reviewPose.zeroAngleDeg, reviewPose.radius * 0.9, '#7ee7ff')}
+                    {ray(reviewPose.tenAngleDeg, reviewPose.radius * 0.9, '#ffd24a')}
+                    {ray(reviewPose.fiveAngleDeg, reviewPose.radius * 0.72, '#ffffff')}
+                    <circle cx={hub.x} cy={hub.y} r="5" fill="none" stroke="#ff6b6b" strokeWidth="2" />
+                  </>
+                );
+              })()}
+            </svg>
+          ) : null}
           {detectedOverlay && overlayRadiusPx != null && overlayRadiusPx > 4 && (
             <div
               className="absolute pointer-events-none"
@@ -1252,10 +1525,28 @@ export function FlairPressureLab() {
               )}
             </div>
           )}
-          <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] text-[#f5f2eb]/80 pointer-events-none">
-            {session ? 'Tracking detected dial' : 'Searching for gauge…'}
+          <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] text-[#f5f2eb]/90 pointer-events-none px-3">
+            {tapPhase === 'aim' && 'Tap the centre of the gauge'}
+            {tapPhase === 'centre' && 'Tap the gauge centre'}
+            {tapPhase === 'five' && 'Tap the printed 5'}
+            {tapPhase === 'ten' && 'Tap the printed 10'}
+            {tapPhase === 'review' && 'Check the centre, the 0 ray, and the 10 ray'}
+            {tapPhase === 'tracking' && (live.tracking === 'LOST' ? 'Tracking lost' : 'Tracking the calibrated dial')}
+            {tapPhase === 'legacy' && (session ? 'Tracking detected dial' : 'Searching for gauge…')}
           </p>
+          {tapPhase === 'review' && (
+            <div className="absolute top-3 left-3 right-3 flex justify-center gap-2 pointer-events-auto">
+              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={acceptTapCalibration} className="px-4 py-2 rounded-xl text-sm bg-emerald-600 text-white">OK</button>
+              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={beginTapAim} className="px-4 py-2 rounded-xl text-sm bg-black/60 text-white border border-white/30">Retry</button>
+            </div>
+          )}
+          {tapPhase === 'tracking' && live.tracking === 'LOST' && (
+            <div className="absolute top-3 left-3 right-3 flex justify-center pointer-events-auto">
+              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={beginTapAim} className="px-4 py-2 rounded-xl text-sm bg-black/70 text-white border border-white/30">Re-tap to calibrate</button>
+            </div>
+          )}
         </div>
+        {tapNote ? <p className={`text-sm ${ui.sub}`}>{tapNote}</p> : null}
 
         <div className={`${ui.cardInset} rounded-2xl p-5 text-center`}>
           {cameraLive && live.moveCloserHint ? (
