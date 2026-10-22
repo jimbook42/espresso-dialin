@@ -1028,7 +1028,7 @@ function nudgeEllipse(ellipse, samples) {
     accEC += err * c;
     accES += err * s;
     scaleNum += err;
-    scaleDen += pred;
+    scaleDen += sample.pred;
   }
   const det = accCC * accSS - accCS * accCS;
   if (Math.abs(det) < samples.length * 0.12) return { ellipse, held: true };
@@ -1148,7 +1148,7 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
   const radius = candidate.radius;
   if (!(radius > 4) || !(width > 0) || !(height > 0)) return null;
   const warpHold = options.warpHold || null;
-  const perspective = options.perspective !== false && !options.forceOffset;
+  const perspective = options.perspective !== false;
   if (options.prior && options.track !== false) {
     const tracked = tryTrack(image, candidate, options.prior);
     if (tracked) {
@@ -1183,9 +1183,9 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
   };
   const major = Math.max(fitted.ellipse.size.width, fitted.ellipse.size.height);
   const minor = Math.min(fitted.ellipse.size.width, fitted.ellipse.size.height);
-  let dx = options.forceOffset?.dx || 0;
-  let dy = options.forceOffset?.dy || 0;
-  let tick = options.forceOffset ? { dx, dy, forced: true } : null;
+  let dx = 0;
+  let dy = 0;
+  let tick = null;
   if (perspective && minor / major <= 0.985) {
     const gray = grayscale(crop.data, crop.width, crop.height);
     const found = fitPerspectiveOnEllipse(gray, crop.width, crop.height, fitted.ellipse);
@@ -1248,9 +1248,6 @@ export function rectifyGaugeFace(cv, image, candidate, options = {}) {
         outSpan: bestOut.perspOut?.span ?? 0,
         outCount: bestOut.perspOut?.count ?? 0,
         shear: bestOut.perspOut?.shear ?? null,
-        hub: bestOut.perspTry
-          ? ringMarkDegrees(bestOut.perspTry.image, bestOut.perspTry.cx, bestOut.perspTry.cy, bestOut.perspTry.radius, 0.5).slice(0, 4)
-          : null,
         accepted: bestOut.improved,
       };
       if (bestOut.improved) {

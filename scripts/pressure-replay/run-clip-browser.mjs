@@ -106,7 +106,7 @@ async function captureClip(context, previewUrl, { cpuThrottleRate = 1, durationS
 }
 
 function extractReplayFrames(src) {
-  const dest = path.join('/tmp', `pressure-frames-png-${path.basename(src, '.mp4')}`);
+  const dest = path.join('/workspace/pl-data/frames', `pressure-frames-png-${path.basename(src, '.mp4')}`);
   const stamp = path.join(dest, '.ok');
   const fresh = fs.existsSync(stamp) && fs.statSync(stamp).mtimeMs >= fs.statSync(src).mtimeMs;
   if (!fresh) {

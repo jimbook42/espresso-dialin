@@ -1541,7 +1541,6 @@ describe('pressure CV units', () => {
     const phi = (tiltDeg * Math.PI) / 180;
     const cos = Math.cos(phi);
     const sin = Math.sin(phi);
-    const pointer = wrap360(barToDialAngle(bar) + rotationDeg);
     const x0 = Math.max(0, Math.floor(cx - major - 8));
     const y0 = Math.max(0, Math.floor(cy - major - 8));
     const x1 = Math.min(width, Math.ceil(cx + major + 8));
