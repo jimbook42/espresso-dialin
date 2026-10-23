@@ -624,7 +624,10 @@ def _label_predictions() -> list[dict]:
         offset = _loco_offset(rows, row["clip"])
         rest = wrap360(pin + offset)
         truth, span = truth_bar(needle, rest, ten)
-        radius = math.hypot(ten_pt[0] - hub[0], ten_pt[1] - hub[1])
+        # The printed "10" sits inside the needle tip. Dial radius is the
+        # tracker's circle, and the profile tip is 0.86 of that radius.
+        tip_len = math.hypot(tip[0] - hub[0], tip[1] - hub[1])
+        radius = tip_len / float(profile["needle"]["length"])
         rgba = np.empty((height, width, 4), np.uint8)
         rgba[..., :3] = rgb
         rgba[..., 3] = 255
@@ -961,6 +964,8 @@ def write_results(attempts: list[dict], exam_text: str, latency: dict, space_not
         space_note.strip(),
         "",
         "Label merge is in /workspace/pl-state/nr/real/labels-r2-stats.txt.",
+        "Hand-label crops use dial radius = tip length / 0.86. The printed 10 sits inside the tip,",
+        "so using that mark as the radius clipped the needle and the first scoring pass was discarded.",
         "",
     ]
     for attempt in attempts:
@@ -989,7 +994,25 @@ def write_results(attempts: list[dict], exam_text: str, latency: dict, space_not
         )
     lines.append("")
     lines.append("pooled " + " ".join(f"{key}={value}" for key, value in verdict["pooled"].items()))
+    pooled_pass = all(value == "PASS" for value in verdict["pooled"].values())
+    misses = [
+        f"{row['id']} {key}"
+        for row in verdict["clips"]
+        for key in ("coverage", "median", "wild", "flips", "rest")
+        if row[key] == "FAIL"
+    ]
     lines.append(f"verdict {verdict['verdict']}")
+    lines.append(
+        "Pooled gates "
+        + ("pass" if pooled_pass else "do not all pass")
+        + " (coverage, wild, flips, rest, median)."
+    )
+    if misses:
+        lines.append("Per-clip misses: " + ", ".join(misses) + ".")
+    lines.append(
+        "Dry-clip coverage sits under 85% because CALIBRATING frames are not readings. "
+        "160931 is under 85% because out-of-arc peaks are rejected and the rest are low confidence."
+    )
     lines.append("")
     lines.append("Dry clips 225219 and 225307 spend about a quarter of their frames in CALIBRATING.")
     lines.append("Those frames are not readings. Their coverage ceiling is 75.4% and 74.4%, under the 85% gate.")
