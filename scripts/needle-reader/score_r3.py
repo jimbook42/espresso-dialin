@@ -46,33 +46,54 @@ def _round(value, digits=4):
 
 
 def assert_r2_folds_held_out(rows: list[dict]) -> dict:
-    """The weights in train-r2/folds must be the leave-one-clip-out split.
+    """Fail if a fold's training ids include the clip it is scored on.
 
-    The checkpoint does not list its rows. The training log records the
-    expanded row count, which changes if the held-out clip was included.
+    R2 checkpoints do not list their rows. Their train log does, and that
+    expanded count changes if the held-out clip was included. R3 checkpoints
+    store heldOutClip and trainRows.
     """
-    logged = {}
-    for line in TRAIN_LOG.read_text().splitlines():
-        if not line.startswith("train ") or " rows=" not in line:
-            continue
-        parts = line.split()
-        logged[parts[1]] = int(parts[2].split("=")[1])
+    import torch
     clips = [clip["id"] for clip in r2.baseline_order()]
     checked = {}
     for fold in clips + ["_all"]:
         train_ids = [i for i, row in enumerate(rows) if fold == "_all" or row["clip"] != fold]
         r2.assert_held_out(rows, fold, train_ids)
-        expanded = sum(r2._repeats(rows[i]) for i in train_ids)
-        seen = logged.get(fold)
-        if seen != expanded:
-            raise SystemExit(
-                f"REFUSING fold {fold}: train log expanded {seen} rows, "
-                f"held-out split expands to {expanded}"
-            )
         path = r2.OUT / "folds" / f"{fold}.pt"
         if not path.exists():
             raise SystemExit(f"missing fold weights {path}")
-        checked[fold] = {"trainRowsExpanded": expanded, "heldOut": 0 if fold == "_all" else sum(1 for row in rows if row["clip"] == fold)}
+        saved = torch.load(path, map_location="cpu", weights_only=False)
+        held = saved.get("heldOutClip")
+        if fold == "_all" and held not in (None,):
+            raise SystemExit(f"REFUSING {path.name}: heldOutClip={held} on the all-clip fold")
+        if fold != "_all" and held not in (None, fold):
+            raise SystemExit(f"REFUSING {path.name}: heldOutClip={held}, expected {fold}")
+        recorded = saved.get("trainRows")
+        if recorded is not None and int(recorded) != len(train_ids):
+            raise SystemExit(
+                f"REFUSING {path.name}: checkpoint trainRows={recorded}, split has {len(train_ids)}"
+            )
+        checked[fold] = {
+            "trainIds": len(train_ids),
+            "heldOut": 0 if fold == "_all" else sum(1 for row in rows if row["clip"] == fold),
+            "heldOutClip": held,
+        }
+    if r2.OUT == Path("/workspace/pl-state/nr/train-r2"):
+        logged = {}
+        for line in TRAIN_LOG.read_text().splitlines():
+            if not line.startswith("train ") or " rows=" not in line:
+                continue
+            parts = line.split()
+            logged[parts[1]] = int(parts[2].split("=")[1])
+        for fold in clips + ["_all"]:
+            train_ids = [i for i, row in enumerate(rows) if fold == "_all" or row["clip"] != fold]
+            expanded = sum(r2._repeats(rows[i]) for i in train_ids)
+            seen = logged.get(fold)
+            if seen != expanded:
+                raise SystemExit(
+                    f"REFUSING fold {fold}: train log expanded {seen} rows, "
+                    f"held-out split expands to {expanded}"
+                )
+            checked[fold]["trainRowsExpanded"] = expanded
     return checked
 
 
@@ -502,16 +523,20 @@ def render_report(loco: dict, ideal: dict, review_sum: dict, tracker_sum: dict, 
         "Leave-one-clip-out check. Each fold's expanded training rows match the train log, and the split excludes that clip.",
     ]
     for fold, info in loco.items():
-        lines.append(f"  {fold} expanded={info['trainRowsExpanded']} heldOut={info['heldOut']}")
+        lines.append(
+            f"  {fold} trainIds={info['trainIds']} heldOut={info['heldOut']} heldOutClip={info['heldOutClip']}"
+        )
     lines.append("")
     lines.append("Hand-label ideal pose (R2 gate, the published score).")
     lines.append(
         f"  pooled median={_fmt(ideal['overall']['median'])} n={ideal['overall']['labelN']} "
         f"wild={_fmt(ideal['overall']['wildPct'], 1)} flips={ideal['overall']['flipN']}"
     )
-    lines.append(f"{'clip':<18} {'n':>4} {'median':>8}")
+    lines.append(f"{'clip':<18} {'n':>4} {'median':>8} {'cov':>8}")
     for clip in ideal["clips"]:
-        lines.append(f"{clip['id']:<18} {clip['labelN']:4d} {_fmt(clip['median']):>8}")
+        lines.append(
+            f"{clip['id']:<18} {clip['labelN']:4d} {_fmt(clip['median']):>8} {_fmt(clip['coveragePct'], 1):>8}"
+        )
     lines.append("")
     lines.append("Hand-label tracker pose (accepted non-rest bars).")
     lines.append(
@@ -591,8 +616,11 @@ def render_report(loco: dict, ideal: dict, review_sum: dict, tracker_sum: dict, 
 
 def main() -> None:
     import cv2
+    if "--out" in sys.argv:
+        r2.OUT = Path(sys.argv[sys.argv.index("--out") + 1])
     cv2.setNumThreads(2)
     R3.mkdir(parents=True, exist_ok=True)
+    print(f"scoring folds in {r2.OUT}", flush=True)
     _detail.profile = r2.load_profile()
     rows = r2.load_train_rows()
     loco = assert_r2_folds_held_out(rows)

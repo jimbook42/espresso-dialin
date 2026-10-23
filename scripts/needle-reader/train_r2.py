@@ -263,31 +263,50 @@ def cache() -> None:
     print(f"eval cache {len(meta_frames)} in {time.perf_counter() - t0:.1f}s", flush=True)
 
 
-def _repeats(row: dict) -> int:
+def _repeats(row: dict, strong: bool = False) -> int:
     count = 4 if str(row.get("source", "")).startswith("isaac") else 1
     bar = row.get("bar")
     if isinstance(bar, (int, float)):
-        if bar >= 9:
+        if strong:
+            # High bars are where the tail steals the peak. Show them more often.
+            if bar >= 8:
+                count *= 4
+            elif bar >= 6:
+                count *= 2
+        elif bar >= 9:
             count *= 3
         elif bar >= 7:
             count *= 2
     return count
 
 
-def _augment(rgb: np.ndarray, angle: float, rng: np.random.Generator):
+def _augment(rgb: np.ndarray, angle: float, rng: np.random.Generator, strong: bool = False):
     import cv2
     image = rgb.astype(np.float32, copy=True)
-    gain = float(rng.uniform(0.72, 1.28))
-    bias = float(rng.uniform(-0.06, 0.06))
+    if strong:
+        # Ideal hand crops use tip/0.86, which is up to ~20% tighter than the
+        # tracker radius these frames were cached with. Isaac's hub is often
+        # 10px off the tracker, about 4px in this 96px crop, sometimes more.
+        gain = float(rng.uniform(0.55, 1.45))
+        bias = float(rng.uniform(-0.08, 0.08))
+        gamma = float(rng.uniform(0.65, 1.55))
+        jitter = 8.0
+        scale = float(rng.uniform(0.80, 1.22))
+        blur_p = 0.55
+    else:
+        gain = float(rng.uniform(0.72, 1.28))
+        bias = float(rng.uniform(-0.06, 0.06))
+        gamma = float(rng.uniform(0.75, 1.35))
+        jitter = 2.5
+        scale = float(rng.uniform(0.95, 1.05))
+        blur_p = 0.45
     image = np.clip(image * gain + bias, 0, 1)
-    gamma = float(rng.uniform(0.75, 1.35))
     image = np.clip(image ** gamma, 0, 1)
-    if rng.random() < 0.45:
+    if rng.random() < blur_p:
         k = int(rng.choice([3, 5]))
         image = cv2.GaussianBlur(image, (k, k), 0)
     h, w = image.shape[:2]
-    dx, dy = rng.uniform(-2.5, 2.5, size=2)
-    scale = float(rng.uniform(0.95, 1.05))
+    dx, dy = rng.uniform(-jitter, jitter, size=2)
     centre = (w - 1) / 2.0
     matrix = np.array([
         [1.0 / scale, 0, centre - centre / scale + dx],
@@ -301,7 +320,20 @@ def _augment(rgb: np.ndarray, angle: float, rng: np.random.Generator):
     return warped, new_angle
 
 
-def _batch(crops: np.ndarray, indices: np.ndarray, angles: np.ndarray, rng: np.random.Generator, augment: bool):
+def _tail_penalty(logits, angles):
+    """Down-weight softmax mass within 8° of the tail. The tip is the label."""
+    import torch
+    import torch.nn.functional as F
+    prob = torch.softmax(logits, dim=-1)
+    tail = torch.remainder(angles + 180.0, 360.0)
+    idx = torch.arange(360, device=logits.device, dtype=torch.float32)
+    dist = (idx[None, :] - tail[:, None]).abs()
+    dist = torch.minimum(dist, 360.0 - dist)
+    mass = (prob * (dist <= 8.0)).sum(dim=-1).mean()
+    return 0.45 * mass
+
+
+def _batch(crops: np.ndarray, indices: np.ndarray, angles: np.ndarray, rng: np.random.Generator, augment: bool, strong: bool = False):
     import torch
     picked = np.array(crops[indices])
     out = np.empty_like(picked, dtype=np.float32)
@@ -310,7 +342,7 @@ def _batch(crops: np.ndarray, indices: np.ndarray, angles: np.ndarray, rng: np.r
         rgb = np.transpose(raw[:3], (1, 2, 0)).astype(np.float32) / 255.0
         angle = float(angles[i])
         if augment:
-            rgb, angle = _augment(rgb, angle, rng)
+            rgb, angle = _augment(rgb, angle, rng, strong=strong)
         chw = np.transpose(rgb, (2, 0, 1))
         out[i, :3] = chw
         out[i, 3] = chw[0]
@@ -354,7 +386,7 @@ def assert_held_out(rows: list[dict], fold: str, train_ids: list[int]) -> None:
         raise SystemExit(f"REFUSING fold {fold}: it holds out no frames")
 
 
-def train(epochs: int = 16) -> None:
+def train(epochs: int = 16, variant: str = "r2") -> None:
     require_mem()
     import torch
     from needle_model import batch_loss, build_model, decode, parameter_count
@@ -367,8 +399,10 @@ def train(epochs: int = 16) -> None:
         raise SystemExit(f"crop rows {crops.shape[0]} != labels {len(rows)}")
     clips = [clip["id"] for clip in baseline_order()]
     folds = clips + ["_all"]
+    strong = variant == "r3"
     angles = np.array([float(row["cropAngle"]) for row in rows], np.float32)
-    weights = np.array([_repeats(row) for row in rows], np.int32)
+    weights = np.array([_repeats(row, strong=strong) for row in rows], np.int32)
+    print(f"variant {variant} strong={strong}", flush=True)
     ckpt_path = OUT / "checkpoint.pt"
     stop = {"flag": False}
 
@@ -404,7 +438,7 @@ def train(epochs: int = 16) -> None:
         best_err = 1e9
         if ckpt_path.exists():
             saved = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-            if saved.get("fold") == fold and not saved.get("complete"):
+            if saved.get("fold") == fold and not saved.get("complete") and saved.get("variant", "r2") == variant:
                 model.load_state_dict(saved["model"])
                 opt.load_state_dict(saved["opt"])
                 start_epoch = int(saved["epoch"])
@@ -440,9 +474,12 @@ def train(epochs: int = 16) -> None:
                 lr = 1.2e-3 * (0.15 + 0.85 * 0.5 * (1 + math.cos(math.pi * progress / max(1, total))))
                 for group in opt.param_groups:
                     group["lr"] = lr
-                x, ang, none = _batch(crops, pick, angles[pick], rng, augment=True)
+                x, ang, none = _batch(crops, pick, angles[pick], rng, augment=True, strong=strong)
                 opt.zero_grad(set_to_none=True)
-                loss = batch_loss(*model(x), ang, none)
+                logits, aux = model(x)
+                loss = batch_loss(logits, aux, ang, none)
+                if strong:
+                    loss = loss + _tail_penalty(logits, ang)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 opt.step()
@@ -452,6 +489,7 @@ def train(epochs: int = 16) -> None:
                 if now - last_save > 300:
                     payload = {
                         "fold": fold,
+                        "variant": variant,
                         "complete": False,
                         "epoch": epoch,
                         "step": step + 1,
@@ -468,6 +506,7 @@ def train(epochs: int = 16) -> None:
             if stop["flag"]:
                 payload = {
                     "fold": fold,
+                    "variant": variant,
                     "complete": False,
                     "epoch": epoch,
                     "step": 0,
@@ -492,6 +531,7 @@ def train(epochs: int = 16) -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
         _save_ckpt(dest, {
             "fold": fold,
+            "variant": variant,
             "complete": True,
             "epoch": epochs,
             "model": model.state_dict(),
@@ -1092,9 +1132,9 @@ def gate(latency: dict | None = None) -> None:
     write_results(attempts, exam_text, latency, stats)
 
 
-def all_cmd(epochs: int) -> None:
+def all_cmd(epochs: int, variant: str = "r2") -> None:
     cache()
-    if not train(epochs):
+    if not train(epochs, variant):
         print("paused at checkpoint; rerun resumes", flush=True)
         return
     predict()
@@ -1108,12 +1148,15 @@ def main() -> None:
         OUT = Path(sys.argv[sys.argv.index("--out") + 1])
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
     epochs = 16
+    variant = "r2"
     if "--epochs" in sys.argv:
         epochs = int(sys.argv[sys.argv.index("--epochs") + 1])
+    if "--variant" in sys.argv:
+        variant = sys.argv[sys.argv.index("--variant") + 1]
     if cmd == "cache":
         cache()
     elif cmd == "train":
-        train(epochs)
+        train(epochs, variant)
     elif cmd == "predict":
         predict()
     elif cmd == "export":
@@ -1121,7 +1164,7 @@ def main() -> None:
     elif cmd == "gate":
         gate()
     elif cmd == "all":
-        all_cmd(epochs)
+        all_cmd(epochs, variant)
     else:
         raise SystemExit(f"unknown command {cmd}")
 
