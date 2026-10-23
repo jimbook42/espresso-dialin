@@ -221,7 +221,7 @@ def ghost_mask(median: np.ndarray, clean: np.ndarray) -> np.ndarray:
     clean_scores = _ray_scores(clean_g, cx, cy)
     excess = clean_scores - scores
     center = int(np.argmax(excess))
-    if float(excess[center]) < 14:
+    if float(excess[center] - np.median(excess)) < 12 or float(excess[center]) < 14:
         return np.zeros((h, w), dtype=bool)
     mask = np.zeros((h, w), dtype=np.uint8)
     for deg in (center, (center + 180) % 360):
@@ -374,19 +374,22 @@ def segment_template(canon: np.ndarray, profile: dict) -> tuple[np.ndarray, dict
     x = xs + 0.5 - cx
     y = ys + 0.5 - cy
     needle = profile["needle"]
-    tip_len = float(needle["length"]) * float(needle["tipLenRatio"]) * DIAL_R * 1.2
-    tail_len = float(needle["tailRatio"]) * float(needle["length"]) * DIAL_R * 1.35
-    hub_r = float(needle["hub"]) * DIAL_R * 2.2
-    half = max(3.0, float(needle["width"]) * DIAL_R * 5.0)
+    tip_len = float(needle["length"]) * float(needle["tipLenRatio"]) * DIAL_R
+    tail_len = float(needle["tailRatio"]) * tip_len
+    hub_r = float(needle["hub"]) * DIAL_R
     radial = np.hypot(x, y)
+    ang = np.degrees(np.arctan2(y, x)) % 360.0
+    to_zero = np.abs((ang + 180.0) % 360.0 - 180.0)
+    to_tail = np.abs((ang - 180.0 + 180.0) % 360.0 - 180.0)
+    # Angular gate so ticks and the stop pin do not become part of the needle.
     corridor = (
-        ((x >= -1) & (x <= tip_len) & (np.abs(y) <= half))
-        | ((x <= 1) & (x >= -tail_len) & (np.abs(y) <= half * 2.4))
-        | (radial <= hub_r)
+        ((to_zero <= 9.0) & (x >= 0) & (radial <= tip_len + 1.5) & (radial >= hub_r * 0.35))
+        | ((to_tail <= 14.0) & (x <= 0) & (radial <= tail_len + 1.5) & (radial >= hub_r * 0.3))
+        | (radial <= hub_r * 1.15)
     )
-    alpha = np.clip(dark / 36.0, 0.0, 1.0)
-    alpha = np.where(corridor & (dark > 12), alpha, 0.0)
-    alpha = cv2.GaussianBlur(alpha.astype(np.float32), (0, 0), 0.6)
+    alpha = np.clip((dark - 8.0) / 32.0, 0.0, 1.0)
+    alpha = np.where(corridor & (dark > 14), alpha, 0.0)
+    alpha = cv2.GaussianBlur(alpha.astype(np.float32), (0, 0), 0.45)
     rgba = np.zeros((h, w, 4), dtype=np.float32)
     rgba[..., :3] = canon.astype(np.float32) / 255.0
     rgba[..., 3] = alpha
@@ -399,7 +402,7 @@ def measure_template(rgba: np.ndarray) -> dict:
     cx = w / 2.0
     cy = h / 2.0
     alpha = rgba[..., 3]
-    ys, xs = np.ogrid[0:h, 0:w]
+    ys, xs = np.mgrid[0:h, 0:w]
     x = xs + 0.5 - cx
     y = ys + 0.5 - cy
     on = alpha > 0.28
@@ -423,6 +426,7 @@ def measure_template(rgba: np.ndarray) -> dict:
 
 
 def build_photo_assets(profile: dict, out_dir: Path) -> dict:
+    out_dir.mkdir(parents=True, exist_ok=True)
     raw = load_photo_rgb()
     geo = photo_geometry()
     cx, cy = float(geo["hub"]["x"]), float(geo["hub"]["y"])
@@ -433,6 +437,7 @@ def build_photo_assets(profile: dict, out_dir: Path) -> dict:
     delta = _tip_delta(cv2.cvtColor(canon, cv2.COLOR_RGB2GRAY))
     pose["rotationDeg"] = needle_deg + delta
     canon = rectify_rgb(raw, pose, bank_spec())
+    Image.fromarray(canon).save(out_dir / "reference_rectified.png")
     template, metrics = segment_template(canon, profile)
     mask = photo_needle_mask(raw.shape, cx, cy, radius, needle_deg, profile)
     cleaned_photo = inpaint_photo(raw, mask)
@@ -500,50 +505,60 @@ def median_stack(stack: np.ndarray) -> np.ndarray:
     return out
 
 
-def build_clip(path: Path, red_crop: float | None, profile: dict, stride: int, spec: dict) -> dict | None:
+def _collect_poses(path: Path, red_crop: float | None, stride: int) -> list[dict | None]:
     poses = []
-    frames = []
     prior = None
-    kept = 0
-    seen = 0
-    real = None
-    real_index = None
     for rgb in decode_frames(path, stride):
-        seen += 1
         pose = _pose_for_frame(rgb, prior, red_crop)
-        if pose is None:
-            continue
-        prior = pose
         poses.append(pose)
-        frames.append(rgb)
-        kept += 1
+        if pose is not None:
+            prior = pose
+    return poses
+
+
+def build_clip(path: Path, red_crop: float | None, profile: dict, stride: int, spec: dict) -> dict | None:
+    raw_poses = _collect_poses(path, red_crop, stride)
+    valid = [pose for pose in raw_poses if pose is not None]
+    kept = len(valid)
+    seen = len(raw_poses)
     if kept < 12:
         return None
-    arr_cx = smooth_series(np.array([p["cx"] for p in poses], dtype=np.float64))
-    arr_cy = smooth_series(np.array([p["cy"] for p in poses], dtype=np.float64))
-    arr_r = smooth_series(np.array([p["radius"] for p in poses], dtype=np.float64))
-    rots = np.array([p["rotationDeg"] for p in poses], dtype=np.float64)
+    arr_cx = smooth_series(np.array([p["cx"] for p in valid], dtype=np.float64))
+    arr_cy = smooth_series(np.array([p["cy"] for p in valid], dtype=np.float64))
+    arr_r = smooth_series(np.array([p["radius"] for p in valid], dtype=np.float64))
+    rots = np.array([p["rotationDeg"] for p in valid], dtype=np.float64)
     # Unwrap around the circular mean so the median filter does not jump at 0.
     center = circular_mean(rots.tolist())
     delta = (rots - center + 180.0) % 360.0 - 180.0
     smooth_delta = smooth_series(delta)
-    canvases = np.empty((kept, CANVAS, CANVAS, 3), dtype=np.uint8)
-    model_spec = rectify_spec(profile, "cartesian")
-    polar_spec = rectify_spec(profile, "polar")
-    mid = kept // 2
-    real_polar = None
-    for i, rgb in enumerate(frames):
-        pose = {
+    smoothed = []
+    for i in range(kept):
+        smoothed.append({
             "cx": float(arr_cx[i]),
             "cy": float(arr_cy[i]),
             "radius": float(arr_r[i]),
             "rotationDeg": float((center + smooth_delta[i]) % 360.0),
-        }
-        canvases[i] = rectify_rgb(rgb, pose, spec)
-        if i == mid:
-            real = rectify_rgb(rgb, pose, model_spec)
-            real_polar = rectify_rgb(rgb, pose, polar_spec)
-            real_index = i
+        })
+    canvases = np.empty((kept, CANVAS, CANVAS, 3), dtype=np.uint8)
+    model_spec = rectify_spec(profile, "cartesian")
+    polar_spec = rectify_spec(profile, "polar")
+    mid = kept // 2
+    real = None
+    real_polar = None
+    real_index = None
+    cursor = 0
+    for rgb, pose in zip(decode_frames(path, stride), raw_poses):
+        if pose is None:
+            continue
+        use = smoothed[cursor]
+        canvases[cursor] = rectify_rgb(rgb, use, spec)
+        if cursor == mid:
+            real = rectify_rgb(rgb, use, model_spec)
+            real_polar = rectify_rgb(rgb, use, polar_spec)
+            real_index = cursor
+        cursor += 1
+    if cursor != kept:
+        raise RuntimeError(f"{path.name} pose pass {kept} != rectify pass {cursor}")
     median = median_stack(canvases)
     stable = {
         "cx": float(np.median(arr_cx)),

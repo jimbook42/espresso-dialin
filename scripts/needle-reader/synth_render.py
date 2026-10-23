@@ -202,17 +202,12 @@ def scale_template(template: np.ndarray, scales: dict, metrics: dict) -> tuple[n
 def needle_sprite(bank: dict, profile: dict, params: dict) -> tuple[np.ndarray, float, float]:
     template = bank.get("template")
     metrics = bank.get("metrics") or {}
-    if template is not None and metrics.get("tipLenPx") and metrics.get("tailLenPx"):
+    if template is not None and metrics.get("tipLenPx") and metrics.get("hasTail") and metrics.get("hasTip"):
         sprite, tip_len, tail_len = scale_template(template, _scales(profile, params), metrics)
-        # The photo mask can miss a thin tail. Underdraw the procedural tail
-        # wherever the template has no coverage, so the tail is always there.
-        proc, proc_tip, proc_tail = procedural_sprite(profile, params, template.shape[0])
-        missing = sprite[..., 3] < 0.25
-        sprite = sprite.copy()
-        for c in range(3):
-            sprite[..., c] = np.where(missing, proc[..., c], sprite[..., c])
-        sprite[..., 3] = np.maximum(sprite[..., 3], proc[..., 3] * missing)
-        return sprite, float(max(tip_len, proc_tip)), float(max(tail_len, proc_tail))
+        if tail_len < 2 or float((sprite[..., 3][:, : sprite.shape[1] // 2]).sum()) < 4:
+            proc, proc_tip, proc_tail = procedural_sprite(profile, params, template.shape[0])
+            return proc, proc_tip, proc_tail
+        return sprite, tip_len, tail_len
     return procedural_sprite(profile, params, CANVAS)
 
 
@@ -337,10 +332,11 @@ def apply_augmentations(image: np.ndarray, rng: np.random.Generator, angle: floa
         image, pts = _perspective(image, rng, pts)
         names.append("oblique")
     hub, tip, tail = pts
+    tangent = wrap360(math.degrees(math.atan2(float(tip[1] - hub[1]), float(tip[0] - hub[0]))))
 
     if rng.random() < P_MOTION:
         length = int(rng.integers(3, 9))
-        image = _motion_blur(image, angle, length)
+        image = _motion_blur(image, tangent, length)
         names.append("motion")
     if rng.random() < P_DEFOCUS:
         image = cv2.GaussianBlur(image, (0, 0), float(rng.uniform(0.4, 1.5)))
