@@ -397,8 +397,8 @@ def train(args) -> None:
                 rate = (25 * args.batch) / max(1e-6, now - window) if step else args.batch / max(1e-6, now - t0)
                 window = now
                 print(
-                    f"step={step} seen={seen} loss_c={float(losses['c']) if 'c' in losses else float('nan'):.4f} "
-                    f"loss_p={float(losses['p']) if 'p' in losses else float('nan'):.4f} lr={lr:.6f} rate={rate:.1f}/s",
+                    f"step={step} seen={seen} loss_c={float(losses['c'].detach()) if 'c' in losses else float('nan'):.4f} "
+                    f"loss_p={float(losses['p'].detach()) if 'p' in losses else float('nan'):.4f} lr={lr:.6f} rate={rate:.1f}/s",
                     flush=True,
                 )
             if step > 0 and step % 100 == 0:

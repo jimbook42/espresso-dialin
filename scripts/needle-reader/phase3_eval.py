@@ -288,16 +288,59 @@ def _labels() -> list[dict]:
     return rows
 
 
-def _scale_label_image(path: Path):
-    rgba = _rgba(path)
-    h, w = rgba.shape[:2]
-    if w == REPLAY_W and h == REPLAY_H:
-        return rgba, 1.0, 1.0
-    rgb = cv2.resize(rgba[..., :3], (REPLAY_W, REPLAY_H), interpolation=cv2.INTER_AREA)
-    out = np.empty((REPLAY_H, REPLAY_W, 4), np.uint8)
-    out[..., :3] = rgb
-    out[..., 3] = 255
-    return out, REPLAY_W / w, REPLAY_H / h
+def _geometry(name: str, width: int, height: int):
+    """Map a noautorotate label into the replay still.
+
+    Clips with a 90° or 180° display matrix are portrait or flipped in the
+    Phase 0 replay, while the label JPEGs stay in stored orientation.
+    """
+    if name == "id":
+        return (lambda x, y: (x, y)), width, height
+    if name == "ccw":
+        return (lambda x, y: (y, width - 1 - x)), height, width
+    if name == "180":
+        return (lambda x, y: (width - 1 - x, height - 1 - y)), width, height
+    if name == "cw":
+        return (lambda x, y: (height - 1 - y, x)), height, width
+    raise ValueError(name)
+
+
+def _orient_name(label_bgr: np.ndarray, replay_bgr: np.ndarray) -> str:
+    options = {
+        "id": label_bgr,
+        "ccw": np.rot90(label_bgr, 1),
+        "180": np.rot90(label_bgr, 2),
+        "cw": np.rot90(label_bgr, 3),
+    }
+    best, best_mad = "id", 1e9
+    replay_small = cv2.resize(replay_bgr, (96, 96), interpolation=cv2.INTER_AREA)
+    for name, image in options.items():
+        small = cv2.resize(image, (96, 96), interpolation=cv2.INTER_AREA)
+        mad = float(np.mean(np.abs(small.astype(np.int16) - replay_small.astype(np.int16))))
+        if mad < best_mad:
+            best, best_mad = name, mad
+    return best
+
+
+def _warp_label(label_bgr: np.ndarray, name: str, replay_w: int, replay_h: int):
+    height, width = label_bgr.shape[:2]
+    project, tw, th = _geometry(name, width, height)
+    rotated = {
+        "id": label_bgr,
+        "ccw": np.rot90(label_bgr, 1),
+        "180": np.rot90(label_bgr, 2),
+        "cw": np.rot90(label_bgr, 3),
+    }[name]
+    rgb = cv2.resize(np.ascontiguousarray(rotated), (replay_w, replay_h), interpolation=cv2.INTER_AREA)
+    rgba = np.empty((replay_h, replay_w, 4), np.uint8)
+    rgba[..., :3] = rgb
+    rgba[..., 3] = 255
+
+    def point(pt):
+        x, y = project(float(pt[0]), float(pt[1]))
+        return np.array([x * replay_w / tw, y * replay_h / th], np.float64)
+
+    return rgba, point
 
 
 def _nearest_pose(frames: list[dict], clip_id: str, t: float) -> dict | None:
@@ -320,14 +363,25 @@ def label_predictions(mode: str, state, manifest: dict, profile: dict) -> list[d
     model = _model_from(mode, state).eval()
     frames = manifest["frames"]
     out = []
+    orients = {}
     for row in _labels():
         pose_row = _nearest_pose(frames, row["clip"], float(row["t"]))
         if pose_row is None:
             out.append({"id": row["id"], "clip": row["clip"], "t": row["t"], "phase": row.get("phase"), "ok": False})
             continue
-        image, sx, sy = _scale_label_image(LABEL_DIR / f"{row['id']}.jpg")
-        hub = np.array([row["hub"][0] * sx, row["hub"][1] * sy], np.float64)
-        tip = np.array([row["tip"][0] * sx, row["tip"][1] * sy], np.float64)
+        label_bgr = cv2.imread(str(LABEL_DIR / f"{row['id']}.jpg"), cv2.IMREAD_COLOR)
+        replay_bgr = cv2.imread(str(png_dir(row["clip"]) / pose_row["png"]), cv2.IMREAD_COLOR)
+        if label_bgr is None or replay_bgr is None:
+            out.append({"id": row["id"], "clip": row["clip"], "t": row["t"], "phase": row.get("phase"), "ok": False})
+            continue
+        label_rgb = cv2.cvtColor(label_bgr, cv2.COLOR_BGR2RGB)
+        replay_rgb = cv2.cvtColor(replay_bgr, cv2.COLOR_BGR2RGB)
+        if row["clip"] not in orients:
+            orients[row["clip"]] = _orient_name(label_rgb, replay_rgb)
+        replay_h, replay_w = replay_bgr.shape[:2]
+        image, project = _warp_label(label_rgb, orients[row["clip"]], replay_w, replay_h)
+        hub = project(row["hub"])
+        tip = project(row["tip"])
         truth = output_angle(hub, tip, pose_row["zero"])
         pose = {"cx": pose_row["cx"], "cy": pose_row["cy"], "radius": pose_row["radius"], "rotationDeg": pose_row["zero"]}
         crop = _u8(_crop(image, pose, profile, mode))[None]
