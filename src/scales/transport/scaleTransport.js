@@ -11,6 +11,11 @@
  */
 
 /**
+ * @typedef {Object} ScaleBatteryEvent
+ * @property {number} batteryPercent
+ */
+
+/**
  * Scale transport contract (Web Bluetooth today; Capacitor later).
  *
  * @typedef {Object} ScaleTransport
@@ -18,6 +23,7 @@
  * @property {() => Promise<void>} disconnect
  * @property {(handler: (event: ScaleWeightEvent) => void) => () => void} onWeight
  * @property {(handler: (event: ScaleTimerEvent) => void) => () => void} onTimer
+ * @property {(handler: (event: ScaleBatteryEvent) => void) => () => void} [onBattery]
  * @property {() => Promise<void>} tare
  * @property {() => Promise<void>} startTimer
  * @property {() => Promise<void>} stopTimer

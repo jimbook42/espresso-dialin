@@ -22,6 +22,10 @@ export function createSimulatedTransport(config = {}) {
   let extractionStartElapsedS = 0;
   let weightAtExtractionStartG = 0;
   const dripAfterStopS = Number(config.dripAfterStopS) > 0 ? Number(config.dripAfterStopS) : 0;
+  const configuredBatteryPercent =
+    config.batteryPercent === undefined || config.batteryPercent === null
+      ? null
+      : Number(config.batteryPercent);
   let postStopUntilMs = 0;
   let weightAtStopG = 0;
   let lastEmittedWeightG = 0;
@@ -29,6 +33,15 @@ export function createSimulatedTransport(config = {}) {
 
   const weightHandlers = new Set();
   const timerHandlers = new Set();
+  const batteryHandlers = new Set();
+
+  const emitBatteryIfConfigured = () => {
+    if (!connected || configuredBatteryPercent == null || !Number.isFinite(configuredBatteryPercent)) {
+      return;
+    }
+    const evt = { batteryPercent: configuredBatteryPercent };
+    batteryHandlers.forEach((h) => h(evt));
+  };
 
   const emitWeight = (w) => {
     lastEmittedWeightG = w;
@@ -105,6 +118,7 @@ export function createSimulatedTransport(config = {}) {
       shotAnchorG = 0;
       tareSucceededFlag = true;
       absoluteYieldTargetG = targetYieldG;
+      emitBatteryIfConfigured();
     },
     async disconnect() {
       connected = false;
@@ -122,6 +136,11 @@ export function createSimulatedTransport(config = {}) {
     onTimer(handler) {
       timerHandlers.add(handler);
       return () => timerHandlers.delete(handler);
+    },
+    onBattery(handler) {
+      batteryHandlers.add(handler);
+      if (connected) emitBatteryIfConfigured();
+      return () => batteryHandlers.delete(handler);
     },
     async tare() {
       // Weight after tare is applied in configureShotWeight once the outcome is known.

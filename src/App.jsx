@@ -2855,6 +2855,7 @@ export default function App() {
                         connectStatus={timemoreScale.connectStatus}
                         isConnected={timemoreScale.isConnected}
                         liveWeightG={timemoreScale.liveWeightG}
+                        batteryPercent={timemoreScale.batteryPercent}
                         onConnect={timemoreScale.connect}
                         onDisconnect={timemoreScale.disconnect}
                         onTare={timemoreScale.tare}
