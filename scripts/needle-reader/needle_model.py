@@ -31,8 +31,20 @@ class DSBlock(nn.Module):
         return x
 
 
+def _ray_grid(size: int, radii: int, inner: float, outer: float) -> torch.Tensor:
+    """Sample points clockwise from +x, y down, in grid_sample coordinates."""
+    center = (size - 1) / 2.0
+    radius = torch.linspace(inner, outer, radii)
+    ang = torch.arange(BINS, dtype=torch.float32) * (math.pi / 180.0)
+    xs = center + radius[:, None] * torch.cos(ang)[None, :]
+    ys = center + radius[:, None] * torch.sin(ang)[None, :]
+    gx = (xs + 0.5) / size * 2 - 1
+    gy = (ys + 0.5) / size * 2 - 1
+    return torch.stack((gx, gy), dim=-1).unsqueeze(0)
+
+
 class CartesianNet(nn.Module):
-    """Translation-tolerant crop encoder. A shifted needle keeps its direction."""
+    """Full-resolution features, then one ray per degree. Logit index is the angle."""
 
     def __init__(self):
         super().__init__()
@@ -41,21 +53,21 @@ class CartesianNet(nn.Module):
             nn.Conv2d(4, 16, 3, padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(),
+            DSBlock(16, 24, 1),
         )
-        self.b1 = DSBlock(16, 24, 2)
-        self.b2 = DSBlock(24, 32, 2)
-        self.b3 = DSBlock(32, 48, 2)
-        self.b4 = DSBlock(48, 64, 2)
-        self.b5 = DSBlock(64, 128, 1)
-        self.att = nn.Conv2d(128, 1, 1)
-        self.head = nn.Linear(128, BINS)
-        self.aux = nn.Linear(128, 2)
+        self.register_buffer("grid", _ray_grid(96, 18, 14.0, 44.0))
+        self.mix = nn.Conv2d(24, 32, kernel_size=(18, 1), bias=False)
+        self.bn_m = nn.BatchNorm2d(32)
+        self.logit = nn.Conv2d(32, 1, kernel_size=(1, 5), bias=False)
+        self.aux = nn.Linear(24, 2)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        x = self.b5(self.b4(self.b3(self.b2(self.b1(self.stem(x))))))
-        weight = torch.softmax(self.att(x).flatten(2), dim=-1)
-        feat = (x.flatten(2) * weight).sum(-1)
-        return self.head(feat), self.aux(feat)
+        feat = self.stem(x)
+        grid = self.grid.expand(feat.shape[0], -1, -1, -1)
+        rays = F.grid_sample(feat, grid, align_corners=False)
+        mixed = F.relu(self.bn_m(self.mix(rays)))
+        logits = self.logit(_circular_pad_w(mixed, 2)).squeeze(1).squeeze(1)
+        return logits, self.aux(feat.mean(dim=(2, 3)))
 
 
 def _circular_pad_w(x: torch.Tensor, pad: int) -> torch.Tensor:

@@ -289,22 +289,31 @@ def train(args) -> None:
     print(f"params cartesian={parameter_count(cart)} polar={parameter_count(polar)}", flush=True)
     if parameter_count(cart) > 150_000 or parameter_count(polar) > 150_000:
         raise SystemExit("model exceeds 150k parameters")
-    opt = torch.optim.AdamW(list(cart.parameters()) + list(polar.parameters()), lr=1.5e-3, weight_decay=1e-4)
+    models = {"cartesian": cart, "polar": polar}
+    active = ("cartesian", "polar") if args.arm == "both" else (args.arm,)
     ckpt_path = TRAIN / "checkpoint.pt"
     best_path = TRAIN / "best.pt"
-    start_samples = 0
+    seen = {"cartesian": 0, "polar": 0}
     best_score = 1e9
     if ckpt_path.exists() and not args.fresh:
         saved = torch.load(ckpt_path, map_location=device, weights_only=False)
-        cart.load_state_dict(saved["cartesian"])
-        polar.load_state_dict(saved["polar"])
-        opt.load_state_dict(saved["opt"])
-        start_samples = int(saved["samples"])
+        if isinstance(saved.get("samples"), dict):
+            seen = {"cartesian": int(saved["samples"].get("cartesian", 0)), "polar": int(saved["samples"].get("polar", 0))}
+        else:
+            both = int(saved.get("samples") or 0)
+            seen = {"cartesian": both, "polar": both}
+        for mode, model in models.items():
+            try:
+                model.load_state_dict(saved[mode])
+            except RuntimeError as exc:
+                print(f"reinit {mode} ({exc.__class__.__name__})", flush=True)
+                seen[mode] = 0
         best_score = float(saved.get("bestScore", best_score))
-        print(f"resume samples={start_samples} best={best_score:.4f}", flush=True)
-    if start_samples >= args.target:
-        print(f"already at {start_samples} >= {args.target}", flush=True)
+        print(f"resume seen={seen}", flush=True)
+    if all(seen[mode] >= args.target for mode in active):
+        print(f"already at {seen} >= {args.target}", flush=True)
         return
+    opt = torch.optim.AdamW([p for mode in active for p in models[mode].parameters()], lr=1.5e-3, weight_decay=1e-4)
 
     import multiprocessing as mp
     ctx = mp.get_context("spawn")
@@ -316,14 +325,14 @@ def train(args) -> None:
         proc.start()
         workers.append(proc)
 
-    remaining = args.target - start_samples
+    remaining = max(args.target - seen[mode] for mode in active)
     steps = math.ceil(remaining / args.batch)
-    next_index = start_samples
+    next_index = max(seen[mode] for mode in active)
     stop = {"flag": False}
 
-    def save(samples, score=None):
+    def save(score=None):
         payload = {
-            "samples": samples,
+            "samples": dict(seen),
             "cartesian": cart.state_dict(),
             "polar": polar.state_dict(),
             "opt": opt.state_dict(),
@@ -331,6 +340,7 @@ def train(args) -> None:
             "target": args.target,
             "seed": TRAIN_SEED,
             "sigma": 1.5,
+            "arm": args.arm,
         }
         tmp = ckpt_path.with_suffix(".tmp")
         torch.save(payload, tmp)
@@ -355,7 +365,6 @@ def train(args) -> None:
     val = _load_val()
     rng = np.random.default_rng(0)
     subset = rng.choice(val["n"], size=min(800, val["n"]), replace=False)
-    samples = start_samples
     t0 = time.perf_counter()
     window = t0
     cart.train()
@@ -366,37 +375,46 @@ def train(args) -> None:
                 break
             if any(not proc.is_alive() for proc in workers):
                 raise RuntimeError("a render worker exited")
-            batch_cart, batch_polar, angles, no_needle = _batch_from(out_q, args.batch, timeout=180)
+            batch_cart, batch_polar, angles, no_needle = _batch_from(out_q, args.batch, timeout=300)
             feed_more(args.batch)
-            lr = _lr(samples // args.batch, math.ceil(args.target / args.batch))
+            progress = min(seen[mode] for mode in active)
+            lr = _lr(progress // args.batch, math.ceil(args.target / args.batch))
             for group in opt.param_groups:
                 group["lr"] = lr
             opt.zero_grad(set_to_none=True)
-            loss_c = batch_loss(*cart(batch_cart), angles, no_needle)
-            loss_p = batch_loss(*polar(batch_polar), angles, no_needle)
-            (loss_c + loss_p).backward()
-            torch.nn.utils.clip_grad_norm_(list(cart.parameters()) + list(polar.parameters()), 1.0)
+            losses = {}
+            if "cartesian" in active:
+                losses["c"] = batch_loss(*cart(batch_cart), angles, no_needle)
+            if "polar" in active:
+                losses["p"] = batch_loss(*polar(batch_polar), angles, no_needle)
+            sum(losses.values()).backward()
+            torch.nn.utils.clip_grad_norm_([p for mode in active for p in models[mode].parameters()], 1.0)
             opt.step()
-            samples += args.batch
+            for mode in active:
+                seen[mode] += args.batch
             if step % 25 == 0:
                 now = time.perf_counter()
                 rate = (25 * args.batch) / max(1e-6, now - window) if step else args.batch / max(1e-6, now - t0)
                 window = now
                 print(
-                    f"step={step} samples={samples} loss_c={loss_c.item():.4f} loss_p={loss_p.item():.4f} "
-                    f"lr={lr:.6f} rate={rate:.1f}/s",
+                    f"step={step} seen={seen} loss_c={float(losses['c']) if 'c' in losses else float('nan'):.4f} "
+                    f"loss_p={float(losses['p']) if 'p' in losses else float('nan'):.4f} lr={lr:.6f} rate={rate:.1f}/s",
                     flush=True,
                 )
-            if samples % (args.batch * 200) < args.batch:
-                save(samples)
+            if step > 0 and step % 100 == 0:
+                save()
             if step > 0 and step % args.val_every == 0:
-                score = _val_score(cart, polar, val, subset, device)
-                print(f"val subset median cart={score['cartesian']:.3f} polar={score['polar']:.3f}", flush=True)
-                mean_score = 0.5 * (score["cartesian"] + score["polar"])
+                score = _val_score(cart, polar, val, subset, device, active)
+                print(
+                    f"val subset median cart={score['cartesian']:.3f} polar={score['polar']:.3f}",
+                    flush=True,
+                )
+                vals = [score[mode] for mode in active]
+                mean_score = sum(vals) / len(vals)
                 if mean_score < best_score:
                     best_score = mean_score
                     torch.save({
-                        "samples": samples,
+                        "samples": dict(seen),
                         "cartesian": cart.state_dict(),
                         "polar": polar.state_dict(),
                         "bestScore": best_score,
@@ -404,9 +422,9 @@ def train(args) -> None:
                     }, best_path)
                 cart.train()
                 polar.train()
-                save(samples, best_score)
+                save(best_score)
     finally:
-        save(samples)
+        save()
         for _ in workers:
             try:
                 index_q.put_nowait(None)
@@ -418,21 +436,23 @@ def train(args) -> None:
                 proc.terminate()
     elapsed = time.perf_counter() - t0
     (TRAIN / "train-time.json").write_text(json.dumps({
-        "samplesStart": start_samples,
-        "samplesEnd": samples,
+        "samplesEnd": seen,
         "seconds": elapsed,
         "target": args.target,
+        "arm": args.arm,
     }, indent=2))
-    print(f"train done samples={samples} seconds={elapsed:.1f}", flush=True)
+    print(f"train done seen={seen} seconds={elapsed:.1f}", flush=True)
 
 
 @torch.no_grad()
-def _val_score(cart, polar, val, subset, device):
-    scores = {}
+def _val_score(cart, polar, val, subset, device, active=("cartesian", "polar")):
+    scores = {"cartesian": 999.0, "polar": 999.0}
     for mode, model, images in (
         ("cartesian", cart, val["cartesian"]),
         ("polar", polar, val["polar"]),
     ):
+        if mode not in active:
+            continue
         model.eval()
         pred, _conf = _predict(model, images[subset], device)
         err = np.abs(pred - val["angles"][subset]) % 360
@@ -500,6 +520,7 @@ def main() -> None:
     tr.add_argument("--threads", type=int, default=6)
     tr.add_argument("--val-every", type=int, default=200)
     tr.add_argument("--fresh", action="store_true")
+    tr.add_argument("--arm", choices=("both", "cartesian", "polar"), default="both")
     ev = sub.add_parser("eval")
     ev.add_argument("--ckpt", type=Path, default=TRAIN / "checkpoint.pt")
     ev.add_argument("--out", type=Path, default=TRAIN / "synth-eval.json")
