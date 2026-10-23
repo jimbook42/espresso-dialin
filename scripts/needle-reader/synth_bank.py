@@ -131,9 +131,13 @@ def red_arc_angle(rgb: np.ndarray, cx: float, cy: float, radius: float) -> float
     xs = np.clip(np.rint(cx + radius * 0.55 * np.cos(rad)).astype(np.int32), 0, w - 1)
     ys = np.clip(np.rint(cy + radius * 0.55 * np.sin(rad)).astype(np.int32), 0, h - 1)
     pix = rgb[ys, xs].astype(np.float32)
-    red = np.clip(pix[:, 0] - np.maximum(pix[:, 1], pix[:, 2]), 0, None)
-    red = np.where(red > 10, red, 0.0)
-    if float(red.sum()) < 30:
+    excess = np.clip(pix[:, 0] - np.maximum(pix[:, 1], pix[:, 2]), 0, None)
+    if float(excess.max()) < 5:
+        return None
+    # Phone crops are dim; keep the redder part of the ring rather than a fixed cut.
+    floor = max(3.0, float(np.percentile(excess, 86)))
+    red = np.where(excess >= floor, excess, 0.0)
+    if float(red.sum()) < 12 or int(np.count_nonzero(red)) < 8:
         return None
     ang = math_atan2(float(np.sum(np.sin(rad) * red)), float(np.sum(np.cos(rad) * red)))
     return ang
@@ -220,8 +224,15 @@ def ghost_mask(median: np.ndarray, clean: np.ndarray) -> np.ndarray:
     scores = _ray_scores(gray, cx, cy)
     clean_scores = _ray_scores(clean_g, cx, cy)
     excess = clean_scores - scores
-    center = int(np.argmax(excess))
-    if float(excess[center] - np.median(excess)) < 12 or float(excess[center]) < 14:
+    by_clean = int(np.argmax(excess))
+    by_dark = int(np.argmin(scores))
+    clean_dip = float(excess[by_clean] - np.median(excess))
+    dark_dip = float(np.median(scores) - scores[by_dark])
+    if clean_dip >= 12 and float(excess[by_clean]) >= 14:
+        center = by_clean
+    elif dark_dip >= 7:
+        center = by_dark
+    else:
         return np.zeros((h, w), dtype=bool)
     mask = np.zeros((h, w), dtype=np.uint8)
     for deg in (center, (center + 180) % 360):
@@ -389,6 +400,20 @@ def segment_template(canon: np.ndarray, profile: dict) -> tuple[np.ndarray, dict
     )
     alpha = np.clip((dark - 8.0) / 32.0, 0.0, 1.0)
     alpha = np.where(corridor & (dark > 14), alpha, 0.0)
+    # Drop specks that are not attached to the hub (stop pin, ticks).
+    mask = (alpha > 0.2).astype(np.uint8)
+    count, labels = cv2.connectedComponents(mask)
+    if count > 1:
+        axis = (
+            (radial <= max(hub_r * 1.4, 5.0))
+            | ((np.abs(y) <= 3.2) & (x > 2) & (x <= tip_len + 1))
+            | ((np.abs(y) <= 4.2) & (x < -2) & (x >= -tail_len - 1))
+        )
+        present = labels[axis]
+        present = present[present > 0]
+        if present.size:
+            keep = set(int(v) for v in np.unique(present))
+            alpha = np.where(np.isin(labels, list(keep)), alpha, 0.0)
     alpha = cv2.GaussianBlur(alpha.astype(np.float32), (0, 0), 0.45)
     rgba = np.zeros((h, w, 4), dtype=np.float32)
     rgba[..., :3] = canon.astype(np.float32) / 255.0
@@ -505,75 +530,85 @@ def median_stack(stack: np.ndarray) -> np.ndarray:
     return out
 
 
-def _collect_poses(path: Path, red_crop: float | None, stride: int) -> list[dict | None]:
-    poses = []
-    prior = None
-    for rgb in decode_frames(path, stride):
-        pose = _pose_for_frame(rgb, prior, red_crop)
-        poses.append(pose)
-        if pose is not None:
-            prior = pose
-    return poses
+def _stable_pose(path: Path) -> dict | None:
+    script = Path(__file__).resolve().parent / "poses.mjs"
+    proc = subprocess.run(
+        ["node", str(script), str(path), "16"],
+        capture_output=True, text=True, timeout=180, check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"poses {path.name}: {proc.stderr[-400:]}")
+    good = [pose for pose in json.loads(proc.stdout).get("poses") or [] if pose.get("radius", 0) > 8]
+    if len(good) < 3:
+        return None
+    cx = float(np.median([pose["cx"] for pose in good]))
+    cy = float(np.median([pose["cy"] for pose in good]))
+    radius = float(np.median([pose["radius"] for pose in good]))
+    keep = [
+        pose for pose in good
+        if abs(pose["cx"] - cx) < radius * 0.28
+        and abs(pose["cy"] - cy) < radius * 0.28
+        and abs(pose["radius"] - radius) < radius * 0.22
+    ]
+    if len(keep) >= 3:
+        cx = float(np.median([pose["cx"] for pose in keep]))
+        cy = float(np.median([pose["cy"] for pose in keep]))
+        radius = float(np.median([pose["radius"] for pose in keep]))
+    return {"cx": cx, "cy": cy, "radius": radius, "tracked": len(keep) if len(keep) >= 3 else len(good), "sampled": len(good)}
+
+
+def rotate_canvas(image: np.ndarray, clockwise_deg: float) -> np.ndarray:
+    """Clockwise in image coordinates (y down)."""
+    if abs(clockwise_deg) < 0.05:
+        return image
+    h, w = image.shape[:2]
+    matrix = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), -float(clockwise_deg), 1.0)
+    return cv2.warpAffine(image, matrix, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
 
 
 def build_clip(path: Path, red_crop: float | None, profile: dict, stride: int, spec: dict) -> dict | None:
-    raw_poses = _collect_poses(path, red_crop, stride)
-    valid = [pose for pose in raw_poses if pose is not None]
-    kept = len(valid)
-    seen = len(raw_poses)
+    tracked = _stable_pose(path)
+    if tracked is None:
+        return None
+    pose = {"cx": tracked["cx"], "cy": tracked["cy"], "radius": tracked["radius"], "rotationDeg": 0.0}
+    canvases = []
+    for rgb in decode_frames(path, stride):
+        canvases.append(rectify_rgb(rgb, pose, spec))
+    kept = len(canvases)
     if kept < 12:
         return None
-    arr_cx = smooth_series(np.array([p["cx"] for p in valid], dtype=np.float64))
-    arr_cy = smooth_series(np.array([p["cy"] for p in valid], dtype=np.float64))
-    arr_r = smooth_series(np.array([p["radius"] for p in valid], dtype=np.float64))
-    rots = np.array([p["rotationDeg"] for p in valid], dtype=np.float64)
-    # Unwrap around the circular mean so the median filter does not jump at 0.
-    center = circular_mean(rots.tolist())
-    delta = (rots - center + 180.0) % 360.0 - 180.0
-    smooth_delta = smooth_series(delta)
-    smoothed = []
-    for i in range(kept):
-        smoothed.append({
-            "cx": float(arr_cx[i]),
-            "cy": float(arr_cy[i]),
-            "radius": float(arr_r[i]),
-            "rotationDeg": float((center + smooth_delta[i]) % 360.0),
-        })
-    canvases = np.empty((kept, CANVAS, CANVAS, 3), dtype=np.uint8)
+    stack = np.stack(canvases, axis=0)
+    mid = kept // 2
+    mid_canvas = canvases[mid]
+    del canvases
+    median = median_stack(stack)
+    del stack
+    red = red_arc_angle(median, CANVAS / 2.0, CANVAS / 2.0, DIAL_R)
+    clockwise = 0.0
+    if red is not None and red_crop is not None:
+        clockwise = (float(red_crop) - float(red) + 180.0) % 360.0 - 180.0
+        median = rotate_canvas(median, clockwise)
+        mid_canvas = rotate_canvas(mid_canvas, clockwise)
     model_spec = rectify_spec(profile, "cartesian")
     polar_spec = rectify_spec(profile, "polar")
-    mid = kept // 2
-    real = None
-    real_polar = None
-    real_index = None
-    cursor = 0
-    for rgb, pose in zip(decode_frames(path, stride), raw_poses):
-        if pose is None:
-            continue
-        use = smoothed[cursor]
-        canvases[cursor] = rectify_rgb(rgb, use, spec)
-        if cursor == mid:
-            real = rectify_rgb(rgb, use, model_spec)
-            real_polar = rectify_rgb(rgb, use, polar_spec)
-            real_index = cursor
-        cursor += 1
-    if cursor != kept:
-        raise RuntimeError(f"{path.name} pose pass {kept} != rectify pass {cursor}")
-    median = median_stack(canvases)
+    ident = {"cx": CANVAS / 2.0, "cy": CANVAS / 2.0, "radius": DIAL_R, "rotationDeg": 0.0}
+    real = rectify_rgb(mid_canvas, ident, model_spec)
+    real_polar = rectify_rgb(mid_canvas, ident, polar_spec)
     stable = {
-        "cx": float(np.median(arr_cx)),
-        "cy": float(np.median(arr_cy)),
-        "radius": float(np.median(arr_r)),
-        "rotationDeg": float(center % 360.0),
-        "framesSeen": seen,
+        "cx": tracked["cx"],
+        "cy": tracked["cy"],
+        "radius": tracked["radius"],
+        "rotationDeg": clockwise,
+        "tracked": tracked["tracked"],
         "framesKept": kept,
         "stride": stride,
-        "realIndex": real_index,
+        "realIndex": mid,
+        "redBeforeDeg": red,
     }
     return {"median": median, "pose": stable, "real": real, "realPolar": real_polar}
 
 
-def build_bank(profile: dict, out_dir: Path, stride: int = 2) -> dict:
+def build_bank(profile: dict, out_dir: Path, stride: int = 1, only: list[str] | None = None) -> dict:
     if mem_available_mb() < 3072:
         raise SystemExit(f"need >= 3 GB free, have {mem_available_mb():.0f} MB")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -589,6 +624,8 @@ def build_bank(profile: dict, out_dir: Path, stride: int = 2) -> dict:
     real_names = []
     spec = bank_spec()
     for path in list_clips():
+        if only and path.stem not in only and path.name not in only:
+            continue
         print(f"median {path.name} stride {stride}", flush=True)
         built = build_clip(path, red_crop, profile, stride, spec)
         if built is None:

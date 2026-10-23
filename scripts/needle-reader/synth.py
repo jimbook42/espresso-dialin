@@ -27,7 +27,6 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from gauge_profile import load_gauge_profile  # noqa: E402
-from rectify import measure_angle  # noqa: E402
 from synth_bank import build_bank, load_bank, mem_available_mb  # noqa: E402
 from synth_render import (  # noqa: E402
     CANVAS,
@@ -86,7 +85,7 @@ def cmd_backgrounds(args) -> None:
     _require_mem()
     _threads()
     profile = load_gauge_profile(str(args.profile))
-    meta = build_bank(profile, args.out, stride=args.stride)
+    meta = build_bank(profile, args.out, stride=args.stride, only=args.clips)
     print(json.dumps({
         "clips": len(meta["clips"]),
         "template": meta["template"],
@@ -159,6 +158,31 @@ def cmd_contact(args) -> None:
     print(json.dumps({"cartesian": str(cart_path), "polar": str(polar_path)}, indent=2))
 
 
+def _clean_tensor(bank, profile):
+    image = bank["backgrounds"]["dial_clean"]
+    h, w = image.shape[:2]
+    pose = {"cx": w / 2.0, "cy": h / 2.0, "radius": 40.0, "rotationDeg": 0.0}
+    from synth_render import tensor_from_canvas
+    return tensor_from_canvas(image, pose, profile, "cartesian", True)
+
+
+def _outer_tip(tensor: np.ndarray, clean: np.ndarray):
+    """Bearing of the darkness the needle adds outside the hub."""
+    weights = (0.299, 0.587, 0.114)
+    luma = weights[0] * tensor[0] + weights[1] * tensor[1] + weights[2] * tensor[2]
+    base = weights[0] * clean[0] + weights[1] * clean[1] + weights[2] * clean[2]
+    dark = np.clip(base - luma, 0, None)
+    size = luma.shape[0]
+    ys, xs = np.mgrid[0:size, 0:size]
+    x = xs + 0.5 - size / 2.0
+    y = ys + 0.5 - size / 2.0
+    radial = np.hypot(x, y)
+    use = (radial > 22) & (radial < 38) & (dark > 0.015)
+    if float(dark[use].sum()) < 0.05:
+        return None
+    return float(np.degrees(np.arctan2((y * dark)[use].sum(), (x * dark)[use].sum())) % 360.0)
+
+
 def _plain(bank, profile, angle: float, mode: str):
     image = bank["backgrounds"]["dial_clean"].copy()
     params = dict(profile["needle"])
@@ -186,12 +210,13 @@ def cmd_determinism(args) -> None:
     shape_ok = a["cartesian"].shape == shapes["cartesian"] and a["polar"].shape == shapes["polar"]
     tail_ok = True
     angle_errors = []
+    clean_tensor = _clean_tensor(bank, profile)
     for angle in (15.0, 74.0, 160.0, 200.0, 310.0):
         label, tensor, tail_alpha, tail_len = _plain(bank, profile, angle, "cartesian")
         if tail_alpha < 5 or tail_len < 2:
             tail_ok = False
-        measured = measure_angle(tensor[:3], {"mode": "cartesian", "size": 96, "dialRadiusPx": 40})
-        delta = abs(((measured - label + 540) % 360) - 180)
+        bearing = _outer_tip(tensor, clean_tensor)
+        delta = 180.0 if bearing is None else abs(((bearing - label + 540) % 360) - 180)
         angle_errors.append(delta)
     # Workers must agree with the parent on the same seed.
     import multiprocessing as mp
@@ -396,7 +421,8 @@ def main() -> None:
     parser.add_argument("--no-extra-red", action="store_true")
     sub = parser.add_subparsers(dest="cmd", required=True)
     bg = sub.add_parser("backgrounds")
-    bg.add_argument("--stride", type=int, default=2)
+    bg.add_argument("--stride", type=int, default=1)
+    bg.add_argument("--clips", nargs="*", default=None)
     bg.set_defaults(func=cmd_backgrounds)
     sub.add_parser("contact").set_defaults(func=cmd_contact)
     sub.add_parser("determinism").set_defaults(func=cmd_determinism)
