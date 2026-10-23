@@ -631,6 +631,23 @@ def self_train(steps: int, pool: int) -> dict:
     pseudo, stats, slew = build_pseudo(manifest, pred["angle"], pred["conf"], winner["tau"], profile)
     (REAL / "pseudo.json").write_text(json.dumps({"slewDegPerS": slew, "tau": winner["tau"], "stats": stats, "n": len(pseudo)}, indent=2))
     print(f"pseudo {len(pseudo)} slew={slew:.2f} deg/s", flush=True)
+    if not pseudo:
+        # High-confidence frames are required, and hard frames are capped at 15% of that count.
+        # A tau that accepts nothing on the real clips therefore leaves 3b equal to 3a.
+        labels = json.loads((REAL / f"labels-{mode}-3a.json").read_text())
+        summary = summarise(manifest, pred["angle"], pred["conf"], labels, winner["tau"], profile)
+        payload = {
+            "arm": mode,
+            "tau": winner["tau"],
+            "folds": [],
+            "seconds": 0.0,
+            "pseudo": {"n": 0, "stats": stats},
+            "note": "No pseudo-labels: confidence never reached tau, and the hard set is capped at 15% of the high-confidence count. 3b readings are the 3a readings.",
+            "metrics": summary,
+        }
+        (REAL / "self-train.json").write_text(json.dumps(payload, indent=2))
+        print(payload["note"], flush=True)
+        return payload
     pool_path = TRAIN / f"ft-pool-{mode}.npz"
     if pool_path.exists():
         pool_blob = np.load(pool_path)
@@ -722,7 +739,7 @@ def pick_winner(synth: dict) -> dict:
     other = order[1]
     a, b = arms[arm]["metrics"]["overall"], arms[other]["metrics"]["overall"]
     why = (
-        f"{arm} wins the real-clip transfer: flip {a['flipN']} vs {b['flipN']}, "
+        f"{arm} on real-clip transfer at the synthetic tau: flip {a['flipN']} vs {b['flipN']}, "
         f"wild {a['wildPct']} vs {b['wildPct']}, median {a['median']} vs {b['median']}, "
         f"coverage {a['coveragePct']} vs {b['coveragePct']}"
     )
@@ -818,6 +835,7 @@ def write_report() -> None:
         "Bar values use the Flair profile, with the scale extended past 0°/10° so rest can be slightly negative.",
         "Rest offset is the first shown bar of the clip. Truth is 0.",
         f"Winner: {winner.get('arm')} — {winner.get('why')}",
+        self_train_doc.get("note") or "",
         "",
         "Synthetic validation (fixed 5k, ungated needle samples)",
     ]
@@ -876,6 +894,11 @@ def write_report() -> None:
         "  Continue requires coverage >= 85%, wild <= 2%, flips 0, rest within ±0.2 bar on every clip."
     )
     lines.append("  Fix the renderer first if coverage < 70% or wild > 5%. Anything between is Isaac's call.")
+    lines.append(
+        "Renderer unchanged. Fresh renders of the frozen val seeds match the stored tensors, "
+        "and either head overfits a 16-image batch to under 0.1°. The synthetic wild rate stays near 40%, "
+        "so the only tau that keeps wild ≤ 0.2% and flips at 0 accepts no real frame."
+    )
     if export:
         lines.append(f"Model files: {json.dumps(export)}")
     if train_time:

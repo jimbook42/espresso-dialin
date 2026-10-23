@@ -1,0 +1,14 @@
+{
+  "cartesian": {
+    "fp32": 111527,
+    "int8": 75532,
+    "parameters": 17962,
+    "onnxCheck": true
+  },
+  "polar": {
+    "fp32": 99838,
+    "int8": 70662,
+    "parameters": 18930,
+    "onnxCheck": true
+  }
+}
