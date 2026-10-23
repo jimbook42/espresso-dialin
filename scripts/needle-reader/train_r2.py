@@ -287,12 +287,15 @@ def _augment(rgb: np.ndarray, angle: float, rng: np.random.Generator, strong: bo
         # Ideal hand crops use tip/0.86, which is up to ~20% tighter than the
         # tracker radius these frames were cached with. Isaac's hub is often
         # 10px off the tracker, about 4px in this 96px crop, sometimes more.
-        gain = float(rng.uniform(0.55, 1.45))
+        gain = float(rng.uniform(0.60, 1.40))
         bias = float(rng.uniform(-0.08, 0.08))
-        gamma = float(rng.uniform(0.65, 1.55))
-        jitter = 8.0
-        scale = float(rng.uniform(0.80, 1.22))
-        blur_p = 0.55
+        gamma = float(rng.uniform(0.70, 1.45))
+        # ±4px is about 9px on the source dial. Larger shifts make the
+        # radius-34 angle correction disagree with the real tip and the
+        # net stops fitting the clean crops.
+        jitter = 4.0
+        scale = float(rng.uniform(0.88, 1.14))
+        blur_p = 0.5
     else:
         gain = float(rng.uniform(0.72, 1.28))
         bias = float(rng.uniform(-0.06, 0.06))
@@ -330,7 +333,7 @@ def _tail_penalty(logits, angles):
     dist = (idx[None, :] - tail[:, None]).abs()
     dist = torch.minimum(dist, 360.0 - dist)
     mass = (prob * (dist <= 8.0)).sum(dim=-1).mean()
-    return 0.45 * mass
+    return 0.2 * mass
 
 
 def _batch(crops: np.ndarray, indices: np.ndarray, angles: np.ndarray, rng: np.random.Generator, augment: bool, strong: bool = False):
