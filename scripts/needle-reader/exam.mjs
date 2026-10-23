@@ -288,8 +288,8 @@ function render(reports, overall) {
 
 function r2Exam() {
   const inputPath = process.env.NEEDLE_R2_EXAM || '/workspace/pl-state/nr/train-r2/exam-input.json';
-  const outTxt = '/workspace/pl-state/nr/train-r2/exam-r2.txt';
-  const outJson = '/workspace/pl-state/nr/train-r2/exam-r2.json';
+  const outTxt = process.env.NEEDLE_EXAM_TXT || '/workspace/pl-state/nr/train-r2/exam-r2.txt';
+  const outJson = process.env.NEEDLE_EXAM_JSON || '/workspace/pl-state/nr/train-r2/exam-r2.json';
   const input = JSON.parse(readFileSync(inputPath, 'utf8'));
   const reports = [];
   const payloads = [];
@@ -328,7 +328,7 @@ function r2Exam() {
     rejections: sumCounts(reports.map((row) => row.rejections)),
   };
   const lines = [
-    'Phase R2 exam. Leave-one-clip-out real-footage model, same metric functions as the Phase 0 baseline.',
+    process.env.NEEDLE_EXAM_TITLE || 'Phase R2 exam. Leave-one-clip-out real-footage model, same metric functions as the Phase 0 baseline.',
     'command: TZ=UTC node scripts/needle-reader/exam.mjs --r2',
     'Coverage, rest offset, jitter, and rejections are the model readings on the Phase 0 replay frames.',
     'Median, P90, and wild rate are bar error on the hand-label frames. The held-out clip is not in that model.',
