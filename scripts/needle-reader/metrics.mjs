@@ -60,6 +60,10 @@ export function rejectionReason(frame) {
   if (held) return held;
   if (flags.includes('hub')) return 'hub';
   if (flags.includes('reading-gap')) return 'reading-gap';
+  if (flags.includes('out-of-arc')) return 'out-of-arc';
+  if (flags.includes('low-confidence')) return 'low-confidence';
+  if (flags.includes('step')) return 'step';
+  if (flags.includes('rest-disagree')) return 'rest-disagree';
   return null;
 }
 

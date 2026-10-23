@@ -286,7 +286,99 @@ function render(reports, overall) {
   return `${lines.join('\n')}\n`;
 }
 
+function r2Exam() {
+  const inputPath = process.env.NEEDLE_R2_EXAM || '/workspace/pl-state/nr/train-r2/exam-input.json';
+  const outTxt = '/workspace/pl-state/nr/train-r2/exam-r2.txt';
+  const outJson = '/workspace/pl-state/nr/train-r2/exam-r2.json';
+  const input = JSON.parse(readFileSync(inputPath, 'utf8'));
+  const reports = [];
+  const payloads = [];
+  for (const clip of input.clips) {
+    const payload = { frames: clip.frames, timing: clip.timing || {}, tapCalibration: clip.tapCalibration || null };
+    payloads.push({ clip, payload });
+    reports.push(clipReport(
+      { id: clip.id, kind: clip.kind, taps: null },
+      payload,
+      clip.calibratedRows || [],
+      clip.labelRows || [],
+    ));
+  }
+  const latency = input.latency || {};
+  for (const row of reports) {
+    if (row.latencyModel4xMs == null) row.latencyModel4xMs = latency.model4xMs ?? null;
+    if (row.latencyTotal4xMs == null) row.latencyTotal4xMs = latency.total4xMs ?? null;
+  }
+  const allFrames = payloads.flatMap((item) => item.payload.frames || []);
+  const usedFrames = payloads.filter((item) => item.clip.kind === 'used').flatMap((item) => item.payload.frames || []);
+  const allCalibrated = input.clips.flatMap((clip) => clip.calibratedRows || []);
+  const allLabels = input.clips.flatMap((clip) => clip.labelRows || []);
+  const label = labelErrorStats(allCalibrated);
+  const rests = reports.map((row) => row.restOffsetBar).filter((value) => value != null && Number.isFinite(value));
+  const overall = {
+    coveragePct: round(coveragePct(allFrames), 2),
+    usedCoveragePct: round(coveragePct(usedFrames), 2),
+    medianAbsBar: round(label.median, 3),
+    p90AbsBar: round(label.p90, 3),
+    wildPct: round(label.wildPct, 2),
+    flipPct: round(flipRatePct(allLabels.map((row) => row.needleErr)), 2),
+    restAbsMax: rests.length ? round(Math.max(...rests.map((value) => Math.abs(value))), 3) : null,
+    jitterMedian: round(medianOf(reports.map((row) => row.jitterRms)), 4),
+    latencyModel4xMs: round(medianOf(reports.map((row) => row.latencyModel4xMs)), 2),
+    latencyTotal4xMs: round(medianOf(reports.map((row) => row.latencyTotal4xMs)), 2),
+    rejections: sumCounts(reports.map((row) => row.rejections)),
+  };
+  const lines = [
+    'Phase R2 exam. Leave-one-clip-out real-footage model, same metric functions as the Phase 0 baseline.',
+    'command: TZ=UTC node scripts/needle-reader/exam.mjs --r2',
+    'Coverage, rest offset, jitter, and rejections are the model readings on the Phase 0 replay frames.',
+    'Median, P90, and wild rate are bar error on the hand-label frames. The held-out clip is not in that model.',
+    'Flip rate is shown readings within 25° of 180° from the label tip.',
+    'Latency is the int8 ONNX model at 4x the measured CPU time. Total adds the Phase 0 replay e2e median.',
+    'CALIBRATING and LOST frames stay unpublished. Dry-clip coverage cannot clear 85% while those frames count.',
+    '',
+  ];
+  const header = ['clip'.padEnd(16), 'kind'.padEnd(5), 'cov%'.padStart(7), 'med'.padStart(7), 'p90'.padStart(7), 'wild%'.padStart(7), 'flip%'.padStart(7), 'rest'.padStart(7), 'jitter'.padStart(8), 'model4x'.padStart(8), 'total4x'.padStart(8)].join(' ');
+  lines.push(header);
+  for (const row of reports) {
+    lines.push([
+      row.id.padEnd(16),
+      row.kind.padEnd(5),
+      fmt(row.coveragePct, 7, 1),
+      fmt(row.medianAbsBar, 7, 3),
+      fmt(row.p90AbsBar, 7, 3),
+      fmt(row.wildPct, 7, 1),
+      fmt(row.flipPct, 7, 1),
+      fmt(row.restOffsetBar, 7, 3),
+      fmt(row.jitterRms, 8, 4),
+      fmt(row.latencyModel4xMs, 8, 1),
+      fmt(row.latencyTotal4xMs, 8, 1),
+    ].join(' '));
+  }
+  lines.push('');
+  lines.push(`overall coverage=${fmt(overall.coveragePct, 0, 1)}%  used-puck coverage=${fmt(overall.usedCoveragePct, 0, 1)}%`);
+  lines.push(`overall median=${fmt(overall.medianAbsBar, 0, 3)}  p90=${fmt(overall.p90AbsBar, 0, 3)}  wild=${fmt(overall.wildPct, 0, 1)}%  flip=${fmt(overall.flipPct, 0, 1)}%`);
+  lines.push(`overall rest max|.|=${fmt(overall.restAbsMax, 0, 3)}  jitter median=${fmt(overall.jitterMedian, 0, 4)}`);
+  lines.push(`overall latency 4x model=${fmt(overall.latencyModel4xMs, 0, 1)} ms  total=${fmt(overall.latencyTotal4xMs, 0, 1)} ms (median of clip medians)`);
+  lines.push('');
+  lines.push('Rejections by reason');
+  for (const row of reports) {
+    const parts = Object.entries(row.rejections);
+    lines.push(`${row.id}: ${parts.length ? parts.map(([key, value]) => `${key}=${value}`).join(' ') : 'none'}`);
+  }
+  lines.push(`overall: ${Object.entries(overall.rejections).map(([key, value]) => `${key}=${value}`).join(' ') || 'none'}`);
+  lines.push('');
+  const text = `${lines.join('\n')}\n`;
+  mkdirSync(path.dirname(outTxt), { recursive: true });
+  writeFileSync(outTxt, text);
+  writeFileSync(outJson, `${JSON.stringify({ command: 'TZ=UTC node scripts/needle-reader/exam.mjs --r2', clips: reports, overall, latency }, null, 2)}\n`);
+  process.stdout.write(text);
+}
+
 function main() {
+  if (process.argv.includes('--r2')) {
+    r2Exam();
+    return;
+  }
   const mb = requireMemory();
   process.stderr.write(`MemAvailable ${mb.toFixed(0)} MB\n`);
   mkdirSync(REPLAY_DIR, { recursive: true });
