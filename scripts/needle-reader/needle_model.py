@@ -44,7 +44,7 @@ def _ray_grid(size: int, radii: int, inner: float, outer: float) -> torch.Tensor
 
 
 class CartesianNet(nn.Module):
-    """Full-resolution features, then one ray per degree. Logit index is the angle."""
+    """Depthwise stem, half-resolution rays. Logit index is the tip angle."""
 
     def __init__(self):
         super().__init__()
@@ -53,20 +53,23 @@ class CartesianNet(nn.Module):
             nn.Conv2d(4, 16, 3, padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(),
-            DSBlock(16, 24, 1),
+            DSBlock(16, 24, 2),
+            DSBlock(24, 32, 1),
+            DSBlock(32, 40, 1),
+            DSBlock(40, 40, 1),
         )
-        self.register_buffer("grid", _ray_grid(96, 18, 14.0, 44.0))
-        self.mix = nn.Conv2d(24, 32, kernel_size=(18, 1), bias=False)
-        self.bn_m = nn.BatchNorm2d(32)
-        self.logit = nn.Conv2d(32, 1, kernel_size=(1, 5), bias=False)
-        self.aux = nn.Linear(24, 2)
+        self.register_buffer("grid", _ray_grid(48, 12, 6.0, 22.0))
+        self.mix = nn.Conv2d(40, 24, kernel_size=(12, 1), bias=False)
+        self.bn_m = nn.BatchNorm2d(24)
+        self.logit = nn.Conv2d(24, 1, kernel_size=(1, 7), bias=False)
+        self.aux = nn.Linear(40, 2)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         feat = self.stem(x)
         grid = self.grid.expand(feat.shape[0], -1, -1, -1)
         rays = F.grid_sample(feat, grid, align_corners=False)
         mixed = F.relu(self.bn_m(self.mix(rays)))
-        logits = self.logit(_circular_pad_w(mixed, 2)).squeeze(1).squeeze(1)
+        logits = self.logit(_circular_pad_w(mixed, 3)).squeeze(1).squeeze(1)
         return logits, self.aux(feat.mean(dim=(2, 3)))
 
 
@@ -104,29 +107,31 @@ class CircBlock(nn.Module):
 
 
 class PolarNet(nn.Module):
-    """Angle axis stays 360 bins so a shift of the unwrap is a shift of the logits."""
+    """Angle axis stays 360. Three radius strides leave six rows so tip length remains."""
 
     def __init__(self):
         super().__init__()
         self.mode = "polar"
-        self.stem = nn.Conv2d(4, 24, 1, bias=False)
-        self.bn0 = nn.BatchNorm2d(24)
-        self.b1 = CircBlock(24, 32, 2)
-        self.b2 = CircBlock(32, 48, 2)
-        self.b3 = CircBlock(48, 64, 2)
-        self.b4 = CircBlock(64, 96, 2)
-        self.b5 = CircBlock(96, 96, 1, kernel=(3, 7))
-        self.collapse = nn.Conv2d(96, 48, kernel_size=(3, 1), bias=False)
-        self.bn_c = nn.BatchNorm2d(48)
-        self.logit = nn.Conv2d(48, 1, kernel_size=(1, 5), bias=False)
-        self.aux = nn.Linear(96, 2)
+        self.stem = nn.Conv2d(4, 16, 1, bias=False)
+        self.bn0 = nn.BatchNorm2d(16)
+        self.b1 = CircBlock(16, 24, 2, kernel=(3, 5))
+        self.b2 = CircBlock(24, 32, 2, kernel=(3, 5))
+        self.b3 = CircBlock(32, 48, 2, kernel=(3, 7))
+        self.b4 = CircBlock(48, 48, 1, kernel=(3, 7))
+        self.b5 = CircBlock(48, 48, 1, kernel=(3, 9))
+        self.collapse = nn.Conv2d(48, 24, kernel_size=(6, 1), bias=False)
+        self.bn_c = nn.BatchNorm2d(24)
+        self.logit = nn.Conv2d(24, 1, kernel_size=(1, 7), bias=False)
+        self.aux = nn.Linear(48, 2)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = F.relu(self.bn0(self.stem(x)))
-        x = self.b5(self.b4(self.b3(self.b2(self.b1(x)))))
+        x = self.b2(self.b1(x))
+        x = x - x.mean(dim=-1, keepdim=True)
+        x = self.b5(self.b4(self.b3(x)))
         pooled = x.mean(dim=(2, 3))
         flat = F.relu(self.bn_c(self.collapse(x)))
-        logits = self.logit(_circular_pad_w(flat, 2)).squeeze(1).squeeze(1)
+        logits = self.logit(_circular_pad_w(flat, 3)).squeeze(1).squeeze(1)
         return logits, self.aux(pooled)
 
 
@@ -155,12 +160,20 @@ def gaussian_targets(angles: torch.Tensor, no_needle: torch.Tensor, sigma: float
 
 def batch_loss(logits: torch.Tensor, aux: torch.Tensor, angles: torch.Tensor, no_needle: torch.Tensor, aux_weight: float = 0.15) -> torch.Tensor:
     target = gaussian_targets(angles, no_needle)
-    ce = -(target * F.log_softmax(logits, dim=-1)).sum(dim=-1).mean()
+    per = -(target * F.log_softmax(logits, dim=-1)).sum(dim=-1)
+    # Up-weight needle rows the head is still missing. Empty frames stay at weight 1
+    # so their higher uniform-target CE does not crowd out the needle signal.
+    weight = torch.ones_like(per)
+    present = ~no_needle
+    if bool(present.any()):
+        hard = per.detach()[present]
+        weight[present] = (hard / hard.mean().clamp(min=1e-3)).clamp(0.5, 3.0)
+    ce = (per * weight).mean()
     theta = angles * (math.pi / 180.0)
     want = torch.stack((torch.cos(2 * theta), torch.sin(2 * theta)), dim=-1)
-    present = (~no_needle).float()
-    denom = present.sum().clamp(min=1.0)
-    aux_mse = (((aux - want) ** 2).sum(dim=-1) * present).sum() / denom
+    present_f = present.float()
+    denom = present_f.sum().clamp(min=1.0)
+    aux_mse = (((aux - want) ** 2).sum(dim=-1) * present_f).sum() / denom
     return ce + aux_weight * aux_mse
 
 

@@ -99,12 +99,22 @@ def _worker(index_q, out_q):
 
 
 def _lr(step: int, total: int, base: float = 1.5e-3) -> float:
+    """Warm up, hold the base rate through the first third, then cosine down to 2e-4.
+
+    The first run decayed to 1e-5 while the val median was still moving, and the
+    polar head plateaued with a flat softmax. The floor stays high enough to keep
+    sharpening peaks.
+    """
     warm = min(200, max(1, total // 20))
     if step < warm:
         return base * (step + 1) / warm
-    span = max(1, total - warm)
-    t = (step - warm) / span
-    return 1e-5 + 0.5 * (base - 1e-5) * (1 + math.cos(math.pi * min(1.0, t)))
+    hold_until = max(warm + 1, int(total * 0.35))
+    if step < hold_until:
+        return base
+    span = max(1, total - hold_until)
+    t = (step - hold_until) / span
+    floor = 2e-4
+    return floor + 0.5 * (base - floor) * (1 + math.cos(math.pi * min(1.0, t)))
 
 
 def _batch_from(queue, batch: int, timeout: float):
