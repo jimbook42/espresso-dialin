@@ -58,6 +58,7 @@ export function useTimemoreScale({
   const [weightTriggersPrimed, setWeightTriggersPrimed] = useState(false);
   const [instantFlowGs, setInstantFlowGs] = useState(null);
   const [liveFlowSeries, setLiveFlowSeries] = useState([]);
+  const [batteryPercent, setBatteryPercent] = useState(null);
 
   const transportRef = useRef(null);
   const sessionRef = useRef(null);
@@ -148,6 +149,7 @@ export function useTimemoreScale({
           return [...prev, sample];
         });
       },
+      onBatteryPercent: (pct) => setBatteryPercent(pct),
     });
   }, [disposeSession, syncRelativeFromLive]);
 
@@ -164,6 +166,7 @@ export function useTimemoreScale({
         targetYieldG: Number(targetYieldG) || 36,
         preinfusionDurationS: usePreInfusion ? preInfusionDurationS : 0,
         dripAfterStopS: devUrlSim ? 2.5 : 0,
+        batteryPercent: 72,
       });
     }
     return createBluetoothScaleTransport(scaleDeviceId);
@@ -172,6 +175,7 @@ export function useTimemoreScale({
   const connect = useCallback(async () => {
     if (!enabled) return;
     setConnectStatus('connecting');
+    setBatteryPercent(null);
     try {
       await disposeTransport();
       const transport = buildTransport();
@@ -202,6 +206,7 @@ export function useTimemoreScale({
   const disconnect = useCallback(async () => {
     setConnectStatus('idle');
     setInstantFlowGs(null);
+    setBatteryPercent(null);
     await disposeTransport();
   }, [disposeTransport]);
 
@@ -343,6 +348,7 @@ export function useTimemoreScale({
       weightTriggersPrimed: false,
       instantFlowGs: null,
       liveFlowSeries: [],
+      batteryPercent: null,
       connect: noopAsync,
       disconnect: noopAsync,
       tare: noopAsync,
@@ -369,6 +375,7 @@ export function useTimemoreScale({
     weightTriggersPrimed,
     instantFlowGs,
     liveFlowSeries,
+    batteryPercent,
     connect,
     disconnect,
     tare,

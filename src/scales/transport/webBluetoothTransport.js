@@ -26,6 +26,7 @@ export function createWebBluetoothTransport() {
 
   const weightHandlers = new Set();
   const timerHandlers = new Set();
+  const batteryHandlers = new Set();
   const disconnectHandlers = new Set();
 
   const enqueueWrite = (bytes) => {
@@ -61,6 +62,9 @@ export function createWebBluetoothTransport() {
       if (evt.kind === 'weight' && typeof evt.weightG === 'number') {
         const payload = { weightG: evt.weightG, timestampMs: Date.now() };
         weightHandlers.forEach((h) => h(payload));
+      } else if (evt.kind === 'battery' && typeof evt.batteryPercent === 'number') {
+        const payload = { batteryPercent: evt.batteryPercent };
+        batteryHandlers.forEach((h) => h(payload));
       }
     }
   };
@@ -117,6 +121,10 @@ export function createWebBluetoothTransport() {
     onTimer(handler) {
       timerHandlers.add(handler);
       return () => timerHandlers.delete(handler);
+    },
+    onBattery(handler) {
+      batteryHandlers.add(handler);
+      return () => batteryHandlers.delete(handler);
     },
     async tare() {
       await enqueueWrite(TIMEMORE_COMMAND_FRAMES.tare);

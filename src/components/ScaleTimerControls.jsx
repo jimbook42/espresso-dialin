@@ -1,3 +1,5 @@
+import { formatScaleConnectionLabel } from '../scales/scaleBattery.js';
+
 /** @param {number} g */
 export function formatScaleLiveWeightLabel(g) {
   const n = Number(g);
@@ -17,6 +19,7 @@ export function ScaleTimerControls({
   connectStatus,
   isConnected,
   liveWeightG = 0,
+  batteryPercent = null,
   onConnect,
   onDisconnect,
   onTare,
@@ -53,7 +56,9 @@ export function ScaleTimerControls({
         </button>
       ) : (
         <>
-          <span className="text-[10px] font-semibold text-[#8a9d72]">Scale on</span>
+          <span className="text-[10px] font-semibold text-[#8a9d72]">
+            {formatScaleConnectionLabel(batteryPercent)}
+          </span>
           <span
             className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-lg ${ui.chip} ${ui.text}`}
             role="status"
