@@ -340,6 +340,20 @@ def _restore_rng(state: dict) -> np.random.Generator:
     return rng
 
 
+def assert_held_out(rows: list[dict], fold: str, train_ids: list[int]) -> None:
+    """A fold may not train on the clip it is scored on. Fail loudly."""
+    if fold == "_all":
+        return
+    leaked = [rows[i] for i in train_ids if rows[i]["clip"] == fold]
+    if leaked:
+        raise SystemExit(
+            f"REFUSING fold {fold}: {len(leaked)} training rows are from the held-out clip"
+        )
+    held = sum(1 for row in rows if row["clip"] == fold)
+    if held < 1:
+        raise SystemExit(f"REFUSING fold {fold}: it holds out no frames")
+
+
 def train(epochs: int = 16) -> None:
     require_mem()
     import torch
@@ -367,12 +381,13 @@ def train(epochs: int = 16) -> None:
 
     for fold in folds:
         dest = OUT / "folds" / f"{fold}.pt"
+        train_ids = [i for i, row in enumerate(rows) if fold == "_all" or row["clip"] != fold]
+        assert_held_out(rows, fold, train_ids)
         if dest.exists():
             saved = torch.load(dest, map_location="cpu", weights_only=False)
             if saved.get("complete"):
                 print(f"fold {fold} already complete", flush=True)
                 continue
-        train_ids = [i for i, row in enumerate(rows) if fold == "_all" or row["clip"] != fold]
         expanded = []
         for i in train_ids:
             expanded.extend([i] * int(weights[i]))
@@ -482,6 +497,8 @@ def train(epochs: int = 16) -> None:
             "model": model.state_dict(),
             "bestErr": best_err,
             "mode": "cartesian",
+            "heldOutClip": None if fold == "_all" else fold,
+            "trainRows": int(len(train_ids)),
         })
         if ckpt_path.exists():
             ckpt_path.unlink()
@@ -1086,6 +1103,9 @@ def all_cmd(epochs: int) -> None:
 
 
 def main() -> None:
+    global OUT
+    if "--out" in sys.argv:
+        OUT = Path(sys.argv[sys.argv.index("--out") + 1])
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
     epochs = 16
     if "--epochs" in sys.argv:
