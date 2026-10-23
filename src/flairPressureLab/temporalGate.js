@@ -10,6 +10,10 @@ import { median } from './gaugeProfile.js';
  * one-second median of classical TRACKING bars, when that median is missing, or
  * when the step from the last published bar is faster than the rate gate.
  * Three agreeing candidates relock a new level. A rest frame publishes 0 bar.
+ *
+ * The shipped object is the repair-1 gate: wide agreement, pre-lock R2, and a
+ * half-second hold. Carrying the classical median another second is implemented
+ * and left off, because that path pushed the wild rate over 5%.
  */
 export const TEMPORAL_GATE = {
   classicalWindowS: 1,
@@ -23,13 +27,22 @@ export const TEMPORAL_GATE = {
   relockCount: 3,
   relockBandBar: 1,
   restBar: 0,
-  /** 'off' | 'classical' | 'wide'. Tried in that order by the replay scorer. */
-  recovery: 'off',
+  /** 'off' | 'classical' | 'wide'. Wide is the R4 recovery that held the wild gate. */
+  recovery: 'wide',
   wideDisagreeBar: 2,
   wideConfidence: 0.5,
   classicalConfidenceMin: NEEDLE_TRACK_QUALITY,
   /** Exam flip: a reading within 25° of 180° from the other needle. */
   flipDeg: 155,
+  /** R2 alone before any classical TRACKING bar. The arc accept is the confidence gate. */
+  prelock: true,
+  prelockCount: 3,
+  prelockBandBar: 0.5,
+  /** Seconds to keep using the last classical median after the rolling window empties. */
+  classicalCarryS: 0,
+  /** Republish the last bar while a newer R2 stays inside holdBandBar. */
+  holdGapS: 0.5,
+  holdBandBar: 0.5,
 };
 
 export function initialTemporalState() {
@@ -38,6 +51,8 @@ export function initialTemporalState() {
     classicalHist: [],
     last: null,
     pending: [],
+    seenClassical: false,
+    carriedMedian: null,
   };
 }
 
@@ -99,13 +114,16 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
   const t = sample.t;
   const r2Bar = sample.r2Bar == null || !Number.isFinite(sample.r2Bar) ? null : sample.r2Bar;
   let classicalHist = trim(state.classicalHist, t, config.classicalWindowS);
+  let seenClassical = state.seenClassical === true;
   if (sample.classicalBar != null && Number.isFinite(sample.classicalBar)) {
     classicalHist = classicalHist.concat({ t, bar: sample.classicalBar });
+    seenClassical = true;
   }
   let r2Hist = trim(state.r2Hist, t, config.r2WindowS);
   if (r2Bar != null) r2Hist = r2Hist.concat({ t, bar: r2Bar });
   let pending = state.pending;
   let last = state.last;
+  let carriedMedian = state.carriedMedian;
   let bar = null;
   let reason = 'no-r2';
   if (r2Bar != null) {
@@ -134,7 +152,18 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
       pending = [];
     }
     if (ok) {
-      const classicalMedian = median(classicalHist.map((row) => row.bar));
+      const freshMedian = median(classicalHist.map((row) => row.bar));
+      if (freshMedian != null) carriedMedian = { t, bar: freshMedian };
+      let classicalMedian = freshMedian;
+      if (
+        classicalMedian == null
+        && config.classicalCarryS > 0
+        && carriedMedian != null
+        && t > carriedMedian.t
+        && t - carriedMedian.t <= config.classicalCarryS
+      ) {
+        classicalMedian = carriedMedian.bar;
+      }
       let band = config.disagreeBar;
       if (
         config.recovery === 'wide'
@@ -151,10 +180,19 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
         reason = 'disagree';
       }
     }
+    if (!ok && reason === 'no-classical' && config.prelock === true && !seenClassical) {
+      const recent = r2Hist.slice(-config.prelockCount).map((row) => row.bar);
+      const spread = recent.length ? Math.max(...recent) - Math.min(...recent) : Infinity;
+      if (recent.length >= config.prelockCount && spread <= config.prelockBandBar) {
+        ok = true;
+        bar = r2Bar;
+        reason = 'prelock';
+      }
+    }
     if (!ok) bar = null;
     else {
       last = { t, bar };
-      reason = 'ok';
+      if (reason !== 'prelock') reason = 'ok';
     }
   }
 
@@ -170,6 +208,21 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
     reason = 'classical';
   }
 
+  // A short hole keeps the last bar when the new R2 has not moved away from it.
+  // The timestamp stays on the real accept, so the hole cannot run longer than holdGapS.
+  if (
+    bar == null
+    && config.holdGapS > 0
+    && last != null
+    && t > last.t
+    && t - last.t <= config.holdGapS
+    && r2Bar != null
+    && Math.abs(r2Bar - last.bar) <= config.holdBandBar
+  ) {
+    bar = last.bar;
+    reason = 'hold';
+  }
+
   // An accepted rest reading is exactly 0. A rejected rest frame stays unpublished,
   // so a pin-looking R2 miss during the shot is not turned into a false zero.
   if (bar != null && sample.rest === true) {
@@ -179,7 +232,7 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
   }
 
   return {
-    state: { r2Hist, classicalHist, last, pending },
+    state: { r2Hist, classicalHist, last, pending, seenClassical, carriedMedian },
     bar,
     reason: reason || 'ok',
   };

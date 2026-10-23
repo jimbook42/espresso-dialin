@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { scorePhaseR4 } from './score_r4.mjs';
+import { scorePhaseR4Repair } from './score_r4r1.mjs';
 
 describe('phase R4 replay', () => {
   const report = scorePhaseR4();
@@ -26,5 +27,20 @@ describe('phase R4 replay', () => {
     expect(clips.some((id) => id.endsWith('094055') || id.endsWith('225307'))).toBe(false);
     expect(['PASS', 'FAIL']).toContain(report.gates.liveCoverage.result);
     expect(['GO', 'NO-GO']).toContain(report.verdict);
+  });
+});
+
+describe('phase R4 repair 1', () => {
+  const report = scorePhaseR4Repair();
+
+  it('keeps pre-lock and the short hold, and drops the classical carry', () => {
+    expect(report.kept).toEqual(['1', '3']);
+    expect(report.gates.wrong094055.result).toBe('PASS');
+    expect(report.gates.wrong094055.wrong).toBe(0);
+    expect(report.gates.wild.result).toBe('PASS');
+    expect(report.gates.wild.wild).toBeLessThanOrEqual(5);
+    expect(report.gates.flips.flips).toBe(0);
+    expect(report.gates.rest.rest).toBe(0);
+    expect(report.columns.carry.labels.wild).toBeGreaterThan(5);
   });
 });

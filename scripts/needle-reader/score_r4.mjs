@@ -111,7 +111,7 @@ function barToAngle(bar, anchors) {
   return wrap360((lo + hi) / 2);
 }
 
-function loadStreams(anchors) {
+export function loadStreams(anchors) {
   const raw = JSON.parse(readFileSync(RAW, 'utf8'));
   const labels = JSON.parse(readFileSync(LABELS, 'utf8'));
   const clips = [...new Set(raw.map((frame) => frame.clip))].sort();
@@ -149,21 +149,36 @@ function loadStreams(anchors) {
   return { clips, streams, labels, anchors };
 }
 
+/** R4 columns stay on the original gate. Repair flags are scored separately. */
 function configFor(mode) {
+  const base = {
+    ...TEMPORAL_GATE,
+    prelock: false,
+    classicalCarryS: 0,
+    holdGapS: 0,
+  };
   if (mode === 'raw') return null;
-  if (mode === 'gated') return { ...TEMPORAL_GATE, recovery: 'off' };
-  if (mode === 'a') return { ...TEMPORAL_GATE, recovery: 'classical' };
-  if (mode === 'b') return { ...TEMPORAL_GATE, recovery: 'wide' };
+  if (mode === 'gated') return { ...base, recovery: 'off' };
+  if (mode === 'a') return { ...base, recovery: 'classical' };
+  if (mode === 'b') return { ...base, recovery: 'wide' };
   throw new Error(`unknown mode ${mode}`);
 }
 
+function resolveConfig(modeOrConfig) {
+  if (modeOrConfig == null || modeOrConfig === 'raw') return null;
+  if (typeof modeOrConfig === 'object') return modeOrConfig;
+  return configFor(modeOrConfig);
+}
+
 function publishLive(stream, mode) {
-  if (mode === 'raw') return stream.map((sample) => sample.r2Bar);
-  return runTemporalGate(stream, configFor(mode)).map((step) => step.bar);
+  const config = resolveConfig(mode);
+  if (config == null) return stream.map((sample) => sample.r2Bar);
+  return runTemporalGate(stream, config).map((step) => step.bar);
 }
 
 function publishAtLabel(stream, index, r2Bar, mode, anchors) {
-  if (mode === 'raw') return r2Bar;
+  const config = resolveConfig(mode);
+  if (config == null) return r2Bar;
   const samples = stream.slice(0, index + 1).map((sample, i) => {
     if (i !== index) return sample;
     const bar = r2Bar == null ? null : Number(r2Bar);
@@ -173,7 +188,7 @@ function publishAtLabel(stream, index, r2Bar, mode, anchors) {
       classicalAngle: sample.classicalBar == null ? null : barToAngle(sample.classicalBar, anchors),
     };
   });
-  const stepped = runTemporalGate(samples, configFor(mode));
+  const stepped = runTemporalGate(samples, config);
   return stepped[stepped.length - 1].bar;
 }
 
@@ -240,6 +255,19 @@ function summarizeLabels(rows, anchors) {
       r2: row.r2,
     })),
   };
+}
+
+export function evaluateTemporalConfig(streams, labels, clips, anchors, config) {
+  const rows = labelRows(streams, labels, config, anchors);
+  return {
+    labels: summarizeLabels(rows, anchors),
+    coverage: liveCoverage(streams, clips, config),
+  };
+}
+
+export function loadPhaseR4Replay() {
+  const anchors = JSON.parse(readFileSync(PROFILE, 'utf8')).scale.anchors;
+  return { anchors, ...loadStreams(anchors) };
 }
 
 function liveCoverage(streams, clips, mode) {
