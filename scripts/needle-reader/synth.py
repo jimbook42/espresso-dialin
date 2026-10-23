@@ -392,7 +392,7 @@ def cmd_gate(args) -> None:
         ["val set", "PASS" if manifest.get("count") == VAL_COUNT else "FAIL", f"{manifest.get('count')} seed {manifest.get('seed')} no-needle {manifest.get('noNeedle')}"],
         ["angle-only labels", "PASS" if manifest.get("angle") else "FAIL", "tip angle, null when occluded"],
         ["red channel", "PASS" if manifest.get("extraRedChannel") else "FAIL", " ".join(manifest.get("channels") or [])],
-        ["tail always", "PASS" if det.get("tailRendered") else "FAIL", "procedural tail under the template"],
+        ["tail always", "PASS" if det.get("tailRendered") else "FAIL", "short end is drawn on every clean sample"],
     ]
     passed = all(row[1] == "PASS" for row in rows)
     lines = ["Phase 2 gate — synthetic generator", ""]
