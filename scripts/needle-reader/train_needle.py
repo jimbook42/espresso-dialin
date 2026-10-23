@@ -454,7 +454,7 @@ def finetune_arm(mode: str, base_ckpt: Path, pool_x: np.ndarray, pool_angle: np.
     saved = torch.load(base_ckpt, map_location=device, weights_only=False)
     model.load_state_dict(saved[mode])
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
-    rng = np.random.default_rng(abs(hash((mode, int(pseudo_angle.shape[0]), steps))) % (2**32))
+    rng = np.random.default_rng((steps * 10007 + int(pseudo_angle.shape[0]) + (1 if mode == "polar" else 0)) % (2**32))
     weights = pseudo_weight.astype(np.float64)
     weights = weights / max(weights.sum(), 1e-8)
     model.train()
