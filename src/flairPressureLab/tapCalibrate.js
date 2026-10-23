@@ -1038,6 +1038,48 @@ export function readCalibratedFrame(image, tracker) {
   };
 }
 
+/**
+ * Stored-frame pixel → the pixel ffmpeg autorotate shows.
+ * Tap files are unmirrored pixels of the 1280×720 file (display matrix
+ * still attached). The replay stills are that file after the same
+ * rotation, so a 90° or 180° clip otherwise snaps the taps onto the
+ * wrong part of the picture. Quarter turns only; anything else is
+ * already in display space.
+ */
+export function mapStoredTapPoint(point, width, height, rotationDeg) {
+  const p = pointOf(point);
+  if (!p || !(width > 1) || !(height > 1)) return null;
+  const quarter = ((Math.round(Number(rotationDeg)) % 360) + 360) % 360;
+  if (quarter === 90) return { x: p.y, y: width - 1 - p.x };
+  if (quarter === 270) return { x: height - 1 - p.y, y: p.x };
+  if (quarter === 180) return { x: width - 1 - p.x, y: height - 1 - p.y };
+  return { x: p.x, y: p.y };
+}
+
+function writeTapPoint(original, mapped) {
+  if (!mapped) return original;
+  if (Array.isArray(original)) return [mapped.x, mapped.y];
+  if (original && typeof original === 'object') return { ...original, x: mapped.x, y: mapped.y };
+  return [mapped.x, mapped.y];
+}
+
+/** Map centre / 5 / 10 into the autorotated still. `atSec` stays on the clip clock. */
+export function tapsForDisplayFrame(taps, { width, height, rotationDeg = 0 } = {}) {
+  if (!taps) return null;
+  const quarter = ((Math.round(Number(rotationDeg)) % 360) + 360) % 360;
+  if (quarter !== 90 && quarter !== 180 && quarter !== 270) return taps;
+  const centre = taps.centre ?? taps[0];
+  const five = taps.five ?? taps[1];
+  const ten = taps.ten ?? taps[2];
+  const mapped = {
+    centre: writeTapPoint(centre, mapStoredTapPoint(centre, width, height, quarter)),
+    five: writeTapPoint(five, mapStoredTapPoint(five, width, height, quarter)),
+    ten: writeTapPoint(ten, mapStoredTapPoint(ten, width, height, quarter)),
+  };
+  if (taps.atSec != null) mapped.atSec = taps.atSec;
+  return mapped;
+}
+
 /** Replay builds only. `cx,cy,fx,fy,tx,ty` in unmirrored video pixels. */
 export function parseTapCalQuery(search) {
   if (!search) return null;

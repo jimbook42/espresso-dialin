@@ -131,6 +131,11 @@ function ensureReplayMp4(clip) {
   return dest;
 }
 
+function pageClosedError(error) {
+  const text = String(error?.message || error || '');
+  return /Target page(?:, context or browser)? has been closed|Target page closed/i.test(text);
+}
+
 function replayClip(clip, mp4, port) {
   const saved = path.join(REPLAY_DIR, `${clip.id}.json`);
   if (!FORCE && existsSync(saved)) {
@@ -144,7 +149,7 @@ function replayClip(clip, mp4, port) {
   const duration = durationSec(mp4);
   process.stderr.write(`y4m ${clip.id} ${duration.toFixed(2)}s\n`);
   ffmpeg(['-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', mp4, '-pix_fmt', 'yuv420p', y4m]);
-  try {
+  const runBrowser = () => {
     const env = {};
     if (clip.taps) env.PRESSURE_TAP_CAL = clip.taps;
     const result = slot([
@@ -154,6 +159,15 @@ function replayClip(clip, mp4, port) {
     const payload = JSON.parse(result.stdout);
     writeFileSync(saved, JSON.stringify(payload));
     return payload;
+  };
+  try {
+    try {
+      return runBrowser();
+    } catch (error) {
+      if (!pageClosedError(error)) throw error;
+      process.stderr.write(`retry ${clip.id} once after target page closed\n`);
+      return runBrowser();
+    }
   } finally {
     rmSync(y4m, { force: true });
   }

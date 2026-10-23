@@ -10,8 +10,10 @@ import {
   fiveCheckBar,
   markResidualPx,
   matchTipAngle,
+  mapStoredTapPoint,
   parseTapCalQuery,
   replayMediaTimeSec,
+  tapsForDisplayFrame,
   replayTapWindowOpen,
   shouldDeferLegacyLock,
   snapHub,
@@ -87,6 +89,28 @@ describe('detectBadTap', () => {
       { x: 2, y: 0 },
       { hubPx: 4, fivePx: BAD_TAP_PX + 20, tenPx: 9 },
     ).bad).toBe('five');
+  });
+});
+
+describe('tapsForDisplayFrame', () => {
+  it('turns stored 1280x720 taps into the autorotated still', () => {
+    // 90° CCW: (x, y) -> (y, width - 1 - x). 180°: both axes flip.
+    expect(mapStoredTapPoint([603, 398], 1280, 720, 90)).toEqual({ x: 398, y: 676 });
+    expect(mapStoredTapPoint([647, 548], 1280, 720, -180)).toEqual({ x: 632, y: 171 });
+    expect(mapStoredTapPoint([10, 20], 1280, 720, 270)).toEqual({ x: 699, y: 10 });
+    expect(mapStoredTapPoint([624, 310], 1280, 720, 0)).toEqual({ x: 624, y: 310 });
+    const mapped = tapsForDisplayFrame(
+      { atSec: 5.4, centre: [603, 398], five: [565, 440], ten: [568, 370] },
+      { width: 1280, height: 720, rotationDeg: 90 },
+    );
+    expect(mapped.atSec).toBe(5.4);
+    expect(mapped.centre).toEqual([398, 676]);
+    expect(mapped.five).toEqual([440, 714]);
+    expect(mapped.ten).toEqual([370, 711]);
+    expect(tapsForDisplayFrame(
+      { atSec: 1.8, centre: [624, 310], five: [661, 270], ten: [662, 338] },
+      { width: 1280, height: 720, rotationDeg: 0 },
+    ).centre).toEqual([624, 310]);
   });
 });
 

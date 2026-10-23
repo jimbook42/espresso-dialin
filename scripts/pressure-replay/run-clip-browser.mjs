@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { startPreviewServer, waitForServer } from '../lib/previewServer.mjs';
 import { assessPressureLabPrivacy } from './privacyAssert.js';
+import { tapsForDisplayFrame } from '../../src/flairPressureLab/tapCalibrate.js';
 
 const y4mPath = process.argv[2];
 const durationS = Number(process.argv[3]);
@@ -24,14 +25,17 @@ if (!y4mPath || !durationS || !mp4Path) {
  *   a 6th argument that is a taps.json path
  *   or <mp4>.taps.json beside the source video
  * JSON: { "atSec": 0, "centre": [x, y], "five": [x, y], "ten": [x, y] }
- * Pixels are unmirrored video pixels. atSec is the rest moment on the clip
- * clock (seconds from the start of the file). The lab opens that half-second
- * on the replay still's media time. The still canvas has no currentTime, so
- * a video.currentTime read stays 0 and any atSec after the first half-second
+ * Pixels are unmirrored stored-frame pixels of the mp4 (1280×720), not the
+ * autorotated still. atSec is the rest moment on the clip clock (seconds
+ * from the start of the file). The lab opens that half-second on the replay
+ * still's media time. The still canvas has no currentTime, so a
+ * video.currentTime read stays 0 and any atSec after the first half-second
  * never opens. Omit atSec to calibrate on the first frame (clips that open
  * on the rest shot). The result JSON records tapCalibration from
  * window.__pressureLabTapCalResult.
- * This file is copied onto window.__pressureLabTapCal before the page boots.
+ * This file is copied onto window.__pressureLabTapCal before the page boots,
+ * after the display-matrix rotation is applied so the taps sit on the still
+ * ffmpeg actually extracts.
  */
 function loadTapCal() {
   const raw = process.env.PRESSURE_TAP_CAL || process.argv[6] || '';
@@ -54,7 +58,33 @@ function loadTapCal() {
   return JSON.parse(fs.readFileSync(raw, 'utf8'));
 }
 
-const tapCal = loadTapCal();
+function storedFrameGeometry(file) {
+  const probe = spawnSync('ffprobe', [
+    '-v', 'error',
+    '-select_streams', 'v:0',
+    '-show_entries', 'stream=width,height:stream_side_data=rotation',
+    '-of', 'json',
+    file,
+  ], { encoding: 'utf8' });
+  if (probe.status !== 0) throw new Error(`ffprobe ${file}`);
+  const stream = JSON.parse(probe.stdout).streams?.[0];
+  if (!stream?.width || !stream?.height) throw new Error(`no video stream ${file}`);
+  const rotation = stream.side_data_list?.find((entry) => entry.rotation != null)?.rotation ?? 0;
+  return {
+    width: stream.width,
+    height: stream.height,
+    rotationDeg: Number(rotation) || 0,
+  };
+}
+
+const loadedTaps = loadTapCal();
+const frameGeometry = loadedTaps ? storedFrameGeometry(mp4Path) : null;
+const tapCal = loadedTaps ? tapsForDisplayFrame(loadedTaps, frameGeometry) : null;
+if (tapCal && frameGeometry && ((Math.round(frameGeometry.rotationDeg) % 360) + 360) % 360 !== 0) {
+  process.stderr.write(
+    `tap pixels follow display rotation ${frameGeometry.rotationDeg} on ${frameGeometry.width}x${frameGeometry.height}\n`,
+  );
+}
 
 function percentile(sorted, p) {
   if (!sorted.length) return null;
