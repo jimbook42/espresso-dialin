@@ -196,6 +196,7 @@ import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
+import { WeighingView } from './components/WeighingView.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
 import {
   preinfusionAutoEndTargets,
@@ -343,6 +344,7 @@ export default function App() {
   const [shotCountdownValue, setShotCountdownValue] = useState(null);
   const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
   const shotCountdownStartOptsRef = useRef(null);
+  const [weighingViewOpen, setWeighingViewOpen] = useState(false);
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
   const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
   const yieldSettleUserEditedRef = useRef(false);
@@ -582,6 +584,13 @@ export default function App() {
     setActualDoseG(recipe.targetDoseG);
   };
 
+  useEffect(() => {
+    if (weighingViewOpen && !timemoreScale.isConnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- close weighing view when scale drops
+      setWeighingViewOpen(false);
+    }
+  }, [weighingViewOpen, timemoreScale.isConnected]);
+
   const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
 
   // Timer Logic (0.1s resolution for mobile fullscreen display)
@@ -671,6 +680,7 @@ export default function App() {
   }, [timemoreScale]);
 
   const handleStartTimer = async ({ fromBrewGuide = false, tareAlreadyDone = false } = {}) => {
+    setWeighingViewOpen(false);
     if (fromBrewGuide) syncBrewGuideTimerActive(true);
     else syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
@@ -2304,6 +2314,16 @@ export default function App() {
     <div className={`min-h-screen ${ui.page} relative`}>
       <PwaInstallBanner ui={ui} darkMode={darkMode} />
 
+      <WeighingView
+        open={weighingViewOpen}
+        onClose={() => setWeighingViewOpen(false)}
+        ui={ui}
+        liveWeightG={timemoreScale.liveWeightG}
+        targetDoseG={activeRecipe?.targetDoseG}
+        batteryPercent={timemoreScale.batteryPercent}
+        onTare={timemoreScale.tare}
+      />
+
       {shotCountdownOverlayVisible && (
         <div className="fixed inset-0 z-[65] flex flex-col items-center justify-center bg-[#121212] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
           <p className="text-[11px] tracking-[0.2em] uppercase text-[#9a9690] mb-6">Get ready</p>
@@ -2856,8 +2876,13 @@ export default function App() {
                         isConnected={timemoreScale.isConnected}
                         liveWeightG={timemoreScale.liveWeightG}
                         batteryPercent={timemoreScale.batteryPercent}
+                        timerRunning={timerRunning}
+                        onOpenWeighingView={() => setWeighingViewOpen(true)}
                         onConnect={timemoreScale.connect}
-                        onDisconnect={timemoreScale.disconnect}
+                        onDisconnect={() => {
+                          setWeighingViewOpen(false);
+                          timemoreScale.disconnect();
+                        }}
                         onTare={timemoreScale.tare}
                       />
                     )}

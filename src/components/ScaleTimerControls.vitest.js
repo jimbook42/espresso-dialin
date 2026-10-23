@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatScaleLiveWeightLabel } from './ScaleTimerControls.jsx';
 import { formatScaleConnectionLabel } from '../scales/scaleBattery.js';
+import { isWeighingChipEnabled } from './weighingViewFormat.js';
 
 describe('formatScaleLiveWeightLabel', () => {
   it('formats to one decimal place with g suffix', () => {
@@ -11,6 +12,13 @@ describe('formatScaleLiveWeightLabel', () => {
 
   it('handles non-finite values as zero', () => {
     expect(formatScaleLiveWeightLabel(NaN)).toBe('0.0 g');
+  });
+});
+
+describe('isWeighingChipEnabled', () => {
+  it('matches chip tap rules for connected idle scale', () => {
+    expect(isWeighingChipEnabled(true, false)).toBe(true);
+    expect(isWeighingChipEnabled(true, true)).toBe(false);
   });
 });
 
