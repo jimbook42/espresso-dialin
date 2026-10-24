@@ -36,6 +36,7 @@ REPLAY = Path("/workspace/pl-state/nr/replay")
 FRAMES = Path("/workspace/pl-data/frames")
 BASELINE_JSON = Path("/workspace/pl-state/nr/baseline.json")
 OUT = Path("/workspace/pl-state/nr/train-r2")
+HOLD_OUT_CLIP: str | None = None
 RESULTS_TXT = Path("/workspace/pl-state/nr/phaseR2-results.txt")
 RESULTS_JSON = Path("/workspace/pl-state/nr/phaseR2-results.json")
 ARC = 161.757
@@ -124,7 +125,33 @@ def require_mem(need: float = 2048.0) -> None:
 
 def baseline_order() -> list[dict]:
     data = json.loads(BASELINE_JSON.read_text())
-    return data["clips"]
+    clips = list(data["clips"])
+    if HOLD_OUT_CLIP:
+        extras = [
+            {"id": "20261024_124140", "kind": "used"},
+            {"id": HOLD_OUT_CLIP, "kind": "real"},
+        ]
+        known = {clip["id"] for clip in clips}
+        for clip in extras:
+            if clip["id"] not in known:
+                clips.append(clip)
+    return clips
+
+
+def configure_variant(variant: str) -> None:
+    global REAL_LABELS, OUT, HOLD_OUT_CLIP
+    if variant == "r5":
+        REAL_LABELS = Path("/workspace/pl-state/nr/real/labels-r3.jsonl")
+        OUT = Path("/workspace/pl-state/nr/train-r5")
+        HOLD_OUT_CLIP = "20261024_124006"
+    elif variant == "r3":
+        REAL_LABELS = Path("/workspace/pl-state/nr/real/labels-r2.jsonl")
+        OUT = Path("/workspace/pl-state/nr/train-r3")
+        HOLD_OUT_CLIP = None
+    else:
+        REAL_LABELS = Path("/workspace/pl-state/nr/real/labels-r2.jsonl")
+        OUT = Path("/workspace/pl-state/nr/train-r2")
+        HOLD_OUT_CLIP = None
 
 
 def png_list(clip_id: str) -> list[Path]:
@@ -263,7 +290,16 @@ def cache() -> None:
     print(f"eval cache {len(meta_frames)} in {time.perf_counter() - t0:.1f}s", flush=True)
 
 
-def _repeats(row: dict, strong: bool = False) -> int:
+def _repeats(row: dict, strong: bool = False, variant: str = "r2") -> int:
+    if variant == "r5":
+        count = 6 if str(row.get("source", "")).startswith("isaac2") else 1
+        bar = row.get("bar")
+        if isinstance(bar, (int, float)):
+            if bar >= 9:
+                count *= 4
+            elif bar >= 7:
+                count *= 2
+        return min(24, max(1, int(count)))
     count = 4 if str(row.get("source", "")).startswith("isaac") else 1
     bar = row.get("bar")
     if isinstance(bar, (int, float)):
@@ -394,6 +430,22 @@ def train(epochs: int = 16, variant: str = "r2") -> None:
     import torch
     from needle_model import batch_loss, build_model, decode, parameter_count
 
+    if variant == "r5":
+        hparams_path = OUT / "hparams.json"
+        if not hparams_path.exists():
+            hparams_path.write_text(json.dumps({
+                "variant": "r5",
+                "epochs": epochs,
+                "optimizer": "AdamW",
+                "lr": 1.2e-3,
+                "weightDecay": 1e-4,
+                "batch": 64,
+                "mode": "cartesian",
+                "strongAugment": True,
+                "holdOutClip": HOLD_OUT_CLIP,
+                "labels": str(REAL_LABELS),
+                "note": "Fixed before the single R5 training run; do not change after seeing exam numbers.",
+            }, indent=2) + "\n")
     os.environ["OMP_NUM_THREADS"] = "4"
     torch.set_num_threads(4)
     rows = load_train_rows()
@@ -401,11 +453,11 @@ def train(epochs: int = 16, variant: str = "r2") -> None:
     if crops.shape[0] != len(rows):
         raise SystemExit(f"crop rows {crops.shape[0]} != labels {len(rows)}")
     clips = [clip["id"] for clip in baseline_order()]
-    folds = clips + ["_all"]
-    strong = variant == "r3"
+    folds = ["_all"] if HOLD_OUT_CLIP else clips + ["_all"]
+    strong = variant in ("r3", "r5")
     angles = np.array([float(row["cropAngle"]) for row in rows], np.float32)
-    weights = np.array([_repeats(row, strong=strong) for row in rows], np.int32)
-    print(f"variant {variant} strong={strong}", flush=True)
+    weights = np.array([_repeats(row, strong=strong, variant=variant) for row in rows], np.int32)
+    print(f"variant {variant} strong={strong} holdOut={HOLD_OUT_CLIP}", flush=True)
     ckpt_path = OUT / "checkpoint.pt"
     stop = {"flag": False}
 
@@ -418,7 +470,13 @@ def train(epochs: int = 16, variant: str = "r2") -> None:
 
     for fold in folds:
         dest = OUT / "folds" / f"{fold}.pt"
-        train_ids = [i for i, row in enumerate(rows) if fold == "_all" or row["clip"] != fold]
+        if HOLD_OUT_CLIP and fold == "_all":
+            train_ids = [i for i, row in enumerate(rows) if row["clip"] != HOLD_OUT_CLIP]
+            held = sum(1 for row in rows if row["clip"] == HOLD_OUT_CLIP)
+            if held:
+                print(f"held-out exam clip {HOLD_OUT_CLIP} frames={held}", flush=True)
+        else:
+            train_ids = [i for i, row in enumerate(rows) if fold == "_all" or row["clip"] != fold]
         assert_held_out(rows, fold, train_ids)
         if dest.exists():
             saved = torch.load(dest, map_location="cpu", weights_only=False)
@@ -601,7 +659,8 @@ def predict() -> None:
         by_clip.setdefault(frame["clip"], []).append(index)
     raw_frames = []
     for clip_id, indices in by_clip.items():
-        model = _load_fold(clip_id)
+        fold_path = OUT / "folds" / f"{clip_id}.pt"
+        model = _load_fold(clip_id if fold_path.exists() else "_all")
         pred, conf = _predict_crops(model, crops, np.array(indices, np.int64))
         for local, index in enumerate(indices):
             frame = frames[index]
@@ -1136,13 +1195,15 @@ def gate(latency: dict | None = None) -> None:
 
 
 def all_cmd(epochs: int, variant: str = "r2") -> None:
+    configure_variant(variant)
     cache()
     if not train(epochs, variant):
         print("paused at checkpoint; rerun resumes", flush=True)
         return
     predict()
     latency = export_and_latency()
-    gate(latency)
+    if variant != "r5":
+        gate(latency)
 
 
 def main() -> None:
@@ -1156,6 +1217,7 @@ def main() -> None:
         epochs = int(sys.argv[sys.argv.index("--epochs") + 1])
     if "--variant" in sys.argv:
         variant = sys.argv[sys.argv.index("--variant") + 1]
+    configure_variant(variant)
     if cmd == "cache":
         cache()
     elif cmd == "train":
