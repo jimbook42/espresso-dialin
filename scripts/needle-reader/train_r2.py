@@ -697,9 +697,13 @@ def predict() -> None:
             })
         print(f"predicted {clip_id} n={len(indices)}", flush=True)
     (OUT / "raw-frames.json").write_text(json.dumps(raw_frames))
-    labels = _label_predictions()
-    (OUT / "raw-labels.json").write_text(json.dumps(labels))
-    print(f"label predictions {len(labels)}", flush=True)
+    if HOLD_OUT_CLIP:
+        (OUT / "raw-labels.json").write_text("[]\n")
+        print("skipped hand-label LOCO predictions (R5 exam hold-out)", flush=True)
+    else:
+        labels = _label_predictions()
+        (OUT / "raw-labels.json").write_text(json.dumps(labels))
+        print(f"label predictions {len(labels)}", flush=True)
 
 
 def _label_geometry():
