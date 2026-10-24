@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isPerfectShot, pickCameo } from './perfectShot.js';
+import {
+  isPerfectShot,
+  pickCameo,
+  PERFECT_SHOT_CELEBRATION_MS,
+  PERFECT_SHOT_RECOMMENDATION_SCROLL_DELAY_MS,
+} from './perfectShot.js';
 import { BALANCED_TASTE_PROFILE } from './tasteProfile.js';
 
 describe('isPerfectShot', () => {
@@ -56,6 +61,16 @@ describe('isPerfectShot', () => {
 
   it('rejects NaN inputs', () => {
     expect(isPerfectShot({ ...base, yieldG: NaN })).toBe(false);
+  });
+});
+
+describe('celebration timing constants', () => {
+  it('celebration lasts 4 seconds', () => {
+    expect(PERFECT_SHOT_CELEBRATION_MS).toBe(4000);
+  });
+
+  it('recommendation scroll delay stays at prior ~1480 ms', () => {
+    expect(PERFECT_SHOT_RECOMMENDATION_SCROLL_DELAY_MS).toBe(1480);
   });
 });
 

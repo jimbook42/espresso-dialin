@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   PERFECT_SHOT_CELEBRATION_MS,
-  PERFECT_SHOT_CELEBRATION_REDUCED_MS,
+  PERFECT_SHOT_CAMEO_FADE_OUT_LEAD_MS,
 } from '../utils/perfectShot.js';
 
 function prefersReducedMotion() {
@@ -26,8 +26,8 @@ export function PerfectShotCelebration({ variant, onComplete }) {
 
   useEffect(() => {
     const reduced = prefersReducedMotion();
-    const totalMs = reduced ? PERFECT_SHOT_CELEBRATION_REDUCED_MS : PERFECT_SHOT_CELEBRATION_MS;
-    const fadeOutLeadMs = reduced ? 0 : 400;
+    const totalMs = PERFECT_SHOT_CELEBRATION_MS;
+    const fadeOutLeadMs = reduced ? 0 : PERFECT_SHOT_CAMEO_FADE_OUT_LEAD_MS;
 
     let exitTimer;
     const doneTimer = window.setTimeout(() => {

@@ -85,6 +85,16 @@ async function seedDialForm(page) {
 
 async function openDialFresh(page, url) {
   await page.goto(url, { waitUntil: 'networkidle' });
+  await page.evaluate(async () => {
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    if (regs) {
+      for (const reg of regs) await reg.unregister();
+    }
+    const keys = await caches?.keys?.();
+    if (keys) {
+      for (const key of keys) await caches.delete(key);
+    }
+  });
   await clearDb(page);
   await seedDialForm(page);
   await page.reload({ waitUntil: 'networkidle' });
@@ -124,8 +134,91 @@ async function waitForCameo(page) {
 }
 
 async function waitForCelebrationGone(page) {
-  await page.getByTestId('perfect-shot-cameo').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId('perfect-shot-cameo').waitFor({ state: 'detached', timeout: 10_000 });
   await delay(200);
+}
+
+/**
+ * v45 ticket: timed screenshots at 0.6s, 2.5s, 3.8s, and after 4.6s (ring + cameo gone).
+ * @returns {Promise<{ paths: Record<string, string>, timings: object }>}
+ */
+async function captureV45Timeline(page, url) {
+  const viewport = { width: 390, height: 844 };
+  await page.setViewportSize(viewport);
+  await openDialFresh(page, url);
+  await fillDialShotFields(page);
+  await scrollCelebrationTargets(page);
+
+  const timings = {
+    triggerMs: null,
+    ringVisibleMs: null,
+    cameoVisibleMs: null,
+    exitClassMs: null,
+    cameoDetachedMs: null,
+    ringGoneMs: null,
+  };
+
+  const logo = page.getByTestId('app-header-logo');
+  const triggerStart = Date.now();
+  for (let i = 0; i < 7; i += 1) {
+    await logo.click({ delay: 40 });
+  }
+  timings.triggerMs = 0;
+
+  const pollEndMs = 5500;
+  const pollPromise = (async () => {
+    while (Date.now() - triggerStart < pollEndMs) {
+      const elapsed = Date.now() - triggerStart;
+      if (timings.ringVisibleMs === null) {
+        const hasRing = await page.getByTestId('dial-yield-tile').evaluate(
+          (el) => el.classList.contains('perfect-shot-yield-ring'),
+        );
+        if (hasRing) timings.ringVisibleMs = elapsed;
+      }
+      if (timings.cameoVisibleMs === null) {
+        const count = await page.getByTestId('perfect-shot-cameo').count();
+        if (count > 0) timings.cameoVisibleMs = elapsed;
+      }
+      if (timings.exitClassMs === null) {
+        const hasExit = await page.getByTestId('perfect-shot-cameo').evaluate(
+          (el) => el?.classList.contains('perfect-shot-cameo--exit') ?? false,
+        ).catch(() => false);
+        if (hasExit) timings.exitClassMs = elapsed;
+      }
+      if (timings.cameoDetachedMs === null && timings.cameoVisibleMs !== null) {
+        const count = await page.getByTestId('perfect-shot-cameo').count();
+        if (count === 0) timings.cameoDetachedMs = elapsed;
+      }
+      if (timings.ringGoneMs === null && timings.ringVisibleMs !== null) {
+        const hasRing = await page.getByTestId('dial-yield-tile').evaluate(
+          (el) => el.classList.contains('perfect-shot-yield-ring'),
+        );
+        if (!hasRing) timings.ringGoneMs = elapsed;
+      }
+      await delay(16);
+    }
+  })();
+
+  const shotAt = async (offsetMs, filename) => {
+    const elapsed = Date.now() - triggerStart;
+    const waitMore = offsetMs - elapsed;
+    if (waitMore > 0) await delay(waitMore);
+    await scrollCelebrationTargets(page);
+    const outPath = path.join(OUT_DIR, filename);
+    await page.screenshot({ path: outPath, fullPage: false });
+    return outPath;
+  };
+
+  const paths = {
+    at0p6s: await shotAt(700, 'v45-0p6s-390x844.png'),
+    at2p5s: await shotAt(2500, 'v45-2p5s-390x844.png'),
+    at3p8s: await shotAt(3800, 'v45-3p8s-390x844.png'),
+    gone4p6s: await shotAt(4600, 'v45-gone-4p6s-390x844.png'),
+  };
+
+  await pollPromise;
+
+  return { paths, timings };
 }
 
 /**
@@ -409,9 +502,22 @@ async function main() {
   try {
     await waitForServer(url);
     const browser = await chromium.launch();
-    const page = await browser.newPage();
+    const context = await browser.newContext({ serviceWorkers: 'block' });
+    const page = await context.newPage();
 
     try {
+      const v45 = await captureV45Timeline(page, url);
+      manifest.push({ path: v45.paths.at0p6s, kind: 'v45-0p6s' });
+      manifest.push({ path: v45.paths.at2p5s, kind: 'v45-2p5s' });
+      manifest.push({ path: v45.paths.at3p8s, kind: 'v45-3p8s' });
+      manifest.push({ path: v45.paths.gone4p6s, kind: 'v45-gone' });
+      process.stderr.write(`v45 timings: ${JSON.stringify(v45.timings)}\n`);
+
+      if (process.env.SHOT_EGG_V45_ONLY === '1') {
+        console.log(JSON.stringify({ manifest, v45Timings: v45.timings }, null, 2));
+        return;
+      }
+
       for (const viewport of VIEWPORTS) {
         const normal = await captureSevenTapPair(page, viewport, url, 'suit');
         manifest.push({ path: normal.shotPath, kind: 'normal' });
@@ -440,7 +546,7 @@ async function main() {
         }
       }
 
-      console.log(JSON.stringify({ manifest, overlapReports, ringReports }, null, 2));
+      console.log(JSON.stringify({ manifest, overlapReports, ringReports, v45Timings: v45.timings }, null, 2));
 
       let failed = false;
       for (const report of overlapReports) {

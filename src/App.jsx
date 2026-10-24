@@ -193,6 +193,7 @@ import { PerfectShotCelebration } from './components/PerfectShotCelebration.jsx'
 import {
   isPerfectShot,
   PERFECT_SHOT_CELEBRATION_MS,
+  PERFECT_SHOT_RECOMMENDATION_SCROLL_DELAY_MS,
   pickCameo,
 } from './utils/perfectShot.js';
 import {
@@ -2003,7 +2004,7 @@ export default function App() {
         });
       }
 
-      const recScrollDelayMs = loggedPerfectShot ? PERFECT_SHOT_CELEBRATION_MS + 80 : 100;
+      const recScrollDelayMs = loggedPerfectShot ? PERFECT_SHOT_RECOMMENDATION_SCROLL_DELAY_MS : 100;
       setTimeout(() => {
         recommendationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, recScrollDelayMs);
@@ -3182,6 +3183,13 @@ export default function App() {
                       ref={yieldInputRef}
                       data-testid="dial-yield-tile"
                       className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.yield)}${perfectShotYieldRing ? ' perfect-shot-yield-ring' : ''}`}
+                      style={
+                        perfectShotYieldRing
+                          ? {
+                              '--perfect-shot-celebration-duration': `${PERFECT_SHOT_CELEBRATION_MS}ms`,
+                            }
+                          : undefined
+                      }
                     >
                       <label className={`${ui.fieldLabel} block mb-2`}>Yield (g) *</label>
                       <input
