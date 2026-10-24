@@ -1,0 +1,62 @@
+import { useEffect, useState } from 'react';
+import { shotLabPressureFitsViewport } from '../flairPressureLab/shotLabPressureLayout.js';
+import { ShotLabPressureReadout } from './ShotLabPressureReadout.jsx';
+import { useShotLabPressureContext } from './ShotLabPressureContext.jsx';
+
+/**
+ * Display-only surfaces for lab camera pressure (provider runs the reader once).
+ */
+export function ShotLabPressureIntegration({ variant, ui }) {
+  const ctx = useShotLabPressureContext();
+  const [viewportWidth, setViewportWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 390,
+  );
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  if (!ctx?.enabled) return null;
+  if (!shotLabPressureFitsViewport(viewportWidth)) return null;
+
+  if (variant === 'settings-hint') {
+    return (
+      <button
+        type="button"
+        onClick={ctx.openCalibrate}
+        className={`text-[10px] font-semibold underline ${ui?.accentText ?? 'text-[#7eb8da]'}`}
+        data-testid="lab-gauge-calibrate-link"
+      >
+        {ctx.storedCalibration ? 'Re-run gauge setup (3 taps)' : 'Run gauge setup (3 taps)'}
+      </button>
+    );
+  }
+
+  return (
+    <>
+      {ctx.showLive && (
+        <ShotLabPressureReadout
+          displayBar={ctx.displayBar}
+          hold={ctx.hold}
+          peakBar={ctx.peakBar}
+          samples={ctx.samples}
+          variant={variant === 'fullscreen' ? 'fullscreen' : 'inline'}
+          viewportWidth={viewportWidth}
+          ui={ui}
+        />
+      )}
+      {variant === 'inline' && !ctx.calibrated && !ctx.timerRunning && (
+        <button
+          type="button"
+          onClick={ctx.openCalibrate}
+          className={`mt-2 text-[10px] font-semibold min-h-[44px] px-3 rounded-lg border border-[#7eb8da]/30 ${ui?.accentText ?? 'text-[#7eb8da]'}`}
+          data-testid="shot-lab-calibrate-cta"
+        >
+          Set up gauge (camera)
+        </button>
+      )}
+    </>
+  );
+}

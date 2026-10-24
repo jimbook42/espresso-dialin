@@ -49,6 +49,9 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_SCALE_ALLOW_SIM': JSON.stringify(
       process.env.VITE_SCALE_ALLOW_SIM === 'true' ? 'true' : 'false'
     ),
+    'import.meta.env.VITE_PRESSURE_ALLOW_SIM': JSON.stringify(
+      process.env.VITE_PRESSURE_ALLOW_SIM === 'true' ? 'true' : 'false'
+    ),
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
     'import.meta.env.VITE_APP_COMMIT_SHA': JSON.stringify(appCommitSha),
   },

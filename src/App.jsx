@@ -186,6 +186,13 @@ import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
+import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
+import { ShotLabPressureProvider } from './components/ShotLabPressureContext.jsx';
+import {
+  LAB_CAMERA_PRESSURE_KEY,
+  LAB_GAUGE_TAP_CALIBRATION_KEY,
+  isLabCameraPressureEnabled,
+} from './settings/labCameraPressure.js';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
 import {
@@ -328,9 +335,12 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
+  const labCameraPressureEnabled = isLabCameraPressureEnabled(settingsSetting);
   const devUrlSimScaleActive = isDevUrlSimScaleActive();
   const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
+  const [labPressureShotMetrics, setLabPressureShotMetrics] = useState(null);
+  const labPressureMetricsGetterRef = useRef(() => ({}));
   const [shotCountdownValue, setShotCountdownValue] = useState(null);
   const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
   const shotCountdownStartOptsRef = useRef(null);
@@ -665,6 +675,7 @@ export default function App() {
       setScaleShotMetrics(null);
       await timemoreScale.notifyShotStarted({ tareAlreadyDone });
     }
+    setLabPressureShotMetrics(null);
     if (timerUsePreInfusion) setPreInfusionPhase(true);
     else setPreInfusionPhase(false);
     setTimerRunning(true);
@@ -796,6 +807,12 @@ export default function App() {
         setScaleShotMetrics(metrics);
       }
     }
+    if (labCameraPressureEnabled) {
+      const labMetrics = labPressureMetricsGetterRef.current?.() ?? {};
+      setLabPressureShotMetrics(
+        labMetrics?.labPressureCurve?.length ? labMetrics : null
+      );
+    }
     return rounded;
   };
 
@@ -820,6 +837,7 @@ export default function App() {
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
     }
+    setLabPressureShotMetrics(null);
   };
 
   const handleResetTimer = () => {
@@ -1125,6 +1143,24 @@ export default function App() {
   const handleToggleStatsForNerds = async (val) => {
     if (!val) setExpandedShotStatsIds(new Set());
     await patchGlobalSettings(db, { statsForNerdsEnabled: val });
+  };
+
+  const handleToggleLabCameraPressure = async (val) => {
+    await patchGlobalSettings(db, { [LAB_CAMERA_PRESSURE_KEY]: val });
+  };
+
+  const handleSaveLabGaugeCalibration = async (calibration) => {
+    await patchGlobalSettings(db, {
+      [LAB_GAUGE_TAP_CALIBRATION_KEY]: { calibration, savedAt: new Date().toISOString() },
+    });
+  };
+
+  const captureLabPressureShotMetrics = () => {
+    try {
+      return labPressureMetricsGetterRef.current?.() ?? {};
+    } catch {
+      return {};
+    }
   };
 
   const toggleShotEngineStats = (shotId) => {
@@ -1673,6 +1709,19 @@ export default function App() {
             scaleFlowCurve: scaleShotMetrics.scaleFlowCurve,
           }
         : {}),
+      ...(labPressureShotMetrics?.labPressureCurve?.length
+        ? {
+            labPressureCurve: labPressureShotMetrics.labPressureCurve,
+            labPressurePeakBar: labPressureShotMetrics.labPressurePeakBar ?? undefined,
+          }
+        : (() => {
+            const lab = captureLabPressureShotMetrics();
+            if (!lab?.labPressureCurve?.length) return {};
+            return {
+              labPressureCurve: lab.labPressureCurve,
+              labPressurePeakBar: lab.labPressurePeakBar ?? undefined,
+            };
+          })()),
     };
 
     try {
@@ -1711,6 +1760,7 @@ export default function App() {
       setExcludeFromLearning(false);
       setKnownIssueReason('puck_prep');
       setScaleShotMetrics(null);
+      setLabPressureShotMetrics(null);
       handleResetTimer();
 
       setTimeout(() => {
@@ -2196,6 +2246,14 @@ export default function App() {
   }
 
   return (
+    <ShotLabPressureProvider
+      settings={settingsSetting}
+      onSaveCalibration={handleSaveLabGaugeCalibration}
+      timerRunning={timerRunning}
+      timerSeconds={timerSeconds}
+      metricsGetterRef={labPressureMetricsGetterRef}
+      ui={ui}
+    >
     <div className={`min-h-screen ${ui.page} relative`}>
       <PwaInstallBanner ui={ui} darkMode={darkMode} />
 
@@ -2293,6 +2351,7 @@ export default function App() {
                 frozenYieldG={frozenShotWeightG}
               />
             )}
+            <ShotLabPressureIntegration variant="fullscreen" ui={ui} />
             <p className="text-[13px] text-[#6b6457] mt-4 text-center">
               {timerUsePreInfusion && preInfusionPhase
                 ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
@@ -2730,6 +2789,7 @@ export default function App() {
                             frozenYieldG={frozenShotWeightG}
                           />
                         )}
+                        <ShotLabPressureIntegration variant="inline" ui={ui} />
                       </div>
                       <div className="flex gap-2 shrink-0">
                         <button type="button" onClick={() => requestStartTimer()} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
@@ -3900,6 +3960,29 @@ export default function App() {
                   )}
                 </div>
 
+                <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${ui.muted}`}>Lab</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Pressure from camera (beta)</span>
+                      <span className={`text-[10px] ${ui.muted}`}>
+                        Experimental camera-only Flair gauge reading on the shot screen. Display smoothing only; raw
+                        samples are stored with logged shots.
+                      </span>
+                      {labCameraPressureEnabled && (
+                        <div className="mt-2">
+                          <ShotLabPressureIntegration variant="settings-hint" ui={ui} />
+                        </div>
+                      )}
+                    </div>
+                    <SettingsToggle
+                      checked={labCameraPressureEnabled}
+                      onChange={handleToggleLabCameraPressure}
+                      label="Pressure from camera (beta)"
+                    />
+                  </div>
+                </div>
+
                 <div className={`flex items-center justify-between pt-2 border-t ${ui.modalDivider}`}>
                   <div>
                     <span className={`font-bold block ${labelClass}`}>Interface appearance</span>
@@ -4103,5 +4186,6 @@ export default function App() {
 
       <Analytics />
     </div>
+    </ShotLabPressureProvider>
   );
 }
