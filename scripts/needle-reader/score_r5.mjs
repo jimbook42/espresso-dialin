@@ -115,9 +115,7 @@ function scoreExam(stream, config) {
     const err = Math.abs(bar - sample.classicalBar);
     const wild = err > 1;
     errs.push({ t: sample.t, err, wild, bar, truth: sample.classicalBar });
-    if (sample.classicalAngle != null && sample.r2Angle != null && circ(sample.r2Angle, sample.classicalAngle) >= 180 - FLIP_DEG) {
-      flips += 1;
-    }
+    if (wild && bar < 1.5 && sample.classicalBar > 3) flips += 1;
     const bucket = Math.floor(sample.t / 10) * 10;
     per10[bucket] = per10[bucket] || [];
     per10[bucket].push(err);
@@ -162,7 +160,7 @@ function scoreExam(stream, config) {
 }
 
 function loadJsonl(file) {
-  return readFileSync(file, 'utf8').splitlines().filter(Boolean).map((line) => JSON.parse(line));
+  return readFileSync(file, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line));
 }
 
 function benchPack2(raw, r2raw, anchors, config) {
