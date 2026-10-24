@@ -234,7 +234,7 @@ def auto_labels_124140(profile: dict, rules: dict) -> list[dict]:
     for row, frame in zip(rows, payload["frames"]):
         if not row.get("keep") or row.get("angle") is None:
             continue
-        zero = float(anchors["zeroAngleDeg"])
+        zero = zero_deg
         rotation = float(frame.get("gaugeRotationDeg") or 0.0)
         out.append({
             "clip": CLIP_124140,
@@ -298,7 +298,7 @@ def merge() -> dict:
         "fromR2": len(r2_rows),
         "isaac2": len(isaac2),
         "auto124140": len(auto_new),
-        "skippedReview2": skipped,
+        "skippedReview2": sorted(set(skipped) | SKIP_IDS),
         "overridden": overridden,
         "outOfArc": flagged,
         "bands7to10": bands,
