@@ -159,6 +159,15 @@ import {
   SHOT_START_COUNTDOWN_ON,
 } from './settings/shotStartCountdown.js';
 import { SHOT_YIELD_SETTLE_MS } from './scales/scaleShotStopSettle.js';
+import { smoothFlowSeriesForPlot } from './scales/flowMetrics.js';
+import {
+  createFlowEndAutoStopState,
+  flowEndAutoStopRecordedEndExtractionS,
+  flowEndAutoStopShouldFreezeTimer,
+  flowEndAutoStopShouldStop,
+  stepFlowEndAutoStop,
+} from './scales/flowEndAutoStop.js';
+import { normalizeScaleFlowAutoStopEnabled } from './settings/scaleFlowAutoStop.js';
 import {
   applyBasketChangeToRecommendation,
   buildBasketAdjustmentBasisRec,
@@ -194,7 +203,9 @@ import {
   isLabCameraPressureEnabled,
 } from './settings/labCameraPressure.js';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
+import { WeighingView } from './components/WeighingView.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
+import { isScaleDebugActive, subscribeScaleDebug } from './scales/scaleDebug.js';
 import {
   preinfusionAutoEndTargets,
   recipeDefinesPreinfusion,
@@ -344,6 +355,8 @@ export default function App() {
   const [shotCountdownValue, setShotCountdownValue] = useState(null);
   const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
   const shotCountdownStartOptsRef = useRef(null);
+  const [weighingViewOpen, setWeighingViewOpen] = useState(false);
+  const [scaleDebugLines, setScaleDebugLines] = useState([]);
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
   const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
   const yieldSettleUserEditedRef = useRef(false);
@@ -563,6 +576,8 @@ export default function App() {
     || (timemoreScale.isConnected && scaleRecipePreinfusion)
     || flairTimedPreinfusionAuto;
   const scaleAutoEndPreinfusionRef = useRef(false);
+  const flowAutoStopStateRef = useRef(createFlowEndAutoStopState());
+  const [flowAutoStopTimerFrozen, setFlowAutoStopTimerFrozen] = useState(false);
   const [brewGuideTimerActive, setBrewGuideTimerActive] = useState(false);
   const brewGuideTimerActiveRef = useRef(false);
   const syncBrewGuideTimerActive = (active) => {
@@ -581,16 +596,33 @@ export default function App() {
     setActualDoseG(recipe.targetDoseG);
   };
 
+  useEffect(() => {
+    if (weighingViewOpen && !timemoreScale.isConnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- close weighing view when scale drops
+      setWeighingViewOpen(false);
+    }
+  }, [weighingViewOpen, timemoreScale.isConnected]);
+
+  useEffect(() => {
+    if (!isScaleDebugActive()) return undefined;
+    return subscribeScaleDebug(setScaleDebugLines);
+  }, []);
+
   const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
 
   // Timer Logic (0.1s resolution for mobile fullscreen display)
   useEffect(() => {
-    if (!timerRunning) return undefined;
+    if (!timerRunning || flowAutoStopTimerFrozen) return undefined;
     const interval = setInterval(() => {
       setTimerTicks((t) => t + 1);
     }, 100);
     return () => clearInterval(interval);
-  }, [timerRunning]);
+  }, [timerRunning, flowAutoStopTimerFrozen]);
+
+  const resetFlowAutoStop = useCallback(() => {
+    flowAutoStopStateRef.current = createFlowEndAutoStopState();
+    setFlowAutoStopTimerFrozen(false);
+  }, []);
 
   useEffect(() => {
     if (!timerRunning || !preInfusionPhase) {
@@ -665,9 +697,11 @@ export default function App() {
   }, [timemoreScale]);
 
   const handleStartTimer = async ({ fromBrewGuide = false, tareAlreadyDone = false } = {}) => {
+    setWeighingViewOpen(false);
     if (fromBrewGuide) syncBrewGuideTimerActive(true);
     else syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
+    resetFlowAutoStop();
     setFrozenShotWeightG(null);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -782,7 +816,89 @@ export default function App() {
     yieldSettleUserEditedRef.current = false;
   }, [clearYieldSettleTimer, timemoreScale]);
 
+  useEffect(() => {
+    if (
+      !timerRunning
+      || !timemoreScale.isConnected
+      || !normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled)
+    ) {
+      if (!timerRunning) resetFlowAutoStop();
+      return;
+    }
+    const series = timemoreScale.liveFlowSeries;
+    if (!series.length) return;
+
+    const smoothed = smoothFlowSeriesForPlot(series);
+    const last = smoothed[smoothed.length - 1];
+    flowAutoStopStateRef.current = stepFlowEndAutoStop(flowAutoStopStateRef.current, {
+      enabled: true,
+      preinfusionActive: preInfusionPhase,
+      extractionActive: !preInfusionPhase,
+      tExtractionS: last.tS,
+      smoothedFlowGs: last.flowGs,
+    });
+
+    const autoState = flowAutoStopStateRef.current;
+    if (flowEndAutoStopShouldFreezeTimer(autoState)) {
+      const endExtractionS = flowEndAutoStopRecordedEndExtractionS(autoState);
+      if (endExtractionS != null) {
+        setFlowAutoStopTimerFrozen(true);
+        const totalS = timerUsePreInfusion ? preInfusionSeconds + endExtractionS : endExtractionS;
+        setTimerTicks(Math.round(totalS * 10));
+      }
+    } else if (flowAutoStopTimerFrozen && !flowEndAutoStopShouldStop(autoState)) {
+      setFlowAutoStopTimerFrozen(false);
+      const totalS = timerUsePreInfusion ? preInfusionSeconds + last.tS : last.tS;
+      setTimerTicks(Math.round(totalS * 10));
+    }
+
+    if (!flowEndAutoStopShouldStop(autoState)) return;
+
+    const endExtractionS = flowEndAutoStopRecordedEndExtractionS(autoState);
+    resetFlowAutoStop();
+    if (endExtractionS == null) return;
+
+    setTimerRunning(false);
+    const rounded = Math.round(endExtractionS);
+    setActualTimeS(rounded);
+    if (timerUsePreInfusion) {
+      const totalS = preInfusionSeconds + endExtractionS;
+      setTimerTicks(Math.round(totalS * 10));
+    } else {
+      setTimerTicks(Math.round(endExtractionS * 10));
+    }
+    clearYieldSettleTimer();
+    yieldSettleUserEditedRef.current = false;
+    const began = timemoreScale.notifyShotYieldSettleBegin();
+    if (began) {
+      setYieldSettleActive(true);
+      yieldSettleTimerRef.current = window.setTimeout(() => {
+        finalizeYieldSettle();
+      }, SHOT_YIELD_SETTLE_MS);
+    } else {
+      const { yieldG, metrics } = timemoreScale.notifyShotStopped();
+      if (yieldG != null && yieldG > 0) {
+        setActualYieldG(String(yieldG));
+      }
+      setScaleShotMetrics(metrics);
+    }
+  }, [
+    timerRunning,
+    preInfusionPhase,
+    timerUsePreInfusion,
+    preInfusionSeconds,
+    timemoreScale.isConnected,
+    timemoreScale.liveFlowSeries,
+    flowAutoStopTimerFrozen,
+    settingsSetting?.scaleFlowAutoStopEnabled,
+    timemoreScale,
+    resetFlowAutoStop,
+    clearYieldSettleTimer,
+    finalizeYieldSettle,
+  ]);
+
   const handleStopTimer = () => {
+    resetFlowAutoStop();
     setTimerRunning(false);
     let finalExtractionTime = timerSeconds;
     if (timerUsePreInfusion && !preInfusionPhase) {
@@ -830,6 +946,7 @@ export default function App() {
     setFrozenShotWeightG(null);
     yieldSettleUserEditedRef.current = false;
     scaleAutoEndPreinfusionRef.current = false;
+    resetFlowAutoStop();
     setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -843,6 +960,7 @@ export default function App() {
   const handleResetTimer = () => {
     cancelShotCountdown();
     setFrozenShotWeightG(null);
+    resetFlowAutoStop();
     scaleAutoEndPreinfusionRef.current = false;
     setTimerRunning(false);
     setTimerTicks(0);
@@ -1127,6 +1245,10 @@ export default function App() {
   const handleShotStartCountdownChange = async (value) => {
     const normalized = normalizeShotStartCountdown(value);
     await patchGlobalSettings(db, { shotStartCountdown: normalized });
+  };
+
+  const handleToggleScaleFlowAutoStop = async (val) => {
+    await patchGlobalSettings(db, { scaleFlowAutoStopEnabled: val });
   };
 
   const handleToggleDarkMode = async () => {
@@ -2251,11 +2373,22 @@ export default function App() {
       onSaveCalibration={handleSaveLabGaugeCalibration}
       timerRunning={timerRunning}
       timerSeconds={timerSeconds}
+      weighingViewOpen={weighingViewOpen}
       metricsGetterRef={labPressureMetricsGetterRef}
       ui={ui}
     >
     <div className={`min-h-screen ${ui.page} relative`}>
       <PwaInstallBanner ui={ui} darkMode={darkMode} />
+
+      <WeighingView
+        open={weighingViewOpen}
+        onClose={() => setWeighingViewOpen(false)}
+        ui={ui}
+        liveWeightG={timemoreScale.liveWeightG}
+        targetDoseG={activeRecipe?.targetDoseG}
+        batteryPercent={timemoreScale.batteryPercent}
+        onTare={timemoreScale.tare}
+      />
 
       {shotCountdownOverlayVisible && (
         <div className="fixed inset-0 z-[65] flex flex-col items-center justify-center bg-[#121212] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
@@ -2809,9 +2942,17 @@ export default function App() {
                         onTransportKindChange={timemoreScale.setTransportKind}
                         connectStatus={timemoreScale.connectStatus}
                         isConnected={timemoreScale.isConnected}
+                        liveWeightG={timemoreScale.liveWeightG}
+                        batteryPercent={timemoreScale.batteryPercent}
+                        timerRunning={timerRunning}
+                        onOpenWeighingView={() => setWeighingViewOpen(true)}
                         onConnect={timemoreScale.connect}
-                        onDisconnect={timemoreScale.disconnect}
+                        onDisconnect={() => {
+                          setWeighingViewOpen(false);
+                          timemoreScale.disconnect();
+                        }}
                         onTare={timemoreScale.tare}
+                        scaleDebugLines={scaleDebugLines}
                       />
                     )}
                     <p className="text-[10px] text-[#6b6457]">Fullscreen timer: tap anywhere to end pre-infusion, then tap again to stop.</p>
@@ -3902,6 +4043,21 @@ export default function App() {
                       scaleConnected: timemoreScale.isConnected,
                     })}. Manual shot logging always works.
                   </p>
+                  {timemoreScale.isConnected && (
+                    <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
+                      <div>
+                        <span className={`font-bold block ${ui.text}`}>Auto-stop timer when flow ends</span>
+                        <span className={`text-[10px] ${ui.muted}`}>
+                          Stops at flow tail-off; yield still settles from drips
+                        </span>
+                      </div>
+                      <SettingsToggle
+                        checked={normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled)}
+                        onChange={handleToggleScaleFlowAutoStop}
+                        label="Auto-stop timer when flow ends"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>

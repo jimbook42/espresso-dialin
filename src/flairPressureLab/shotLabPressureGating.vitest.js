@@ -7,12 +7,18 @@ export function shouldStartLabPressureCamera({
   enabled,
   calibrateSheetOpen,
   timerRunning,
+  weighingViewOpen = false,
   calibrated,
   simMode,
 }) {
   if (!enabled) return false;
   if (simMode) return false;
-  return calibrateSheetOpen || (timerRunning && calibrated);
+  const surface = timerRunning || weighingViewOpen;
+  return calibrateSheetOpen || (surface && calibrated);
+}
+
+export function labPressureDisplaySurfaceActive(timerRunning, weighingViewOpen = false) {
+  return timerRunning || weighingViewOpen;
 }
 
 describe('shot lab pressure camera gating', () => {
@@ -35,6 +41,19 @@ describe('shot lab pressure camera gating', () => {
         calibrateSheetOpen: true,
         timerRunning: false,
         calibrated: false,
+        simMode: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('starts on weighing view when calibrated', () => {
+    expect(
+      shouldStartLabPressureCamera({
+        enabled: true,
+        calibrateSheetOpen: false,
+        timerRunning: false,
+        weighingViewOpen: true,
+        calibrated: true,
         simMode: false,
       }),
     ).toBe(true);

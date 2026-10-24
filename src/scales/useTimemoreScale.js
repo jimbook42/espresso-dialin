@@ -19,6 +19,17 @@ import { publishScaleLiveWeight, resetScaleLiveWeightStore } from './scaleLiveWe
 
 const noopAsync = async () => {};
 
+/** @param {boolean} simAllowed */
+export function resolveDefaultTransportKind(simAllowed) {
+  return simAllowed ? 'sim' : 'ble';
+}
+
+/** @param {'sim' | 'ble'} transportKind @param {boolean} simAllowed */
+export function resolveEffectiveTransportKind(transportKind, simAllowed) {
+  if (transportKind === 'sim' && !simAllowed) return 'ble';
+  return transportKind;
+}
+
 /**
  * BLE scale state for the shot timer (no UI — wire into App timer handlers).
  *
@@ -40,13 +51,14 @@ export function useTimemoreScale({
   const simAllowed = enabled && (isScaleSimPickerEnabled() || devUrlSim);
   const bleAvailable = isWebBluetoothAvailable();
 
-  const [transportKind, setTransportKind] = useState('sim');
+  const [transportKind, setTransportKind] = useState(() => resolveDefaultTransportKind(simAllowed));
   const [connectStatus, setConnectStatus] = useState('idle');
   const [liveWeightG, setLiveWeightG] = useState(0);
   const [liveRelativeWeightG, setLiveRelativeWeightG] = useState(0);
   const [weightTriggersPrimed, setWeightTriggersPrimed] = useState(false);
   const [instantFlowGs, setInstantFlowGs] = useState(null);
   const [liveFlowSeries, setLiveFlowSeries] = useState([]);
+  const [batteryPercent, setBatteryPercent] = useState(null);
 
   const transportRef = useRef(null);
   const sessionRef = useRef(null);
@@ -137,23 +149,33 @@ export function useTimemoreScale({
           return [...prev, sample];
         });
       },
+      onBatteryPercent: (pct) => setBatteryPercent(pct),
     });
   }, [disposeSession, syncRelativeFromLive]);
 
+  useEffect(() => {
+    if (!simAllowed && transportKind === 'sim') {
+      setTransportKind('ble');
+    }
+  }, [simAllowed, transportKind]);
+
   const buildTransport = useCallback(() => {
-    if (transportKind === 'sim') {
+    const kind = resolveEffectiveTransportKind(transportKind, simAllowed);
+    if (kind === 'sim') {
       return createSimulatedTransport({
         targetYieldG: Number(targetYieldG) || 36,
         preinfusionDurationS: usePreInfusion ? preInfusionDurationS : 0,
         dripAfterStopS: devUrlSim ? 2.5 : 0,
+        batteryPercent: 72,
       });
     }
     return createBluetoothScaleTransport(scaleDeviceId);
-  }, [transportKind, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS, devUrlSim]);
+  }, [transportKind, simAllowed, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS, devUrlSim]);
 
   const connect = useCallback(async () => {
     if (!enabled) return;
     setConnectStatus('connecting');
+    setBatteryPercent(null);
     try {
       await disposeTransport();
       const transport = buildTransport();
@@ -184,6 +206,7 @@ export function useTimemoreScale({
   const disconnect = useCallback(async () => {
     setConnectStatus('idle');
     setInstantFlowGs(null);
+    setBatteryPercent(null);
     await disposeTransport();
   }, [disposeTransport]);
 
@@ -287,10 +310,13 @@ export function useTimemoreScale({
     if (!enabled || !transport || connectStatus !== 'connected') return;
     sessionRef.current?.beginExtractionTiming();
     recordingExtractionRef.current = true;
-    if (transportKind === 'sim' && typeof transport.endPreinfusion === 'function') {
+    if (
+      resolveEffectiveTransportKind(transportKind, simAllowed) === 'sim' &&
+      typeof transport.endPreinfusion === 'function'
+    ) {
       transport.endPreinfusion();
     }
-  }, [enabled, connectStatus, transportKind]);
+  }, [enabled, connectStatus, transportKind, simAllowed]);
 
   const notifyShotStopped = useCallback(() => {
     notifyShotYieldSettleBegin();
@@ -322,6 +348,7 @@ export function useTimemoreScale({
       weightTriggersPrimed: false,
       instantFlowGs: null,
       liveFlowSeries: [],
+      batteryPercent: null,
       connect: noopAsync,
       disconnect: noopAsync,
       tare: noopAsync,
@@ -348,6 +375,7 @@ export function useTimemoreScale({
     weightTriggersPrimed,
     instantFlowGs,
     liveFlowSeries,
+    batteryPercent,
     connect,
     disconnect,
     tare,

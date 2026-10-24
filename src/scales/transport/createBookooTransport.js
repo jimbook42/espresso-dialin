@@ -12,6 +12,7 @@ export function createBookooTransport() {
   let notifyChar = null;
   let writeChar = null;
   const weightHandlers = new Set();
+  const batteryHandlers = new Set();
   const disconnectHandlers = new Set();
 
   const handleNotification = (event) => {
@@ -19,8 +20,12 @@ export function createBookooTransport() {
     if (!value) return;
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
     const parsed = parseBookooWeightNotification(bytes);
-    if (parsed.ok && typeof parsed.weightG === 'number') {
+    if (!parsed.ok) return;
+    if (typeof parsed.weightG === 'number') {
       weightHandlers.forEach((h) => h({ weightG: parsed.weightG, timestampMs: Date.now() }));
+    }
+    if (typeof parsed.batteryPercent === 'number') {
+      batteryHandlers.forEach((h) => h({ batteryPercent: parsed.batteryPercent }));
     }
   };
 
@@ -70,6 +75,10 @@ export function createBookooTransport() {
     },
     onTimer() {
       return () => {};
+    },
+    onBattery(handler) {
+      batteryHandlers.add(handler);
+      return () => batteryHandlers.delete(handler);
     },
     async tare() {
       await writeChar?.writeValueWithoutResponse(BOOKOO_COMMANDS.tare);

@@ -1,4 +1,5 @@
 import { instantaneousFlowGs, summarizeScaleFlow } from './flowMetrics.js';
+import { normalizeBatteryPercent } from './scaleBattery.js';
 
 /**
  * Glue transport events into shot logging metrics (weight stream, timer, flow curve).
@@ -9,6 +10,7 @@ import { instantaneousFlowGs, summarizeScaleFlow } from './flowMetrics.js';
  *   onLiveTimerS?: (s: number) => void,
  *   onInstantFlowGs?: (g: number | null) => void,
  *   onFlowSample?: (sample: { tS: number, flowGs: number }) => void,
+ *   onBatteryPercent?: (percent: number) => void,
  * }} handlers
  */
 export function createScaleSession(transport, handlers = {}) {
@@ -50,6 +52,11 @@ export function createScaleSession(transport, handlers = {}) {
     handlers.onLiveTimerS?.(evt.timerS);
   });
 
+  const offBattery = transport.onBattery?.((evt) => {
+    const pct = normalizeBatteryPercent(evt.batteryPercent);
+    if (pct != null) handlers.onBatteryPercent?.(pct);
+  });
+
   return {
     beginExtractionTiming,
     resetRecording,
@@ -66,6 +73,7 @@ export function createScaleSession(transport, handlers = {}) {
     dispose() {
       offWeight();
       offTimer();
+      offBattery?.();
       resetRecording();
     },
   };

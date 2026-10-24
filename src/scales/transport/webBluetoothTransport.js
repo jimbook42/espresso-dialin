@@ -5,11 +5,52 @@ import {
   TIMEMORE_DOT_WRITE_UUID,
   parseTimemoreNotification,
 } from '../protocols/timemoreFramed.js';
+import {
+  BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID,
+  BLE_BATTERY_SERVICE_UUID,
+  parseBleBatteryLevelPercent,
+} from '../bleBatteryService.js';
+import { logUnknownTimemoreFrame } from '../scaleDebug.js';
+
 const WRITE_GAP_MS = 50;
 
 /** @returns {boolean} */
 export function isWebBluetoothAvailable() {
   return typeof navigator !== 'undefined' && !!navigator.bluetooth?.requestDevice;
+}
+
+/**
+ * @param {BluetoothRemoteGATTServer} server
+ * @param {(pct: number) => void} onPercent
+ */
+export async function attachStandardBleBatteryService(server, onPercent) {
+  try {
+    const service = await server.getPrimaryService(BLE_BATTERY_SERVICE_UUID);
+    const characteristic = await service.getCharacteristic(BLE_BATTERY_LEVEL_CHARACTERISTIC_UUID);
+
+    const emit = (value) => {
+      const pct = parseBleBatteryLevelPercent(value);
+      if (pct != null) onPercent(pct);
+    };
+
+    try {
+      const initial = await characteristic.readValue();
+      emit(initial);
+    } catch {
+      // characteristic may be notify-only on some devices
+    }
+
+    try {
+      await characteristic.startNotifications();
+      characteristic.addEventListener('characteristicvaluechanged', (event) => {
+        emit(event.target?.value);
+      });
+    } catch {
+      // no notifications
+    }
+  } catch {
+    // Battery service not exposed
+  }
 }
 
 /**
@@ -26,7 +67,14 @@ export function createWebBluetoothTransport() {
 
   const weightHandlers = new Set();
   const timerHandlers = new Set();
+  const batteryHandlers = new Set();
   const disconnectHandlers = new Set();
+
+  const emitBatteryPercent = (batteryPercent) => {
+    if (typeof batteryPercent !== 'number') return;
+    const payload = { batteryPercent };
+    batteryHandlers.forEach((h) => h(payload));
+  };
 
   const enqueueWrite = (bytes) => {
     writeChain = writeChain
@@ -46,6 +94,8 @@ export function createWebBluetoothTransport() {
     await enqueueWrite(TIMEMORE_COMMAND_FRAMES.unitGrams);
     await new Promise((r) => setTimeout(r, 200));
     await enqueueWrite(TIMEMORE_COMMAND_FRAMES.modeStandard);
+    await new Promise((r) => setTimeout(r, 200));
+    await enqueueWrite(TIMEMORE_COMMAND_FRAMES.readBattery);
   };
 
   const handleNotification = (event) => {
@@ -61,6 +111,10 @@ export function createWebBluetoothTransport() {
       if (evt.kind === 'weight' && typeof evt.weightG === 'number') {
         const payload = { weightG: evt.weightG, timestampMs: Date.now() };
         weightHandlers.forEach((h) => h(payload));
+      } else if (evt.kind === 'battery' && typeof evt.batteryPercent === 'number') {
+        emitBatteryPercent(evt.batteryPercent);
+      } else if (evt.kind === 'unknown') {
+        logUnknownTimemoreFrame({ opcode: evt.opcode, cmdId: evt.cmdId });
       }
     }
   };
@@ -81,7 +135,7 @@ export function createWebBluetoothTransport() {
           { namePrefix: 'TES017' },
           { services: [0xfff0] },
         ],
-        optionalServices: [0xfff0, 0x181d],
+        optionalServices: [0xfff0, 0x181d, BLE_BATTERY_SERVICE_UUID],
       });
 
       device.addEventListener('gattserverdisconnected', () => {
@@ -91,6 +145,8 @@ export function createWebBluetoothTransport() {
       });
 
       const server = await device.gatt.connect();
+      await attachStandardBleBatteryService(server, emitBatteryPercent);
+
       const service = await server.getPrimaryService(TIMEMORE_DOT_SERVICE_UUID);
       notifyChar = await service.getCharacteristic(TIMEMORE_DOT_NOTIFY_UUID);
       writeChar = await service.getCharacteristic(TIMEMORE_DOT_WRITE_UUID);
@@ -117,6 +173,10 @@ export function createWebBluetoothTransport() {
     onTimer(handler) {
       timerHandlers.add(handler);
       return () => timerHandlers.delete(handler);
+    },
+    onBattery(handler) {
+      batteryHandlers.add(handler);
+      return () => batteryHandlers.delete(handler);
     },
     async tare() {
       await enqueueWrite(TIMEMORE_COMMAND_FRAMES.tare);

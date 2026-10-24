@@ -1,3 +1,13 @@
+import { formatScaleConnectionLabel } from '../scales/scaleBattery.js';
+import { isWeighingChipEnabled } from './weighingViewFormat.js';
+
+/** @param {number} g */
+export function formatScaleLiveWeightLabel(g) {
+  const n = Number(g);
+  if (!Number.isFinite(n)) return '0.0 g';
+  return `${n.toFixed(1)} g`;
+}
+
 /**
  * Compact scale connect / transport controls for the live shot timer card.
  */
@@ -9,9 +19,14 @@ export function ScaleTimerControls({
   onTransportKindChange,
   connectStatus,
   isConnected,
+  liveWeightG = 0,
+  batteryPercent = null,
+  timerRunning = false,
+  onOpenWeighingView,
   onConnect,
   onDisconnect,
   onTare,
+  scaleDebugLines = [],
 }) {
   const canConnect = simAllowed || bleAvailable;
   if (!canConnect) {
@@ -45,7 +60,29 @@ export function ScaleTimerControls({
         </button>
       ) : (
         <>
-          <span className="text-[10px] font-semibold text-[#8a9d72]">Scale on</span>
+          <span className="text-[10px] font-semibold text-[#8a9d72]">
+            {formatScaleConnectionLabel(batteryPercent)}
+          </span>
+          {isWeighingChipEnabled(isConnected, timerRunning) ? (
+            <button
+              type="button"
+              onClick={onOpenWeighingView}
+              className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-lg ${ui.chip} ${ui.text} active:opacity-80`}
+              aria-label={`Open weighing view, ${formatScaleLiveWeightLabel(liveWeightG)}`}
+            >
+              {formatScaleLiveWeightLabel(liveWeightG)}
+            </button>
+          ) : (
+            <span
+              className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-lg ${ui.chip} ${ui.text} opacity-70`}
+              role="status"
+              aria-live="off"
+              aria-disabled="true"
+              aria-label={`Scale weight ${formatScaleLiveWeightLabel(liveWeightG)}`}
+            >
+              {formatScaleLiveWeightLabel(liveWeightG)}
+            </span>
+          )}
           <button
             type="button"
             onClick={onTare}
@@ -64,6 +101,13 @@ export function ScaleTimerControls({
       )}
       {connectStatus === 'error' && (
         <span className="text-[9px] text-rose-400">Connect failed</span>
+      )}
+      {scaleDebugLines.length > 0 && (
+        <div className={`w-full text-[9px] font-mono ${ui.muted} space-y-0.5 pt-1`}>
+          {scaleDebugLines.slice(0, 3).map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </div>
       )}
     </div>
   );

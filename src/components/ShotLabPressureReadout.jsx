@@ -9,7 +9,7 @@ import { ShotPressureChart } from './ShotPressureChart.jsx';
  *   hold: { held?: boolean, gap?: boolean },
  *   peakBar: number | null,
  *   samples: import('../flairPressureLab/pressureDisplaySmoothing.js').LabPressureRawSample[],
- *   variant: 'inline' | 'fullscreen',
+ *   variant: 'inline' | 'fullscreen' | 'weighing',
  *   viewportWidth?: number,
  *   ui?: { muted?: string, accentText?: string, text?: string },
  * }} props
@@ -32,7 +32,7 @@ function ShotLabPressureReadoutInner({
   const accent = ui?.accentText ?? 'text-[#7eb8da]';
 
   const barClass =
-    variant === 'fullscreen'
+    variant === 'fullscreen' || variant === 'weighing'
       ? `font-bold tabular-nums tracking-tight leading-none text-[clamp(1.75rem,10vw,2.75rem)] ${
           readout.dim ? 'text-[#5a5754] opacity-70' : 'text-[#7eb8da]'
         }`
@@ -54,7 +54,13 @@ function ShotLabPressureReadoutInner({
 
   return (
     <div
-      className={`${variant === 'fullscreen' ? 'mt-3 w-full max-w-sm' : 'mt-2'} space-y-1.5`}
+      className={`${
+        variant === 'weighing'
+          ? 'mt-1 w-full max-w-xs shrink-0'
+          : variant === 'fullscreen'
+            ? 'mt-3 w-full max-w-sm'
+            : 'mt-2'
+      } space-y-1`}
       data-testid="shot-lab-pressure-readout"
       role="status"
       aria-live="polite"
@@ -70,7 +76,11 @@ function ShotLabPressureReadoutInner({
         </div>
         {peakChip}
       </div>
-      <ShotPressureChart samples={samples} compact={variant === 'inline'} peakBar={null} />
+      <ShotPressureChart
+        samples={samples}
+        compact={variant === 'inline' || variant === 'weighing'}
+        peakBar={null}
+      />
     </div>
   );
 }

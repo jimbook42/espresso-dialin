@@ -42,7 +42,7 @@ export function ShotLabPressureIntegration({ variant, ui }) {
           hold={ctx.hold}
           peakBar={ctx.peakBar}
           samples={ctx.samples}
-          variant={variant === 'fullscreen' ? 'fullscreen' : 'inline'}
+          variant={variant === 'inline' ? 'inline' : variant === 'weighing' ? 'weighing' : 'fullscreen'}
           viewportWidth={viewportWidth}
           ui={ui}
         />

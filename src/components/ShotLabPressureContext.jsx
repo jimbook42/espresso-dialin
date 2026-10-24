@@ -10,6 +10,7 @@ export function ShotLabPressureProvider({
   onSaveCalibration,
   timerRunning,
   timerSeconds,
+  weighingViewOpen = false,
   metricsGetterRef,
   ui,
   children,
@@ -24,6 +25,7 @@ export function ShotLabPressureProvider({
     timerSeconds,
     storedCalibration,
     calibrateSheetOpen: calibrateOpen,
+    weighingViewOpen,
     onCalibrationSaved: onSaveCalibration,
   });
 
@@ -32,8 +34,9 @@ export function ShotLabPressureProvider({
     metricsGetterRef.current = enabled ? pressure.getShotMetrics : () => ({});
   }, [enabled, metricsGetterRef, pressure.getShotMetrics]);
 
+  const displaySurfaceActive = timerRunning || weighingViewOpen;
   const shouldRunHiddenCamera =
-    enabled && (calibrateOpen || (timerRunning && Boolean(storedCalibration)));
+    enabled && (calibrateOpen || (displaySurfaceActive && Boolean(storedCalibration)));
 
   const value = {
     enabled,

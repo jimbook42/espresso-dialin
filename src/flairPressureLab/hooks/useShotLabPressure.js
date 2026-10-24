@@ -25,6 +25,7 @@ import { isPressureSimAllowed } from '../../config/pressureSimFlag.js';
  *   storedCalibration: object | null,
  *   onCalibrationSaved?: (calibration: object) => void,
  *   calibrateSheetOpen: boolean,
+ *   weighingViewOpen: boolean,
  * }} options
  */
 export function useShotLabPressure({
@@ -34,6 +35,7 @@ export function useShotLabPressure({
   storedCalibration,
   onCalibrationSaved,
   calibrateSheetOpen,
+  weighingViewOpen = false,
 }) {
   const { videoRef, start, stop, status } = useFrontCameraStream();
   const sessionRef = useRef(createShotLabPressureSession());
@@ -59,8 +61,10 @@ export function useShotLabPressure({
     }
   }, [storedCalibration]);
 
+  const displaySurfaceActive = timerRunning || weighingViewOpen;
   const shouldRunCamera =
-    enabled && (calibrateSheetOpen || (timerRunning && calibrated && !simMode));
+    enabled
+    && (calibrateSheetOpen || (displaySurfaceActive && calibrated && !simMode));
 
   useEffect(() => {
     if (!shouldRunCamera) {
@@ -93,13 +97,18 @@ export function useShotLabPressure({
   }, []);
 
   useEffect(() => {
-    if (!timerRunning) {
-      resetShotSession();
+    if (timerRunning) {
+      sessionRef.current.begin();
+      shotEpochRef.current = Date.now();
       return;
     }
-    sessionRef.current.begin();
-    shotEpochRef.current = Date.now();
-  }, [timerRunning, resetShotSession]);
+    if (weighingViewOpen) {
+      sessionRef.current.begin();
+      shotEpochRef.current = Date.now();
+      return;
+    }
+    resetShotSession();
+  }, [timerRunning, weighingViewOpen, resetShotSession]);
 
   const grabSourceImage = useCallback((source) => {
     const width = source.videoWidth || source.width;
@@ -115,7 +124,7 @@ export function useShotLabPressure({
   }, []);
 
   useEffect(() => {
-    if (!enabled || !timerRunning) return undefined;
+    if (!enabled || !displaySurfaceActive) return undefined;
     if (simMode) {
       const tick = window.setInterval(() => {
         const epoch = shotEpochRef.current;
@@ -171,6 +180,7 @@ export function useShotLabPressure({
     return () => cancelAnimationFrame(raf);
   }, [
     enabled,
+    displaySurfaceActive,
     timerRunning,
     calibrated,
     simMode,
@@ -188,10 +198,16 @@ export function useShotLabPressure({
     [onCalibrationSaved],
   );
 
-  const getShotMetrics = useCallback(() => sessionRef.current.getShotMetrics(), []);
+  const getShotMetrics = useCallback(() => {
+    if (!timerRunning) return {};
+    return sessionRef.current.getShotMetrics();
+  }, [timerRunning]);
 
   const showLive =
-    enabled && timerRunning && (calibrated || simMode) && (simMode || status === 'live');
+    enabled
+    && displaySurfaceActive
+    && (calibrated || simMode)
+    && (simMode || status === 'live');
 
   return {
     videoRef,
