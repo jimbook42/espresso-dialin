@@ -23,6 +23,7 @@ import {
 import { barToDialAngle, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION } from './dialFaceTemplate.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { detectNeedleAngle, refineNeedleAngle } from './needleFromFrame.js';
+import { regularizeTapAnchors } from './anchorRegularize.js';
 
 /** Clockwise travel from the printed 5 to the printed 10. */
 export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
@@ -819,9 +820,22 @@ export function calibrateFromTaps(image, taps) {
     return { ok: false, redo: null, reason: 'needle', hub, marks };
   }
 
-  const zeroAngleDeg = chooseRestNeedle(needle.angleDeg, marks.tenDeg);
-  const tenAngleDeg = marks.tenDeg;
-  const fiveAngleDeg = marks.fiveDeg;
+  let zeroAngleDeg = chooseRestNeedle(needle.angleDeg, marks.tenDeg);
+  let tenAngleDeg = marks.tenDeg;
+  let fiveAngleDeg = marks.fiveDeg;
+  const r6 = taps.r6Anchor ?? taps.r6;
+  if (r6 && typeof r6 === 'object') {
+    const reg = regularizeTapAnchors(
+      { zeroAngleDeg, fiveAngleDeg, tenAngleDeg },
+      hub,
+      fiveTap,
+      tenTap,
+      r6,
+    );
+    zeroAngleDeg = reg.zeroAngleDeg;
+    fiveAngleDeg = reg.fiveAngleDeg;
+    tenAngleDeg = reg.tenAngleDeg;
+  }
   const spanDeg = clockwiseDeg(zeroAngleDeg, tenAngleDeg);
   const fiveBar = fiveCheckBar(fiveAngleDeg, zeroAngleDeg, tenAngleDeg);
   const templateBands = marks.bands
