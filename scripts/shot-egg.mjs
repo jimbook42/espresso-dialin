@@ -85,6 +85,16 @@ async function seedDialForm(page) {
 
 async function openDialFresh(page, url) {
   await page.goto(url, { waitUntil: 'networkidle' });
+  await page.evaluate(async () => {
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    if (regs) {
+      for (const reg of regs) await reg.unregister();
+    }
+    const keys = await caches?.keys?.();
+    if (keys) {
+      for (const key of keys) await caches.delete(key);
+    }
+  });
   await clearDb(page);
   await seedDialForm(page);
   await page.reload({ waitUntil: 'networkidle' });
@@ -155,62 +165,58 @@ async function captureV45Timeline(page, url) {
   }
   timings.triggerMs = 0;
 
-  const pollUntil = async (deadlineMs, fn) => {
-    while (Date.now() - triggerStart < deadlineMs) {
-      const hit = await fn();
-      if (hit !== null) return hit;
+  const pollEndMs = 5500;
+  const pollPromise = (async () => {
+    while (Date.now() - triggerStart < pollEndMs) {
+      const elapsed = Date.now() - triggerStart;
+      if (timings.ringVisibleMs === null) {
+        const hasRing = await page.getByTestId('dial-yield-tile').evaluate(
+          (el) => el.classList.contains('perfect-shot-yield-ring'),
+        );
+        if (hasRing) timings.ringVisibleMs = elapsed;
+      }
+      if (timings.cameoVisibleMs === null) {
+        const count = await page.getByTestId('perfect-shot-cameo').count();
+        if (count > 0) timings.cameoVisibleMs = elapsed;
+      }
+      if (timings.exitClassMs === null) {
+        const hasExit = await page.getByTestId('perfect-shot-cameo').evaluate(
+          (el) => el?.classList.contains('perfect-shot-cameo--exit') ?? false,
+        ).catch(() => false);
+        if (hasExit) timings.exitClassMs = elapsed;
+      }
+      if (timings.cameoDetachedMs === null && timings.cameoVisibleMs !== null) {
+        const count = await page.getByTestId('perfect-shot-cameo').count();
+        if (count === 0) timings.cameoDetachedMs = elapsed;
+      }
+      if (timings.ringGoneMs === null && timings.ringVisibleMs !== null) {
+        const hasRing = await page.getByTestId('dial-yield-tile').evaluate(
+          (el) => el.classList.contains('perfect-shot-yield-ring'),
+        );
+        if (!hasRing) timings.ringGoneMs = elapsed;
+      }
       await delay(16);
     }
-    return null;
-  };
-
-  timings.ringVisibleMs = await pollUntil(2000, async () => {
-    const has = await page.getByTestId('dial-yield-tile').evaluate(
-      (el) => el.classList.contains('perfect-shot-yield-ring'),
-    );
-    return has ? Date.now() - triggerStart : null;
-  });
-
-  timings.cameoVisibleMs = await pollUntil(2000, async () => {
-    const count = await page.getByTestId('perfect-shot-cameo').count();
-    return count > 0 ? Date.now() - triggerStart : null;
-  });
+  })();
 
   const shotAt = async (offsetMs, filename) => {
     const elapsed = Date.now() - triggerStart;
     const waitMore = offsetMs - elapsed;
     if (waitMore > 0) await delay(waitMore);
+    await scrollCelebrationTargets(page);
     const outPath = path.join(OUT_DIR, filename);
     await page.screenshot({ path: outPath, fullPage: false });
     return outPath;
   };
 
   const paths = {
-    at0p6s: await shotAt(600, 'v45-0p6s-390x844.png'),
+    at0p6s: await shotAt(700, 'v45-0p6s-390x844.png'),
     at2p5s: await shotAt(2500, 'v45-2p5s-390x844.png'),
     at3p8s: await shotAt(3800, 'v45-3p8s-390x844.png'),
+    gone4p6s: await shotAt(4600, 'v45-gone-4p6s-390x844.png'),
   };
 
-  timings.exitClassMs = await pollUntil(4500, async () => {
-    const hasExit = await page.getByTestId('perfect-shot-cameo').evaluate(
-      (el) => el?.classList.contains('perfect-shot-cameo--exit') ?? false,
-    ).catch(() => false);
-    return hasExit ? Date.now() - triggerStart : null;
-  });
-
-  paths.gone4p6s = await shotAt(4600, 'v45-gone-4p6s-390x844.png');
-
-  timings.cameoDetachedMs = await pollUntil(5500, async () => {
-    const count = await page.getByTestId('perfect-shot-cameo').count();
-    return count === 0 ? Date.now() - triggerStart : null;
-  });
-
-  timings.ringGoneMs = await pollUntil(5500, async () => {
-    const has = await page.getByTestId('dial-yield-tile').evaluate(
-      (el) => el.classList.contains('perfect-shot-yield-ring'),
-    );
-    return !has ? Date.now() - triggerStart : null;
-  });
+  await pollPromise;
 
   return { paths, timings };
 }
@@ -496,7 +502,8 @@ async function main() {
   try {
     await waitForServer(url);
     const browser = await chromium.launch();
-    const page = await browser.newPage();
+    const context = await browser.newContext({ serviceWorkers: 'block' });
+    const page = await context.newPage();
 
     try {
       const v45 = await captureV45Timeline(page, url);
