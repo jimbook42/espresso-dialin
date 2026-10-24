@@ -2499,7 +2499,7 @@ export default function App() {
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
       {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
         <div
-          className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+          className="shot-timer-fullscreen fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           onClick={handleTimerSurfaceTap}
           role="presentation"
         >
@@ -2525,9 +2525,9 @@ export default function App() {
             </button>
           </div>
 
-          <div className="flex-1 flex flex-col items-center justify-start pt-2 px-5 min-h-0 overflow-hidden pointer-events-none">
+          <div className="shot-timer-mid flex-1 flex flex-col items-center justify-start pt-2 px-5 min-h-0 overflow-hidden pointer-events-none">
             {flairEnabled && activeRecipe?.flairProfile && (
-              <div className="w-full max-w-sm mb-2 shrink-0 opacity-35 max-h-[22vh] overflow-hidden">
+              <div className="shot-timer-profile-wrap w-full max-w-sm mb-2 shrink-0 opacity-35 max-h-[22vh] overflow-hidden">
                 <PressureProfileChart
                   profile={activeRecipe.flairProfile}
                   progress={timerProgress}
@@ -2558,7 +2558,7 @@ export default function App() {
             )}
 
             <div
-              className={`text-[clamp(3.75rem,20vw,5.25rem)] font-bold tabular-nums tracking-[-0.06em] leading-[0.9] ${
+              className={`shot-timer-main-time text-[clamp(3.75rem,20vw,5.25rem)] font-bold tabular-nums tracking-[-0.06em] leading-[0.9] ${
                 timerUsePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#ede9e3]'
               }`}
             >
@@ -2575,7 +2575,7 @@ export default function App() {
               />
             )}
             <ShotLabPressureIntegration variant="fullscreen" ui={ui} />
-            <p className="text-[11px] text-[#6b6457] mt-2 text-center shrink-0">
+            <p className="shot-timer-total-label text-[11px] text-[#6b6457] mt-2 text-center shrink-0">
               {timerUsePreInfusion && preInfusionPhase
                 ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
                 : timerUsePreInfusion
@@ -2584,7 +2584,7 @@ export default function App() {
             </p>
           </div>
 
-          <div className="px-4 pb-6 pt-1 space-y-3 max-w-md mx-auto w-full shrink-0">
+          <div className="shot-timer-footer px-4 pb-6 pt-1 space-y-3 max-w-md mx-auto w-full shrink-0">
             <div className="w-full h-1 bg-[#1e1e1e] rounded-full overflow-hidden pointer-events-none">
               <div
                 className="h-full bg-[#c88a4b] transition-[width] duration-100 ease-linear"
@@ -2611,7 +2611,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleStopTimer(); }}
-                  className="w-full min-h-[72px] rounded-[20px] bg-[#ede6dd] text-[#121212] font-bold text-base active:scale-[0.99] shadow-[0_12px_32px_rgba(237,230,221,0.2)]"
+                  className="shot-timer-stop-btn w-full min-h-[72px] rounded-[20px] bg-[#ede6dd] text-[#121212] font-bold text-base active:scale-[0.99] shadow-[0_12px_32px_rgba(237,230,221,0.2)]"
                 >
                   Stop shot
                 </button>
@@ -2619,7 +2619,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); handleCancelTimer(); }}
-                className="w-full min-h-[48px] rounded-[14px] bg-[#1e1e1e] border border-[#262626] text-[13px] font-medium text-[#6b6457]"
+                className="shot-timer-cancel-btn w-full min-h-[48px] rounded-[14px] bg-[#1e1e1e] border border-[#262626] text-[13px] font-medium text-[#6b6457]"
               >
                 Cancel
               </button>

@@ -47,6 +47,50 @@
   }
 }
 
+/* Full-screen shot timer: compact stack on short viewports (e.g. 360×640) without affecting taller phones. */
+@media (max-height: 700px) {
+  .shot-timer-fullscreen .shot-timer-profile-wrap {
+    max-height: 11vh;
+    margin-bottom: 0.25rem;
+  }
+
+  .shot-timer-fullscreen .shot-timer-main-time {
+    font-size: clamp(2.35rem, 15vw, 3.25rem) !important;
+    line-height: 0.92;
+  }
+
+  .shot-timer-fullscreen .shot-timer-mid {
+    padding-top: 0.25rem;
+  }
+
+  .shot-timer-fullscreen .shot-timer-total-label {
+    margin-top: 0.35rem;
+    font-size: 10px;
+  }
+
+  .shot-timer-fullscreen .shot-timer-footer {
+    padding-bottom: 0.75rem;
+    padding-top: 0;
+  }
+
+  .shot-timer-fullscreen .shot-timer-stop-btn {
+    min-height: 3.25rem;
+    border-radius: 1rem;
+  }
+
+  .shot-timer-fullscreen .shot-timer-cancel-btn {
+    min-height: 2.75rem;
+  }
+
+  .shot-timer-fullscreen [data-testid='shot-lab-pressure-readout'] {
+    margin-top: 0.25rem;
+  }
+
+  .shot-timer-fullscreen [data-testid='shot-pressure-chart'] svg {
+    max-height: 3rem;
+  }
+}
+
 body {
   min-height: 100vh;
   margin: 0;

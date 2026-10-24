@@ -23,6 +23,18 @@ const VIEWPORTS = [
   { w: 412, h: 915, tag: '412x915' },
 ];
 
+/** Mirrors src/config/pressureSimRecipe.js (QA build only). */
+const SIM_RECIPE_FLAIR_PROFILE = {
+  preinfusionPressure: '2',
+  preinfusionTime: '5',
+  preinfusionEndTrigger: 'time',
+  peakPressure: '9',
+  taperPressure: '6',
+  taperStartTrigger: 'time',
+  taperStartTimeS: '12',
+  peakEndYield: '28',
+};
+
 function startScalePreview() {
   const child = spawn(
     'npx',
@@ -35,16 +47,17 @@ function startScalePreview() {
     },
   );
   child.unref();
+  const pid = child.pid;
   const stop = async () => {
-    if (!child.pid) return;
+    if (!pid) return;
     try {
-      process.kill(child.pid, 'SIGTERM');
+      process.kill(-pid, 'SIGTERM');
     } catch {
       // exited
     }
     await delay(300);
     try {
-      process.kill(child.pid, 'SIGKILL');
+      process.kill(-pid, 'SIGKILL');
     } catch {
       // exited
     }
@@ -62,7 +75,7 @@ async function clearDb(page) {
 }
 
 async function seedDb(page, { labOn }) {
-  await page.evaluate((labEnabled) => {
+  await page.evaluate(({ labEnabled, flairProfile }) => {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open('EspressoDialDB', 17);
       req.onupgradeneeded = (event) => {
@@ -96,8 +109,11 @@ async function seedDb(page, { labOn }) {
                     zeroAngleDeg: 200,
                     fiveAngleDeg: 260,
                     tenAngleDeg: 320,
-                    centre: { x: 320, y: 360 },
+                    hub: { x: 320, y: 360 },
+                    five: { x: 380, y: 300 },
+                    ten: { x: 400, y: 380 },
                     radius: 90,
+                    rotationDeg: 0,
                   },
                 },
               }
@@ -118,7 +134,7 @@ async function seedDb(page, { labOn }) {
           targetTimeMaxS: 32,
           targetDoseG: 18,
           targetYieldG: 36,
-          flairProfile: {
+          flairProfile: flairProfile ?? {
             preinfusionEndTrigger: 'manual',
           },
         });
@@ -130,7 +146,10 @@ async function seedDb(page, { labOn }) {
       };
       req.onerror = () => reject(req.error);
     });
-  }, labOn);
+  }, {
+    labEnabled: labOn,
+    flairProfile: labOn ? SIM_RECIPE_FLAIR_PROFILE : { preinfusionEndTrigger: 'manual' },
+  });
 }
 
 async function connectSimScale(page) {
@@ -144,6 +163,10 @@ async function connectSimScale(page) {
 
 async function assertNoElementOverlap(page, label, surface = 'timer') {
   const overlaps = await page.evaluate((mode) => {
+    const chartRoot = (el) =>
+      el.closest('[data-testid="shot-pressure-chart"]')
+      || el.closest('[data-testid="recipe-pressure-profile-chart"]');
+
     const root =
       mode === 'timer'
         ? Array.from(document.querySelectorAll('div')).find(
@@ -171,6 +194,9 @@ async function assertNoElementOverlap(page, label, surface = 'timer') {
         const a = nodes[i];
         const b = nodes[j];
         if (a.contains(b) || b.contains(a)) continue;
+        const chartA = chartRoot(a);
+        const chartB = chartRoot(b);
+        if (chartA && chartB && chartA === chartB) continue;
         const ra = a.getBoundingClientRect();
         const rb = b.getBoundingClientRect();
         const hit =
@@ -227,6 +253,32 @@ async function capture(page, filePath) {
   await page.screenshot({ path: filePath, fullPage: false });
 }
 
+async function assertFullscreenLabVisible(page) {
+  await page.getByTestId('shot-lab-pressure-readout').first().waitFor({ timeout: 8000 });
+  await page.getByTestId('shot-pressure-chart').waitFor({ timeout: 8000 });
+  await page.getByText(/Total/).first().waitFor({ timeout: 5000 });
+  await page.getByRole('button', { name: 'Stop shot' }).waitFor({ timeout: 5000 });
+}
+
+async function runFullscreenTimer(page, viewport, labOn, { phaseWaitMs = 800, phaseTag = '' } = {}) {
+  const { tag } = viewport;
+  const labTag = labOn ? 'lab-on' : 'lab-off';
+  const phaseSuffix = phaseTag ? `-${phaseTag}` : '';
+  const base = `fullscreen-timer-${labTag}-${tag}${phaseSuffix}-v4`;
+  await page.getByRole('button', { name: /^Start$/ }).click();
+  await page.getByLabel('Cancel timer').waitFor({ timeout: 10_000 });
+  await delay(phaseWaitMs);
+  if (labOn) {
+    await assertFullscreenLabVisible(page);
+  }
+  await assertNoVerticalOverflow(page, base, 'timer');
+  await assertNoElementOverlap(page, base, 'timer');
+  const out = path.join(OUT_DIR, `${base}.png`);
+  await capture(page, out);
+  await page.getByRole('button', { name: 'Cancel timer' }).click({ timeout: 5000 }).catch(() => {});
+  return { path: out, note: `Fullscreen timer ${labTag} ${tag}${phaseTag ? ` (${phaseTag})` : ''}` };
+}
+
 async function runScenario(page, viewport, scenario, labOn) {
   const { w, h, tag } = viewport;
   await page.setViewportSize({ width: w, height: h });
@@ -240,10 +292,39 @@ async function runScenario(page, viewport, scenario, labOn) {
   await connectSimScale(page);
 
   const labTag = labOn ? 'lab-on' : 'lab-off';
-  const vSuffix = scenario === 'fullscreen-timer' ? '-v3' : '';
-  const base = `${scenario}-${labTag}-${tag}${vSuffix}`;
+  const base = `${scenario}-${labTag}-${tag}`;
 
-  if (scenario === 'shot-inline-mid' || scenario === 'fullscreen-timer') {
+  if (scenario === 'fullscreen-timer') {
+    const results = [];
+    if (labOn && (tag === '390x844' || tag === '360x640')) {
+      results.push(await runFullscreenTimer(page, viewport, labOn, {
+        phaseWaitMs: 2200,
+        phaseTag: 'pre',
+      }));
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await clearDb(page);
+      await seedDb(page, { labOn });
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await connectSimScale(page);
+      results.push(await runFullscreenTimer(page, viewport, labOn, {
+        phaseWaitMs: 7500,
+        phaseTag: 'peak',
+      }));
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await clearDb(page);
+      await seedDb(page, { labOn });
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await connectSimScale(page);
+      results.push(await runFullscreenTimer(page, viewport, labOn, {
+        phaseWaitMs: 14_000,
+        phaseTag: 'taper',
+      }));
+    }
+    results.push(await runFullscreenTimer(page, viewport, labOn, {}));
+    return results;
+  }
+
+  if (scenario === 'shot-inline-mid') {
     await page.getByRole('button', { name: /^Start$/ }).click();
     await page.getByLabel('Cancel timer').waitFor({ timeout: 10_000 });
     await delay(800);
@@ -253,23 +334,18 @@ async function runScenario(page, viewport, scenario, labOn) {
     await assertNoVerticalOverflow(page, base, 'timer');
     await assertNoElementOverlap(page, base, 'timer');
     const out = path.join(OUT_DIR, `${base}.png`);
-    if (scenario === 'shot-inline-mid' && labOn) {
+    if (labOn) {
       await page.getByTestId('shot-lab-pressure-readout').first().screenshot({ path: out });
     } else {
       await capture(page, out);
     }
     await page.getByRole('button', { name: 'Cancel timer' }).click({ timeout: 5000 }).catch(() => {});
-    return {
+    return [{
       path: out,
-      note:
-        scenario === 'shot-inline-mid'
-          ? labOn
-            ? 'Mid-shot pressure readout (bar, peak chip, profile) on extraction UI'
-            : 'Extraction UI mid-shot, lab off'
-          : labOn
-            ? 'Full-screen extraction timer with scale flow and lab pressure'
-            : 'Full-screen extraction timer, lab off',
-    };
+      note: labOn
+        ? 'Mid-shot pressure readout (bar, peak chip, profile) on extraction UI'
+        : 'Extraction UI mid-shot, lab off',
+    }];
   }
 
   if (scenario === 'weigh-view') {
@@ -282,7 +358,7 @@ async function runScenario(page, viewport, scenario, labOn) {
     await assertNoElementOverlap(page, base, 'weigh');
     const out = path.join(OUT_DIR, `${base}.png`);
     await capture(page, out);
-    return { path: out, note: labOn ? 'Weighing view with lab pressure strip' : 'Weighing view, lab off' };
+    return [{ path: out, note: labOn ? 'Weighing view with lab pressure strip' : 'Weighing view, lab off' }];
   }
 
   throw new Error(`unknown scenario ${scenario}`);
@@ -292,35 +368,41 @@ async function main() {
   await mkdir(OUT_DIR, { recursive: true });
   const preview = startScalePreview();
   const url = `http://127.0.0.1:${PORT}/`;
-  await waitForServer(url);
-
-  const browser = await chromium.launch();
-  const context = await browser.newContext();
-  const page = await context.newPage();
-
-  const manifest = [];
-  const scenarios = ['shot-inline-mid', 'fullscreen-timer', 'weigh-view'];
 
   try {
-    for (const viewport of VIEWPORTS) {
-      for (const labOn of [true, false]) {
-        for (const scenario of scenarios) {
-          const result = await runScenario(page, viewport, scenario, labOn);
-          manifest.push(result);
-          process.stderr.write(`ok ${result.path}\n`);
+    await waitForServer(url);
+
+    const browser = await chromium.launch();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    const manifest = [];
+    const scenarios = ['shot-inline-mid', 'fullscreen-timer', 'weigh-view'];
+
+    try {
+      for (const viewport of VIEWPORTS) {
+        for (const labOn of [true, false]) {
+          for (const scenario of scenarios) {
+            const result = await runScenario(page, viewport, scenario, labOn);
+            for (const entry of result) {
+              manifest.push(entry);
+              process.stderr.write(`ok ${entry.path}\n`);
+            }
+          }
         }
       }
+    } finally {
+      await browser.close();
     }
+
+    await writeFile(
+      path.join(OUT_DIR, 'manifest.json'),
+      JSON.stringify(manifest, null, 2),
+    );
+    console.log(JSON.stringify(manifest, null, 2));
   } finally {
-    await browser.close();
     await preview.stop();
   }
-
-  await writeFile(
-    path.join(OUT_DIR, 'manifest.json'),
-    JSON.stringify(manifest, null, 2),
-  );
-  console.log(JSON.stringify(manifest, null, 2));
 }
 
 main().catch((err) => {

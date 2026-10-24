@@ -197,7 +197,10 @@ export function PressureProfileChart({
       : null;
 
   return (
-    <div className={`relative w-full ${compact ? 'h-[5.5rem]' : 'h-[6.25rem]'}`}>
+    <div
+      className={`relative w-full ${compact ? 'h-[5.5rem]' : 'h-[6.25rem]'}`}
+      data-testid="recipe-pressure-profile-chart"
+    >
       <div className="absolute inset-0 rounded-[10px] bg-[#121110] border border-[#232323] overflow-hidden">
         <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-full" preserveAspectRatio="xMidYMid meet" aria-hidden>
           {[0, 1, 2, 3].map((i) => (
