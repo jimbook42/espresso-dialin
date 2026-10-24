@@ -8,7 +8,7 @@
  *   begin: (epochMs: number) => void,
  *   pushRaw: (bar: number | null, confident: boolean, timestampMs?: number) => void,
  *   getSamples: () => import('./pressureDisplaySmoothing.js').LabPressureRawSample[],
- *   getShotMetrics: () => { labPressureCurve?: { tS: number, bar: number }[], labPressurePeakBar?: number },
+ *   getShotMetrics: () => { labPressureCurve?: { tS: number, bar: number }[], labPressurePeakBar?: number, labGaugeSnapshotJpeg?: string },
  * }}
  */
 export function createShotLabPressureSession() {

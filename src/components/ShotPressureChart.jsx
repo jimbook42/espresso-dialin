@@ -1,18 +1,23 @@
 import { useId } from 'react';
-import { pressureChartPointsFromRaw } from '../flairPressureLab/pressureDisplaySmoothing.js';
-
-const PRESSURE_STROKE = '#7eb8da';
+import { pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
+import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js';
 
 /**
  * @param {{
  *   samples?: import('../flairPressureLab/pressureDisplaySmoothing.js').LabPressureRawSample[],
  *   compact?: boolean,
  *   peakBar?: number | null,
+ *   phaseGoal?: { targetBar?: number | null, taperBand?: { lowBar: number, highBar: number } | null },
  * }} props
  */
-export function ShotPressureChart({ samples = [], compact = false, peakBar = null }) {
+export function ShotPressureChart({
+  samples = [],
+  compact = false,
+  peakBar = null,
+  phaseGoal = null,
+}) {
   const labelId = useId();
-  const points = pressureChartPointsFromRaw(samples);
+  const points = pressureChartPointsForDisplay(samples);
   if (!points.length) return null;
 
   const w = compact ? 280 : 320;
@@ -25,23 +30,33 @@ export function ShotPressureChart({ samples = [], compact = false, peakBar = nul
   const chartH = h - padT - padB;
 
   const maxT = Math.max(...points.map((p) => p.tS), 1);
-  const maxBar = Math.max(...points.map((p) => p.bar), 1);
+  const goalBars = [
+    phaseGoal?.targetBar,
+    phaseGoal?.taperBand?.lowBar,
+    phaseGoal?.taperBand?.highBar,
+  ].filter((v) => v != null && Number.isFinite(v));
+  const maxBar = Math.max(...points.map((p) => p.bar), ...goalBars, 1);
   const x = (t) => padL + (t / maxT) * chartW;
   const y = (bar) => padT + chartH - (bar / maxBar) * chartH;
 
   let path = '';
   points.forEach((p, i) => {
     const cmd = i === 0 ? 'M' : 'L';
-    const opacity = p.dim ? 0.45 : 1;
     path += `${cmd} ${x(p.tS).toFixed(1)} ${y(p.bar).toFixed(1)} `;
-    if (p.dim && i > 0) {
-      // dim segments still connect; stroke opacity handled on whole path below
-    }
   });
 
   const hasDim = points.some((p) => p.dim);
   const peakLabel =
     peakBar != null && Number.isFinite(peakBar) ? `peak ${peakBar.toFixed(1)} bar` : null;
+
+  const goalLineY =
+    phaseGoal?.targetBar != null && Number.isFinite(phaseGoal.targetBar)
+      ? y(phaseGoal.targetBar)
+      : null;
+  const taperLow =
+    phaseGoal?.taperBand?.lowBar != null ? y(phaseGoal.taperBand.lowBar) : null;
+  const taperHigh =
+    phaseGoal?.taperBand?.highBar != null ? y(phaseGoal.taperBand.highBar) : null;
 
   return (
     <div className="space-y-0.5" data-testid="shot-pressure-chart">
@@ -50,7 +65,7 @@ export function ShotPressureChart({ samples = [], compact = false, peakBar = nul
           Camera pressure (bar)
         </span>
         {peakLabel && (
-          <span className="text-[9px] font-semibold text-[#7eb8da] tabular-nums">{peakLabel}</span>
+          <span className="text-[9px] font-semibold text-[#c97868] tabular-nums">{peakLabel}</span>
         )}
       </div>
       <svg
@@ -59,10 +74,30 @@ export function ShotPressureChart({ samples = [], compact = false, peakBar = nul
         role="img"
         aria-labelledby={labelId}
       >
+        {taperLow != null && taperHigh != null && (
+          <rect
+            x={padL}
+            y={Math.min(taperLow, taperHigh)}
+            width={chartW}
+            height={Math.abs(taperHigh - taperLow)}
+            fill="rgba(201, 120, 104, 0.08)"
+          />
+        )}
+        {goalLineY != null && (
+          <line
+            x1={padL}
+            x2={padL + chartW}
+            y1={goalLineY}
+            y2={goalLineY}
+            stroke="rgba(201, 120, 104, 0.35)"
+            strokeWidth="1"
+            strokeDasharray="4 3"
+          />
+        )}
         <path
           d={path.trim()}
           fill="none"
-          stroke={PRESSURE_STROKE}
+          stroke={pressureLiveStroke}
           strokeWidth="2"
           strokeLinejoin="round"
           opacity={hasDim ? 0.75 : 1}

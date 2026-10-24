@@ -7,6 +7,7 @@ export function shotLabPressureFitsViewport(widthPx) {
   return widthPx >= 320;
 }
 
+/** Stack profile chart below the bar row on very narrow widths only (peak chip stays inline). */
 export function shotLabPressureStacked(widthPx) {
-  return widthPx != null && Number.isFinite(widthPx) && widthPx < 380;
+  return widthPx != null && Number.isFinite(widthPx) && widthPx < 340;
 }

@@ -19,7 +19,7 @@ const PHASE_LABEL = {
 /**
  * Reuses the pressure-lab tap-calibrate flow in a modal sheet.
  */
-export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui }) {
+export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showCameraPreview = false }) {
   const { videoRef, start, stop, status, error } = useFrontCameraStream();
   const [tapPhase, setTapPhase] = useState('aim');
   const [tapNote, setTapNote] = useState('');
@@ -217,7 +217,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui }) {
             <button
               type="button"
               onClick={accept}
-              className="flex-1 min-h-[48px] rounded-xl bg-[#7eb8da] text-[#121110] font-bold text-sm"
+              className="flex-1 min-h-[48px] rounded-xl bg-[#c88a4b] text-[#121110] font-bold text-sm"
             >
               Accept calibration
             </button>

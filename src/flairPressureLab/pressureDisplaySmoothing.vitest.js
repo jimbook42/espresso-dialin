@@ -4,6 +4,8 @@ import {
   labPressureReadoutState,
   peakBarFromRaw,
   rollingDisplayBar,
+  pressureChartPointsForDisplay,
+  pressureChartPointsFromRaw,
 } from './pressureDisplaySmoothing.js';
 
 describe('pressureDisplaySmoothing', () => {
@@ -38,5 +40,17 @@ describe('pressureDisplaySmoothing', () => {
     });
     expect(labPressureReadoutState(4.2, { held: true, gap: false }).dim).toBe(true);
     expect(labPressureReadoutState(null, { held: false, gap: true }).gap).toBe(true);
+  });
+
+  it('chart display smoothing differs from raw points when window spans multiple samples', () => {
+    const samples = [
+      { tS: 0, bar: 2, confident: true },
+      { tS: 0.5, bar: 8, confident: true },
+      { tS: 1.0, bar: 8, confident: true },
+    ];
+    const raw = pressureChartPointsFromRaw(samples);
+    const display = pressureChartPointsForDisplay(samples);
+    expect(raw[raw.length - 1].bar).toBe(8);
+    expect(display[display.length - 1].bar).toBeLessThan(8);
   });
 });

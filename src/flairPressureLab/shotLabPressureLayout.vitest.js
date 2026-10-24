@@ -8,8 +8,9 @@ describe('shotLabPressureLayout', () => {
     expect(shotLabPressureFitsViewport(412)).toBe(true);
   });
 
-  it('stacks readout on narrow widths', () => {
-    expect(shotLabPressureStacked(360)).toBe(true);
+  it('keeps peak chip inline at 360; stacks chart only below 340px', () => {
+    expect(shotLabPressureStacked(360)).toBe(false);
+    expect(shotLabPressureStacked(330)).toBe(true);
     expect(shotLabPressureStacked(400)).toBe(false);
   });
 });

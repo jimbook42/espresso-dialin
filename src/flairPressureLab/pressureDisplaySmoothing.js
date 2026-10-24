@@ -48,6 +48,22 @@ export function pressureChartPointsFromRaw(samples) {
 }
 
 /**
+ * Display-only smoothed pressure curve (same window as live bar readout).
+ * @param {LabPressureRawSample[]} samples
+ * @param {number} [windowS]
+ */
+export function pressureChartPointsForDisplay(samples, windowS = PRESSURE_DISPLAY_WINDOW_S) {
+  if (!samples?.length) return [];
+  return samples
+    .filter((s) => s.bar != null && Number.isFinite(s.bar))
+    .map((s) => ({
+      tS: s.tS,
+      bar: rollingDisplayBar(samples, s.tS, windowS) ?? s.bar,
+      dim: s.confident === false,
+    }));
+}
+
+/**
  * @param {number | null} displayBar
  * @param {{ held: boolean, gap: boolean }} hold
  */

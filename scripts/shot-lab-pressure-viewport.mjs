@@ -128,6 +128,57 @@ async function connectSimScale(page) {
   await delay(400);
 }
 
+async function assertNoElementOverlap(page, label, surface = 'timer') {
+  const overlaps = await page.evaluate((mode) => {
+    const root =
+      mode === 'timer'
+        ? Array.from(document.querySelectorAll('div')).find(
+            (node) => node.classList.contains('fixed')
+              && node.className.includes('inset-0')
+              && node.className.includes('z-[60]'),
+          )
+        : document.querySelector('[aria-label="Live scale weight"]');
+    if (!root) return [];
+    const visible = (el) => {
+      const r = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return (
+        r.width > 2
+        && r.height > 2
+        && style.visibility !== 'hidden'
+        && style.display !== 'none'
+        && style.opacity !== '0'
+      );
+    };
+    const nodes = Array.from(root.querySelectorAll('*')).filter(visible);
+    const pairs = [];
+    for (let i = 0; i < nodes.length; i += 1) {
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const a = nodes[i];
+        const b = nodes[j];
+        if (a.contains(b) || b.contains(a)) continue;
+        const ra = a.getBoundingClientRect();
+        const rb = b.getBoundingClientRect();
+        const hit =
+          ra.left < rb.right
+          && ra.right > rb.left
+          && ra.top < rb.bottom
+          && ra.bottom > rb.top;
+        if (hit) {
+          pairs.push({
+            a: a.getAttribute('data-testid') || a.tagName,
+            b: b.getAttribute('data-testid') || b.tagName,
+          });
+        }
+      }
+    }
+    return pairs.slice(0, 8);
+  }, surface);
+  if (overlaps.length) {
+    throw new Error(`${label}: bounding-box overlap ${JSON.stringify(overlaps)}`);
+  }
+}
+
 async function assertNoVerticalOverflow(page, label, surface = 'document') {
   const { scrollHeight, innerHeight, ok } = await page.evaluate((mode) => {
     const innerHeight = window.innerHeight;
@@ -173,7 +224,7 @@ async function runScenario(page, viewport, scenario, labOn) {
   await connectSimScale(page);
 
   const labTag = labOn ? 'lab-on' : 'lab-off';
-  const vSuffix = scenario === 'fullscreen-timer' ? '-v2' : '';
+  const vSuffix = scenario === 'fullscreen-timer' ? '-v3' : '';
   const base = `${scenario}-${labTag}-${tag}${vSuffix}`;
 
   if (scenario === 'shot-inline-mid' || scenario === 'fullscreen-timer') {
@@ -184,6 +235,7 @@ async function runScenario(page, viewport, scenario, labOn) {
       await page.getByTestId('shot-lab-pressure-readout').first().waitFor({ timeout: 8000 });
     }
     await assertNoVerticalOverflow(page, base, 'timer');
+    await assertNoElementOverlap(page, base, 'timer');
     const out = path.join(OUT_DIR, `${base}.png`);
     if (scenario === 'shot-inline-mid' && labOn) {
       await page.getByTestId('shot-lab-pressure-readout').first().screenshot({ path: out });
@@ -211,6 +263,7 @@ async function runScenario(page, viewport, scenario, labOn) {
       await page.getByTestId('shot-lab-pressure-readout').first().waitFor({ timeout: 8000 });
     }
     await assertNoVerticalOverflow(page, base, 'weigh');
+    await assertNoElementOverlap(page, base, 'weigh');
     const out = path.join(OUT_DIR, `${base}.png`);
     await capture(page, out);
     return { path: out, note: labOn ? 'Weighing view with lab pressure strip' : 'Weighing view, lab off' };

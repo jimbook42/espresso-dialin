@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
 import { shotLabPressureFitsViewport } from '../flairPressureLab/shotLabPressureLayout.js';
+import {
+  pressureLiveBorderClass,
+  pressureLiveTextClass,
+} from '../flairPressureLab/shotLabPressureTokens.js';
 import { ShotLabPressureReadout } from './ShotLabPressureReadout.jsx';
 import { useShotLabPressureContext } from './ShotLabPressureContext.jsx';
 
@@ -26,7 +30,7 @@ export function ShotLabPressureIntegration({ variant, ui }) {
       <button
         type="button"
         onClick={ctx.openCalibrate}
-        className={`text-[10px] font-semibold underline ${ui?.accentText ?? 'text-[#7eb8da]'}`}
+        className={`text-[10px] font-semibold underline ${ui?.accentText ?? pressureLiveTextClass}`}
         data-testid="lab-gauge-calibrate-link"
       >
         {ctx.storedCalibration ? 'Re-run gauge setup (3 taps)' : 'Run gauge setup (3 taps)'}
@@ -40,8 +44,11 @@ export function ShotLabPressureIntegration({ variant, ui }) {
         <ShotLabPressureReadout
           displayBar={ctx.displayBar}
           hold={ctx.hold}
+          readerUncertain={ctx.readerUncertain}
           peakBar={ctx.peakBar}
           samples={ctx.samples}
+          phaseGoal={ctx.phaseGoal}
+          testingLabel={ctx.testingLabel}
           variant={variant === 'inline' ? 'inline' : variant === 'weighing' ? 'weighing' : 'fullscreen'}
           viewportWidth={viewportWidth}
           ui={ui}
@@ -51,7 +58,7 @@ export function ShotLabPressureIntegration({ variant, ui }) {
         <button
           type="button"
           onClick={ctx.openCalibrate}
-          className={`mt-2 text-[10px] font-semibold min-h-[44px] px-3 rounded-lg border border-[#7eb8da]/30 ${ui?.accentText ?? 'text-[#7eb8da]'}`}
+          className={`mt-2 text-[10px] font-semibold min-h-[44px] px-3 rounded-lg border ${pressureLiveBorderClass} ${ui?.accentText ?? pressureLiveTextClass}`}
           data-testid="shot-lab-calibrate-cta"
         >
           Set up gauge (camera)
