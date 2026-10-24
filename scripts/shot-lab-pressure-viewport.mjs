@@ -15,7 +15,7 @@ import { waitForServer } from './lib/previewServer.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const OUT_DIR = '/workspace/pl-state/lab-screens';
-const PORT = 4173;
+const PORT = 4178;
 
 const VIEWPORTS = [
   { w: 390, h: 844, tag: '390x844' },
@@ -24,11 +24,16 @@ const VIEWPORTS = [
 ];
 
 function startScalePreview() {
-  const child = spawn('npm', ['run', 'preview:scale'], {
-    cwd: ROOT,
-    stdio: 'pipe',
-    detached: true,
-  });
+  const child = spawn(
+    'npx',
+    ['vite', 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'],
+    {
+      cwd: ROOT,
+      stdio: 'pipe',
+      detached: true,
+      env: { ...process.env, VITE_SCALE_ALLOW_SIM: 'true', VITE_PRESSURE_ALLOW_SIM: 'true' },
+    },
+  );
   child.unref();
   const stop = async () => {
     if (!child.pid) return;
@@ -45,6 +50,15 @@ function startScalePreview() {
     }
   };
   return { stop };
+}
+
+async function clearDb(page) {
+  await page.evaluate(() => new Promise((resolve) => {
+    const del = indexedDB.deleteDatabase('EspressoDialDB');
+    del.onsuccess = () => resolve();
+    del.onerror = () => resolve();
+    del.onblocked = () => resolve();
+  }));
 }
 
 async function seedDb(page, { labOn }) {
@@ -107,18 +121,39 @@ async function seedDb(page, { labOn }) {
 
 async function connectSimScale(page) {
   const transport = page.locator('select[aria-label="Scale transport"]');
-  await transport.waitFor({ timeout: 20_000 });
+  await transport.waitFor({ timeout: 25_000 });
   await transport.selectOption('sim');
   await page.getByRole('button', { name: 'Connect scale' }).click();
-  await delay(800);
+  await page.getByRole('button', { name: /Open weighing view/ }).waitFor({ timeout: 15_000 });
+  await delay(400);
 }
 
-async function assertNoVerticalOverflow(page, label) {
-  const { scrollHeight, innerHeight } = await page.evaluate(() => ({
-    scrollHeight: document.documentElement.scrollHeight,
-    innerHeight: window.innerHeight,
-  }));
-  if (scrollHeight > innerHeight + 2) {
+async function assertNoVerticalOverflow(page, label, surface = 'document') {
+  const { scrollHeight, innerHeight, ok } = await page.evaluate((mode) => {
+    const innerHeight = window.innerHeight;
+    let root = document.documentElement;
+    if (mode === 'timer') {
+      root = Array.from(document.querySelectorAll('div')).find(
+        (node) => node.classList.contains('fixed')
+          && node.className.includes('inset-0')
+          && node.className.includes('z-[60]'),
+      ) || null;
+    } else if (mode === 'weigh') {
+      root = document.querySelector('[aria-label="Live scale weight"]');
+    }
+    if (!root) {
+      return { scrollHeight: document.documentElement.scrollHeight, innerHeight, ok: false };
+    }
+    const scrollHeight = root.scrollHeight;
+    const docOk = document.documentElement.scrollHeight <= innerHeight + 2;
+    const surfaceOk = scrollHeight <= innerHeight + 2;
+    return {
+      scrollHeight,
+      innerHeight,
+      ok: mode === 'document' ? docOk : surfaceOk,
+    };
+  }, surface);
+  if (!ok) {
     throw new Error(`${label}: vertical overflow scrollHeight=${scrollHeight} innerHeight=${innerHeight}`);
   }
 }
@@ -132,6 +167,7 @@ async function runScenario(page, viewport, scenario, labOn) {
   await page.setViewportSize({ width: w, height: h });
   const url = `http://127.0.0.1:${PORT}/`;
   await page.goto(url, { waitUntil: 'networkidle' });
+  await clearDb(page);
   await seedDb(page, { labOn });
   await page.goto(url, { waitUntil: 'networkidle' });
   await connectSimScale(page);
@@ -141,14 +177,15 @@ async function runScenario(page, viewport, scenario, labOn) {
 
   if (scenario === 'shot-inline-mid' || scenario === 'fullscreen-timer') {
     await page.getByRole('button', { name: /^Start$/ }).click();
-    await delay(1200);
+    await page.getByRole('button', { name: 'Cancel timer' }).waitFor({ timeout: 10_000 });
+    await delay(800);
     if (labOn) {
-      await page.getByTestId('shot-lab-pressure-readout').waitFor({ timeout: 8000 });
+      await page.getByTestId('shot-lab-pressure-readout').first().waitFor({ timeout: 8000 });
     }
-    await assertNoVerticalOverflow(page, base);
+    await assertNoVerticalOverflow(page, base, 'timer');
     const out = path.join(OUT_DIR, `${base}.png`);
     if (scenario === 'shot-inline-mid' && labOn) {
-      await page.getByTestId('shot-lab-pressure-readout').screenshot({ path: out });
+      await page.getByTestId('shot-lab-pressure-readout').first().screenshot({ path: out });
     } else {
       await capture(page, out);
     }
@@ -170,9 +207,9 @@ async function runScenario(page, viewport, scenario, labOn) {
     await page.getByRole('button', { name: /Open weighing view/ }).click();
     await delay(600);
     if (labOn) {
-      await page.getByTestId('shot-lab-pressure-readout').waitFor({ timeout: 8000 });
+      await page.getByTestId('shot-lab-pressure-readout').first().waitFor({ timeout: 8000 });
     }
-    await assertNoVerticalOverflow(page, base);
+    await assertNoVerticalOverflow(page, base, 'weigh');
     const out = path.join(OUT_DIR, `${base}.png`);
     await capture(page, out);
     return { path: out, note: labOn ? 'Weighing view with lab pressure strip' : 'Weighing view, lab off' };

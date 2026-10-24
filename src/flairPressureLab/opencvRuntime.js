@@ -4,7 +4,9 @@ let cvInstance = null;
 let loadPromise = null;
 
 const BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
-const OPENCV_URL = `${BASE_URL}flair-pressure-lab/opencv.js`;
+/** Stable path segment for bundle checks and script URL (see opencvBundle.vitest.js). */
+export const OPENCV_ASSET_PATH = 'flair-pressure-lab/opencv.js';
+const OPENCV_URL = `${BASE_URL}${OPENCV_ASSET_PATH}`;
 
 async function initCvModule(cvModule) {
   if (cvModule instanceof Promise) {

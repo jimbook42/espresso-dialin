@@ -2922,7 +2922,9 @@ export default function App() {
                             frozenYieldG={frozenShotWeightG}
                           />
                         )}
-                        <ShotLabPressureIntegration variant="inline" ui={ui} />
+                        {!timerRunning && (
+                          <ShotLabPressureIntegration variant="inline" ui={ui} />
+                        )}
                       </div>
                       <div className="flex gap-2 shrink-0">
                         <button type="button" onClick={() => requestStartTimer()} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
