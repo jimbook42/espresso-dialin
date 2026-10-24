@@ -26,6 +26,27 @@
   }
 }
 
+@keyframes weighing-lock-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+.weighing-lock-hit {
+  animation: weighing-lock-pulse 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weighing-lock-hit {
+    animation: none;
+    text-shadow: 0 0 12px rgba(156, 176, 136, 0.45);
+  }
+}
+
 body {
   min-height: 100vh;
   margin: 0;

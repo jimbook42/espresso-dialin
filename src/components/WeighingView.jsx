@@ -1,8 +1,18 @@
+import { useCallback, useState } from 'react';
 import { X } from 'lucide-react';
 import { normalizeBatteryPercent } from '../scales/scaleBattery.js';
 import { useOverlayHistoryClose } from '../hooks/useOverlayHistoryClose.js';
 import { formatScaleLiveWeightLabel } from './ScaleTimerControls.jsx';
-import { formatWeighingTargetDoseLine } from './weighingViewFormat.js';
+import { formatWeighingTargetDoseLine, parseRecipeTargetDoseG } from './weighingViewFormat.js';
+import {
+  resolveWeighingColorState,
+  weighingWeightColorForState,
+  weighingWeightIsBold,
+} from './weighingViewColor.js';
+import {
+  readWeighingTargetFeedbackSession,
+  writeWeighingTargetFeedbackSession,
+} from './weighingViewSession.js';
 
 /**
  * Full-screen live weighing when the scale is connected and the shot timer is idle.
@@ -17,12 +27,27 @@ export function WeighingView({
   onTare,
 }) {
   const requestClose = useOverlayHistoryClose(open, onClose);
+  const [targetFeedbackEnabled, setTargetFeedbackEnabled] = useState(() => readWeighingTargetFeedbackSession());
+
+  const toggleTargetFeedback = useCallback(() => {
+    setTargetFeedbackEnabled((prev) => {
+      const next = !prev;
+      writeWeighingTargetFeedbackSession(next);
+      return next;
+    });
+  }, []);
 
   if (!open) return null;
 
-  const targetLine = formatWeighingTargetDoseLine(liveWeightG, targetDoseG);
+  const hasRecipeTarget = parseRecipeTargetDoseG(targetDoseG) != null;
+  const targetLine = targetFeedbackEnabled
+    ? formatWeighingTargetDoseLine(liveWeightG, targetDoseG)
+    : null;
+  const colorState = resolveWeighingColorState(liveWeightG, targetDoseG, targetFeedbackEnabled);
+  const weightColor = weighingWeightColorForState(colorState.state, colorState.approach);
   const battery = normalizeBatteryPercent(batteryPercent);
   const gramsDisplay = formatScaleLiveWeightLabel(liveWeightG).replace(/ g$/, '');
+  const hitLockClass = colorState.state === 'hit' ? 'weighing-lock-hit' : '';
 
   return (
     <div
@@ -44,7 +69,10 @@ export function WeighingView({
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 min-h-0">
         <p
-          className="text-[clamp(4rem,22vw,6.5rem)] font-black font-mono tabular-nums tracking-tight leading-none"
+          className={`text-[clamp(4rem,22vw,6.5rem)] font-black font-mono tabular-nums tracking-tight leading-none ${hitLockClass} ${
+            weighingWeightIsBold(colorState.state) ? 'font-black' : ''
+          }`}
+          style={weightColor ? { color: weightColor } : undefined}
           role="status"
           aria-live="polite"
           aria-label={`Scale weight ${formatScaleLiveWeightLabel(liveWeightG)}`}
@@ -53,8 +81,28 @@ export function WeighingView({
           <span className="text-[clamp(1.5rem,6vw,2.25rem)] font-bold text-[#a09880] ml-2">g</span>
         </p>
 
-        {targetLine != null && (
-          <p className={`text-lg font-semibold tabular-nums ${ui.muted}`}>{targetLine}</p>
+        {hasRecipeTarget && targetLine != null && (
+          <button
+            type="button"
+            onClick={toggleTargetFeedback}
+            className={`text-lg font-semibold tabular-nums ${ui.muted} px-3 py-1 rounded-lg active:opacity-70`}
+            aria-label="Toggle target dose feedback"
+            aria-pressed="true"
+          >
+            {targetLine}
+          </button>
+        )}
+
+        {hasRecipeTarget && !targetFeedbackEnabled && (
+          <button
+            type="button"
+            onClick={toggleTargetFeedback}
+            className={`text-xs uppercase tracking-widest ${ui.muted} px-3 py-2 rounded-lg border border-[#2e2b26] active:opacity-70`}
+            aria-label="Show target dose feedback"
+            aria-pressed="false"
+          >
+            Show target dose
+          </button>
         )}
 
         {battery != null && (

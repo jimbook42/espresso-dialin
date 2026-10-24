@@ -70,6 +70,8 @@ export const TIMEMORE_COMMAND_FRAMES = Object.freeze({
   timerReset: encodeTimemoreFrame(0x03, 0x02, [0x03]),
   unitGrams: encodeTimemoreFrame(0x03, 0x06, [0x00]),
   modeStandard: encodeTimemoreFrame(0x03, 0x08, [0x01, 0x00]),
+  /** App→scale read battery (opcode 0x02, cmd 0x05) — TIMEMORE open-scale-protocol §5.3.2 */
+  readBattery: encodeTimemoreFrame(0x02, 0x05),
 });
 
 /**

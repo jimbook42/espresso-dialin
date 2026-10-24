@@ -26,6 +26,7 @@ export function ScaleTimerControls({
   onConnect,
   onDisconnect,
   onTare,
+  scaleDebugLines = [],
 }) {
   const canConnect = simAllowed || bleAvailable;
   if (!canConnect) {
@@ -100,6 +101,13 @@ export function ScaleTimerControls({
       )}
       {connectStatus === 'error' && (
         <span className="text-[9px] text-rose-400">Connect failed</span>
+      )}
+      {scaleDebugLines.length > 0 && (
+        <div className={`w-full text-[9px] font-mono ${ui.muted} space-y-0.5 pt-1`}>
+          {scaleDebugLines.slice(0, 3).map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </div>
       )}
     </div>
   );

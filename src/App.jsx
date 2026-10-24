@@ -198,6 +198,7 @@ import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { WeighingView } from './components/WeighingView.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
+import { isScaleDebugActive, subscribeScaleDebug } from './scales/scaleDebug.js';
 import {
   preinfusionAutoEndTargets,
   recipeDefinesPreinfusion,
@@ -345,6 +346,7 @@ export default function App() {
   const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
   const shotCountdownStartOptsRef = useRef(null);
   const [weighingViewOpen, setWeighingViewOpen] = useState(false);
+  const [scaleDebugLines, setScaleDebugLines] = useState([]);
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
   const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
   const yieldSettleUserEditedRef = useRef(false);
@@ -590,6 +592,11 @@ export default function App() {
       setWeighingViewOpen(false);
     }
   }, [weighingViewOpen, timemoreScale.isConnected]);
+
+  useEffect(() => {
+    if (!isScaleDebugActive()) return undefined;
+    return subscribeScaleDebug(setScaleDebugLines);
+  }, []);
 
   const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
 
@@ -2884,6 +2891,7 @@ export default function App() {
                           timemoreScale.disconnect();
                         }}
                         onTare={timemoreScale.tare}
+                        scaleDebugLines={scaleDebugLines}
                       />
                     )}
                     <p className="text-[10px] text-[#6b6457]">Fullscreen timer: tap anywhere to end pre-infusion, then tap again to stop.</p>
