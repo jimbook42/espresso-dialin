@@ -277,25 +277,76 @@ async function startShotFromHome(page) {
   await page.getByLabel('Cancel timer').waitFor({ timeout: 15_000 });
 }
 
-const PHASE_HEADER = {
-  pre: /pre-infusion/i,
-  peak: /extracting|extraction/i,
-  taper: /extracting|extraction/i,
-};
-
-async function assertTimerPhaseHeader(page, phaseTag) {
-  if (!phaseTag || phaseTag === '') return;
-  const pattern = PHASE_HEADER[phaseTag];
-  if (!pattern) return;
-  const header = page.locator('.shot-timer-header').first();
-  const text = (await header.innerText()).trim();
-  if (!pattern.test(text)) {
-    throw new Error(
-      `phase ${phaseTag}: header "${text}" does not match ${pattern}`,
+async function waitForShotPhase(page, phaseTag) {
+  if (!phaseTag) return;
+  if (phaseTag === 'pre') {
+    await page.waitForFunction(
+      () => {
+        const header = document.querySelector('.shot-timer-header')?.innerText ?? '';
+        const body = document.body?.innerText ?? '';
+        return (
+          /^[^\n]*pre-infusion/i.test(header.trim())
+          && /pre-infusing/i.test(body)
+          && !/Shot\s+[\d.]+s/.test(body)
+        );
+      },
+      null,
+      { timeout: 20_000 },
+    );
+    return;
+  }
+  if (phaseTag === 'peak') {
+    await page.waitForFunction(
+      () => {
+        const header = document.querySelector('.shot-timer-header')?.innerText ?? '';
+        if (/pre-infusion/i.test(header)) return false;
+        const body = document.body?.innerText ?? '';
+        const m = body.match(/Shot\s+([\d.]+)s/);
+        if (!m) return false;
+        const shotS = parseFloat(m[1]);
+        return shotS >= 2.5 && shotS <= 10;
+      },
+      null,
+      { timeout: 25_000 },
+    );
+    return;
+  }
+  if (phaseTag === 'taper') {
+    await page.waitForFunction(
+      () => {
+        const body = document.body?.innerText ?? '';
+        const m = body.match(/Shot\s+([\d.]+)s/);
+        if (!m) return false;
+        return parseFloat(m[1]) >= 12.5;
+      },
+      null,
+      { timeout: 30_000 },
     );
   }
-  if (phaseTag === 'pre' && /extraction/i.test(text) && !/pre-infusion/i.test(text)) {
-    throw new Error(`phase pre: header shows extraction, not pre-infusion: "${text}"`);
+}
+
+async function assertTimerPhaseHeader(page, phaseTag) {
+  if (!phaseTag) return;
+  const header = page.locator('.shot-timer-header').first();
+  const text = (await header.innerText()).trim();
+  if (phaseTag === 'pre') {
+    if (!/^[^\n]*pre-infusion/i.test(text)) {
+      throw new Error(`phase pre: expected Pre-infusion header, got "${text}"`);
+    }
+    const body = await page.locator('body').innerText();
+    if (!/pre-infusing/i.test(body) || /Shot\s+[\d.]+s/.test(body)) {
+      throw new Error(`phase pre: footer/chips not in pre-infusing state`);
+    }
+  }
+  if (phaseTag === 'peak' && (/pre-infusion/i.test(text) || !/extracting|extraction/i.test(text))) {
+    throw new Error(`phase peak: expected extraction header, got "${text}"`);
+  }
+  if (phaseTag === 'taper') {
+    const body = await page.locator('body').innerText();
+    const m = body.match(/Shot\s+([\d.]+)s/);
+    if (!m || parseFloat(m[1]) < 12.5) {
+      throw new Error(`phase taper: shot time not in taper window (${body.slice(0, 120)})`);
+    }
   }
 }
 
@@ -305,17 +356,25 @@ async function runFullscreenTimer(page, viewport, labOn, { phaseWaitMs = 800, ph
   const phaseSuffix = phaseTag ? `-${phaseTag}` : '';
   const base = `fullscreen-timer-${labTag}-${tag}${phaseSuffix}-v5`;
   await startShotFromHome(page);
-  await delay(phaseWaitMs);
   if (labOn && phaseTag) {
+    await waitForShotPhase(page, phaseTag);
     await assertTimerPhaseHeader(page, phaseTag);
+  } else {
+    await delay(phaseWaitMs);
   }
   if (labOn) {
     await assertFullscreenLabVisible(page);
   }
-  await assertNoVerticalOverflow(page, base, 'timer');
-  await assertNoElementOverlap(page, base, 'timer');
   const out = path.join(OUT_DIR, `${base}.png`);
   await capture(page, out);
+  if (phaseTag === 'taper') {
+    const bandCount = await page.locator('[data-testid="shot-pressure-chart"] rect').count();
+    if (bandCount < 1) {
+      throw new Error(`${base}: taper phase must show easing band rect on chart`);
+    }
+  }
+  await assertNoVerticalOverflow(page, base, 'timer');
+  await assertNoElementOverlap(page, base, 'timer');
   await page.getByRole('button', { name: 'Cancel timer' }).click({ timeout: 5000 }).catch(() => {});
   return { path: out, note: `Fullscreen timer ${labTag} ${tag}${phaseTag ? ` (${phaseTag})` : ''}` };
 }
@@ -338,28 +397,19 @@ async function runScenario(page, viewport, scenario, labOn) {
   if (scenario === 'fullscreen-timer') {
     const results = [];
     if (labOn && (tag === '390x844' || tag === '360x640')) {
-      results.push(await runFullscreenTimer(page, viewport, labOn, {
-        phaseWaitMs: 2200,
-        phaseTag: 'pre',
-      }));
+      results.push(await runFullscreenTimer(page, viewport, labOn, { phaseTag: 'pre' }));
       await page.goto(url, { waitUntil: 'networkidle' });
       await clearDb(page);
       await seedDb(page, { labOn });
       await page.goto(url, { waitUntil: 'networkidle' });
       await connectSimScale(page);
-      results.push(await runFullscreenTimer(page, viewport, labOn, {
-        phaseWaitMs: 7500,
-        phaseTag: 'peak',
-      }));
+      results.push(await runFullscreenTimer(page, viewport, labOn, { phaseTag: 'peak' }));
       await page.goto(url, { waitUntil: 'networkidle' });
       await clearDb(page);
       await seedDb(page, { labOn });
       await page.goto(url, { waitUntil: 'networkidle' });
       await connectSimScale(page);
-      results.push(await runFullscreenTimer(page, viewport, labOn, {
-        phaseWaitMs: 19_500,
-        phaseTag: 'taper',
-      }));
+      results.push(await runFullscreenTimer(page, viewport, labOn, { phaseTag: 'taper' }));
     }
     results.push(await runFullscreenTimer(page, viewport, labOn, {}));
     return results;
