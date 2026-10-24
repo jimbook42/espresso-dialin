@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 /**
  * @param {() => void} onClose
@@ -40,10 +40,15 @@ export function bindOverlayHistoryClose(onClose) {
  * @returns {() => void} requestClose — use for close buttons
  */
 export function useOverlayHistoryClose(isOpen, onClose) {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!isOpen) return undefined;
-    return bindOverlayHistoryClose(onClose);
-  }, [isOpen, onClose]);
+    return bindOverlayHistoryClose(() => onCloseRef.current());
+  }, [isOpen]);
 
   return useCallback(() => {
     window.history.back();
