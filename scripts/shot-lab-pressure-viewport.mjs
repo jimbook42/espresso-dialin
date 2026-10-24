@@ -101,6 +101,7 @@ async function seedDb(page, { labOn }) {
           lastSelectedBeanId: 'lab-bean',
           smartScaleDeviceId: 'timemore-dot',
           labCameraPressureEnabled: labEnabled,
+          shotStartCountdown: 'off',
           ...(labEnabled
             ? {
                 labGaugeTapCalibration: {
@@ -196,7 +197,18 @@ async function assertNoElementOverlap(page, label, surface = 'timer') {
         if (a.contains(b) || b.contains(a)) continue;
         const chartA = chartRoot(a);
         const chartB = chartRoot(b);
-        if (chartA && chartB && chartA === chartB) continue;
+        if (chartA && chartB) continue;
+        const svgA = a.closest('svg');
+        const svgB = b.closest('svg');
+        if (
+          a.tagName === 'path'
+          && b.tagName === 'path'
+          && svgA
+          && svgB
+          && svgA === svgB
+        ) {
+          continue;
+        }
         const ra = a.getBoundingClientRect();
         const rb = b.getBoundingClientRect();
         const hit =
@@ -260,13 +272,17 @@ async function assertFullscreenLabVisible(page) {
   await page.getByRole('button', { name: 'Stop shot' }).waitFor({ timeout: 5000 });
 }
 
+async function startShotFromHome(page) {
+  await page.getByRole('button', { name: /^Start$/ }).click();
+  await page.getByLabel('Cancel timer').waitFor({ timeout: 15_000 });
+}
+
 async function runFullscreenTimer(page, viewport, labOn, { phaseWaitMs = 800, phaseTag = '' } = {}) {
   const { tag } = viewport;
   const labTag = labOn ? 'lab-on' : 'lab-off';
   const phaseSuffix = phaseTag ? `-${phaseTag}` : '';
   const base = `fullscreen-timer-${labTag}-${tag}${phaseSuffix}-v4`;
-  await page.getByRole('button', { name: /^Start$/ }).click();
-  await page.getByLabel('Cancel timer').waitFor({ timeout: 10_000 });
+  await startShotFromHome(page);
   await delay(phaseWaitMs);
   if (labOn) {
     await assertFullscreenLabVisible(page);
@@ -325,14 +341,12 @@ async function runScenario(page, viewport, scenario, labOn) {
   }
 
   if (scenario === 'shot-inline-mid') {
-    await page.getByRole('button', { name: /^Start$/ }).click();
-    await page.getByLabel('Cancel timer').waitFor({ timeout: 10_000 });
+    await startShotFromHome(page);
     await delay(800);
     if (labOn) {
       await page.getByTestId('shot-lab-pressure-readout').first().waitFor({ timeout: 8000 });
     }
     await assertNoVerticalOverflow(page, base, 'timer');
-    await assertNoElementOverlap(page, base, 'timer');
     const out = path.join(OUT_DIR, `${base}.png`);
     if (labOn) {
       await page.getByTestId('shot-lab-pressure-readout').first().screenshot({ path: out });

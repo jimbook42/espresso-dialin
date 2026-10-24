@@ -2503,7 +2503,7 @@ export default function App() {
           onClick={handleTimerSurfaceTap}
           role="presentation"
         >
-          <div className="h-14 px-4 flex items-center justify-between border-b border-[#1e1e1e] shrink-0">
+          <div className="shot-timer-header h-14 px-4 flex items-center justify-between border-b border-[#1e1e1e] shrink-0">
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${timerRunning ? 'bg-[#3dd68c] animate-pulse' : 'bg-[#5a5754]'}`} />
               <span className="text-[11px] tracking-[0.14em] font-semibold text-[#9a9690] uppercase">
@@ -2592,7 +2592,7 @@ export default function App() {
               />
             </div>
 
-            <p className="text-center text-[11px] text-[#4a4846] pointer-events-none">
+            <p className="shot-timer-hint text-center text-[11px] text-[#4a4846] pointer-events-none">
               {timerUsePreInfusion && preInfusionPhase
                 ? 'Tap anywhere to end pre-infusion'
                 : 'Tap anywhere to stop and fill shot time'}

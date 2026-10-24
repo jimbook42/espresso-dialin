@@ -50,8 +50,12 @@
 /* Full-screen shot timer: compact stack on short viewports (e.g. 360×640) without affecting taller phones. */
 @media (max-height: 700px) {
   .shot-timer-fullscreen .shot-timer-profile-wrap {
-    max-height: 11vh;
-    margin-bottom: 0.25rem;
+    display: none;
+  }
+
+  .shot-timer-fullscreen .shot-timer-header {
+    height: 3rem;
+    min-height: 3rem;
   }
 
   .shot-timer-fullscreen .shot-timer-main-time {
@@ -71,6 +75,12 @@
   .shot-timer-fullscreen .shot-timer-footer {
     padding-bottom: 0.75rem;
     padding-top: 0;
+    gap: 0.5rem;
+  }
+
+  .shot-timer-fullscreen .shot-timer-hint {
+    font-size: 10px;
+    line-height: 1.15;
   }
 
   .shot-timer-fullscreen .shot-timer-stop-btn {
