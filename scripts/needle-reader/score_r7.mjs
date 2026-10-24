@@ -423,12 +423,20 @@ function freezePhase() {
     'src/flairPressureLab/temporalGate.js',
   ].join(' ');
   execSync(`git add ${paths}`, { cwd: ROOT });
+  const author = execSync('git log -1 --format=%an|%ae', { cwd: ROOT, encoding: 'utf8' }).trim().split('|');
+  const env = {
+    ...process.env,
+    GIT_AUTHOR_NAME: author[0],
+    GIT_AUTHOR_EMAIL: author[1],
+    GIT_COMMITTER_NAME: author[0],
+    GIT_COMMITTER_EMAIL: author[1],
+  };
   try {
     execSync(`git commit -m "$(cat <<'EOF'
 Freeze R7 config: recover live coverage while keeping R6 spike safety.
 
 EOF
-)"`, { cwd: ROOT });
+)"`, { cwd: ROOT, env });
   } catch (e) {
     console.warn('commit skipped', e.message);
   }
@@ -556,7 +564,7 @@ function renderOverlay() {
     copyFileSync(`${NR}/r6/overlay.py`, overlayPy);
   }
   execSync(
-    `python3 ${overlayPy} --stream ${R7_DIR}/stream-${EXAM}.json --hand ${CAL3}/hand-${EXAM}.json --out ${R7_DIR}/overlay-124006-r7.mp4`,
+    `python3 ${overlayPy} ${EXAM} ${R7_DIR}/overlay-124006-r7.mp4`,
     { stdio: 'inherit' },
   );
 }
