@@ -43,6 +43,13 @@ export const TEMPORAL_GATE = {
   /** Republish the last bar while a newer R2 stays inside holdBandBar. */
   holdGapS: 0.5,
   holdBandBar: 0.5,
+  /** R7: publish cleaned classical when in-arc and R5 absent or within veto band. */
+  classicalDirect: false,
+  classicalDirectMaxDisagreeBar: 2,
+  classicalDirectMinConfidence: 0.18,
+  /** When set, classicalDirect only runs if R2 confidence is below this (or R2 bar missing). */
+  classicalDirectMaxR2Conf: null,
+  classicalDirectAllowWeakR2: false,
 };
 
 export function initialTemporalState() {
@@ -172,6 +179,15 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
       ) {
         band = config.wideDisagreeBar;
       }
+      if (
+        classicalMedian == null
+        && sample.classicalBar != null
+        && Number.isFinite(sample.classicalBar)
+        && r2Bar != null
+        && Math.abs(r2Bar - sample.classicalBar) <= band
+      ) {
+        classicalMedian = sample.classicalBar;
+      }
       if (classicalMedian == null) {
         ok = false;
         reason = 'no-classical';
@@ -206,6 +222,29 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
     last = { t, bar };
     pending = [];
     reason = 'classical';
+  }
+
+  if (
+    bar == null
+    && sample.rest !== true
+    && config.classicalDirect === true
+    && sample.classicalBar != null
+    && Number.isFinite(sample.classicalBar)
+    && sample.classicalConfidence != null
+    && sample.classicalConfidence >= config.classicalDirectMinConfidence
+    && !classicalIsFlip(sample, config)
+  ) {
+    const veto = config.classicalDirectMaxDisagreeBar;
+    const r2Weak = r2Bar == null
+      || sample.r2Conf == null
+      || (config.classicalDirectMaxR2Conf != null && sample.r2Conf < config.classicalDirectMaxR2Conf);
+    const withinVeto = r2Bar != null && Math.abs(sample.classicalBar - r2Bar) <= veto;
+    if ((r2Weak && config.classicalDirectAllowWeakR2 === true) || withinVeto) {
+      bar = sample.classicalBar;
+      last = { t, bar };
+      pending = [];
+      reason = 'classical-direct';
+    }
   }
 
   // A short hole keeps the last bar when the new R2 has not moved away from it.

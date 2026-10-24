@@ -45,6 +45,13 @@ describe('classicalReaderR6', () => {
     expect(spike.reason).toBe('spike-reject');
   });
 
+  it('r7 spike mode allows in-arc rate steps', () => {
+    const reader = createClassicalReaderR6({ spikeRejectMode: 'r7', rateRejectEnabled: false });
+    track(reader, 0, zero + 20);
+    const step = track(reader, 0.125, zero + 50);
+    expect(step.published).toBe(true);
+  });
+
   it('pins rest at 0', () => {
     const reader = createClassicalReaderR6();
     const out = reader.processFrame({

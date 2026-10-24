@@ -29,6 +29,10 @@ export const DEFAULT_R6_CONFIG = {
   maxGroupDelayMs: 150,
   frameIntervalMs: PROCESS_INTERVAL_MS,
   restEpsilon: 0.0001,
+  /** R7: only reject tail-side / >90° flips and arc violations, not mere rate steps. */
+  spikeRejectMode: 'r6',
+  uncertainHoldRequiresR5: true,
+  rateRejectEnabled: true,
 };
 
 function circSep(a, b) {
@@ -120,10 +124,10 @@ export function createClassicalReaderR6(config = DEFAULT_R6_CONFIG) {
     if (lastAcceptedNeedle != null && circSep(needleDeg, lastAcceptedNeedle) >= cfg.spikeFlipDeg) {
       return true;
     }
-    if (lastAcceptedNeedle != null && circSep(needleDeg, lastAcceptedNeedle) >= FLIP_REJECT_DEG) {
+    if (cfg.spikeRejectMode !== 'r7' && lastAcceptedNeedle != null && circSep(needleDeg, lastAcceptedNeedle) >= FLIP_REJECT_DEG) {
       return true;
     }
-    if (lastAcceptedBar != null && Math.abs(bar - lastAcceptedBar) > cfg.maxBarStep) {
+    if (cfg.spikeRejectMode !== 'r7' && cfg.rateRejectEnabled && lastAcceptedBar != null && Math.abs(bar - lastAcceptedBar) > cfg.maxBarStep) {
       return true;
     }
     if (bar >= cfg.nearTenBar && (lastAcceptedBar ?? 0) < cfg.nearTenPrevBar) {
@@ -139,7 +143,7 @@ export function createClassicalReaderR6(config = DEFAULT_R6_CONFIG) {
   };
 
   const acceptReading = (needleDeg, bar, t) => {
-    if (lastAcceptedBar != null && Math.abs(bar - lastAcceptedBar) > cfg.maxBarStep) {
+    if (cfg.rateRejectEnabled && lastAcceptedBar != null && Math.abs(bar - lastAcceptedBar) > cfg.maxBarStep) {
       pendingRelock.push(bar);
       if (pendingRelock.length > cfg.relockCount) pendingRelock.shift();
       const spread = pendingRelock.length
@@ -271,7 +275,8 @@ export function createClassicalReaderR6(config = DEFAULT_R6_CONFIG) {
         zeroDeg,
         tenDeg,
       ) != null;
-      if (inArc && (r5Agree || r5Bar == null)) {
+      const r5Ok = !cfg.uncertainHoldRequiresR5 || r5Agree || r5Bar == null;
+      if (inArc && r5Ok) {
         holdBar = lastAcceptedBar;
         holdNeedle = lastAcceptedNeedle;
         holdUntilT = t + cfg.uncertainHoldMaxS;

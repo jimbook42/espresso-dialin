@@ -35,6 +35,7 @@ export function regularizeTapAnchors(
     spanToleranceDeg = 4,
     fiveToTenToleranceDeg = 4,
     blendWeight = 0.7,
+    spanOutOfToleranceMode = 'fallback',
   } = {},
 ) {
   const h = pointOf(hub);
@@ -54,12 +55,21 @@ export function regularizeTapAnchors(
   let reason = null;
 
   if (outOfTolerance && h && fTap && tTap) {
-    rejected = true;
+    rejected = spanOutOfToleranceMode === 'fallback';
+    blended = spanOutOfToleranceMode === 'blend-clamp';
     reason = spanErr > spanToleranceDeg ? 'span' : 'five-to-ten';
     const tapTen = pointAngle(h, tTap);
     const tapFive = pointAngle(h, fTap);
     const tapSpan = clockwiseDeg(zero, tapTen);
-    if (Math.abs(wrapDelta(tapSpan, PROFILE_REST_TO_TEN_DEG)) <= spanToleranceDeg + 2) {
+    if (spanOutOfToleranceMode === 'blend-clamp') {
+      const profileTen = wrap360(zero + PROFILE_REST_TO_TEN_DEG);
+      const profileFive = wrap360(zero + PROFILE_FIVE_DEG);
+      const w = blendWeight;
+      ten = wrap360(ten * w + profileTen * (1 - w));
+      five = wrap360(five * w + profileFive * (1 - w));
+      ten = clampAngleOnSpan(ten, zero, PROFILE_REST_TO_TEN_DEG);
+      five = clampAngleOnSpan(five, zero, PROFILE_FIVE_DEG);
+    } else if (Math.abs(wrapDelta(tapSpan, PROFILE_REST_TO_TEN_DEG)) <= spanToleranceDeg + 2) {
       ten = clampAngleOnSpan(tapTen, zero, PROFILE_REST_TO_TEN_DEG);
       five = clampAngleOnSpan(tapFive, zero, PROFILE_FIVE_DEG);
     } else {
