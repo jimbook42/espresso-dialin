@@ -8,12 +8,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import sharp from 'sharp';
 import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = '/workspace/pl-state/egg-screens';
 const PORT = 4179;
-const VERSION_TAG = 'v2';
+const VERSION_TAG = 'v3';
 
 const VIEWPORTS = [
   { width: 390, height: 844, tag: '390x844' },
@@ -183,17 +184,132 @@ async function checkCameoOverlap(page) {
   });
 }
 
-async function assertRingVisible(page) {
-  const ring = page.getByTestId('dial-yield-tile');
-  await ring.waitFor({ state: 'visible' });
-  const hasRing = await ring.evaluate((el) => el.classList.contains('perfect-shot-yield-ring'));
-  if (!hasRing) {
-    throw new Error('Yield tile missing perfect-shot-yield-ring class');
-  }
+function parseRgbCss(color) {
+  const m = String(color).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+  if (!m) return null;
+  return {
+    r: Number(m[1]),
+    g: Number(m[2]),
+    b: Number(m[3]),
+    a: m[4] !== undefined ? Math.round(Number(m[4]) * 255) : 255,
+  };
+}
+
+function isGoldBorderPixel(r, g, b, a) {
+  return a >= 200 && r > 200 && g >= 160 && g <= 215 && b >= 70 && b <= 140;
+}
+
+/**
+ * @returns {Promise<{ ok: boolean, details: object }>}
+ */
+async function checkGoldRing(page, { expectRing }) {
+  const tile = page.getByTestId('dial-yield-tile');
+  await tile.waitFor({ state: 'visible' });
+
+  const styleReport = await tile.evaluate((el) => {
+    const tileStyle = window.getComputedStyle(el);
+    return {
+      hasRingClass: el.classList.contains('perfect-shot-yield-ring'),
+      tileOpacity: tileStyle.opacity,
+      tileBoxShadow: tileStyle.boxShadow,
+      tileBorderTopColor: tileStyle.borderTopColor,
+    };
+  });
+
   const ratio = await page.getByTestId('dial-yield-ratio').textContent();
-  if (!ratio || !ratio.includes('on target')) {
-    throw new Error(`Expected on-target ratio line, got: ${ratio}`);
+  const box = await tile.boundingBox();
+  let pixelGold = false;
+  let samplePixels = [];
+
+  if (box && expectRing) {
+    const pad = 6;
+    const clip = {
+      x: Math.max(0, box.x - pad),
+      y: Math.max(0, box.y - pad),
+      width: box.width + pad * 2,
+      height: box.height + pad * 2,
+    };
+    const buffer = await page.screenshot({ clip });
+    const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const tileLeft = pad;
+    const tileTop = pad;
+    const tileW = box.width;
+    const tileH = box.height;
+    const midX = tileLeft + Math.floor(tileW / 2);
+    const midY = tileTop + Math.floor(tileH / 2);
+    const points = [
+      { name: 'top-out', x: midX, y: Math.max(0, tileTop - 2) },
+      { name: 'right-out', x: Math.min(info.width - 1, tileLeft + tileW + 1), y: midY },
+      { name: 'bottom-out', x: midX, y: Math.min(info.height - 1, Math.floor(tileTop + tileH) + 1) },
+      { name: 'left-out', x: Math.max(0, tileLeft - 2), y: midY },
+    ];
+    for (const pt of points) {
+      const x = Math.floor(pt.x);
+      const y = Math.floor(pt.y);
+      const idx = (y * info.width + x) * 4;
+      const px = { r: data[idx], g: data[idx + 1], b: data[idx + 2], a: data[idx + 3] };
+      const gold = isGoldBorderPixel(px.r, px.g, px.b, px.a);
+      samplePixels.push({ ...pt, x, y, ...px, gold });
+      if (gold) pixelGold = true;
+    }
+    pixelGold = pixelGold || samplePixels.some((p) => p.gold);
   }
+
+  const borderRgb = parseRgbCss(styleReport.tileBorderTopColor);
+  const borderGold = borderRgb ? isGoldBorderPixel(borderRgb.r, borderRgb.g, borderRgb.b, borderRgb.a) : false;
+  const shadowGold = String(styleReport.tileBoxShadow).includes('240, 194, 106')
+    || String(styleReport.tileBoxShadow).includes('f0c26a');
+  const tileOpacityOk = Math.abs(Number(styleReport.tileOpacity) - 1) < 0.02;
+
+  const ok = expectRing
+    ? styleReport.hasRingClass
+      && tileOpacityOk
+      && shadowGold
+      && pixelGold
+      && ratio?.includes('on target')
+    : !styleReport.hasRingClass && tileOpacityOk;
+
+  return {
+    ok,
+    details: {
+      expectRing,
+      ...styleReport,
+      borderRgb,
+      borderGold,
+      shadowGold,
+      tileOpacityOk,
+      pixelGold,
+      samplePixels,
+      ratio,
+    },
+  };
+}
+
+async function assertRingVisible(page) {
+  const report = await checkGoldRing(page, { expectRing: true });
+  if (!report.ok) {
+    throw new Error(`Gold ring check failed: ${JSON.stringify(report.details)}`);
+  }
+  return report;
+}
+
+async function captureYieldRingZoom(page, outPath) {
+  const tile = page.getByTestId('dial-yield-tile');
+  const box = await tile.boundingBox();
+  if (!box) throw new Error('Yield tile missing for zoom crop');
+  const pad = 8;
+  const buffer = await page.screenshot({
+    clip: {
+      x: Math.max(0, box.x - pad),
+      y: Math.max(0, box.y - pad),
+      width: box.width + pad * 2,
+      height: box.height + pad * 2,
+    },
+  });
+  await sharp(buffer)
+    .resize({ width: Math.round(box.width * 3) })
+    .png()
+    .toFile(outPath);
 }
 
 async function captureSevenTapPair(page, viewport, url, variantLabel) {
@@ -212,11 +328,17 @@ async function captureSevenTapPair(page, viewport, url, variantLabel) {
   await waitForCameo(page);
 
   const overlap = await checkCameoOverlap(page);
+  const ring = await assertRingVisible(page);
   const prefix = variantLabel === 'gold' ? 'egg-gold' : 'egg-normal';
   const shotPath = path.join(OUT_DIR, `${prefix}-${tag}-${VERSION_TAG}.png`);
   await page.screenshot({ path: shotPath, fullPage: false });
 
-  return { shotPath, overlap, variantLabel, tag };
+  if (tag === '390x844' && variantLabel === 'suit') {
+    const zoomPath = path.join(OUT_DIR, `egg-ring-zoom-390x844-${VERSION_TAG}.png`);
+    await captureYieldRingZoom(page, zoomPath);
+  }
+
+  return { shotPath, overlap, ring, variantLabel, tag };
 }
 
 async function captureAfterFade(page, viewport, url) {
@@ -233,7 +355,11 @@ async function captureAfterFade(page, viewport, url) {
   if (cameoCount !== 0) {
     throw new Error(`Cameo still in DOM after fade at ${tag}`);
   }
-  return afterPath;
+  const afterRing = await checkGoldRing(page, { expectRing: false });
+  if (!afterRing.ok) {
+    throw new Error(`After fade ring/opacity check failed at ${tag}: ${JSON.stringify(afterRing.details)}`);
+  }
+  return { afterPath, afterRing };
 }
 
 async function captureRealFlowOnTarget(page, viewport, url) {
@@ -244,12 +370,12 @@ async function captureRealFlowOnTarget(page, viewport, url) {
   await scrollCelebrationTargets(page);
   await page.getByRole('button', { name: /Log shot & calculate grind adjustment/i }).click();
   await waitForCameo(page);
-  await assertRingVisible(page);
+  const ring = await assertRingVisible(page);
   const overlap = await checkCameoOverlap(page);
   const shotPath = path.join(OUT_DIR, `egg-realflow-${tag}-${VERSION_TAG}.png`);
   await page.screenshot({ path: shotPath, fullPage: false });
   await waitForCelebrationGone(page);
-  return { shotPath, overlap, tag };
+  return { shotPath, overlap, ring, tag };
 }
 
 async function captureNearMiss(page, viewport, url) {
@@ -277,6 +403,7 @@ async function main() {
   const preview = startPreviewServer(PORT);
   const url = `http://127.0.0.1:${PORT}/`;
   const overlapReports = [];
+  const ringReports = [];
   const manifest = [];
 
   try {
@@ -289,17 +416,21 @@ async function main() {
         const normal = await captureSevenTapPair(page, viewport, url, 'suit');
         manifest.push({ path: normal.shotPath, kind: 'normal' });
         overlapReports.push({ viewport: viewport.tag, variant: 'suit', ...normal.overlap });
+        ringReports.push({ viewport: viewport.tag, variant: 'suit', ...normal.ring });
 
         const gold = await captureSevenTapPair(page, viewport, url, 'gold');
         manifest.push({ path: gold.shotPath, kind: 'gold' });
         overlapReports.push({ viewport: viewport.tag, variant: 'gold', ...gold.overlap });
+        ringReports.push({ viewport: viewport.tag, variant: 'gold', ...gold.ring });
 
-        const afterPath = await captureAfterFade(page, viewport, url);
-        manifest.push({ path: afterPath, kind: 'after' });
+        const after = await captureAfterFade(page, viewport, url);
+        manifest.push({ path: after.afterPath, kind: 'after' });
+        ringReports.push({ viewport: viewport.tag, variant: 'after', ...after.afterRing });
 
         const real = await captureRealFlowOnTarget(page, viewport, url);
         manifest.push({ path: real.shotPath, kind: 'realflow' });
         overlapReports.push({ viewport: viewport.tag, variant: 'realflow', ...real.overlap });
+        ringReports.push({ viewport: viewport.tag, variant: 'realflow', ...real.ring });
 
         const nearPath = await captureNearMiss(page, viewport, url);
         manifest.push({ path: nearPath, kind: 'nearmiss' });
@@ -309,12 +440,18 @@ async function main() {
         }
       }
 
-      console.log(JSON.stringify({ manifest, overlapReports }, null, 2));
+      console.log(JSON.stringify({ manifest, overlapReports, ringReports }, null, 2));
 
       let failed = false;
       for (const report of overlapReports) {
         if (!report.ok) {
           console.error('overlap fail', report);
+          failed = true;
+        }
+      }
+      for (const report of ringReports) {
+        if (!report.ok) {
+          console.error('ring fail', report);
           failed = true;
         }
       }
