@@ -1,14 +1,13 @@
 /**
  * Flair 58 session model.
- * The resting needle angle is measured during calibration.
- * The printed scale is 0–12 bar (Flair gauge). The arc length is an assumption
- * until a physical dial confirms it — it is not treated as a measured angle.
- * Angles: 0° = right, clockwise positive in the unmirrored camera frame (y down).
+ * The printed scale is 0–10 bar over 179.52°, measured from half-bar ticks on the design dial.
+ * 0 is the stop pin, 5 and 10 are the numbered ticks, and the arc past 10
+ * is the unnumbered STOP band. Angles: 0° = right, clockwise (y down).
  */
 export const FLAIR_58_SCALE = {
   minBar: 0,
-  maxBar: 12,
-  sweepDeg: 270,
+  maxBar: 10,
+  sweepDeg: 179.52,
   clockwise: true,
 };
 
@@ -33,6 +32,10 @@ export const NEEDLE_TRACK_QUALITY = 0.18;
  * A step that clears the tracking score still has to clear this gate.
  */
 export const NEEDLE_LIKENESS_GATE = 0.4;
+/** Minimum bright-face / bezel contrast score before a discovery pose or bar reading is trusted. */
+export const DIAL_FACE_VERIFY_MIN = 0.3;
+/** Minimum canonical tick/face template match for discovery and registration. */
+export const DIAL_CANONICAL_VERIFY_MIN = 0.28;
 /** Agreement band for a repeated candidate, and the jitter limit for TRACKING. */
 export const NEEDLE_AGREE_DEG = 12;
 
@@ -69,6 +72,12 @@ export function angleToBar(angleDeg, session) {
   }
   if (delta <= session.sweepDeg + SCALE_EDGE_DEG) return session.maxBar;
   return null;
+}
+
+/** Live pressure text. One decimal; a missing bar is a gap. */
+export function formatPressureBar(bar) {
+  if (bar == null || Number.isNaN(Number(bar))) return '—';
+  return Number(bar).toFixed(1);
 }
 
 export function classifyTrackingStatus({

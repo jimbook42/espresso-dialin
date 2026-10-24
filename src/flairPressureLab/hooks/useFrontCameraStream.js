@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cameraErrorMessage } from '../cameraErrors.js';
+import { isPressureReplayBuild } from '../../config/pressureReplayFlag.js';
 
 async function openFrontCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -12,6 +13,10 @@ async function openFrontCamera() {
     width: { ideal: 1280 },
     height: { ideal: 720 },
   };
+
+  if (isPressureReplayBuild()) {
+    return navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+  }
 
   try {
     return await navigator.mediaDevices.getUserMedia({
@@ -60,7 +65,7 @@ export function useFrontCameraStream() {
       }
       const track = stream.getVideoTracks()[0];
       const settings = track?.getSettings?.() || {};
-      if (settings.facingMode === 'environment') {
+      if (!isPressureReplayBuild() && settings.facingMode === 'environment') {
         stream.getTracks().forEach((item) => item.stop());
         const rear = new Error('rear');
         rear.name = 'RearCameraError';

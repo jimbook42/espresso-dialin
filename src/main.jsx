@@ -17,10 +17,9 @@ if (entry.clearHash) {
 
 if (entry.entry === 'flair-pressure-lab') {
   import('./flairPressureLab/FlairPressureLab.jsx').then(({ FlairPressureLab }) => {
+    const lab = <FlairPressureLab />
     root.render(
-      <StrictMode>
-        <FlairPressureLab />
-      </StrictMode>,
+      import.meta.env.VITE_PRESSURE_REPLAY === 'true' ? lab : <StrictMode>{lab}</StrictMode>,
     )
   })
 } else {

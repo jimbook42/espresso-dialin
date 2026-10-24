@@ -1,6 +1,38 @@
-import { TIP_INNER_RATIO, OUTER_RADIUS_RATIO, NEEDLE_LIKENESS_GATE, NEEDLE_TRACK_QUALITY, wrap360, wrapDelta } from './gaugeConfig.js';
+import {
+  TIP_INNER_RATIO,
+  OUTER_RADIUS_RATIO,
+  NEEDLE_LIKENESS_GATE,
+  NEEDLE_TRACK_QUALITY,
+  DIAL_FACE_VERIFY_MIN,
+  DIAL_CANONICAL_VERIFY_MIN,
+  angleToBar,
+  wrap360,
+  wrapDelta,
+} from './gaugeConfig.js';
 import { prepareEdges } from './framePrep.js';
-import { detectNeedleAngle } from './needleFromFrame.js';
+import { assessFrameQuality } from './frameQuality.js';
+import { detectNeedleAngle, needleZoomForRadius, refineNeedleAngle } from './needleFromFrame.js';
+import {
+  buildFlairCanonicalDialProfile,
+  FLAIR_CANONICAL_DIAL_PROFILE,
+  FLAIR_CANONICAL_FACE_PROFILE,
+  FLAIR_STATELESS_SESSION,
+} from './canonicalDial.js';
+import { rectifyGaugeFace, releaseWarpHold } from './faceRectify.js';
+import { getOpenCvSync } from './opencvRuntime.js';
+import {
+  consumeDiscoveryResult,
+  requestCanvasDiscovery,
+  requestVideoDiscovery,
+  whenDiscoverySettled,
+} from './discoveryClient.js';
+import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
+import { faceProfileFromBands, stepScaleLock } from './scaleLock.js';
+import {
+  applyNeedleModelReading,
+  isNeedleModelReady,
+  predictRegisteredNeedle,
+} from './needleModel.js';
 
 /**
  * Gauge pose for the pressure lab.
@@ -30,6 +62,13 @@ import { detectNeedleAngle } from './needleFromFrame.js';
  */
 
 const RIM_BINS = 48;
+const RIM_COS = new Float64Array(RIM_BINS);
+const RIM_SIN = new Float64Array(RIM_BINS);
+for (let i = 0; i < RIM_BINS; i += 1) {
+  const angle = (i / RIM_BINS) * Math.PI * 2;
+  RIM_COS[i] = Math.cos(angle);
+  RIM_SIN[i] = Math.sin(angle);
+}
 const PROFILE_BINS = 72;
 const CONFIDENCE_MIN = 0.3;
 const ORIENT_MIN = 0.34;
@@ -40,31 +79,36 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function sampleRadial(edges, width, height, x, y, cos, sin) {
-  const xi = Math.round(x);
-  const yi = Math.round(y);
-  if (xi < 1 || yi < 1 || xi >= width - 1 || yi >= height - 1) return 0;
-  const index = yi * width + xi;
-  return Math.abs(edges.gx[index] * cos + edges.gy[index] * sin);
-}
-
 /** How strongly edges at `radius` point at `(cx, cy)`. 0 if the circle does not fit. */
 export function scoreRim(edges, width, height, cx, cy, radius) {
   if (radius < 8) return 0;
+  const gx = edges.gx;
+  const gy = edges.gy;
+  const limitX = width - 1;
+  const limitY = height - 1;
+  const litNeed = RIM_BINS * 0.35;
   let sum = 0;
   let lit = 0;
   for (let i = 0; i < RIM_BINS; i += 1) {
-    const angle = (i / RIM_BINS) * Math.PI * 2;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
+    const cos = RIM_COS[i];
+    const sin = RIM_SIN[i];
     let local = 0;
     for (let dr = -3; dr <= 3; dr += 1.5) {
-      local = Math.max(local, sampleRadial(edges, width, height, cx + (radius + dr) * cos, cy + (radius + dr) * sin, cos, sin));
+      const x = cx + (radius + dr) * cos;
+      const y = cy + (radius + dr) * sin;
+      const xi = Math.round(x);
+      const yi = Math.round(y);
+      if (xi < 1 || yi < 1 || xi >= limitX || yi >= limitY) continue;
+      const index = yi * width + xi;
+      const radial = Math.abs(gx[index] * cos + gy[index] * sin);
+      if (radial > local) local = radial;
     }
     sum += local;
     if (local > 0.4) lit += 1;
+    // A miss cannot become a rim if the bins left cannot light enough of the circle.
+    if (lit + (RIM_BINS - i - 1) < litNeed) return 0;
   }
-  if (lit < RIM_BINS * 0.35) return 0;
+  if (lit < litNeed) return 0;
   return (sum / RIM_BINS) * (lit / RIM_BINS);
 }
 
@@ -171,13 +215,14 @@ function nearNeedle(deg, needleDeg, halfWidth) {
  * An inner band sits on the white face, away from the black rim. The needle is masked later.
  */
 export function measureRimProfile(edges, width, height, cx, cy, radius, band) {
-  const profile = new Float32Array(PROFILE_BINS);
-  const counts = new Float32Array(PROFILE_BINS);
+  const bins = band?.bins > 7 ? band.bins : PROFILE_BINS;
+  const profile = new Float32Array(bins);
+  const counts = new Float32Array(bins);
   const inner = radius * (band?.innerRatio ?? 0.72);
   const outer = radius * (band?.outerRatio ?? 0.94);
   for (let r = inner; r <= outer; r += 1.5) {
-    for (let i = 0; i < PROFILE_BINS; i += 1) {
-      const angle = (i / PROFILE_BINS) * Math.PI * 2;
+    for (let i = 0; i < bins; i += 1) {
+      const angle = (i / bins) * Math.PI * 2;
       const x = Math.round(cx + r * Math.cos(angle));
       const y = Math.round(cy + r * Math.sin(angle));
       if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
@@ -185,27 +230,35 @@ export function measureRimProfile(edges, width, height, cx, cy, radius, band) {
       counts[i] += 1;
     }
   }
-  for (let i = 0; i < PROFILE_BINS; i += 1) {
+  for (let i = 0; i < bins; i += 1) {
     if (counts[i]) profile[i] /= counts[i];
   }
   return profile;
 }
 
-function cosineCentered(left, right) {
+function correlationAtShift(reference, current, shift, curMask, refMask) {
+  const bins = reference.length;
+  let n = 0;
   let meanL = 0;
   let meanR = 0;
-  for (let i = 0; i < left.length; i += 1) {
-    meanL += left[i];
-    meanR += right[i];
+  for (let i = 0; i < bins; i += 1) {
+    const refIndex = ((i - shift) % bins + bins) % bins;
+    if (curMask[i] || refMask[refIndex]) continue;
+    meanL += reference[refIndex];
+    meanR += current[i];
+    n += 1;
   }
-  meanL /= left.length;
-  meanR /= right.length;
+  if (n < bins * 0.45) return null;
+  meanL /= n;
+  meanR /= n;
   let dot = 0;
   let a2 = 0;
   let b2 = 0;
-  for (let i = 0; i < left.length; i += 1) {
-    const a = left[i] - meanL;
-    const b = right[i] - meanR;
+  for (let i = 0; i < bins; i += 1) {
+    const refIndex = ((i - shift) % bins + bins) % bins;
+    if (curMask[i] || refMask[refIndex]) continue;
+    const a = reference[refIndex] - meanL;
+    const b = current[i] - meanR;
     dot += a * b;
     a2 += a * a;
     b2 += b * b;
@@ -214,9 +267,20 @@ function cosineCentered(left, right) {
   return dot / Math.sqrt(a2 * b2);
 }
 
+/** Fraction of a bin, clamped so the nearest bin does not change. */
+function parabolicBinOffset(left, mid, right) {
+  const denom = left - 2 * mid + right;
+  if (!(denom < -1e-6)) return 0;
+  const delta = (0.5 * (left - right)) / denom;
+  if (!Number.isFinite(delta)) return 0;
+  return Math.max(-0.45, Math.min(0.45, delta));
+}
+
 /**
  * Rotation of `current` relative to `reference`, in degrees clockwise.
  * Bins on the needle and its tail are left out so the pointer cannot rotate the gauge.
+ * The best bin is refined by a parabola on its two neighbours, so a rotation
+ * that is not a multiple of the bin width is not snapped to that width.
  */
 export function matchGaugeRotation(reference, current, {
   previousDeg = 0,
@@ -224,6 +288,7 @@ export function matchGaugeRotation(reference, current, {
   alsoNeedleDeg = null,
   referenceNeedleDeg = null,
   maxShiftDeg = 18,
+  maskHalfDeg = 16,
 } = {}) {
   if (!reference || !current || reference.length !== current.length) {
     return { ok: false, rotationDeg: previousDeg, confidence: 0, margin: 0, periodMargin: 0 };
@@ -232,22 +297,18 @@ export function matchGaugeRotation(reference, current, {
   const step = 360 / bins;
   const half = Math.max(1, Math.round(maxShiftDeg / step));
   const centerBin = Math.round(previousDeg / step);
+  const curMask = new Uint8Array(bins);
+  const refMask = new Uint8Array(bins);
+  for (let i = 0; i < bins; i += 1) {
+    const deg = i * step;
+    if (nearNeedle(deg, needleDeg, maskHalfDeg) || nearNeedle(deg, alsoNeedleDeg, maskHalfDeg)) curMask[i] = 1;
+    if (nearNeedle(deg, referenceNeedleDeg, maskHalfDeg)) refMask[i] = 1;
+  }
   const ranked = [];
-
   for (let shift = centerBin - half; shift <= centerBin + half; shift += 1) {
-    const refVals = [];
-    const curVals = [];
-    for (let i = 0; i < bins; i += 1) {
-      const curDeg = i * step;
-      const refIndex = ((i - shift) % bins + bins) % bins;
-      const refDeg = refIndex * step;
-      if (nearNeedle(curDeg, needleDeg, 16) || nearNeedle(curDeg, alsoNeedleDeg, 16)) continue;
-      if (nearNeedle(refDeg, referenceNeedleDeg, 16)) continue;
-      refVals.push(reference[refIndex]);
-      curVals.push(current[i]);
-    }
-    if (refVals.length < bins * 0.45) continue;
-    ranked.push({ shift, corr: cosineCentered(refVals, curVals) });
+    const corr = correlationAtShift(reference, current, shift, curMask, refMask);
+    if (corr == null) continue;
+    ranked.push({ shift, corr });
   }
 
   if (!ranked.length) return { ok: false, rotationDeg: previousDeg, confidence: 0, margin: 0, periodMargin: 0 };
@@ -256,7 +317,10 @@ export function matchGaugeRotation(reference, current, {
   const separated = (minDeg) => ranked.find((item) => Math.abs(wrapDelta(best.shift * step, item.shift * step)) >= minDeg);
   const second = separated(12);
   const periodRival = separated(PERIOD_RIVAL_DEG);
-  const rotationDeg = wrap360(best.shift * step);
+  const left = correlationAtShift(reference, current, best.shift - 1, curMask, refMask);
+  const right = correlationAtShift(reference, current, best.shift + 1, curMask, refMask);
+  const refined = best.shift + parabolicBinOffset(left ?? best.corr, best.corr, right ?? best.corr);
+  const rotationDeg = wrap360(refined * step);
   const margin = second ? best.corr - second.corr : best.corr;
   const periodMargin = periodRival ? best.corr - periodRival.corr : best.corr;
   const median = ranked[Math.floor(ranked.length / 2)].corr;
@@ -354,6 +418,698 @@ function wholeBins(deltaDeg) {
   return Math.round(deltaDeg / PROFILE_BIN_DEG);
 }
 
+/** Mean edge magnitude on the printed tick ring (generic dial cue). */
+function scoreTickRingEnergy(edges, width, height, cx, cy, faceRadius) {
+  if (!edges?.mag || faceRadius < 10) return 0;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < 48; i += 1) {
+    const ang = (i / 48) * Math.PI * 2;
+    const r = faceRadius * 0.95;
+    const x = Math.round(cx + r * Math.cos(ang));
+    const y = Math.round(cy + r * Math.sin(ang));
+    if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
+    sum += edges.mag[y * width + x];
+    n += 1;
+  }
+  return n ? sum / n : 0;
+}
+
+function sampleLum(data, width, height, x, y) {
+  const xi = Math.round(x);
+  const yi = Math.round(y);
+  if (xi < 0 || yi < 0 || xi >= width || yi >= height) return 0;
+  const o = (yi * width + xi) * 4;
+  return data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114;
+}
+
+/** Bright/low-texture face vs darker bezel; tolerates shadow without per-clip tuning. */
+export function scoreDialFaceInterior(data, width, height, cx, cy, faceRadius) {
+  if (faceRadius < 10) return 0;
+  const faceRadii = [faceRadius * 0.38, faceRadius * 0.55, faceRadius * 0.72];
+  const mid = faceRadius * 0.55;
+  const bezelInner = faceRadius * 0.9;
+  const bezelOuter = faceRadius * 1.14;
+  let faceSum = 0;
+  let faceSq = 0;
+  let faceN = 0;
+  let bezelSum = 0;
+  let bezelN = 0;
+  let redHot = 0;
+  let redN = 0;
+  for (let a = 0; a < 36; a += 1) {
+    const ang = (a / 36) * Math.PI * 2;
+    const cos = Math.cos(ang);
+    const sin = Math.sin(ang);
+    for (const fr of faceRadii) {
+      const lum = sampleLum(data, width, height, cx + fr * cos, cy + fr * sin);
+      faceSum += lum;
+      faceSq += lum * lum;
+      faceN += 1;
+    }
+    for (let r = bezelInner; r <= bezelOuter; r += (bezelOuter - bezelInner) / 3) {
+      const xi = Math.round(cx + r * cos);
+      const yi = Math.round(cy + r * sin);
+      if (xi < 0 || yi < 0 || xi >= width || yi >= height) continue;
+      bezelSum += sampleLum(data, width, height, xi, yi);
+      bezelN += 1;
+    }
+    const deg = (a / 36) * 360;
+    if (deg >= 215 && deg <= 275) {
+      const xi = Math.round(cx + mid * cos);
+      const yi = Math.round(cy + mid * sin);
+      if (xi >= 0 && yi >= 0 && xi < width && yi < height) {
+        const off = (yi * width + xi) * 4;
+        const rv = data[off];
+        const gv = data[off + 1];
+        const bv = data[off + 2];
+        if (rv > 140 && rv > gv * 1.25 && rv > bv * 1.25) redHot += 1;
+        redN += 1;
+      }
+    }
+  }
+  if (!faceN || !bezelN) return 0;
+  const faceMean = faceSum / faceN;
+  const bezelMean = bezelSum / bezelN;
+  const signedContrast = (faceMean - bezelMean) / 255;
+  const contrast = Math.abs(signedContrast);
+  if (contrast < 0.05) return 0;
+  const variance = Math.max(0, faceSq / faceN - faceMean * faceMean);
+  const smooth = Math.exp(-variance / 2200);
+  const red = redN ? redHot / redN : 0;
+  const polarity = signedContrast >= 0 ? 1 : 0.78;
+  return Math.min(1.6, (0.32 + contrast * 2.6) * smooth * (0.85 + red * 0.35) * polarity);
+}
+
+function scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg = null) {
+  if (!edges || faceRadius < 10) return 0;
+  const profile = measureRimProfile(edges, width, height, cx, cy, faceRadius * 1.02);
+  const faceProfile = measureRimProfile(edges, width, height, cx, cy, faceRadius * 0.55, {
+    innerRatio: 0.35,
+    outerRatio: 0.75,
+  });
+  const rim = matchGaugeRotation(FLAIR_CANONICAL_DIAL_PROFILE, profile, {
+    previousDeg: 0,
+    needleDeg,
+    maxShiftDeg: 360,
+  });
+  const face = matchGaugeRotation(FLAIR_CANONICAL_FACE_PROFILE, faceProfile, {
+    previousDeg: rim.estimateDeg ?? 0,
+    needleDeg,
+    maxShiftDeg: 24,
+  });
+  if (!rim.ok && rim.confidence < 0.2) return 0;
+  const agree = face.ok
+    ? 1 - Math.min(1, Math.abs(((rim.estimateDeg ?? 0) - (face.estimateDeg ?? 0) + 180) % 360 - 180) / 20)
+    : 0.65;
+  return rim.confidence * (0.55 + 0.45 * agree);
+}
+
+/** Generic dial size band as a fraction of the frame's short side. Not fitted to a clip. */
+export const MIN_DISCOVERY_RADIUS_FRACTION = 0.03;
+export const MAX_DISCOVERY_RADIUS_FRACTION = 0.5;
+/** Whole-frame discovery cadence while a verified pose is held. */
+export const REDISCOVER_EVERY_FRAMES = 24;
+/**
+ * Full-frame search while the dial is lost. Same cadence as a locked
+ * rediscovery, so the slow frame stays under one tick in twenty and the
+ * 95th percentile is the local needle search.
+ */
+const LOST_DISCOVERY_STRIDE = 24;
+/**
+ * Absolute orientation must beat the next distant alignment by this much.
+ * A smaller gap means a lighting gradient or a tick-period alias, not the printed scale.
+ */
+export const REGISTRATION_PERIOD_MARGIN_MIN = 0.08;
+const POSE_JUMP_FRACTION = 0.45;
+const REDISCOVERY_MOVE_FRACTION = 0.35;
+
+/**
+ * Same face number discovery and the live tracker both gate on.
+ * A dark Flair face often has almost no interior contrast, so the tick ring
+ * can carry the score. The boost is relative to the frame, not a clip.
+ */
+export function combineDialFaceScore(faceRaw, tickEnergy, radius, frameMin) {
+  const tickBoost = frameMin > 0 ? Math.min(1, radius / (frameMin * 0.08)) : 0;
+  return Math.max(faceRaw || 0, Math.min(0.42, (tickEnergy || 0) * 0.14 * tickBoost));
+}
+
+/**
+ * Locked frames already paid for a full needle read. The next two keep that
+ * reading and only confirm the rim, so a phone is not doing a 360° scan on
+ * every tick. A pose jump or a fresh discovery always reads the needle.
+ */
+export function shouldBridgeNeedle({
+  reusePrior = false,
+  framesSinceDiscovery = 0,
+  held = false,
+  poseDeltaPx = 0,
+  radius = 0,
+  hasBridge = false,
+  discovering = false,
+  stableStride = 3,
+} = {}) {
+  const stride = stableStride > 1 ? stableStride : 3;
+  return Boolean(
+    reusePrior
+    && hasBridge
+    && !discovering
+    && !held
+    && framesSinceDiscovery % stride !== 0
+    && radius > 0
+    && poseDeltaPx <= radius * 0.12
+  );
+}
+
+export function verificationScore({ faceScore = 0, canonical = 0, confidence = 0 } = {}) {
+  return (faceScore ?? 0) + 0.35 * (canonical ?? 0) + 0.15 * (confidence ?? 0);
+}
+
+export function discoveredVerifies(found) {
+  return Boolean(found?.ok)
+    && (found.dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
+    && (found.canonicalScore ?? 0) >= DIAL_CANONICAL_VERIFY_MIN;
+}
+
+/**
+ * Decide whether a new whole-frame detection replaces the tracked pose.
+ * A pose that fails dial-face verification is never kept.
+ */
+export function chooseDiscoveryUpdate({
+  hasPose = false,
+  faceScore = null,
+  canonical = 0,
+  confidence = 0,
+  discovered = null,
+  pose = null,
+  printedFace = false,
+} = {}) {
+  const currentOk = hasPose && (faceScore == null || faceScore >= DIAL_FACE_VERIFY_MIN);
+  const nextOk = discoveredVerifies(discovered);
+  if (!currentOk) {
+    // A locked scale survives a blurry frame. Dropping it would re-seed from
+    // whatever circle the next search happens to like.
+    if (printedFace && hasPose && !nextOk) {
+      return { action: 'hold', reason: 'scale-locked' };
+    }
+    return nextOk
+      ? { action: 'replace', reason: hasPose ? 'face-failed' : 'seed' }
+      : { action: 'drop', reason: hasPose ? 'face-failed' : 'no-dial' };
+  }
+  if (!nextOk) return { action: 'hold', reason: 'discovery-weak' };
+  const currentScore = verificationScore({ faceScore: faceScore ?? 0, canonical, confidence });
+  const nextScore = verificationScore({
+    faceScore: discovered.dialFaceScore,
+    canonical: discovered.canonicalScore,
+    confidence: discovered.confidence,
+  });
+  if (nextScore > currentScore + 0.02) {
+    const far = pose
+      && Math.hypot(discovered.cx - pose.cx, discovered.cy - pose.cy)
+        > Math.max(pose.radius, discovered.radius) * REDISCOVERY_MOVE_FRACTION;
+    if (!far) return { action: 'replace', reason: 'better' };
+    // A face that has never matched the printed dial must not keep a clearly
+    // better circle at a distance. A small edge still stays, so a decoy cannot
+    // steal a pose that is already as good. A printed-face lock does not jump.
+    if (!printedFace && nextScore > currentScore + 0.15) {
+      return { action: 'replace', reason: 'better-far' };
+    }
+  }
+  return { action: 'hold', reason: 'current-better' };
+}
+
+function discoveryRadiusInRange(faceRadius, scaledMin) {
+  const rMin = scaledMin * MIN_DISCOVERY_RADIUS_FRACTION;
+  const rMax = scaledMin * MAX_DISCOVERY_RADIUS_FRACTION;
+  return faceRadius >= rMin && faceRadius <= rMax;
+}
+
+export function scoreDiscoveryCandidate({
+  edges,
+  data,
+  width,
+  height,
+  cx,
+  cy,
+  faceRadius,
+  needleDeg = null,
+  scaledMin,
+}) {
+  const rim = scoreRim(edges, width, height, cx, cy, faceRadius * 1.02);
+  const inRange = discoveryRadiusInRange(faceRadius, scaledMin);
+  const faceRaw = inRange && rim > 0
+    ? scoreDialFaceInterior(data, width, height, cx, cy, faceRadius)
+    : 0;
+  const tickEnergy = inRange && rim > 0
+    ? scoreTickRingEnergy(edges, width, height, cx, cy, faceRadius)
+    : 0;
+  const face = combineDialFaceScore(faceRaw, tickEnergy, faceRadius, scaledMin);
+  const canonical = inRange && rim > 0
+    ? scoreCanonicalDialMatch(edges, width, height, cx, cy, faceRadius, needleDeg)
+    : 0;
+  const rank = inRange && rim > 0
+    ? rim * (0.15 + 0.85 * face) * (0.12 + 0.88 * canonical)
+    : 0;
+  return { rim, face, faceRaw, tickEnergy, canonical, rank, inRange };
+}
+
+function discoveryCandidateOk({ rimScore, confidence, faceScore, canonicalScore, rankScore }) {
+  if (rimScore <= 1e-3 || faceScore < DIAL_FACE_VERIFY_MIN) return false;
+  if (canonicalScore < DIAL_CANONICAL_VERIFY_MIN) return false;
+  return confidence >= CONFIDENCE_MIN
+    || (faceScore >= DIAL_FACE_VERIFY_MIN + 0.08 && rankScore > rimScore * 0.14);
+}
+
+function readingGates({
+  dialRegistered,
+  confidence,
+  dialFaceScore,
+  needleLikeness,
+  periodMargin = null,
+}) {
+  const orientationClear = periodMargin == null
+    || periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
+  return dialRegistered === true
+    && orientationClear
+    && (confidence ?? 0) >= CONFIDENCE_MIN
+    && (dialFaceScore ?? 0) >= DIAL_FACE_VERIFY_MIN
+    && (needleLikeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+}
+
+/**
+ * A bar may be published once the printed scale and the needle are confident.
+ * The rest anchor confirms that zero; it does not have to finish first.
+ * A conflict still blocks the bar. The anchor never becomes the zero.
+ */
+export function gaugeAllowsReading({
+  dialRegistered,
+  confidence,
+  dialFaceScore,
+  needleLikeness,
+  periodMargin = null,
+  restAnchor = null,
+}) {
+  if (restAnchor === 'conflict') return false;
+  return readingGates({
+    dialRegistered,
+    confidence,
+    dialFaceScore,
+    needleLikeness,
+    periodMargin,
+  });
+}
+
+export function gaugeAllowsConfidentReading({
+  dialRegistered,
+  confidence,
+  dialFaceScore,
+  needleLikeness,
+  periodMargin = null,
+  restAnchor = null,
+}) {
+  const anchorClear = restAnchor == null || restAnchor === 'confirmed';
+  return anchorClear && readingGates({
+    dialRegistered,
+    confidence,
+    dialFaceScore,
+    needleLikeness,
+    periodMargin,
+  });
+}
+
+/**
+ * Working resolution for Hough and the tick profile. Centres are scaled back
+ * to the input image. The bound is there so discovery is not a full-frame
+ * pixel loop; every frame uses the same scale.
+ */
+const DISCOVERY_MAX_OUTPUT = 240;
+
+function buildDiscoveryFrameContext(image, maxOutput = DISCOVERY_MAX_OUTPUT) {
+  const { width, height, data } = image;
+  const minDim = Math.min(width, height);
+  const scale = Math.min(1, maxOutput / minDim);
+  const sw = Math.max(16, Math.round(width * scale));
+  const sh = Math.max(16, Math.round(height * scale));
+  const scaledMin = minDim * scale;
+  const small = new Uint8ClampedArray(sw * sh * 4);
+  for (let y = 0; y < sh; y += 1) {
+    for (let x = 0; x < sw; x += 1) {
+      const sx = Math.min(width - 1, Math.floor(x / scale));
+      const sy = Math.min(height - 1, Math.floor(y / scale));
+      const src = (sy * width + sx) * 4;
+      const dst = (y * sw + x) * 4;
+      small[dst] = data[src];
+      small[dst + 1] = data[src + 1];
+      small[dst + 2] = data[src + 2];
+      small[dst + 3] = 255;
+    }
+  }
+  const edges = prepareEdges({ data: small, width: sw, height: sh }, { contrastRadius: 3 }).edges;
+  return { width, height, scale, sw, sh, scaledMin, small, edges };
+}
+
+function pushDiscoveryCandidate(candidates, entry) {
+  candidates.push(entry);
+}
+
+// Face is capped at 1.6 and canonical at 1, so rank cannot exceed rim times this.
+const DISCOVERY_RANK_RIM_CEILING = (0.15 + 0.85 * 1.6) * (0.12 + 0.88 * 1) + 0.01;
+let houghBlurSize = null;
+let houghGray = null;
+
+function collectHoughCircleCandidates(ctx, cv, candidates) {
+  const { sw, sh, scaledMin, small, edges, scale } = ctx;
+  let srcMat = null;
+  let circles = null;
+  let houghCount;
+  try {
+    srcMat = cv.matFromImageData({ data: small, width: sw, height: sh });
+    if (!houghGray) houghGray = new cv.Mat();
+    cv.cvtColor(srcMat, houghGray, cv.COLOR_RGBA2GRAY);
+    if (!houghBlurSize) houghBlurSize = new cv.Size(5, 5);
+    cv.GaussianBlur(houghGray, houghGray, houghBlurSize, 1.4, 1.4, cv.BORDER_DEFAULT);
+
+    circles = new cv.Mat();
+    const rMin = Math.max(6, scaledMin * MIN_DISCOVERY_RADIUS_FRACTION);
+    const rMax = scaledMin * MAX_DISCOVERY_RADIUS_FRACTION;
+    const minDist = Math.max(12, scaledMin * 0.08);
+    cv.HoughCircles(
+      houghGray,
+      circles,
+      cv.HOUGH_GRADIENT,
+      1.1,
+      minDist,
+      95,
+      22,
+      Math.round(rMin),
+      Math.round(rMax),
+    );
+    houghCount = circles.cols;
+    const partials = [];
+    for (let i = 0; i < circles.cols; i += 1) {
+      const cx = circles.floatAt(0, i * 3);
+      const cy = circles.floatAt(0, i * 3 + 1);
+      const r = circles.floatAt(0, i * 3 + 2);
+      const variants = [r / 1.02, (r / 1.02) * 0.96, (r / 1.02) * 1.04];
+      for (const faceRadius of variants) {
+        if (faceRadius < scaledMin * MIN_DISCOVERY_RADIUS_FRACTION) continue;
+        const rimRadius = faceRadius * 1.02;
+        if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) continue;
+        const rim = scoreRim(edges, sw, sh, cx, cy, rimRadius);
+        if (rim <= 1e-3) continue;
+        partials.push({ cx, cy, faceRadius, rimRadius, rim });
+      }
+    }
+    partials.sort((a, b) => b.rim - a.rim);
+    let bestRank = 0;
+    for (const partial of partials) {
+      if (partial.rim * DISCOVERY_RANK_RIM_CEILING <= bestRank) break;
+      const scored = scoreDiscoveryCandidate({
+        edges,
+        data: small,
+        width: sw,
+        height: sh,
+        cx: partial.cx,
+        cy: partial.cy,
+        faceRadius: partial.faceRadius,
+        scaledMin,
+      });
+      if (scored.rank > bestRank) bestRank = scored.rank;
+      const off = offsetScore(edges, sw, sh, partial.cx, partial.cy, partial.rimRadius);
+      const confidence = scored.rim > 1e-3 && off != null
+        ? clamp((scored.rim - off) / scored.rim, 0, 1)
+        : 0;
+      const ok = discoveryCandidateOk({
+        rimScore: scored.rim,
+        confidence,
+        faceScore: scored.face,
+        canonicalScore: scored.canonical,
+        rankScore: scored.rank,
+      });
+      pushDiscoveryCandidate(candidates, {
+        source: 'hough',
+        cx: partial.cx / scale,
+        cy: partial.cy / scale,
+        radius: partial.faceRadius / scale,
+        cxScaled: partial.cx,
+        cyScaled: partial.cy,
+        radiusScaled: partial.faceRadius,
+        ...scored,
+        confidence,
+        ok,
+      });
+    }
+  } finally {
+    if (circles) circles.delete();
+    if (srcMat) srcMat.delete();
+  }
+  return houghCount;
+}
+
+/**
+ * Pick the circle to seed.
+ * Rank is rim × face × canonical template match. A bright hotspot, a hose,
+ * or a hand can outrank the dial on rim alone and still fail the template
+ * gate. Those misses do not hide a lower circle that does match the printed
+ * face. Among circles that pass, the highest rank wins.
+ */
+export function selectDiscoveryCandidate(candidates) {
+  let best = null;
+  for (const candidate of candidates || []) {
+    if (!candidate?.ok) continue;
+    if (!best || (candidate.rank || 0) > (best.rank || 0)) best = candidate;
+  }
+  return best;
+}
+
+/**
+ * A coarse winner whose template dies on the original pixels is a hotspot or
+ * a bezel edge. Keep it when the native check still passes. Otherwise take
+ * the sharpest nearby circle that does pass, so a soft rim cannot hide the face.
+ */
+export function chooseReadableDiscovery(chosen, examined) {
+  if (!chosen) return null;
+  const self = (examined || []).find((item) => item?.candidate === chosen);
+  // A coarse winner whose printed face still matches on the original pixels
+  // stays, even when that crop is soft. Replacing it with a sharper neighbour
+  // walks a dry dial off its needle.
+  if (self?.nativeOk) return chosen;
+  const alternatives = (examined || []).filter((item) => item?.nativeOk && item.candidate && item.candidate !== chosen);
+  if (!alternatives.length) return chosen;
+  alternatives.sort((a, b) => (b.sharpness || 0) - (a.sharpness || 0) || (b.canonical || 0) - (a.canonical || 0));
+  return alternatives[0].candidate;
+}
+
+/**
+ * Working-image radius at which the tick ring is a few pixels wide.
+ * Scales are added until a dial at the small end of the generic radius
+ * band reaches this size. A scale that already verifies a dial is the
+ * answer: a later full-frame search must not replace it with a different
+ * circle, and it must not run when this one is already in hand.
+ */
+export const TICK_READABLE_RADIUS_PX = 28;
+
+/**
+ * Coarse-to-fine working sizes for whole-frame search.
+ * The short side starts at the usual 240px budget. Another octave is added
+ * while the smallest dial the generic radius band allows is still smaller
+ * than the tick ring needs, and stops at the native short side.
+ */
+export function discoveryOutputSizes(minDim) {
+  const outputs = [];
+  if (!(minDim > 0)) return outputs;
+  let maxOutput = DISCOVERY_MAX_OUTPUT;
+  for (let level = 0; level < 3; level += 1) {
+    const capped = Math.max(16, Math.min(minDim, Math.round(maxOutput)));
+    if (!outputs.length || capped > outputs[outputs.length - 1] + 1) outputs.push(capped);
+    const scale = Math.min(1, capped / minDim);
+    const smallestWorking = minDim * MIN_DISCOVERY_RADIUS_FRACTION * scale;
+    if (smallestWorking >= TICK_READABLE_RADIUS_PX || capped >= minDim - 1) break;
+    maxOutput = capped * 2;
+  }
+  return outputs;
+}
+
+/**
+ * Debug / harness: enumerate Hough + scored candidates in image pixel space.
+ * @returns {Promise<{ candidates: object[], chosen: object|null, houghCount: number, scale: number }>}
+ */
+export function probeGaugeDiscoveryCandidates(image, cv = null) {
+  const cvInst = cv ?? getOpenCvSync();
+  const ctx = buildDiscoveryFrameContext(image);
+  const candidates = [];
+  let houghCount = 0;
+  if (cvInst?.Mat) {
+    houghCount = collectHoughCircleCandidates(ctx, cvInst, candidates);
+  }
+  const chosen = selectDiscoveryCandidate(candidates);
+  return {
+    candidates,
+    chosen,
+    houghCount,
+    scale: ctx.scale,
+    scaledWidth: ctx.sw,
+    scaledHeight: ctx.sh,
+  };
+}
+
+function discoveryResultFromBest(best, scale, minDim) {
+  if (!best || best.score <= 0) return null;
+  if (best.radius / scale < minDim * MIN_DISCOVERY_RADIUS_FRACTION) return null;
+  const rimR = best.radius * 1.02;
+  const off = offsetScore(best.edges, best.sw, best.sh, best.cx, best.cy, rimR);
+  const confidence = best.rim > 1e-3 && off != null
+    ? clamp((best.rim - off) / best.rim, 0, 1)
+    : 0;
+  const ok = discoveryCandidateOk({
+    rimScore: best.rim,
+    confidence,
+    faceScore: best.face,
+    canonicalScore: best.canonical,
+    rankScore: best.score,
+  });
+  return {
+    ok,
+    confidence,
+    cx: best.cx / scale,
+    cy: best.cy / scale,
+    radius: best.radius / scale,
+    dialFaceScore: best.face,
+    canonicalScore: best.canonical,
+    source: best.source ?? 'rim-grid',
+  };
+}
+
+function resultFromChosen(chosen) {
+  return {
+    ok: chosen.ok === true,
+    confidence: chosen.confidence ?? 0,
+    cx: chosen.cx,
+    cy: chosen.cy,
+    radius: chosen.radius,
+    dialFaceScore: chosen.face,
+    canonicalScore: chosen.canonical,
+    source: 'opencv-hough',
+  };
+}
+
+function discoverGaugeWithOpenCv(image, cv) {
+  if (!image?.width || !image?.data || !cv?.Mat) return null;
+  const minDim = Math.min(image.width, image.height);
+  const outputs = discoveryOutputSizes(minDim);
+  for (let level = 0; level < outputs.length; level += 1) {
+    const ctx = buildDiscoveryFrameContext(image, outputs[level]);
+    const candidates = [];
+    collectHoughCircleCandidates(ctx, cv, candidates);
+    const chosen = selectDiscoveryCandidate(candidates);
+    if (!chosen?.ok) continue;
+    if (chosen.radius < minDim * MIN_DISCOVERY_RADIUS_FRACTION) continue;
+    // Image radius is already scaled back from this working size. A verified
+    // dial here is tracked from that circle. Another octave runs only when
+    // this scale does not verify one, which is how a small dial missed by
+    // the coarse Hough is still found. Re-scoring that winner on a native
+    // crop changes which frame the worker finishes on, and a moving clip
+    // then locks a different circle from run to run.
+    return resultFromChosen(chosen);
+  }
+  return null;
+}
+
+/**
+ * Whole-frame rim search on a downscaled frame (no prior / guide seed).
+ * Returns centre and radius in the same pixel space as `image`.
+ */
+export function discoverGaugeInFrame(image, { maxOutput = 240 } = {}) {
+  const { width, height, data } = image;
+  if (!width || !height || !data) return null;
+  const cv = getOpenCvSync();
+  if (cv?.Mat) {
+    const opencvHit = discoverGaugeWithOpenCv(image, cv);
+    if (opencvHit?.ok) return opencvHit;
+    return null;
+  }
+  const minDim = Math.min(width, height);
+  const scale = Math.min(1, maxOutput / minDim);
+  const sw = Math.max(16, Math.round(width * scale));
+  const sh = Math.max(16, Math.round(height * scale));
+  const small = new Uint8ClampedArray(sw * sh * 4);
+  for (let y = 0; y < sh; y += 1) {
+    for (let x = 0; x < sw; x += 1) {
+      const sx = Math.min(width - 1, Math.floor(x / scale));
+      const sy = Math.min(height - 1, Math.floor(y / scale));
+      const src = (sy * width + sx) * 4;
+      const dst = (y * sw + x) * 4;
+      small[dst] = data[src];
+      small[dst + 1] = data[src + 1];
+      small[dst + 2] = data[src + 2];
+      small[dst + 3] = 255;
+    }
+  }
+  const edges = prepareEdges({ data: small, width: sw, height: sh }, { contrastRadius: 3 }).edges;
+  const scaledMin = minDim * scale;
+  const rMin = scaledMin * MIN_DISCOVERY_RADIUS_FRACTION;
+  const rMax = scaledMin * MAX_DISCOVERY_RADIUS_FRACTION;
+  const coarseStep = Math.max(4, Math.round(scaledMin / 24));
+  let best = { score: -1, rim: 0, face: 0, canonical: 0, cx: 0, cy: 0, radius: 0, edges, sw, sh };
+  const consider = (cx, cy, faceRadius) => {
+    if (faceRadius < scaledMin * MIN_DISCOVERY_RADIUS_FRACTION) return;
+    const rimRadius = faceRadius * 1.02;
+    if (cx - rimRadius < 2 || cy - rimRadius < 2 || cx + rimRadius >= sw - 2 || cy + rimRadius >= sh - 2) return;
+    const scored = scoreDiscoveryCandidate({
+      edges,
+      data: small,
+      width: sw,
+      height: sh,
+      cx,
+      cy,
+      faceRadius,
+      scaledMin,
+    });
+    if (scored.rank > best.score) {
+      best = {
+        score: scored.rank,
+        rim: scored.rim,
+        face: scored.face,
+        canonical: scored.canonical,
+        cx,
+        cy,
+        radius: faceRadius,
+        edges,
+        sw,
+        sh,
+        source: 'rim-grid',
+      };
+    }
+  };
+  for (let cy = coarseStep; cy < sh - coarseStep; cy += coarseStep) {
+    for (let cx = coarseStep; cx < sw - coarseStep; cx += coarseStep) {
+      const rStep = Math.max(3, Math.round(coarseStep * 0.85));
+      for (let r = rMin; r <= rMax; r += rStep) consider(cx, cy, r);
+    }
+  }
+  if (best.score <= 0) return null;
+  const midStep = Math.max(2, Math.round(coarseStep / 2));
+  const coarse = best;
+  for (let dy = -coarseStep; dy <= coarseStep; dy += midStep) {
+    for (let dx = -coarseStep; dx <= coarseStep; dx += midStep) {
+      consider(coarse.cx + dx, coarse.cy + dy, coarse.radius);
+      consider(coarse.cx + dx, coarse.cy + dy, coarse.radius * 0.94);
+      consider(coarse.cx + dx, coarse.cy + dy, coarse.radius * 1.06);
+    }
+  }
+  if (best.score <= 0) return null;
+  const refine = Math.max(2, midStep);
+  const fine = best;
+  for (let dy = -refine; dy <= refine; dy += 1) {
+    for (let dx = -refine; dx <= refine; dx += 1) {
+      consider(fine.cx + dx, fine.cy + dy, fine.radius);
+      consider(fine.cx + dx, fine.cy + dy, fine.radius * 0.97);
+      consider(fine.cx + dx, fine.cy + dy, fine.radius * 1.03);
+    }
+  }
+  return discoveryResultFromBest(best, scale, minDim);
+}
+
 export function createGaugeTracker() {
   let pose = null;
   let baseRadius = 0;
@@ -370,6 +1126,8 @@ export function createGaugeTracker() {
   let anchorAccumDeg = 0;
   let trustedRotationDeg = null;
   let maskNeedleDeg = null;
+  let bridgedReading = null;
+  let idleFrames = 0;
   let mode = 'locked';
   let lossStreak = 0;
   let searchStep = 0;
@@ -378,6 +1136,31 @@ export function createGaugeTracker() {
   let searchMisses = 0;
   let reacquireReason = null;
   let observed = null;
+  let framesSinceDiscovery = 0;
+  let lastFaceScore = null;
+  let lastCanonical = null;
+  let pendingJump = false;
+  let printedFace = false;
+  let scaleLock = null;
+  let faceModel = null;
+  const faceWarp = {};
+
+  const clearFaceModel = () => {
+    releaseWarpHold(faceWarp);
+    faceModel = null;
+  };
+
+  const clearVerification = () => {
+    framesSinceDiscovery = 0;
+    lastFaceScore = null;
+    lastCanonical = null;
+    pendingJump = false;
+    printedFace = false;
+    bridgedReading = null;
+    idleFrames = 0;
+    scaleLock = null;
+    clearFaceModel();
+  };
 
   const clearPoseMemory = () => {
     centreCandidate = null;
@@ -644,6 +1427,7 @@ export function createGaugeTracker() {
       recovering = false;
       clearPoseMemory();
       clearSearch();
+      clearVerification();
     },
     seed({ cx, cy, radius }) {
       pose = { cx, cy, radius, rotationDeg: 0 };
@@ -655,18 +1439,110 @@ export function createGaugeTracker() {
       recovering = false;
       clearPoseMemory();
       clearSearch();
+      clearVerification();
+    },
+    nudgePose({ cx, cy, radius }) {
+      if (!pose) return;
+      pose = { ...pose, cx, cy, radius };
+      baseRadius = radius;
+    },
+    discoveryDueNow() {
+      if (!pose) return idleFrames % LOST_DISCOVERY_STRIDE === 0;
+      if (pendingJump) return true;
+      if (lastFaceScore != null && lastFaceScore < DIAL_FACE_VERIFY_MIN) {
+        return idleFrames % LOST_DISCOVERY_STRIDE === 0;
+      }
+      return framesSinceDiscovery >= REDISCOVER_EVERY_FRAMES;
+    },
+    needsRediscovery() {
+      const due = this.discoveryDueNow();
+      if (!pose) idleFrames += 1;
+      else if (pendingJump) {
+        // A jump is due immediately and does not advance the idle counter.
+      } else if (lastFaceScore != null && lastFaceScore < DIAL_FACE_VERIFY_MIN) idleFrames += 1;
+      else idleFrames = 0;
+      return due;
+    },
+    verificationState() {
+      return {
+        hasPose: pose != null,
+        faceScore: lastFaceScore,
+        canonical: lastCanonical ?? 0,
+        confidence: 0,
+        framesSinceDiscovery,
+        pendingJump,
+        printedFace,
+      };
+    },
+    notePrintedFace(ok) {
+      if (ok) printedFace = true;
+    },
+    markDiscovered() {
+      framesSinceDiscovery = 0;
+      pendingJump = false;
+    },
+    rememberBridge(reading) {
+      bridgedReading = reading ? { ...reading, gauge: { ...reading.gauge } } : null;
+    },
+    peekBridge() {
+      return bridgedReading;
+    },
+    needleHint() {
+      if (framesSinceDiscovery % REDISCOVER_EVERY_FRAMES === 0) return null;
+      const angle = bridgedReading?.angleDeg;
+      return Number.isFinite(angle) ? angle : null;
+    },
+    noteTrackedFrame({ faceScore, canonical = null, poseJumpPx = 0, radius = 0 }) {
+      lastFaceScore = faceScore;
+      if (canonical != null) lastCanonical = canonical;
+      framesSinceDiscovery += 1;
+      pendingJump = radius > 0 && poseJumpPx > radius * POSE_JUMP_FRACTION;
     },
     getPose() {
       return pose ? { ...pose } : null;
+    },
+    snapshot() {
+      return {
+        mode,
+        lossStreak,
+        hasReference: reference != null,
+        pose: pose
+          ? {
+            cx: pose.cx,
+            cy: pose.cy,
+            radius: pose.radius,
+            rotationDeg: pose.rotationDeg,
+          }
+          : null,
+      };
+    },
+    setRotationDeg(rotationDeg) {
+      if (!pose) return;
+      pose = { ...pose, rotationDeg: wrap360(rotationDeg) };
+    },
+    getScaleLock() {
+      return scaleLock;
+    },
+    setScaleLock(lock) {
+      scaleLock = lock;
     },
     captureSpec() {
       if (mode !== 'searching') return { pad: 1.9, maxOutput: 188 };
       return { pad: 1 + searchFraction + 0.45, maxOutput: 320 };
     },
+    faceModel() {
+      return faceModel;
+    },
+    setFaceModel(model) {
+      faceModel = model;
+    },
+    faceWarp() {
+      return faceWarp;
+    },
     /**
      * @param mapping image pixel = (video pixel - origin) * scale
      */
-    trackPosition(image, mapping) {
+    trackPosition(image, mapping, { reusePrior = false } = {}) {
       if (!pose) return null;
       reacquireReason = null;
       observed = null;
@@ -678,6 +1554,20 @@ export function createGaugeTracker() {
       };
       let windowFraction;
       let found;
+      const withRimProfile = (fields) => {
+        if (fields.profile != null || !found?.edges) return fields;
+        return {
+          ...fields,
+          profile: measureRimProfile(
+            found.edges,
+            found.width,
+            found.height,
+            found.cx,
+            found.cy,
+            found.radius,
+          ),
+        };
+      };
       if (mode === 'searching') {
         const scout = locateGauge(image, localPrior, { priorOnly: true });
         if (scout.ok) {
@@ -699,6 +1589,12 @@ export function createGaugeTracker() {
             recovering = false;
           }
         }
+      } else if (reusePrior && !recovering) {
+        windowFraction = 0.46;
+        const scout = locateGauge(image, localPrior, { priorOnly: true });
+        found = scout.ok
+          ? scout
+          : locateGauge(image, localPrior, { searchFraction: windowFraction, edges: scout.edges });
       } else {
         windowFraction = recovering ? 0.62 : 0.46;
         found = locateGauge(image, localPrior, { searchFraction: windowFraction });
@@ -706,13 +1602,13 @@ export function createGaugeTracker() {
       if (mode === 'searching') {
         if (!found.ok) {
           noteSearchMiss();
-          return finish(windowFraction, {
+          return finish(windowFraction, withRimProfile({
             held: true,
             confidence: found.confidence,
             rawCx: mapping.originX + found.cx / mapping.scale,
             rawCy: mapping.originY + found.cy / mapping.scale,
             rawRadius: found.radius / mapping.scale,
-          });
+          }));
         }
         const video = toVideo(found, mapping);
         const wide = wideMatch(found);
@@ -720,22 +1616,22 @@ export function createGaugeTracker() {
           return acceptCandidate(found, video, wide, mapping, windowFraction);
         }
         if (!searchCandidate) growSearch();
-        return finish(windowFraction, {
+        return finish(windowFraction, withRimProfile({
           held: true,
           confidence: found.confidence,
           rawCx: video.cx,
           rawCy: video.cy,
           rawRadius: video.radius,
-        });
+        }));
       }
       if (!found.ok) {
         recovering = true;
         noteLockedMiss();
-        return finish(windowFraction, {
+        return finish(windowFraction, withRimProfile({
           held: true,
           confidence: found.confidence,
           poseRejectReason: 'rim-weak',
-        });
+        }));
       }
       const video = toVideo(found, mapping);
       const dx = video.cx - pose.cx;
@@ -750,14 +1646,14 @@ export function createGaugeTracker() {
           return acceptCandidate(found, video, wide, mapping, windowFraction);
         }
         beginSearch();
-        return finish(windowFraction, {
+        return finish(windowFraction, withRimProfile({
           held: true,
           confidence: found.confidence,
           rawCx: video.cx,
           rawCy: video.cy,
           rawRadius: video.radius,
           poseRejectReason: 'centre-rejected',
-        });
+        }));
       }
 
       let dial = null;
@@ -794,7 +1690,7 @@ export function createGaugeTracker() {
         if (shift >= pose.radius * SEARCH_ENTER_FRACTION || lossStreak >= SEARCH_LOSS_FRAMES) {
           beginSearch();
         }
-        return finish(windowFraction, {
+        return finish(windowFraction, withRimProfile({
           held: true,
           confidence: found.confidence,
           rawCx: video.cx,
@@ -804,7 +1700,7 @@ export function createGaugeTracker() {
           poseRejectReason: 'dial-unrecognized',
           posePending: true,
           poseDeltaPx: 0,
-        });
+        }));
       }
 
       let nextCx = pose.cx;
@@ -927,7 +1823,7 @@ export function createGaugeTracker() {
         ...fields,
         referenceCaptured: reference != null,
       });
-      if (!pose || positionHeld || !profile || needleDeg == null) {
+      if (!pose || !profile || needleDeg == null) {
         rotationCandidate = null;
         pendingStepBins = null;
         return orientResult({
@@ -938,25 +1834,45 @@ export function createGaugeTracker() {
       }
       if (!reference) {
         const identified = needleLikeness >= NEEDLE_LIKENESS_GATE && rimConfidence >= CONFIDENCE_MIN;
-        if (!identified) return orientResult({ held: false });
-        reference = profile.slice();
-        referenceFace = observedFace ? observedFace.slice() : null;
-        referenceNeedleDeg = needleDeg;
-        rememberNeedle();
+        if (identified) {
+          reference = profile.slice();
+          referenceFace = observedFace ? observedFace.slice() : null;
+          referenceNeedleDeg = needleDeg;
+          rememberNeedle();
+          rotationCandidate = null;
+          pendingStepBins = null;
+          anchorRotationDeg = 0;
+          anchorAccumDeg = 0;
+          pose = { ...pose, rotationDeg: 0 };
+          return orientResult({
+            rotationDeg: 0,
+            rawRotationDeg: 0,
+            confidence: 1,
+            captured: true,
+            poseQuality: 1,
+            poseDecision: 'commit',
+            anchorAccumDeg: 0,
+            storedBin: null,
+            pressureHold: positionHeld,
+            held: positionHeld,
+          });
+        }
+        if (positionHeld) {
+          return orientResult({
+            held: true,
+            pressureHold: true,
+            stableNeedleDeg: maskNeedleDeg,
+          });
+        }
+        return orientResult({ held: false });
+      }
+      if (positionHeld) {
         rotationCandidate = null;
         pendingStepBins = null;
-        anchorRotationDeg = 0;
-        anchorAccumDeg = 0;
-        pose = { ...pose, rotationDeg: 0 };
         return orientResult({
-          rotationDeg: 0,
-          rawRotationDeg: 0,
-          confidence: 1,
-          captured: true,
-          poseQuality: 1,
-          poseDecision: 'commit',
-          anchorAccumDeg: 0,
-          storedBin: null,
+          held: true,
+          pressureHold: true,
+          stableNeedleDeg: maskNeedleDeg,
         });
       }
       const needleStep = wrapDelta(maskNeedleDeg ?? needleDeg, needleDeg);
@@ -1151,8 +2067,9 @@ function squareCrop(videoW, videoH, cx, cy, pad) {
   return { originX, originY, size };
 }
 
-function resampleCrop(image, crop, maxOutput) {
-  const output = Math.min(crop.size, maxOutput);
+function resampleCrop(image, crop, maxOutput, minOutput = 0) {
+  const natural = Math.min(crop.size, maxOutput);
+  const output = Math.min(maxOutput, Math.max(natural, minOutput > 0 ? minOutput : natural));
   const scale = output / crop.size;
   const data = new Uint8ClampedArray(output * output * 4);
   for (let y = 0; y < output; y += 1) {
@@ -1170,15 +2087,246 @@ function resampleCrop(image, crop, maxOutput) {
   return { image: { data, width: output, height: output }, scale };
 }
 
-function drawCrop(video, canvas, crop, maxOutput) {
-  const output = Math.min(crop.size, maxOutput);
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  canvas.width = output;
-  canvas.height = output;
-  context.drawImage(video, crop.originX, crop.originY, crop.size, crop.size, 0, 0, output, output);
+const DIAL_REGISTER_MIN = 0.34;
+
+/** One profile bin is 5°. Arc and ticks may disagree by two bins and still be the same rotation. */
+const SCALE_AGREEMENT_DEG = 10;
+
+function smoothProfile(profile, radius = 2) {
+  const n = profile.length;
+  const out = new Float32Array(n);
+  const win = radius * 2 + 1;
+  for (let i = 0; i < n; i += 1) {
+    let sum = 0;
+    for (let k = -radius; k <= radius; k += 1) sum += profile[(i + k + n) % n];
+    out[i] = sum / win;
+  }
+  return out;
+}
+
+/** Same ~10° window the 72-bin profiles already use. */
+function angularSmoothRadius(binCount) {
+  return Math.max(1, Math.round((10 * binCount) / 360));
+}
+
+/** Remove a slow angular ramp so a lighting gradient cannot impersonate the printed arc. */
+function highPassProfile(profile, radius = 2) {
+  const low = smoothProfile(profile, radius);
+  const out = new Float32Array(profile.length);
+  for (let i = 0; i < profile.length; i += 1) out[i] = profile[i] - low[i];
+  return out;
+}
+
+/**
+ * Per-frame dial rotation from the canonical printed scale (no session template).
+ * The wide arc (espresso band and logo) and the tick comb are matched separately.
+ * A lighting blob can imitate the arc, and tick spacing on the arc is periodic, so neither
+ * band may publish a rotation on its own.
+ */
+export function registerDialRotationFromProfile(profile, needleDeg = null, previousDeg = 0) {
+  if (!profile || profile.length < 8) {
+    return { ok: false, rotationDeg: previousDeg, confidence: 0, periodMargin: 0 };
+  }
+  const canonical = profile.length === FLAIR_CANONICAL_DIAL_PROFILE.length
+    ? FLAIR_CANONICAL_DIAL_PROFILE
+    : buildFlairCanonicalDialProfile(profile.length);
+  const smooth = profile.length > PROFILE_BINS
+    ? Math.max(1, Math.round((4 * profile.length) / 360))
+    : angularSmoothRadius(profile.length);
+  const arc = matchGaugeRotation(
+    smoothProfile(canonical, smooth),
+    smoothProfile(profile, smooth),
+    { previousDeg, needleDeg, maxShiftDeg: 360 },
+  );
+  // The tick comb repeats every major tick. Its global peak can be an alias.
+  // The arc is the unique sector, so the comb only has to confirm that angle.
+  const ticks = matchGaugeRotation(
+    highPassProfile(canonical, smooth),
+    highPassProfile(profile, smooth),
+    {
+      previousDeg: arc.estimateDeg ?? previousDeg,
+      needleDeg,
+      maxShiftDeg: arc.ok ? SCALE_AGREEMENT_DEG : 360,
+    },
+  );
+  const tickMeasurable = ticks.confidence >= DIAL_REGISTER_MIN && (arc.ok || ticks.ok);
+  const agree = !tickMeasurable
+    || Math.abs(wrapDelta(arc.estimateDeg ?? 0, ticks.estimateDeg ?? 0)) <= SCALE_AGREEMENT_DEG;
+  // A strong unique arc is the scale. The comb refines it when the ticks are
+  // actually visible. A weak comb (glare, occluder) must not veto that arc,
+  // and it must not publish a rotation the arc rejected.
+  const ok = arc.ok
+    && agree
+    && arc.confidence >= DIAL_REGISTER_MIN
+    && arc.periodMargin >= REGISTRATION_PERIOD_MARGIN_MIN;
+  const rotationDeg = ok
+    ? (tickMeasurable ? ticks.estimateDeg : arc.estimateDeg)
+    : previousDeg;
   return {
-    image: context.getImageData(0, 0, output, output),
+    ok,
+    rotationDeg,
+    confidence: tickMeasurable ? Math.min(arc.confidence, ticks.confidence) : arc.confidence,
+    periodMargin: arc.periodMargin,
+  };
+}
+
+const FINE_PROFILE_BINS = 360;
+
+/**
+ * Rectify an oblique face, then read needle and template rotation on that circle.
+ * Bar is the printed scale (`angleToBar` / `barToDialAngle`), not a guessed hold.
+ */
+function facePriorForCandidate(model, candidate, mapping) {
+  if (!model || !candidate || !(mapping?.scale > 0)) return null;
+  const videoCx = mapping.originX + candidate.cx / mapping.scale;
+  const videoCy = mapping.originY + candidate.cy / mapping.scale;
+  const videoR = candidate.radius / mapping.scale;
+  const follow = model.anchorRadius > 0 ? videoR / model.anchorRadius : 1;
+  const predCx = videoCx + (model.cx - model.anchorCx) * follow;
+  const predCy = videoCy + (model.cy - model.anchorCy) * follow;
+  return {
+    cx: (predCx - mapping.originX) * mapping.scale,
+    cy: (predCy - mapping.originY) * mapping.scale,
+    width: model.width * follow * mapping.scale,
+    height: model.height * follow * mapping.scale,
+    angleDeg: model.angleDeg,
+    dx: model.dx || 0,
+    dy: model.dy || 0,
+    misses: model.misses || 0,
+  };
+}
+
+function faceModelFromRectified(rectified, candidate, mapping) {
+  const ellipse = rectified?.ellipse;
+  if (!ellipse || !(mapping?.scale > 0) || !candidate) return null;
+  const scale = mapping.scale;
+  return {
+    cx: mapping.originX + ellipse.cx / scale,
+    cy: mapping.originY + ellipse.cy / scale,
+    width: ellipse.width / scale,
+    height: ellipse.height / scale,
+    angleDeg: ellipse.angleDeg,
+    dx: rectified.geometry?.dx || 0,
+    dy: rectified.geometry?.dy || 0,
+    misses: rectified.geometry?.misses || 0,
+    anchorCx: mapping.originX + candidate.cx / scale,
+    anchorCy: mapping.originY + candidate.cy / scale,
+    anchorRadius: candidate.radius / scale,
+  };
+}
+
+export function readRectifiedPressure(image, candidate, options = null) {
+  const stamp = () => (typeof performance !== 'undefined' ? performance.now() : 0);
+  const t0 = stamp();
+  const cv = getOpenCvSync();
+  const rectified = rectifyGaugeFace(cv, image, candidate, options || undefined);
+  const tRect = stamp();
+  if (!rectified?.ok) {
+    return { ok: false, reason: 'rectify', bar: null, ms: { rectify: tRect - t0, total: tRect - t0 } };
+  }
+  const sink = {};
+  const needle = detectNeedleAngle(
+    rectified.image,
+    rectified.cx,
+    rectified.cy,
+    rectified.radius * TIP_INNER_RATIO,
+    rectified.radius * OUTER_RADIUS_RATIO,
+    sink,
+  );
+  needle.angleDeg = refineNeedleAngle(
+    rectified.image,
+    rectified.cx,
+    rectified.cy,
+    rectified.radius * TIP_INNER_RATIO,
+    rectified.radius * OUTER_RADIUS_RATIO,
+    needle.angleDeg,
+  );
+  const tNeedle = stamp();
+  const tickEdges = prepareEdges(rectified.image, {
+    contrastRadius: Math.max(2, Math.round(rectified.radius * 0.05)),
+  }).edges;
+  const profile = measureRimProfile(
+    tickEdges,
+    rectified.image.width,
+    rectified.image.height,
+    rectified.cx,
+    rectified.cy,
+    rectified.radius,
+    { bins: FINE_PROFILE_BINS, innerRatio: 0.76, outerRatio: 0.88 },
+  );
+  const reg = registerDialRotationFromProfile(profile, needle.angleDeg);
+  const tReg = stamp();
+  const relative = wrap360(needle.angleDeg - (reg.rotationDeg || 0));
+  const bar = reg.ok ? angleToBar(relative, FLAIR_STATELESS_SESSION) : null;
+  return {
+    ok: reg.ok && bar != null,
+    bar,
+    angleDeg: needle.angleDeg,
+    rotationDeg: reg.rotationDeg,
+    relativeAngleDeg: relative,
+    confidence: reg.confidence,
+    likeness: needle.likeness,
+    warped: rectified.warped === true,
+    ellipse: rectified.ellipse,
+    perspective: rectified.geometry || null,
+    ms: {
+      rectify: tRect - t0,
+      needle: tNeedle - tRect,
+      register: tReg - tNeedle,
+      total: tReg - t0,
+    },
+  };
+}
+
+function trackLockedScale(tracker, bands, { qualityHold = false } = {}) {
+  const profile = faceProfileFromBands(bands);
+  return stepScaleLock(tracker.getScaleLock?.() ?? null, { profile, qualityHold });
+}
+
+function commitScaleStep(tracker, stepped) {
+  tracker.setScaleLock?.(stepped.lock);
+  if (stepped.registered) {
+    tracker.setRotationDeg(stepped.rotationDeg);
+    tracker.notePrintedFace(true);
+  }
+  return stepped;
+}
+
+let needleSurface = null;
+let trackSurface = null;
+
+function scratchCanvas(kind) {
+  if (typeof document === 'undefined') return null;
+  if (kind === 'needle') {
+    if (!needleSurface) needleSurface = document.createElement('canvas');
+    return needleSurface;
+  }
+  if (!trackSurface) trackSurface = document.createElement('canvas');
+  return trackSurface;
+}
+
+function drawCrop(video, canvas, crop, maxOutput, minOutput = 0) {
+  const natural = Math.min(crop.size, maxOutput);
+  const output = Math.min(maxOutput, Math.max(natural, minOutput > 0 ? minOutput : natural));
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  // Assigning width resets the bitmap even when the value is unchanged.
+  if (canvas.width !== output || canvas.height !== output) {
+    canvas.width = output;
+    canvas.height = output;
+  }
+  const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
+  context.drawImage(video, crop.originX, crop.originY, crop.size, crop.size, 0, 0, output, output);
+  const t2 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const image = context.getImageData(0, 0, output, output);
+  const t3 = typeof performance !== 'undefined' ? performance.now() : 0;
+  return {
+    image,
     scale: output / crop.size,
+    output,
+    resizeMs: t1 - t0,
+    blitMs: t2 - t1,
+    readMs: t3 - t2,
   };
 }
 
@@ -1190,33 +2338,208 @@ function completeReading({
   needleImage,
   needleCrop,
   needleScale,
+  canonicalDial = false,
+  qualityImage = null,
+  qualityCrop = null,
+  qualityScale = null,
+  faceHold = null,
 }) {
   const center = position.pose;
   const localRadius = center.radius * needleScale;
-  const detection = detectNeedleAngle(
-    needleImage,
-    (center.cx - needleCrop.originX) * needleScale,
-    (center.cy - needleCrop.originY) * needleScale,
-    localRadius * TIP_INNER_RATIO,
-    localRadius * OUTER_RADIUS_RATIO,
+  const localCx = (center.cx - needleCrop.originX) * needleScale;
+  const localCy = (center.cy - needleCrop.originY) * needleScale;
+  let readImage = needleImage;
+  let readCx = localCx;
+  let readCy = localCy;
+  let readRadius = localRadius;
+  let usedRectified = false;
+  const cv = getOpenCvSync();
+  if (cv?.fitEllipse && (cv.remap || cv.warpAffine)) {
+    const candidateLocal = { cx: localCx, cy: localCy, radius: localRadius };
+    const mapping = {
+      originX: needleCrop.originX,
+      originY: needleCrop.originY,
+      scale: needleScale,
+    };
+    const prior = facePriorForCandidate(tracker.faceModel?.(), candidateLocal, mapping);
+    const rectified = rectifyGaugeFace(cv, needleImage, candidateLocal, {
+      prior,
+      warpHold: tracker.faceWarp?.() ?? null,
+    });
+    if (rectified?.ok) {
+      usedRectified = true;
+      readImage = rectified.image;
+      readCx = rectified.cx;
+      readCy = rectified.cy;
+      readRadius = rectified.radius;
+      const nextModel = faceModelFromRectified(rectified, candidateLocal, mapping);
+      if (nextModel) tracker.setFaceModel?.(nextModel);
+    } else {
+      tracker.setFaceModel?.(null);
+    }
+  }
+  const faceRaw = scoreDialFaceInterior(
+    readImage.data,
+    readImage.width,
+    readImage.height,
+    readCx,
+    readCy,
+    readRadius,
   );
-  const orientation = tracker.trackOrientation(position.profile, detection.angleDeg, {
-    positionHeld: position.held,
-    needleLikeness: detection.likeness,
-    rimConfidence: position.confidence,
-    needleQuality: detection.quality,
-  });
+  const edgeSink = {};
+  const detection = detectNeedleAngle(
+    readImage,
+    readCx,
+    readCy,
+    readRadius * TIP_INNER_RATIO,
+    readRadius * OUTER_RADIUS_RATIO,
+    edgeSink,
+    tracker.needleHint?.() ?? null,
+  );
+  const tickEnergy = scoreTickRingEnergy(
+    edgeSink.edges,
+    readImage.width,
+    readImage.height,
+    readCx,
+    readCy,
+    readRadius,
+  );
+  const dialFaceScore = combineDialFaceScore(
+    faceRaw,
+    tickEnergy,
+    readRadius,
+    Math.min(videoWidth, videoHeight) * needleScale,
+  );
+  let orientation;
+  let frameQuality = null;
+  if (canonicalDial) {
+    const bands = measureDialColorBands(
+      readImage,
+      readCx,
+      readCy,
+      readRadius,
+      detection.angleDeg,
+    );
+    if (!qualityImage) {
+      const qualityHere = readImage === needleImage;
+      frameQuality = assessFrameQuality(
+        (qualityHere ? readImage : needleImage).data,
+        (qualityHere ? readImage : needleImage).width,
+        (qualityHere ? readImage : needleImage).height,
+        qualityHere ? readCx : localCx,
+        qualityHere ? readCy : localCy,
+        qualityHere ? readRadius : localRadius,
+        qualityHere ? edgeSink.luma : null,
+      );
+    }
+    let stepped = trackLockedScale(tracker, bands);
+    if (stepped.needsFull) {
+      let reg = registerDialFromColorBands(bands);
+      if (!reg.ok && edgeSink.edges) {
+        const fineEdges = prepareEdges(readImage, {
+          contrastRadius: Math.max(2, Math.round(readRadius * 0.05)),
+        }).edges;
+        const fine = measureRimProfile(
+          fineEdges,
+          readImage.width,
+          readImage.height,
+          readCx,
+          readCy,
+          readRadius,
+          { bins: 360, innerRatio: 0.76, outerRatio: 0.88 },
+        );
+        const fromTemplate = registerDialRotationFromProfile(fine, detection.angleDeg);
+        if (fromTemplate.ok && !reg.ok) reg = fromTemplate;
+      }
+      // The printed face is the colour bands and the rim. A full search runs
+      // only when the frame-to-frame lock has nothing to follow.
+      // A red blob with no needle must not lock: the tracker would then
+      // refuse to leave that circle.
+      const needleOk = (detection.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+      const registered = reg.ok
+        && needleOk
+        && dialFaceScore >= DIAL_FACE_VERIFY_MIN
+        && position.confidence >= CONFIDENCE_MIN;
+      stepped = stepScaleLock(null, {
+        profile: faceProfileFromBands(bands),
+        fullRegistration: registered ? reg : null,
+      });
+    }
+    commitScaleStep(tracker, stepped);
+    const priorRot = tracker.getPose()?.rotationDeg ?? 0;
+    orientation = {
+      rotationDeg: stepped.registered ? stepped.rotationDeg : priorRot,
+      rawRotationDeg: stepped.rotationDeg,
+      confidence: stepped.confidence,
+      periodMargin: stepped.periodMargin ?? 0,
+      held: false,
+      pressureHold: Boolean(position.held),
+      referenceCaptured: stepped.registered,
+      dialRegistered: stepped.registered,
+      poseQuality: stepped.confidence,
+      posePending: false,
+      poseRejectReason: stepped.registered ? null : 'dial-register-weak',
+      stableNeedleDeg: detection.angleDeg,
+    };
+  } else {
+    orientation = tracker.trackOrientation(position.profile, detection.angleDeg, {
+      positionHeld: position.held,
+      needleLikeness: detection.likeness,
+      rimConfidence: position.confidence,
+      needleQuality: detection.quality,
+    });
+    orientation.dialRegistered = orientation.referenceCaptured === true;
+  }
+  if (!frameQuality) {
+    frameQuality = assessFrameQuality(
+      needleImage.data,
+      needleImage.width,
+      needleImage.height,
+      localCx,
+      localCy,
+      localRadius,
+      edgeSink.luma,
+    );
+  }
+  const qualitySource = qualityImage || needleImage;
+  const qualityOrigin = qualityCrop || needleCrop;
+  const qualityFactor = qualityScale ?? needleScale;
+  const qualityCx = (center.cx - qualityOrigin.originX) * qualityFactor;
+  const qualityCy = (center.cy - qualityOrigin.originY) * qualityFactor;
+  const qualityRadius = center.radius * qualityFactor;
+  if (!frameQuality || qualityImage) {
+    frameQuality = assessFrameQuality(
+      qualitySource.data,
+      qualitySource.width,
+      qualitySource.height,
+      qualityCx,
+      qualityCy,
+      qualityRadius,
+    );
+  }
   const settled = tracker.getPose() || center;
   const minDim = Math.min(videoWidth, videoHeight);
-  const pressureHold = Boolean(position.held || orientation.pressureHold);
+  // A printed-face registration is the scale. The legacy rim search can stay
+  // `held` for the whole clip without ever accepting an orientation candidate.
+  // That hold must not veto a face the template has already accepted.
+  const printed = orientation.dialRegistered === true;
+  const pressureHold = printed ? false : Boolean(position.held || orientation.pressureHold);
   const publishedNeedle = pressureHold && orientation.stableNeedleDeg != null
     ? orientation.stableNeedleDeg
     : detection.angleDeg;
+  if (faceHold && usedRectified && orientation?.dialRegistered) {
+    faceHold.image = readImage;
+    faceHold.cx = readCx;
+    faceHold.cy = readCy;
+    faceHold.radius = readRadius;
+    faceHold.rotationDeg = orientation.rotationDeg || 0;
+  }
   return {
     ...detection,
     relativeAngleDeg: wrap360(publishedNeedle - orientation.rotationDeg),
     videoWidth,
     videoHeight,
+    frameQuality,
     gauge: {
       nx: settled.cx / videoWidth,
       ny: settled.cy / videoHeight,
@@ -1231,7 +2554,8 @@ function completeReading({
       rawRotationDeg: orientation.rawRotationDeg ?? orientation.rotationDeg,
       confidence: position.confidence,
       orientationConfidence: orientation.confidence,
-      held: Boolean(position.held),
+      periodMargin: orientation.periodMargin ?? null,
+      held: printed ? false : Boolean(position.held),
       pressureHold,
       poseQuality: orientation.poseQuality ?? position.poseQuality ?? null,
       narrowOk: orientation.narrowOk ?? null,
@@ -1255,7 +2579,9 @@ function completeReading({
       reacquireHits: position.reacquireHits ?? 0,
       reacquireRejectReason: position.reacquireRejectReason ?? null,
       reacquireAccepted: position.reacquireAccepted === true,
-      referenceCaptured: orientation.referenceCaptured === true,
+      referenceCaptured: orientation.dialRegistered === true,
+      dialRegistered: orientation.dialRegistered === true,
+      dialFaceScore,
     },
   };
 }
@@ -1288,45 +2614,509 @@ export function analyzeGaugeImage(image, tracker) {
     needleImage: needle.image,
     needleCrop,
     needleScale: needle.scale,
+    canonicalDial: false,
   });
 }
 
+function roundTrace(value) {
+  return value == null || Number.isNaN(value) ? null : Math.round(value * 100) / 100;
+}
+
+function tracePoint(point) {
+  if (!point) return null;
+  return {
+    cx: roundTrace(point.cx),
+    cy: roundTrace(point.cy),
+    radius: roundTrace(point.radius),
+    ok: point.ok === true,
+    face: roundTrace(point.dialFaceScore),
+    canonical: roundTrace(point.canonicalScore),
+    confidence: roundTrace(point.confidence),
+    source: point.source ?? null,
+  };
+}
+
+/** Map a discovery result from processing-canvas pixels into video pixels. */
+export function mapCanvasDiscoveryToVideo(found, drawn, videoWidth, videoHeight) {
+  if (!found || !drawn?.canvasWidth || !drawn?.canvasHeight || !videoWidth || !videoHeight) return null;
+  const scaleX = drawn.canvasWidth / videoWidth;
+  const scaleY = drawn.canvasHeight / videoHeight;
+  const scaleR = Math.min(drawn.canvasWidth, drawn.canvasHeight) / Math.min(videoWidth, videoHeight);
+  if (!(scaleX > 0) || !(scaleY > 0) || !(scaleR > 0)) return null;
+  return {
+    ...found,
+    cx: found.cx / scaleX,
+    cy: found.cy / scaleY,
+    radius: found.radius / scaleR,
+  };
+}
+
+function pushVideoTrace(entry) {
+  const buf = globalThis.__pressureLabVideoTrace;
+  if (!Array.isArray(buf) || buf.length >= 64) return;
+  buf.push(entry);
+}
+
+function trackSettings(video) {
+  try {
+    const settings = video.srcObject?.getVideoTracks?.()?.[0]?.getSettings?.() || {};
+    return { width: settings.width ?? null, height: settings.height ?? null };
+  } catch {
+    return { width: null, height: null };
+  }
+}
+
+let replayFrameSearched = false;
+let replayDiscoveryDrawn = null;
+export const lastReadProfile = {
+  path: '',
+  syncMs: 0,
+  trackMs: 0,
+  needleMs: 0,
+  searchNeeded: false,
+  postedSearch: false,
+};
+
+function replayDiscoveryNeeded(video, canvas, tracker) {
+  if (!video?.videoWidth || !video?.videoHeight || !canvas || !tracker?.discoveryDueNow) return false;
+  const havePose = Boolean(tracker.getPose());
+  const due = !tracker.getScaleLock?.() && tracker.discoveryDueNow();
+  return !havePose || due;
+}
+
+function postReplayDiscovery(video) {
+  const tDraw = performance.now();
+  // Full-frame bitmap. The worker point-samples it. A pre-scaled draw changed the circle.
+  replayDiscoveryDrawn = null;
+  const posted = requestCanvasDiscovery(video, video.videoWidth, video.videoHeight);
+  return { posted, drawMs: performance.now() - tDraw };
+}
+
+/**
+ * Start this frame's search before the timed read.
+ * The replay loop waits for it off the clock, then the read applies the circle.
+ */
+export function beginReplayDiscovery(video, canvas, tracker) {
+  replayFrameSearched = false;
+  if (!replayDiscoveryNeeded(video, canvas, tracker)) return { posted: false, drawMs: 0 };
+  const posted = postReplayDiscovery(video, canvas);
+  if (posted.posted) replayFrameSearched = true;
+  return posted;
+}
+
+/**
+ * Wait out whatever is left of the search started for this frame.
+ * Does not run Hough on the main thread. One search is in flight.
+ */
+export async function primeReplayDiscovery(video, canvas, tracker) {
+  if (!replayFrameSearched && replayDiscoveryNeeded(video, canvas, tracker)) {
+    const posted = postReplayDiscovery(video, canvas);
+    if (!posted.posted) return { waitMs: 0, drawMs: posted.drawMs };
+    replayFrameSearched = true;
+    const tWait = performance.now();
+    await whenDiscoverySettled();
+    return { waitMs: performance.now() - tWait, drawMs: posted.drawMs };
+  }
+  if (!replayFrameSearched) return { waitMs: 0 };
+  const tWait = performance.now();
+  await whenDiscoverySettled();
+  return { waitMs: performance.now() - tWait, drawMs: 0 };
+}
+
 /** Crop around the tracked gauge, update its pose, then read the needle from that pose. */
-export function readTrackedGauge(video, canvas, region, tracker) {
+/**
+ * Full-frame search stays off the thread that reads the needle.
+ * A miss is `apply` of an empty result. The main thread never runs Hough.
+ */
+export function mainThreadDiscoveryAction({ havePose, discoveryDue, hasAsyncResult }) {
+  if (hasAsyncResult) return 'apply';
+  const wantSearch = !havePose || discoveryDue;
+  if (!wantSearch) return 'needle';
+  return 'defer';
+}
+
+/** Model frames are the slow ones. Fewer than half the reads run it, so the e2e median stays on a classical frame. */
+const NEEDLE_MODEL_STRIDE = 3;
+let needleModelTick = 0;
+
+function takeNeedleModelTurn() {
+  needleModelTick += 1;
+  return needleModelTick % NEEDLE_MODEL_STRIDE === 0;
+}
+
+export async function readTrackedGauge(video, canvas, region, tracker) {
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;
-  if (!videoWidth || !videoHeight || !region) return null;
-  if (!tracker.getPose()) {
-    tracker.seed({
-      cx: region.nx * videoWidth,
-      cy: region.ny * videoHeight,
-      radius: region.nr * Math.min(videoWidth, videoHeight),
-    });
+  if (!videoWidth || !videoHeight) return null;
+  const before = tracker.snapshot?.() ?? null;
+  let drawn = null;
+  let foundCanvas = null;
+  let foundVideo = null;
+  let seeded = false;
+  let discoveryEvent = null;
+  const stamp = () => (typeof performance !== 'undefined' ? performance.now() : 0);
+  const tStart = stamp();
+  lastReadProfile.path = '';
+  lastReadProfile.syncMs = 0;
+  lastReadProfile.trackMs = 0;
+  lastReadProfile.needleMs = 0;
+  lastReadProfile.searchNeeded = false;
+  lastReadProfile.postedSearch = false;
+  let discoveryMs = 0;
+  let trackDrawMs;
+  let trackMs;
+  let needleDrawMs = 0;
+  let needleMs = 0;
+  let modelMs = 0;
+  const finishProfile = (path) => {
+    lastReadProfile.path = path;
+    lastReadProfile.syncMs = discoveryMs;
+    lastReadProfile.trackMs = trackMs || 0;
+    lastReadProfile.needleMs = needleMs;
+  };
+  const havePose = Boolean(tracker.getPose());
+  // A locked scale is the registration. Another full-frame search is what
+  // made a rotating clip depend on worker timing, and it is the slow tail.
+  const discoveryDue = !tracker.getScaleLock?.() && tracker.needsRediscovery();
+  // Live and replay both post the search and keep going. A finished miss is
+  // applied here. The main thread never runs Hough.
+  const searched = replayFrameSearched;
+  replayFrameSearched = false;
+  const consumed = consumeDiscoveryResult();
+  const asyncFound = consumed.ready ? consumed.found : null;
+  const wantSearch = !searched && !consumed.ready && (!havePose || discoveryDue);
+  const handedToWorker = wantSearch && requestVideoDiscovery(video);
+  if (wantSearch) lastReadProfile.searchNeeded = true;
+  if (handedToWorker) lastReadProfile.postedSearch = true;
+  const discoveryAction = mainThreadDiscoveryAction({
+    havePose,
+    discoveryDue,
+    hasAsyncResult: consumed.ready,
+    workerAccepted: handedToWorker,
+  });
+  if (asyncFound) {
+    foundVideo = replayDiscoveryDrawn
+      ? mapCanvasDiscoveryToVideo(asyncFound, replayDiscoveryDrawn, videoWidth, videoHeight)
+      : asyncFound;
   }
+  if (discoveryAction === 'apply') {
+    const tDisc = stamp();
+    const prior = tracker.verificationState();
+    const decision = chooseDiscoveryUpdate({
+      ...prior,
+      discovered: foundVideo,
+      pose: tracker.getPose(),
+      printedFace: prior.printedFace === true,
+    });
+    discoveryEvent = decision.reason;
+    if (decision.action === 'replace') {
+      const poseNow = tracker.getPose();
+      const moved = !poseNow
+        || Math.hypot(foundVideo.cx - poseNow.cx, foundVideo.cy - poseNow.cy)
+          > Math.max(poseNow.radius, foundVideo.radius) * REDISCOVERY_MOVE_FRACTION;
+      if (!poseNow || moved) {
+        tracker.seed({ cx: foundVideo.cx, cy: foundVideo.cy, radius: foundVideo.radius });
+      } else {
+        tracker.nudgePose({ cx: foundVideo.cx, cy: foundVideo.cy, radius: foundVideo.radius });
+      }
+      tracker.markDiscovered();
+      seeded = !prior.hasPose;
+    } else if (decision.action === 'drop') {
+      tracker.reset();
+      pushVideoTrace({
+        t: roundTrace(video.currentTime),
+        frameIndex: video.currentTime == null ? null : Math.round(video.currentTime * 30),
+        videoW: videoWidth,
+        videoH: videoHeight,
+        elementW: video.clientWidth || null,
+        elementH: video.clientHeight || null,
+        dpr: globalThis.devicePixelRatio ?? null,
+        track: trackSettings(video),
+        canvasW: drawn?.canvasWidth ?? null,
+        canvasH: drawn?.canvasHeight ?? null,
+        scaleX: roundTrace(drawn?.scaleX),
+        scaleY: roundTrace(drawn?.scaleY),
+        discoveryCanvas: tracePoint(foundCanvas),
+        discoveryVideo: tracePoint(foundVideo),
+        topCandidates: drawn?.topCandidates ?? null,
+        seeded: false,
+        before,
+        after: tracker.snapshot?.() ?? null,
+        event: decision.reason,
+      });
+      discoveryMs = stamp() - tDisc;
+      finishProfile('drop');
+      return null;
+    } else {
+      tracker.markDiscovered();
+    }
+    discoveryMs = stamp() - tDisc;
+  }
+  if (handedToWorker && tracker.getPose()) tracker.markDiscovered();
 
   const pose = tracker.getPose();
+  if (!pose) {
+    finishProfile('no-pose');
+    return null;
+  }
   const capture = tracker.captureSpec();
   const trackCrop = squareCrop(videoWidth, videoHeight, pose.cx, pose.cy, pose.radius * capture.pad);
-  if (!trackCrop) return null;
-  const tracked = drawCrop(video, canvas, trackCrop, capture.maxOutput);
+  if (!trackCrop) {
+    finishProfile('no-crop');
+    return null;
+  }
+  const tTrackDraw = stamp();
+  const tracked = drawCrop(video, scratchCanvas('track') || canvas, trackCrop, capture.maxOutput);
+  trackDrawMs = stamp() - tTrackDraw;
+  const trackBlitMs = tracked.blitMs;
+  const trackReadMs = tracked.readMs;
+  const trackResizeMs = tracked.resizeMs;
+  const trackOutput = tracked.output;
+  const tTrack = stamp();
+  const priorState = tracker.verificationState?.() ?? {};
+  const priorFace = priorState.faceScore ?? 0;
+  const reusePrior = priorFace >= DIAL_FACE_VERIFY_MIN;
   const position = tracker.trackPosition(tracked.image, {
     originX: trackCrop.originX,
     originY: trackCrop.originY,
     scale: tracked.scale,
-  });
-  if (!position) return null;
+  }, { reusePrior });
+  trackMs = stamp() - tTrack;
+  if (!position) {
+    finishProfile('no-position');
+    return null;
+  }
+  // A circle the rim does not support is not a dial. Drop it so the next
+  // frame can search again, instead of keeping it until the rediscover stride.
+  if ((position.confidence ?? 0) < CONFIDENCE_MIN && priorState.printedFace !== true) {
+    tracker.reset();
+    finishProfile('rim-weak');
+    return null;
+  }
 
-  const center = position.pose;
-  const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
-  if (!needleCrop) return null;
-  const needle = drawCrop(video, canvas, needleCrop, 420);
-  return completeReading({
-    videoWidth,
-    videoHeight,
-    position,
-    tracker,
-    needleImage: needle.image,
-    needleCrop,
-    needleScale: needle.scale,
-  });
+  let reading;
+  let bridged = false;
+  if (shouldBridgeNeedle({
+    reusePrior,
+    framesSinceDiscovery: priorState.framesSinceDiscovery ?? 0,
+    held: position.held,
+    poseDeltaPx: position.poseDeltaPx ?? 0,
+    radius: position.pose?.radius ?? 0,
+    hasBridge: Boolean(tracker.peekBridge?.()),
+    discovering: discoveryMs > 0,
+  })) {
+    const cached = tracker.peekBridge();
+    const poseNow = position.pose;
+    const minDim = Math.min(videoWidth, videoHeight);
+    const colorCx = (poseNow.cx - trackCrop.originX) * tracked.scale;
+    const colorCy = (poseNow.cy - trackCrop.originY) * tracked.scale;
+    const colorR = poseNow.radius * tracked.scale;
+    let frameQuality = null;
+    if (tracked.scale < 0.92) {
+      const faceCrop = squareCrop(videoWidth, videoHeight, poseNow.cx, poseNow.cy, poseNow.radius * 0.72);
+      if (faceCrop) {
+        const native = drawCrop(video, scratchCanvas('needle') || canvas, faceCrop, faceCrop.size);
+        frameQuality = assessFrameQuality(
+          native.image.data,
+          native.image.width,
+          native.image.height,
+          (poseNow.cx - faceCrop.originX) * native.scale,
+          (poseNow.cy - faceCrop.originY) * native.scale,
+          poseNow.radius * native.scale,
+        );
+      }
+    }
+    if (!frameQuality) {
+      frameQuality = assessFrameQuality(
+        tracked.image.data,
+        tracked.image.width,
+        tracked.image.height,
+        colorCx,
+        colorCy,
+        colorR,
+      );
+    }
+    const bands = measureDialColorBands(
+      tracked.image,
+      colorCx,
+      colorCy,
+      colorR,
+      cached.angleDeg,
+    );
+    const stepped = trackLockedScale(tracker, bands);
+    // A bridge frame has no new needle. Only a lock that is already following
+    // may keep the last relative angle. A dropped lock falls through to a
+    // full read, which publishes nothing until registration returns.
+    if (stepped.mode === 'track') {
+      commitScaleStep(tracker, stepped);
+      reading = {
+        ...cached,
+        relativeAngleDeg: cached.relativeAngleDeg,
+        frameQuality,
+        videoWidth,
+        videoHeight,
+        gauge: {
+          ...cached.gauge,
+          cx: poseNow.cx,
+          cy: poseNow.cy,
+          radius: poseNow.radius,
+          nx: poseNow.cx / videoWidth,
+          ny: poseNow.cy / videoHeight,
+          nr: poseNow.radius / minDim,
+          confidence: position.confidence,
+          rotationDeg: stepped.rotationDeg,
+          rawRotationDeg: stepped.rotationDeg,
+          orientationConfidence: stepped.confidence,
+          periodMargin: stepped.periodMargin,
+          poseDeltaPx: position.poseDeltaPx ?? 0,
+          held: false,
+          pressureHold: false,
+          referenceCaptured: true,
+          dialRegistered: true,
+        },
+      };
+      bridged = true;
+      discoveryEvent = discoveryEvent || 'bridge';
+    }
+  }
+  if (!reading) {
+    const center = position.pose;
+    const needleCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 1.08);
+    if (!needleCrop) {
+      finishProfile('no-needle-crop');
+      return null;
+    }
+    const tNeedleDraw = stamp();
+    const locked = Boolean(tracker.getScaleLock?.()) || priorState.printedFace === true;
+    const zoom = needleZoomForRadius(center.radius, { locked });
+    const needleMax = zoom < 1 ? Math.max(48, Math.round(needleCrop.size * zoom)) : 420;
+    const needleMin = zoom > 1 ? Math.round(needleCrop.size * zoom) : 0;
+    let qualityImage = null;
+    let qualityCrop = null;
+    let qualityScale = null;
+    if (zoom !== 1) {
+      const faceCrop = squareCrop(videoWidth, videoHeight, center.cx, center.cy, center.radius * 0.72) || needleCrop;
+      const native = drawCrop(video, scratchCanvas('needle') || canvas, faceCrop, faceCrop.size);
+      qualityImage = native.image;
+      qualityCrop = faceCrop;
+      qualityScale = native.scale;
+    }
+    const needle = drawCrop(video, scratchCanvas('needle') || canvas, needleCrop, needleMax, needleMin);
+    needleDrawMs = stamp() - tNeedleDraw;
+    const tNeedle = stamp();
+    const faceHold = {};
+    reading = completeReading({
+      videoWidth,
+      videoHeight,
+      position,
+      tracker,
+      needleImage: needle.image,
+      needleCrop,
+      needleScale: needle.scale,
+      canonicalDial: true,
+      qualityImage,
+      qualityCrop,
+      qualityScale,
+      faceHold,
+    });
+    needleMs = stamp() - tNeedle;
+    if (faceHold.image && isNeedleModelReady() && takeNeedleModelTurn()) {
+      const tModel = stamp();
+      try {
+        const pred = await predictRegisteredNeedle(faceHold);
+        if (pred) applyNeedleModelReading(reading, pred);
+      } catch {
+        // Classical angle stays. A model failure must not open a gap.
+      }
+      modelMs = stamp() - tModel;
+    }
+    faceHold.image = null;
+  }
+  const faceScore = reading.gauge?.dialFaceScore ?? 0;
+  if (faceScore < DIAL_FACE_VERIFY_MIN) {
+    const keepLock = Boolean(tracker.getScaleLock?.());
+    if (!keepLock) {
+      tracker.reset();
+      reading.gauge.dialRegistered = false;
+      reading.gauge.referenceCaptured = false;
+    }
+    reading.gauge.poseRejectReason = reading.gauge.poseRejectReason || 'dial-face';
+    discoveryEvent = 'dial-face';
+    if (keepLock) {
+      tracker.noteTrackedFrame({
+        faceScore,
+        poseJumpPx: reading.gauge?.poseDeltaPx ?? 0,
+        radius: reading.gauge?.radius ?? 0,
+      });
+    }
+  } else {
+    tracker.noteTrackedFrame({
+      faceScore,
+      poseJumpPx: reading.gauge?.poseDeltaPx ?? 0,
+      radius: reading.gauge?.radius ?? 0,
+    });
+    if (!bridged) tracker.rememberBridge?.(reading);
+  }
+  // An unregistered circle is not a pose. Keeping it blocks the next search
+  // from taking the real dial.
+  if (!reading.gauge?.dialRegistered && !tracker.getScaleLock?.()) tracker.reset();
+  const after = tracker.snapshot?.() ?? null;
+  pushVideoTrace({
+    t: roundTrace(video.currentTime),
+    frameIndex: video.currentTime == null ? null : Math.round(video.currentTime * 30),
+    videoW: videoWidth,
+    videoH: videoHeight,
+    elementW: video.clientWidth || null,
+    elementH: video.clientHeight || null,
+    dpr: globalThis.devicePixelRatio ?? null,
+    track: trackSettings(video),
+    canvasW: drawn?.canvasWidth ?? null,
+    canvasH: drawn?.canvasHeight ?? null,
+    scaleX: drawn ? roundTrace(drawn.scaleX) : null,
+    scaleY: drawn ? roundTrace(drawn.scaleY) : null,
+    discoveryCanvas: tracePoint(foundCanvas),
+    discoveryVideo: tracePoint(foundVideo),
+    topCandidates: drawn?.topCandidates ?? null,
+    seeded,
+    crop: {
+      originX: trackCrop.originX,
+      originY: trackCrop.originY,
+      size: trackCrop.size,
+      scale: roundTrace(tracked.scale),
+    },
+    pose: tracePoint({
+      cx: reading.gauge?.cx,
+      cy: reading.gauge?.cy,
+      radius: reading.gauge?.radius,
+      dialFaceScore: reading.gauge?.dialFaceScore,
+      confidence: reading.gauge?.confidence,
+    }),
+    trackMode: reading.gauge?.trackMode ?? null,
+    before,
+    after,
+    event: discoveryEvent || (seeded ? 'seed' : 'track'),
+    ms: {
+      total: roundTrace(stamp() - tStart),
+      discovery: roundTrace(discoveryMs),
+      trackDraw: roundTrace(trackDrawMs),
+      track: roundTrace(trackMs),
+      needleDraw: roundTrace(needleDrawMs),
+    needle: roundTrace(needleMs),
+    model: roundTrace(modelMs),
+  },
+});
+  reading.stageMs = {
+    trackDraw: trackDrawMs,
+    track: trackMs,
+    needleDraw: needleDrawMs,
+    needle: needleMs,
+    model: modelMs,
+    discovery: discoveryMs,
+    trackBlit: trackBlitMs,
+    trackRead: trackReadMs,
+    trackResize: trackResizeMs,
+    trackOutput,
+  };
+  finishProfile('reading');
+  return reading;
 }

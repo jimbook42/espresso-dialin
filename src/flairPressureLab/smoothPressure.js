@@ -8,6 +8,7 @@ import {
   wrap360,
   wrapDelta,
 } from './gaugeConfig.js';
+import { HUB_CONNECTION_MIN } from './needleFromFrame.js';
 
 export function circularMedian(angles) {
   if (!angles?.length) return null;
@@ -41,6 +42,9 @@ function needleEvidence(meta) {
  * needle: tracking score and ridge likeness. A larger step needs that same
  * evidence on confirmCount agreeing frames. A strong ray may keep moving in
  * one direction; a weak or one-sided ray is held and cannot walk.
+ * A ray that does not reach the pivot is not the needle. It does not seed
+ * or drag the smoothed angle, so the next connected reading is not blended
+ * with a face streak.
  * There is no hard travel limit. A gap, or a pose snap, clears the candidate.
  */
 export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 0.45 } = {}) {
@@ -62,6 +66,8 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 
     },
     push(raw, meta) {
       if (raw == null || Number.isNaN(raw)) return hold('gap');
+      const hub = meta && typeof meta === 'object' ? meta.hub : null;
+      if (hub != null && hub < HUB_CONNECTION_MIN) return hold('hub');
       const evidence = needleEvidence(meta);
       if (angle == null) {
         angle = raw;
@@ -100,6 +106,107 @@ export function createAngleTracker({ maxJumpDeg = 24, confirmCount = 3, alpha = 
         return { angle, accepted: true, pendingHits: hits, heldReason: null };
       }
       return { angle, accepted: false, pendingHits, heldReason: 'jump-unconfirmed' };
+    },
+  };
+}
+
+/** A coast longer than this is a gap, not a reading. About one second. */
+export const NEEDLE_COAST_MAX_MS = 1000;
+const COAST_VELOCITY_TAU_S = 0.2;
+const SOFT_INNOVATION_DEG = 18;
+
+/**
+ * Constant-velocity needle angle.
+ * A confident measurement moves the state. A blurry measurement moves it
+ * only when it already agrees, and only a little. A disagreement or a long
+ * gap clears the output instead of walking into a confident-wrong bar.
+ * Coasting is marked predicted so the caller can keep confidence low.
+ */
+export function createNeedleKalman({
+  maxGapMs = NEEDLE_COAST_MAX_MS,
+  maxInnovationDeg = 16,
+  gain = 0.22,
+} = {}) {
+  let angle = null;
+  let velocity = 0;
+  let lastT = null;
+  let lastUpdateT = null;
+
+  const clear = () => {
+    angle = null;
+    velocity = 0;
+    lastT = null;
+    lastUpdateT = null;
+  };
+
+  const integrate = (now, decay) => {
+    const dt = lastT == null ? 0 : Math.max(0, (now - lastT) / 1000);
+    lastT = now;
+    if (decay) velocity *= Math.exp(-dt / COAST_VELOCITY_TAU_S);
+    angle = wrap360(angle + velocity * dt);
+    return dt;
+  };
+
+  const coast = (now) => {
+    if (angle == null || lastUpdateT == null || now == null) {
+      return { angle: null, predicted: false, gap: true, lowConfidence: true };
+    }
+    if (now - lastUpdateT > maxGapMs) {
+      clear();
+      return { angle: null, predicted: false, gap: true, lowConfidence: true };
+    }
+    integrate(now, true);
+    return { angle, predicted: true, gap: false, lowConfidence: true };
+  };
+
+  return {
+    reset() {
+      clear();
+    },
+    push(raw, now, { confidence = 1, accept = true, soft = false, extend = true } = {}) {
+      if (raw == null || now == null || Number.isNaN(raw)) return coast(now ?? lastT);
+      if (angle == null) {
+        if (!accept && !soft) return { angle: null, predicted: false, gap: true, lowConfidence: true };
+        angle = wrap360(raw);
+        velocity = 0;
+        lastT = now;
+        lastUpdateT = now;
+        return {
+          angle,
+          predicted: !accept,
+          gap: false,
+          lowConfidence: !accept,
+        };
+      }
+      const hiddenTooLong = extend === false
+        && lastUpdateT != null
+        && now - lastUpdateT > maxGapMs;
+      if (hiddenTooLong) {
+        clear();
+        return { angle: null, predicted: false, gap: true, lowConfidence: true };
+      }
+      const dt = Math.max(0.001, (now - (lastT ?? now)) / 1000);
+      const predictedAngle = wrap360(angle + velocity * dt);
+      const innovation = wrapDelta(predictedAngle, raw);
+      const big = Math.abs(innovation) > maxInnovationDeg;
+      const softAgree = soft && !accept && Math.abs(innovation) <= SOFT_INNOVATION_DEG;
+      if (softAgree) {
+        // The blurry needle is still on the last angle. A real sighting
+        // extends the gap. Glare does not: a hidden needle becomes a gap
+        // about a second after the last good reading.
+        lastT = now;
+        if (extend !== false) lastUpdateT = now;
+        velocity *= 0.5;
+        return { angle, predicted: true, gap: false, lowConfidence: true };
+      }
+      if (!accept) return coast(now);
+      if (big && confidence < 0.18) return coast(now);
+      const next = wrap360(predictedAngle + gain * innovation);
+      velocity = Math.max(-120, Math.min(120, wrapDelta(angle, next) / dt));
+      angle = next;
+      lastT = now;
+      lastUpdateT = now;
+      return { angle, predicted: false, gap: false, lowConfidence: false };
     },
   };
 }

@@ -1,0 +1,172 @@
+# Video path — clip 20261015_225219, frame index 9 (t ≈ 0.31 s)
+
+Replay build only. Numbers are from the live `#/flair-pressure-lab` pipeline on the Y4M fake camera, compared with `debug-candidates.mjs` on the ffmpeg frame at the same index. No image was stored or sent; the trace is centres, radii, and scores.
+
+## What is not the bug
+
+| Check | Live value |
+| --- | --- |
+| `video.videoWidth` × `video.videoHeight` | 406 × 720 |
+| `track.getSettings()` | 406 × 720 |
+| `devicePixelRatio` | 1 |
+| Preview element CSS box | 333 × 444 (layout only) |
+| Rotation | none |
+
+`drawImage(video)` uses the video frame, not the CSS box. The bitmap is not letterboxed or stretched. The file, the capture track, and `videoWidth`/`videoHeight` are the same 406 × 720 frame.
+
+## Where coordinates diverged
+
+`readTrackedGauge` drew the video into a processing canvas whose short side was 280 (scale 0.69, canvas 280 × 497), then ran `discoverGaugeInFrame`. That function returns centres in the **input image**, which was the canvas, not the video. The tracker was seeded with those canvas pixels as if they were video pixels, and discovery did not run again.
+
+On that first live frame:
+
+| Space | Centre | Radius |
+| --- | ---: | ---: |
+| Discovery in the 280 × 497 canvas | (89.2, 345.9) | 60.0 |
+| Same point mapped back to 406 × 720 | (129.3, 501.0) | 87.0 |
+| Value actually seeded | (89.2, 345.9) | 60.0 |
+| `debug-candidates.mjs` on extracted frame 10 (full 406 × 720) | (231.7, 354.5) | 51.2 |
+
+The seeded pose never moved (tracker stayed in `searching` on that circle). That is the PM lock near x ≈ 85–90. It is the unmapped canvas coordinate, not a second detector and not a centre-of-frame default.
+
+The 280px bilinear shrink also changed the winner. Probing the same live pixels at full resolution ranks the dial first. The 280px image often ranked a different circle (lamp / body) first, so mapping the 280px result back to video pixels would still have been the wrong object.
+
+## Second miss on the full frame
+
+After drawing the full 406 × 720 frame (scale 1), the live top candidate is the dial but its canonical score sits just under the 0.28 gate:
+
+| Candidate | Centre | Radius | Rank | Canonical | Verified |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Dial (best rank) | (235.4, 350.8) | 56.1 | 18.15 | 0.27 | no |
+| Weaker circle | (71.6, 393.6) | 18.0 | 13.27 | 0.32 | yes |
+
+The old picker kept any verified circle, so the weaker one was seeded. Still-frame discovery on the extracted frame ranks the same dial first and, on that decode, clears the gate (canonical 0.286, centre (237.3, 347.0), radius 55.8). The live score flickers around 0.25–0.29 from frame to frame. The dial stays rank 1.
+
+## Fix
+
+- Discovery runs on the full video frame. `discoverGaugeInFrame` still downscales internally and returns coordinates in that frame. `mapCanvasDiscoveryToVideo` maps them into video pixels (identity when the canvas is the video).
+- A weaker verified circle cannot replace a clearly stronger circle (rank at least 1.25×) that is close to the canonical gate (at least 90% of the minimum) and already passes the dial-face score. Otherwise the frame is skipped and discovery tries again.
+- When OpenCV is loaded, a rejected frame does not fall through to the grid search.
+- Minimum discovery radius is 3% of the short side (was 5.5%). Maximum stays 50%.
+
+After the fix, the same clip seeds (235.4, 350.8) radius 56.1 and the tracker holds about x 232–236, y 349–351, dial-face score about 0.38–0.41. That matches the still-frame dial within a few pixels.
+
+## Phone speed
+
+Locked frames confirm the rim at the current pose instead of searching the whole window, and two of every three of those frames reuse the last needle reading. Discovery stays on the full video frame, only when the pose is due for a re-check, and a farther circle does not replace a pose that still verifies.
+
+Measured on `20261015_225219` (CDP `Emulation.setCPUThrottlingRate` 4). The centre stayed on the dial (x 232–237, y 345–354) for all 184 frames.
+
+| | Median | p95 |
+| --- | ---: | ---: |
+| Normal | 3.9 ms | 48.6 ms |
+| 4× CPU | 14.4 ms | 198.5 ms |
+
+The 4× median is under the 33 ms target. The p95 is a full-frame re-detect.
+
+## Needle to bar
+
+On a frame whose pose is the dial (centre about 237, 351, radius about 52), the long dark stroke is at about 320° in image space (0° is to the right, angles increase clockwise because y grows downward). That stroke runs from near the hub out to the bezel, so it is the pointer, not a tick. The short opposite end, near 140°, is only dark next to the hub: that is the tail.
+
+Printed-scale registration on the same pose returned rotation 260° at correlation 0.375, period margin 0.032. Relative angle = 320° − 260° = 60°. `angleToBar` maps 60° through the canonical zero at 225° and the 270° sweep to about 8.7 bar. The rotation that would put this pointer on the canonical zero (about 95°) has correlation 0. The winning alignment is a slow lighting gradient sitting on the synthetic profile's heavy arc. A rival about 55° away still scores 0.34 and would move the reading by more than 2 bar.
+
+High-pass of that angular profile (subtract a 5-bin circular mean) drops the same frame to correlation 0.27 and period margin 0.04. The slow band on its own still prefers 260° (correlation 0.75, period margin 0.05) while the ticks prefer 320° and do not clear the match. Registration now requires both bands to clear and to agree within two profile bins (10°). The wide arc is what makes the rotation unique (a perfect copy of the printed profile separates from its rival by 0.27); the ticks only confirm the phase, because they repeat every 30°. A confident bar is also withheld when the current frame is not registered, so one ambiguous match is not held for the next second.
+
+Overlay of that frame, green rim and red pointer: `/tmp/632r1-overlay.png`.
+
+Discovery no longer accepts a circle by multiplying the canonical gate by 0.9. Only the top-ranked circle can be seeded, and only when it passes the full gate. A lower circle that scrapes the gate while the leader misses it is not locked. Discovery's 240px working image is the same scale on every frame so the Hough stays small; centres are scaled back to the input. Full-frame re-detect while the dial is held is every 24 tracked frames, and while it is lost every 4th tick, so a miss does not spend the whole frame budget on Hough.
+
+## Replay at b47b353
+
+Full six-clip run: `/workspace/flair-replay/out-6.32-repair3`. Privacy passed on every clip (0 external requests, 0 storage writes). `opencv.js` is 13298869 bytes raw, 3763644 bytes gzip. Annotated frames are `best.png`, `worst-error.png`, `lost-gauge.png`, and `low-confidence.png` under each clip directory. The pointer overlay for the registration diagnosis is `/tmp/632r1-overlay.png`.
+
+No frame published a bar. Confident-wrong is 0% on every clip. Gauge-found (rim ≥ 0.3 and a captured scale reference) is 0%. The printed arc is not visible enough on these frames for the arc and the ticks to agree, so the reader stays silent instead of inventing a pressure.
+
+| Clip | Pose x,y (all frames) | 4× med / p95 ms | Conf-wrong |
+| --- | --- | ---: | ---: |
+| 225219 | 366, 204 | 13.1 / 46.2 | 0 |
+| 225240 | 234–237, 351 | 15.6 / 47.8 | 0 |
+| 225254 | 232–327, 349–570 | 14.4 / 156.3 | 0 |
+| 225307 | 76–154, 412–502 | 70.5 / 91.7 | 0 |
+| 225324 | 194–243, 327–366 | 40.8 / 58.9 | 0 |
+| 225337 | 190–239, 337–356 | 42.1 / 167.6 | 0 |
+
+225240 stays on the dial for the whole clip and still publishes nothing. A separate one-clip run of 225219 sat on the dial (x 232–237, y 345–354, 4× 13.0 / 39.9 ms); the six-clip run seeded x 366, y 204 and held it. The first circle that passes the gate is kept, and that circle is not stable across runs. 225307 stays in the lower part of the frame. Blur and glare flags did not fire on 225324 or 225337 after quality moved onto the needle crop. 4× median is under 33 ms on the three clips that settle quickly. 225307, 225324, and 225337 stay above that because discovery still runs while the pose is untrusted.
+
+Compared with `out-6.32-pm` (d0cf6ac), the 3.8–11 bar confident readings are gone (that run's confident-wrong was 8.8 / 38.2 / 71.3 / 8.6 on 225240, 225254, 225324, 225337). Compared with `out-baseline` (also no readings) and `out-6.31-pm-r2` (found at the wrong place, 4× medians 50–98 ms), this run is silent and faster on the settled clips. `out-6.30-r2-cursor` reported found-percentages on clutter centres and no bars.
+
+## Printed-face registration at 7134bd2
+
+The scale angle is the centroid of the red espresso sector (5→10 bar on the unit-circle template) checked against the dark stop sector. The needle angle is the long end. A confident bar is published only after the needle has been still for half a second and that angle lies on the template's zero. Disagreement keeps the anchor in conflict, so a wrong centroid cannot publish a bar.
+
+Replay: `/workspace/flair-replay/out-6.32-repair4`. Confident-wrong is 0% on every clip. No bar was published. Privacy passed (0 external, 0 storage). The three steady clips sit on the dial (about x 230–238, y 345–353) and are found 34–64% of frames while still calibrating, because the red centroid does not put the resting pointer on the template zero. 225307 is still not on the dial. Blur and glare flags did not appear. 4× median is under 33 ms on 225219, 225240, 225254, and 225307; 225324 and 225337 are above it, and several p95 values are still over 150 ms.
+
+## Measured printed face (design photo)
+
+Offline script `scripts/pressure-replay/measure-design-dial.py` on `/workspace/flair-replay/20261015_225359.jpg`. Angles are this photo's orientation (0° to the right, clockwise, y down). The template stores them on the unit dial. The photo's pixel centre and radius are not runtime constants.
+
+| Mark | Angle |
+| --- | --- |
+| 0 bar, stop pin | 47° |
+| Needle long end at rest | 52° |
+| Numeral 5 | 132.6° |
+| Numeral 10 | 216.9° |
+| Red Espresso block | 137–197° |
+| Dark STOP! BREAKAGE! band | 258–355° |
+
+Printed scale is 0, 5, and 10. There is no printed 12 or 16. Sweep from the stop pin to the 10 is 170°. The solid red block sits at about 0.44–0.62 of the face radius. The dark band sits further out, about 0.74–0.90. Registration uses the heaviest red run so the Flair script does not move zero. A rest needle that disagrees with this zero stays a conflict and does not replace the template.
+
+## Replay at 8100677
+
+Output: `/workspace/flair-replay/out-6.33`. Compared with `out-6.32-pm-r2` (found 42–77%, no bar, confident-wrong 0, 4× p95 58–215 ms). Privacy passed on every clip (0 external requests, 0 storage writes). OpenCV.js is 13298869 bytes raw, 3763644 gzip. The rest anchor still only confirms the template; it does not replace zero.
+
+| Clip | Found % | Centre | Within ±0.5 % | First s | No-read % | Bar | Conflict med/max ° | Blur % | Glare % | Conf-wrong % | 4× med/p95 |
+| --- | ---: | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 225219 | 90.8 | x 232–237, y 345–354 | 70.1 | 0.67 | 28.8 | 0.00–0.51 | 2.7 / 9.0 | 1.1 | 0.0 | 1.1 | 19.4 / 134.9 |
+| 225240 | 82.4 | x 234–235, y 351–351 | 80.0 | 4.00 | 20.0 | 0.00–0.21 | 2.9 / 4.2 | 0.0 | 0.0 | 0.0 | 20.0 / 173.8 |
+| 225254 | 84.1 | x 232–239, y 349–352 | 77.1 | 3.07 | 22.4 | 0.00–0.57 | 3.2 / 14.0 | 13.5 | 4.1 | 0.6 | 18.9 / 194.6 |
+| 225307 | 59.8 | x 194–241, y 335–358 | 27.6 | 9.22 | 72.0 | 0.00–0.50 | 4.9 / 170.6 | 67.8 | 8.4 | 0.5 | 41.9 / 158.9 |
+| 225324 | 82.6 | x 196–238, y 328–369 | 66.3 | 0.53 | 29.2 | 0.00–0.61 | 4.9 / 43.3 | 43.3 | 0.0 | 4.5 | 78.2 / 146.0 |
+| 225337 | 54.0 | x 193–238, y 339–349 | 21.8 | 1.87 | 59.8 | 0.00–0.88 | 7.6 / 25.4 | 14.4 | 0.0 | 18.4 | 36.0 / 165.7 |
+
+Blur fires on the defocused clip. The glare clip's face is not sensor-saturated, so the glare flag stays at 0 there; the lamps sit outside the dial. 4× p95 is still above 33 ms because a full-frame search remains in the slow tail. Confident-wrong is 0 only on 225240. The other clips publish a resting needle a few tenths of a bar off the stop pin, and 225337's tail crosses 0.5 bar.
+
+## Replay at 3bbf5ea
+
+Output: `/workspace/flair-replay/out-6.33-r1f`. Privacy passed on every clip (0 external requests, 0 storage writes). OpenCV.js is 13298869 bytes raw. The rest anchor still only confirms the template zero. A ray that misses the pivot does not move the smoothed needle; its own angle is published at low confidence. A hub tie (three of six inner samples) is also low confidence. Bars are not clamped to the expected 0.
+
+Confident-wrong is 0% on all six clips. 4× p95 is 36–87 ms, still above 33 ms. Locked-pose search runs on a same-origin worker. The first search, and a search with no pose, stays on the frame that is showing.
+
+225307 was run twice back to back on 73bc1bb (the discovery change, before the hub-tie confidence gate). Both found 68.2%, centre x 195–241, y 334–357, bar 0.00–0.61, confident-wrong 0. The six-clip run at 3bbf5ea found 50.0% on that clip and did publish bars (0.00–1.01, confident-wrong 0). The fake camera's position when sampling starts still depends on how long the page takes to load, so the suite and the isolated pair are not the same frames.
+
+| Clip | Found % | Centre | Within ±0.5 % | First s | No-read % | Bar | Conflict med/max ° | Blur % | Glare % | Conf-wrong % | 4× med/p95 |
+| --- | ---: | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 225219 | 87.0 | x 232–237, y 345–354 | 61.4 | 0.53 | 38.6 | 0.00–0.37 | 3.2 / 6.5 | 0.5 | 0.0 | 0.0 | 18.8 / 36.2 |
+| 225240 | 76.5 | x 234–239, y 349–351 | 65.3 | 4.40 | 34.7 | 0.00–0.21 | 2.6 / 10.5 | 0.0 | 0.0 | 0.0 | 21.6 / 41.6 |
+| 225254 | 88.8 | x 235–237, y 351–351 | 78.8 | 3.07 | 21.2 | 0.00–0.19 | 2.4 / 18.5 | 4.1 | 4.1 | 0.0 | 19.3 / 44.9 |
+| 225307 | 50.0 | x 197–239, y 335–358 | 13.1 | 11.28 | 82.2 | 0.00–1.01 | 6.4 / 135.2 | 66.8 | 16.4 | 0.0 | 55.3 / 72.5 |
+| 225324 | 74.2 | x 194–237, y 337–364 | 32.6 | 11.20 | 61.8 | 0.00–1.16 | 4.3 / 27.2 | 33.1 | 6.2 | 0.0 | 72.4 / 86.6 |
+| 225337 | 26.4 | x 194–239, y 338–356 | 11.5 | 4.00 | 86.2 | 0.00–0.79 | 6.1 / 66.3 | 54.6 | 13.2 | 0.0 | 34.0 / 68.9 |
+
+## Replay at b69d414
+
+Output: `/workspace/flair-replay/out-6.33-r2c` and a second full suite `/workspace/flair-replay/out-6.33-r2d`. Privacy passed on every clip in both suites (0 external requests, 0 storage writes). OpenCV.js is 13298869 bytes raw. The rest anchor still only confirms the template zero. Bars are not clamped to the expected 0. A confident bar needs the printed face, a needle, a hub majority, and three readings inside the rest spread. `pressureCv.vitest.js` is 33 tests.
+
+Confident-wrong is 0% on all six clips in both suites, checked by scanning `frames.csv` (confidence ≥ 0.18 and |bar| > 0.5). 4× p95 is 36–91 ms, still above 33 ms. The main thread reads the needle ROI; full-frame search, including the first pose and a lost pose, runs on the worker and a busy worker skips the frame.
+
+225307 in the two suites found 98.6% then 86.9%. Both confident-wrong 0. The fake camera's position when sampling starts still depends on how long the page takes to load.
+
+| Suite | Clip | Found % | Within ±0.5 % | First s | No-read % | Bar | Conf-wrong % | Normal med/p95 | 4× med/p95 |
+| --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| r2c | 225219 | 98.4 | 95.1 | 0.93 | 4.4 | 0.00–0.51 | 0.0 | 4.9 / 9.2 | 19.2 / 39.4 |
+| r2c | 225240 | 98.2 | 95.9 | 0.93 | 4.1 | 0.00–0.21 | 0.0 | 5.6 / 10.6 | 23.2 / 42.2 |
+| r2c | 225254 | 98.2 | 74.0 | 0.93 | 19.5 | 0.00–0.68 | 0.0 | 5.6 / 11.4 | 22.6 / 49.1 |
+| r2c | 225307 | 98.6 | 40.4 | 5.47 | 51.2 | 0.00–1.08 | 0.0 | 7.1 / 12.3 | 28.7 / 52.9 |
+| r2c | 225324 | 96.0 | 39.5 | 0.67 | 56.5 | 0.00–1.22 | 0.0 | 9.2 / 23.3 | 35.5 / 87.7 |
+| r2c | 225337 | 73.6 | 17.2 | 0.67 | 77.6 | 0.00–1.41 | 0.0 | 17.3 / 22.5 | 43.3 / 89.3 |
+| r2d | 225219 | 98.4 | 95.1 | 0.93 | 4.4 | 0.00–0.51 | 0.0 | 4.7 / 9.0 | 18.8 / 36.1 |
+| r2d | 225240 | 98.2 | 95.9 | 0.93 | 4.1 | 0.00–0.21 | 0.0 | 5.3 / 9.7 | 22.3 / 41.3 |
+| r2d | 225254 | 97.6 | 73.4 | 1.07 | 19.5 | 0.00–0.76 | 0.0 | 5.2 / 10.3 | 19.1 / 44.1 |
+| r2d | 225307 | 86.9 | 21.6 | 6.00 | 77.0 | 0.00–0.70 | 0.0 | 7.4 / 18.9 | 33.7 / 88.6 |
+| r2d | 225324 | 95.5 | 37.1 | 0.80 | 51.7 | 0.00–1.72 | 0.0 | 10.1 / 24.6 | 29.9 / 54.1 |
+| r2d | 225337 | 75.3 | 26.4 | 0.80 | 71.3 | 0.00–1.63 | 0.0 | 18.7 / 25.5 | 46.4 / 90.8 |

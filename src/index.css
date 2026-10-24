@@ -47,6 +47,73 @@
   }
 }
 
+/* Full-screen shot timer: compact stack on short viewports when lab pressure is on only. */
+@media (max-height: 700px) {
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-profile-wrap {
+    display: none;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-header {
+    height: 3rem;
+    min-height: 3rem;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-main-time {
+    font-size: clamp(2.35rem, 15vw, 3.25rem) !important;
+    line-height: 0.92;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-mid {
+    padding-top: 0.25rem;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-total-label {
+    margin-top: 0.35rem;
+    font-size: 10px;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-footer {
+    padding-bottom: 0.75rem;
+    padding-top: 0;
+    gap: 0.5rem;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-hint {
+    font-size: 10px;
+    line-height: 1.15;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-stop-btn {
+    min-height: 3.25rem;
+    border-radius: 1rem;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-cancel-btn {
+    min-height: 2.75rem;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact [data-testid='shot-lab-pressure-readout'] {
+    margin-top: 0.25rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact [data-testid='shot-pressure-chart'] {
+    flex: 1 1 auto;
+    min-height: 4.25rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  .shot-timer-fullscreen.shot-timer-lab-compact [data-testid='shot-pressure-chart'] svg {
+    max-height: 4.75rem;
+    min-height: 3.5rem;
+  }
+}
+
 body {
   min-height: 100vh;
   margin: 0;

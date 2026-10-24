@@ -6,16 +6,56 @@
 
 export function grayscale(data, width, height) {
   const gray = new Float32Array(width * height);
-  for (let i = 0; i < gray.length; i += 1) {
+  grayscaleInto(data, width, height, gray);
+  return gray;
+}
+
+function grayscaleInto(data, width, height, gray) {
+  const n = width * height;
+  for (let i = 0; i < n; i += 1) {
     const offset = i * 4;
     gray[i] = data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114;
   }
   return gray;
 }
 
+/**
+ * 3×3 box. Interior samples use a fixed window of 3 so the edge branch
+ * stays off the hot path. Edge pixels still divide by the in-bounds count.
+ */
 export function boxBlur(src, width, height) {
   const tmp = new Float32Array(src.length);
   const out = new Float32Array(src.length);
+  boxBlurInto(src, width, height, tmp, out);
+  return out;
+}
+
+function boxBlurInto(src, width, height, tmp, out) {
+  if (width >= 3 && height >= 3) {
+    for (let y = 0; y < height; y += 1) {
+      const row = y * width;
+      const end = row + width - 1;
+      tmp[row] = (src[row] + src[row + 1]) * 0.5;
+      tmp[end] = (src[end - 1] + src[end]) * 0.5;
+      for (let i = row + 1; i < end; i += 1) tmp[i] = (src[i - 1] + src[i] + src[i + 1]) / 3;
+    }
+    out[0] = (tmp[0] + tmp[width]) * 0.5;
+    for (let x = 1; x < width - 1; x += 1) out[x] = (tmp[x] + tmp[width + x]) * 0.5;
+    out[width - 1] = (tmp[width - 1] + tmp[width + width - 1]) * 0.5;
+    const lastRow = (height - 1) * width;
+    const prevRow = (height - 2) * width;
+    out[lastRow] = (tmp[prevRow] + tmp[lastRow]) * 0.5;
+    for (let x = 1; x < width - 1; x += 1) out[lastRow + x] = (tmp[prevRow + x] + tmp[lastRow + x]) * 0.5;
+    out[lastRow + width - 1] = (tmp[prevRow + width - 1] + tmp[lastRow + width - 1]) * 0.5;
+    for (let y = 1; y < height - 1; y += 1) {
+      const row = y * width;
+      const end = row + width - 1;
+      out[row] = (tmp[row - width] + tmp[row] + tmp[row + width]) / 3;
+      out[end] = (tmp[end - width] + tmp[end] + tmp[end + width]) / 3;
+      for (let i = row + 1; i < end; i += 1) out[i] = (tmp[i - width] + tmp[i] + tmp[i + width]) / 3;
+    }
+    return out;
+  }
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       let sum = 0;
@@ -47,31 +87,63 @@ export function boxBlur(src, width, height) {
 
 /** Separable box mean. Border samples are clamped. */
 export function boxMean(src, width, height, radius) {
-  const r = Math.max(1, radius | 0);
   const tmp = new Float32Array(src.length);
   const out = new Float32Array(src.length);
+  boxMeanInto(src, width, height, radius, tmp, out);
+  return out;
+}
+
+function boxMeanInto(src, width, height, radius, tmp, out) {
+  const r = Math.max(1, radius | 0);
   const win = r * 2 + 1;
+  const xInnerEnd = width - r - 1;
   for (let y = 0; y < height; y += 1) {
     const row = y * width;
     let sum = 0;
     for (let x = -r; x <= r; x += 1) {
-      sum += src[row + Math.min(width - 1, Math.max(0, x))];
+      sum += src[row + (x < 0 ? 0 : (x >= width ? width - 1 : x))];
     }
-    for (let x = 0; x < width; x += 1) {
+    let x = 0;
+    for (; x < r && x < width; x += 1) {
       tmp[row + x] = sum / win;
-      sum -= src[row + Math.min(width - 1, Math.max(0, x - r))];
-      sum += src[row + Math.min(width - 1, Math.max(0, x + r + 1))];
+      sum -= src[row];
+      const add = x + r + 1;
+      sum += src[row + (add < width ? add : width - 1)];
+    }
+    for (; x < xInnerEnd; x += 1) {
+      tmp[row + x] = sum / win;
+      sum -= src[row + x - r];
+      sum += src[row + x + r + 1];
+    }
+    for (; x < width; x += 1) {
+      tmp[row + x] = sum / win;
+      sum -= src[row + x - r];
+      sum += src[row + width - 1];
     }
   }
+  const yInnerEnd = height - r - 1;
   for (let x = 0; x < width; x += 1) {
     let sum = 0;
     for (let y = -r; y <= r; y += 1) {
-      sum += tmp[Math.min(height - 1, Math.max(0, y)) * width + x];
+      const yy = y < 0 ? 0 : (y >= height ? height - 1 : y);
+      sum += tmp[yy * width + x];
     }
-    for (let y = 0; y < height; y += 1) {
+    let y = 0;
+    for (; y < r && y < height; y += 1) {
       out[y * width + x] = sum / win;
-      sum -= tmp[Math.min(height - 1, Math.max(0, y - r)) * width + x];
-      sum += tmp[Math.min(height - 1, Math.max(0, y + r + 1)) * width + x];
+      sum -= tmp[x];
+      const add = y + r + 1;
+      sum += tmp[(add < height ? add : height - 1) * width + x];
+    }
+    for (; y < yInnerEnd; y += 1) {
+      out[y * width + x] = sum / win;
+      sum -= tmp[(y - r) * width + x];
+      sum += tmp[(y + r + 1) * width + x];
+    }
+    for (; y < height; y += 1) {
+      out[y * width + x] = sum / win;
+      sum -= tmp[(y - r) * width + x];
+      sum += tmp[(height - 1) * width + x];
     }
   }
   return out;
@@ -85,35 +157,94 @@ export function localContrast(gray, width, height, radius) {
   return out;
 }
 
-export function sobel(gray, width, height) {
-  const mag = new Float32Array(gray.length);
-  const gx = new Float32Array(gray.length);
-  const gy = new Float32Array(gray.length);
+function sobelInto(gray, width, height, mag, gx, gy) {
+  const w = width;
   for (let y = 1; y < height - 1; y += 1) {
-    for (let x = 1; x < width - 1; x += 1) {
-      const i = y * width + x;
-      const tl = gray[i - width - 1];
-      const tc = gray[i - width];
-      const tr = gray[i - width + 1];
+    const row = y * w;
+    const end = row + w - 1;
+    for (let i = row + 1; i < end; i += 1) {
+      const tl = gray[i - w - 1];
+      const tc = gray[i - w];
+      const tr = gray[i - w + 1];
       const ml = gray[i - 1];
       const mr = gray[i + 1];
-      const bl = gray[i + width - 1];
-      const bc = gray[i + width];
-      const br = gray[i + width + 1];
-      const gxValue = -tl + tr - 2 * ml + 2 * mr - bl + br;
-      const gyValue = -tl - 2 * tc - tr + bl + 2 * bc + br;
+      const bl = gray[i + w - 1];
+      const bc = gray[i + w];
+      const br = gray[i + w + 1];
+      const gxValue = tr - tl + 2 * (mr - ml) + br - bl;
+      const gyValue = bl - tl + 2 * (bc - tc) + br - tr;
       gx[i] = gxValue;
       gy[i] = gyValue;
-      mag[i] = Math.hypot(gxValue, gyValue);
+      // Same magnitude as Math.hypot while the Sobel sums stay in a normal range.
+      mag[i] = Math.sqrt(gxValue * gxValue + gyValue * gyValue);
     }
   }
   return { mag, gx, gy };
 }
 
+export function sobel(gray, width, height) {
+  const mag = new Float32Array(gray.length);
+  const gx = new Float32Array(gray.length);
+  const gy = new Float32Array(gray.length);
+  return sobelInto(gray, width, height, mag, gx, gy);
+}
+
+function clearEdgeBorder(arr, width, height) {
+  arr.fill(0, 0, width);
+  const last = (height - 1) * width;
+  arr.fill(0, last, last + width);
+  for (let y = 1; y < height - 1; y += 1) {
+    const row = y * width;
+    arr[row] = 0;
+    arr[row + width - 1] = 0;
+  }
+}
+
+const edgeSlots = new Map();
+
+function takeEdgeSlot(width, height) {
+  const key = width * 100000 + height;
+  let ring = edgeSlots.get(key);
+  if (!ring) {
+    const make = () => ({
+      gray: new Float32Array(width * height),
+      blurTmp: new Float32Array(width * height),
+      blur: new Float32Array(width * height),
+      meanTmp: new Float32Array(width * height),
+      mean: new Float32Array(width * height),
+      contrast: new Float32Array(width * height),
+      mag: new Float32Array(width * height),
+      gx: new Float32Array(width * height),
+      gy: new Float32Array(width * height),
+    });
+    ring = { slots: [make(), make(), make()], i: 0 };
+    edgeSlots.set(key, ring);
+  }
+  const slot = ring.slots[ring.i];
+  ring.i = (ring.i + 1) % ring.slots.length;
+  return slot;
+}
+
 export function prepareEdges(image, { contrastRadius } = {}) {
   const { data, width, height } = image;
-  const gray = boxBlur(grayscale(data, width, height), width, height);
+  const slot = takeEdgeSlot(width, height);
+  grayscaleInto(data, width, height, slot.gray);
+  boxBlurInto(slot.gray, width, height, slot.blurTmp, slot.blur);
   const radius = contrastRadius ?? Math.max(3, Math.round(Math.min(width, height) / 14));
-  const contrast = localContrast(gray, width, height, radius);
-  return { gray: contrast, edges: sobel(contrast, width, height), width, height };
+  boxMeanInto(slot.blur, width, height, radius, slot.meanTmp, slot.mean);
+  const contrast = slot.contrast;
+  const blurred = slot.blur;
+  const mean = slot.mean;
+  for (let i = 0; i < contrast.length; i += 1) contrast[i] = blurred[i] - mean[i];
+  clearEdgeBorder(slot.mag, width, height);
+  clearEdgeBorder(slot.gx, width, height);
+  clearEdgeBorder(slot.gy, width, height);
+  sobelInto(contrast, width, height, slot.mag, slot.gx, slot.gy);
+  return {
+    gray: contrast,
+    luma: slot.gray,
+    edges: { mag: slot.mag, gx: slot.gx, gy: slot.gy },
+    width,
+    height,
+  };
 }

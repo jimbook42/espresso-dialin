@@ -13,6 +13,7 @@ import {
   readWeighingTargetFeedbackSession,
   writeWeighingTargetFeedbackSession,
 } from './weighingViewSession.js';
+import { ShotLabPressureIntegration } from './ShotLabPressureIntegration.jsx';
 
 /**
  * Full-screen live weighing when the scale is connected and the shot timer is idle.
@@ -67,7 +68,7 @@ export function WeighingView({
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 min-h-0">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4 min-h-0 overflow-hidden">
         <p
           className={`text-[clamp(4rem,22vw,6.5rem)] font-black font-mono tabular-nums tracking-tight leading-none ${hitLockClass} ${
             weighingWeightIsBold(colorState.state) ? 'font-black' : ''
@@ -109,10 +110,12 @@ export function WeighingView({
           <p className={`text-sm font-medium tabular-nums ${ui.muted}`}>{Math.round(battery)}% battery</p>
         )}
 
+        <ShotLabPressureIntegration variant="weighing" ui={ui} />
+
         <button
           type="button"
           onClick={onTare}
-          className="mt-4 min-h-[52px] px-10 rounded-2xl text-base font-bold bg-[rgba(200,138,75,0.18)] text-[#c88a4b] border border-[rgba(200,138,75,0.35)] active:scale-[0.99]"
+          className="mt-2 min-h-[52px] px-10 rounded-2xl text-base font-bold bg-[rgba(200,138,75,0.18)] text-[#c88a4b] border border-[rgba(200,138,75,0.35)] active:scale-[0.99]"
         >
           Tare
         </button>

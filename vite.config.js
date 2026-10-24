@@ -40,11 +40,17 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_ENABLE_PRESSURE_LAB': JSON.stringify(
       mode === 'flairlab' || process.env.VITE_ENABLE_PRESSURE_LAB === 'true' ? 'true' : 'false'
     ),
+    'import.meta.env.VITE_PRESSURE_REPLAY': JSON.stringify(
+      process.env.VITE_PRESSURE_REPLAY === 'true' ? 'true' : 'false'
+    ),
     'import.meta.env.VITE_ENABLE_SCALE': JSON.stringify(
       process.env.VITE_ENABLE_SCALE === 'false' ? 'false' : 'true'
     ),
     'import.meta.env.VITE_SCALE_ALLOW_SIM': JSON.stringify(
       process.env.VITE_SCALE_ALLOW_SIM === 'true' ? 'true' : 'false'
+    ),
+    'import.meta.env.VITE_PRESSURE_ALLOW_SIM': JSON.stringify(
+      process.env.VITE_PRESSURE_ALLOW_SIM === 'true' ? 'true' : 'false'
     ),
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
     'import.meta.env.VITE_APP_COMMIT_SHA': JSON.stringify(appCommitSha),
@@ -59,6 +65,7 @@ export default defineConfig(({ mode }) => ({
       injectManifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: ['**/flair-pressure-lab/opencv.js'],
       },
     }),
   ].filter(Boolean),

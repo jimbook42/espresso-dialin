@@ -5,11 +5,14 @@ import { useFrontCameraStream } from './hooks/useFrontCameraStream';
 import {
   EXTRACTION_START_BAR,
   FLAIR_58_SCALE,
+  NEEDLE_LIKENESS_GATE,
   NEEDLE_LOST_QUALITY,
+  NEEDLE_TRACK_QUALITY,
   PROCESS_INTERVAL_MS,
   REST_STABLE_SAMPLES,
   angleToBar,
   classifyTrackingStatus,
+  formatPressureBar,
   clockwiseDelta,
   selectForwardAngle,
   uncertaintyReason,
@@ -19,15 +22,61 @@ import {
 import { DiagnosticTrace } from './DiagnosticTrace';
 import { DIAGNOSTIC_WINDOW_MS, createDiagnosticHistory, stabilityStats } from './diagnosticHistory';
 import { buildDiagnosticReport } from './diagnosticReport';
-import { objectCoverMap, previewAngleDeg, previewPointToVideo, videoRegionToPreview } from './geometry';
-import { createGaugeTracker, readTrackedGauge } from './gaugeTrack';
+import { objectCoverMap, previewAngleDeg, previewPointToVideo, videoPointToPreview } from './geometry';
+import {
+  GLARE_SETUP_HINT,
+  MOVE_CLOSER_HINT,
+  createReadingBridge,
+  createReadingHold,
+  createShotRun,
+  gaugeTooSmallForNeedle,
+  glareSetupHintVisible,
+  moveCloserHintVisible,
+  qualityBlocksSample,
+} from './frameQuality.js';
+import { HUB_CONNECTION_MIN, minReadableDialRadiusPx } from './needleFromFrame.js';
+import { loadNeedleModel } from './needleModel.js';
+import { REST_ANCHOR_MS, confidentAngleWindow, createRestAnchor, templateConflictDeg } from './restAnchor.js';
+import {
+  createGaugeTracker,
+  gaugeAllowsConfidentReading,
+  gaugeAllowsReading,
+  lastReadProfile,
+  probeGaugeDiscoveryCandidates,
+  readTrackedGauge,
+} from './gaugeTrack';
+import { setDiscoverySearchListener, warmDiscoveryWorker, whenDiscoverySettled, whenDiscoveryWarmed } from './discoveryClient.js';
 import {
   createAngleJitterTracker,
   createAngleTracker,
+  createNeedleKalman,
   createPressureSmoother,
   createRestCalibration,
   createRisingThreshold,
 } from './smoothPressure';
+import { isPressureReplayBuild } from '../config/pressureReplayFlag.js';
+import {
+  calibrateFromTaps,
+  createCalibratedTracker,
+  parseTapCalQuery,
+  readCalibratedFrame,
+  replayMediaTimeSec,
+  replayTapWindowOpen,
+  shouldDeferLegacyLock,
+  TAP_CAL_WINDOW_S,
+  tapAnchorRecord,
+  tapsFromReplayHook,
+} from './tapCalibrate.js';
+import {
+  completeReplaySearch,
+  installPressureReplayHook,
+  markReplaySearchOpen,
+  pushPressureReplayFrame,
+  resetPressureReplaySession,
+} from './replaySessionExport.js';
+import { classifyReplayGaugeFrame } from './replayGaugeSemantics.js';
+import { FLAIR_STATELESS_SESSION } from './canonicalDial.js';
+import { loadOpenCv } from './opencvRuntime.js';
 
 const STATUS_STYLES = {
   CALIBRATING: 'bg-amber-500/15 text-amber-100 border-amber-500/40',
@@ -36,9 +85,9 @@ const STATUS_STYLES = {
   LOST: 'bg-rose-500/15 text-rose-200 border-rose-500/40',
 };
 
-const INITIAL_REGION = { nx: 0.5, ny: 0.5, nr: 0.28 };
 const PRESSURE_LAB_BUILD = import.meta.env.VITE_PRESSURE_LAB_BUILD || 'dev';
 const TRACE_PUBLISH_MS = 500;
+const REPLAY_BUILD = isPressureReplayBuild();
 
 const EMPTY_LIVE = {
   tracking: 'CALIBRATING',
@@ -64,6 +113,7 @@ const EMPTY_LIVE = {
   gaugeHeld: false,
   gaugeX: null,
   gaugeY: null,
+  gaugeRadius: null,
   poseQuality: null,
   poseRejectReason: null,
   posePending: false,
@@ -78,6 +128,8 @@ const EMPTY_LIVE = {
   likeness: null,
   referenceCaptured: false,
   offScale: false,
+  glareHint: null,
+  moveCloserHint: null,
 };
 
 function exitLab() {
@@ -122,44 +174,55 @@ async function copyPlainText(text) {
   }
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 export function FlairPressureLab() {
   const ui = getAppTheme(true);
   const { videoRef, start, stop, status, error, trackInfo } = useFrontCameraStream();
-  const [mirrorPreview, setMirrorPreview] = useState(true);
+  const [mirrorPreview, setMirrorPreview] = useState(!REPLAY_BUILD);
   const [sweepDeg, setSweepDeg] = useState(FLAIR_58_SCALE.sweepDeg);
   const [frameBox, setFrameBox] = useState({ w: 0, h: 0 });
   const [videoSize, setVideoSize] = useState(null);
-  const [region, setRegion] = useState(INITIAL_REGION);
   const [session, setSession] = useState(null);
   const [live, setLive] = useState(EMPTY_LIVE);
+  const [tapPhase, setTapPhase] = useState(REPLAY_BUILD ? 'legacy' : 'aim');
+  const [tapNote, setTapNote] = useState('');
+  const [reviewPose, setReviewPose] = useState(null);
 
   const sessionRef = useRef(null);
-  const regionRef = useRef(INITIAL_REGION);
   const sweepRef = useRef(sweepDeg);
   const mirrorRef = useRef(true);
   const videoSizeRef = useRef(null);
   const frameNodeRef = useRef(null);
-  const adjustingRef = useRef(false);
-  const dragRef = useRef(null);
+  const qualityBridgeRef = useRef(createReadingBridge(1000));
+  const readingHoldRef = useRef(createReadingHold());
+  const shotRunRef = useRef(createShotRun());
+  const restAnchorRef = useRef(createRestAnchor());
+  const agreeSamplesRef = useRef([]);
+  const qualityCanvasRef = useRef(null);
   const lastAngleRef = useRef(null);
   const angleTrackerRef = useRef(createAngleTracker());
+  const kalmanRef = useRef(createNeedleKalman());
   const pressureRef = useRef(createPressureSmoother());
   const jitterRef = useRef(createAngleJitterTracker());
   const thresholdRef = useRef(createRisingThreshold(EXTRACTION_START_BAR));
   const calibRef = useRef(createRestCalibration());
   const trackerRef = useRef(createGaugeTracker());
-  const historyRef = useRef(createDiagnosticHistory());
+  const historyRef = useRef(createDiagnosticHistory(
+    REPLAY_BUILD ? { durationMs: 600_000 } : undefined,
+  ));
   const poseAgeRef = useRef(0);
   const tracePublishRef = useRef(0);
   const resizeObserverRef = useRef(null);
   const copyTimerRef = useRef(null);
+  const tapTrackerRef = useRef(null);
+  const tapCalRef = useRef({ applied: false, atSec: null, anchors: null, reason: 'no-taps' });
+  const pendingCalRef = useRef(null);
+  const frozenRef = useRef(null);
+  const freezeCanvasRef = useRef(null);
+  const tapsRef = useRef({ centre: null, five: null, ten: null });
   const [trace, setTrace] = useState([]);
   const [copyNote, setCopyNote] = useState('');
   const [reportFallback, setReportFallback] = useState('');
+  const [opencvReady, setOpencvReady] = useState(false);
 
   const frameRef = useCallback((node) => {
     resizeObserverRef.current?.disconnect();
@@ -180,16 +243,60 @@ export function FlairPressureLab() {
     clearTimeout(copyTimerRef.current);
   }, []);
 
+  useEffect(() => {
+    if (!REPLAY_BUILD) return undefined;
+    installPressureReplayHook();
+    window.__pressureLabVideoTrace = [];
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete window.__pressureLabReplay;
+        delete window.__pressureLabVideoTrace;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    loadNeedleModel();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (REPLAY_BUILD) warmDiscoveryWorker();
+    loadOpenCv()
+      .then(() => {
+        if (!cancelled) {
+          setOpencvReady(true);
+          if (REPLAY_BUILD && typeof window !== 'undefined') {
+            window.__pressureLabOpenCvReady = true;
+            window.__pressureLabProbeDiscovery = (imageData) => probeGaugeDiscoveryCandidates(imageData);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error('OpenCV.js failed to load', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+
   const resetReading = useCallback(({ clearHistory = false, clearTracker = true } = {}) => {
     sessionRef.current = null;
     lastAngleRef.current = null;
     calibRef.current.reset();
     angleTrackerRef.current.reset();
+    kalmanRef.current.reset();
     pressureRef.current.reset();
     jitterRef.current.reset();
     thresholdRef.current.reset();
     poseAgeRef.current = 0;
     if (clearTracker) trackerRef.current.reset();
+    qualityBridgeRef.current.reset();
+    readingHoldRef.current.reset();
+    shotRunRef.current.reset();
+    restAnchorRef.current.reset();
+    agreeSamplesRef.current = [];
     if (clearHistory) {
       historyRef.current.reset();
       setTrace([]);
@@ -200,8 +307,28 @@ export function FlairPressureLab() {
 
   const handleStart = async () => {
     resetReading({ clearHistory: true, clearTracker: true });
+    resetPressureReplaySession();
     await start();
   };
+
+  useEffect(() => {
+    if (!REPLAY_BUILD || !opencvReady) return undefined;
+    let cancelled = false;
+    // The fake camera starts when the track opens. Opening it before OpenCV
+    // and the worker are warm makes the first processed frame depend on
+    // page-load time, so two replays of a rotating clip are not the same.
+    (async () => {
+      await whenDiscoveryWarmed();
+      if (cancelled) return;
+      if (typeof window !== 'undefined') window.__pressureLabPipelineReady = true;
+      resetReading({ clearHistory: true, clearTracker: true });
+      resetPressureReplaySession();
+      await start();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [opencvReady, resetReading, start]);
 
   const handleStop = () => {
     stop();
@@ -210,9 +337,144 @@ export function FlairPressureLab() {
     setVideoSize(null);
   };
 
+  const clearFrozenFrame = () => {
+    frozenRef.current = null;
+    pendingCalRef.current = null;
+    tapsRef.current = { centre: null, five: null, ten: null };
+    const canvas = freezeCanvasRef.current;
+    if (canvas) {
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+  };
+
+  const beginTapAim = () => {
+    tapTrackerRef.current = null;
+    clearFrozenFrame();
+    readingHoldRef.current.reset();
+    sessionRef.current = null;
+    setSession(null);
+    setLive(EMPTY_LIVE);
+    setTapNote('');
+    setReviewPose(null);
+    setTapPhase(REPLAY_BUILD ? 'legacy' : 'aim');
+  };
+
   const handleRecalibrate = () => {
     if (status !== 'live') return;
+    if (!REPLAY_BUILD || tapTrackerRef.current) {
+      beginTapAim();
+      return;
+    }
     resetReading({ clearHistory: false, clearTracker: false });
+  };
+
+  const acceptTapCalibration = () => {
+    const pending = pendingCalRef.current;
+    if (!pending?.ok) return;
+    tapTrackerRef.current = createCalibratedTracker(pending.calibration);
+    const next = {
+      ...FLAIR_STATELESS_SESSION,
+      zeroAngleDeg: pending.calibration.zeroAngleDeg,
+      sweepDeg: pending.calibration.spanDeg || sweepRef.current,
+    };
+    sessionRef.current = next;
+    setSession(next);
+    clearFrozenFrame();
+    readingHoldRef.current.reset();
+    setTapPhase('tracking');
+    setTapNote('');
+  };
+
+  const grabSourceImage = (source) => {
+    const width = source.videoWidth || source.width;
+    const height = source.videoHeight || source.height;
+    if (!width || !height) return null;
+    const canvas = qualityCanvasRef.current || document.createElement('canvas');
+    qualityCanvasRef.current = canvas;
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(source, 0, 0, width, height);
+    return context.getImageData(0, 0, width, height);
+  };
+
+  const pointFromEvent = (event) => {
+    const node = frameNodeRef.current;
+    const size = videoSizeRef.current;
+    if (!node || !size?.w) return null;
+    const rect = node.getBoundingClientRect();
+    const mapped = previewPointToVideo(
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+      size.w,
+      size.h,
+      rect.width,
+      rect.height,
+      mirrorRef.current,
+    );
+    if (!mapped) return null;
+    return { x: mapped.nx * size.w, y: mapped.ny * size.h };
+  };
+
+  const runTapCalibration = () => {
+    const image = frozenRef.current;
+    const taps = tapsRef.current;
+    if (!image || !taps.centre || !taps.five || !taps.ten) return;
+    const result = calibrateFromTaps(image, taps);
+    if (!result.ok) {
+      const again = result.redo || 'centre';
+      taps[again] = null;
+      setTapPhase(again);
+      setTapNote(again === 'centre'
+        ? 'That centre tap missed the pivot. Tap it again.'
+        : `That ${again === 'five' ? '5' : '10'} missed the numeral. Tap it again.`);
+      return;
+    }
+    pendingCalRef.current = result;
+    setReviewPose(result.calibration);
+    setTapPhase('review');
+    setTapNote(result.fiveWarn
+      ? 'The printed 5 is off the rest-to-10 line. Retry if the rays look wrong.'
+      : 'Rest needle is 0. The ray to 10 is full scale.');
+  };
+
+  const onPreviewPointer = (event) => {
+    if (REPLAY_BUILD && tapPhase === 'legacy') return;
+    if (tapPhase === 'tracking' || tapPhase === 'review') return;
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) return;
+    if (tapPhase === 'aim') {
+      const image = grabSourceImage(video);
+      if (!image) return;
+      frozenRef.current = image;
+      const canvas = freezeCanvasRef.current;
+      if (canvas) {
+        canvas.width = image.width;
+        canvas.height = image.height;
+        canvas.getContext('2d').putImageData(image, 0, 0);
+      }
+      const size = { w: image.width, h: image.height };
+      videoSizeRef.current = size;
+      setVideoSize(size);
+      setTapPhase('centre');
+      setTapNote('Frame held. Tap the gauge centre.');
+      return;
+    }
+    const point = pointFromEvent(event);
+    if (!point) return;
+    tapsRef.current = { ...tapsRef.current, [tapPhase]: point };
+    if (tapPhase === 'centre') {
+      setTapPhase('five');
+      setTapNote('Tap the printed 5.');
+      return;
+    }
+    if (tapPhase === 'five') {
+      setTapPhase('ten');
+      setTapNote('Tap the printed 10.');
+      return;
+    }
+    if (tapPhase === 'ten') runTapCalibration();
   };
 
   const handleCopyReport = async () => {
@@ -250,78 +512,256 @@ export function FlairPressureLab() {
     setSession(next);
   };
 
-  const pointerDown = (event, mode) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!videoSizeRef.current) return;
-    dragRef.current = { mode, pointerId: event.pointerId };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    adjustingRef.current = true;
-    resetReading({ clearHistory: true, clearTracker: true });
-  };
-
-  const pointerMove = (event) => {
-    const drag = dragRef.current;
-    const node = frameNodeRef.current;
-    const size = videoSizeRef.current;
-    if (!drag || !node || !size || event.pointerId !== drag.pointerId) return;
-    const bounds = node.getBoundingClientRect();
-    const x = event.clientX - bounds.left;
-    const y = event.clientY - bounds.top;
-    if (drag.mode === 'move') {
-      const point = previewPointToVideo(x, y, size.w, size.h, bounds.width, bounds.height, mirrorRef.current);
-      if (!point) return;
-      const next = {
-        ...regionRef.current,
-        nx: clamp(point.nx, 0.05, 0.95),
-        ny: clamp(point.ny, 0.05, 0.95),
-      };
-      regionRef.current = next;
-      setRegion(next);
-      return;
-    }
-    const preview = videoRegionToPreview(regionRef.current, size.w, size.h, bounds.width, bounds.height, mirrorRef.current);
-    const map = objectCoverMap(size.w, size.h, bounds.width, bounds.height);
-    if (!preview || !map) return;
-    const dist = Math.hypot(x - preview.cx, y - preview.cy);
-    const next = {
-      ...regionRef.current,
-      nr: clamp(dist / map.scale / Math.min(size.w, size.h), 0.12, 0.48),
-    };
-    regionRef.current = next;
-    setRegion(next);
-  };
-
-  const pointerUp = (event) => {
-    if (!dragRef.current || event.pointerId !== dragRef.current.pointerId) return;
-    dragRef.current = null;
-    adjustingRef.current = false;
-    calibRef.current.reset();
-  };
-
   useEffect(() => {
     if (status !== 'live') return undefined;
-    const canvas = document.createElement('canvas');
+    if (REPLAY_BUILD && !opencvReady) return undefined;
+    if (REPLAY_BUILD) warmDiscoveryWorker();
+    const canvas = qualityCanvasRef.current || document.createElement('canvas');
+    qualityCanvasRef.current = canvas;
     let raf = 0;
     let last = 0;
     let processed = 0;
     let windowStart = performance.now();
     let fps = 0;
 
-    const tick = (now) => {
-      raf = requestAnimationFrame(tick);
-      if (now - last < PROCESS_INTERVAL_MS) return;
-      last = now;
-      const video = videoRef.current;
-      if (!video || video.readyState < 2 || adjustingRef.current) return;
-      const reading = readTrackedGauge(video, canvas, regionRef.current, trackerRef.current);
-      if (!reading?.gauge) return;
+    const pushReplayFrame = (partial, sampleTime) => {
+      if (!REPLAY_BUILD) return;
+      pushPressureReplayFrame({
+        t: sampleTime,
+        gaugeFound: partial.gaugeFound === true,
+        centreFromGuide: partial.centreFromGuide === true,
+        centreX: partial.centreX ?? null,
+        centreY: partial.centreY ?? null,
+        radius: partial.radius ?? null,
+        gaugeRotationDeg: partial.gaugeRotationDeg ?? null,
+        needleAngleDeg: partial.needleAngleDeg ?? null,
+        bar: partial.bar ?? null,
+        confidence: partial.confidence ?? null,
+        processMs: partial.processMs ?? null,
+        e2eMs: partial.e2eMs ?? null,
+        mainThreadMs: partial.mainThreadMs ?? null,
+        cvMs: partial.cvMs ?? null,
+        stageTrack: partial.stageTrack ?? null,
+        stageTrackDraw: partial.stageTrackDraw ?? null,
+        stageNeedle: partial.stageNeedle ?? null,
+        stageModel: partial.stageModel ?? null,
+        stageNeedleDraw: partial.stageNeedleDraw ?? null,
+        stageDiscovery: partial.stageDiscovery ?? null,
+        stageTrackBlit: partial.stageTrackBlit ?? null,
+        stageTrackRead: partial.stageTrackRead ?? null,
+        stageTrackResize: partial.stageTrackResize ?? null,
+        stageTrackOutput: partial.stageTrackOutput ?? null,
+        discDrawMs: partial.discDrawMs ?? null,
+        discWaitMs: partial.discWaitMs ?? null,
+        workerSearchMs: partial.workerSearchMs ?? null,
+        searchNeeded: partial.searchNeeded === true,
+        postedSearch: partial.postedSearch === true,
+        readWallMs: partial.readWallMs ?? null,
+        readPath: partial.readPath ?? null,
+        syncMs: partial.syncMs ?? null,
+        flags: partial.flags ?? '',
+        tracking: partial.tracking ?? null,
+        conflictDeg: partial.conflictDeg ?? null,
+      });
+      if (partial.postedSearch) markReplaySearchOpen();
+    };
+
+    const replayGaugeLabels = (gauge) => classifyReplayGaugeFrame({
+      gauge,
+      referenceCaptured: gauge.referenceCaptured === true,
+      dialRegistered: gauge.dialRegistered === true,
+    });
+
+    const publishTapCal = (next) => {
+      tapCalRef.current = next;
+      window.__pressureLabTapCalResult = next;
+    };
+    publishTapCal({ applied: false, atSec: null, anchors: null, reason: 'no-taps' });
+
+    const processSample = async (video, now, wallNow, { grabAt = null, mediaTimeS = null } = {}) => {
+      if (!video || video.readyState < 2) return;
+      const useTap = !REPLAY_BUILD || tapTrackerRef.current || tapPhase !== 'legacy';
+      let deferLegacyLock = false;
+      if (REPLAY_BUILD && !tapTrackerRef.current) {
+        // The still canvas has no currentTime. The replay loop passes the
+        // frame's media time; a currentTime read stays 0 and misses atSec.
+        const injected = tapsFromReplayHook() || parseTapCalQuery(window.location.search);
+        const sampleT = replayMediaTimeSec(mediaTimeS, now);
+        if (!injected) {
+          publishTapCal({ applied: false, atSec: null, anchors: null, reason: 'no-taps' });
+        } else {
+          deferLegacyLock = shouldDeferLegacyLock({
+            injected,
+            applied: tapCalRef.current.applied === true,
+            sampleT,
+          });
+          if (replayTapWindowOpen(sampleT, injected.atSec)) {
+            const image = grabSourceImage(video);
+            const calibrated = image && calibrateFromTaps(image, injected);
+            if (calibrated?.ok) {
+              tapTrackerRef.current = createCalibratedTracker(calibrated.calibration);
+              const next = {
+                ...FLAIR_STATELESS_SESSION,
+                zeroAngleDeg: calibrated.calibration.zeroAngleDeg,
+                sweepDeg: calibrated.calibration.spanDeg || sweepRef.current,
+              };
+              sessionRef.current = next;
+              setSession(next);
+              setTapPhase('tracking');
+              deferLegacyLock = false;
+              publishTapCal({
+                applied: true,
+                atSec: sampleT,
+                anchors: tapAnchorRecord(calibrated.calibration),
+                reason: null,
+              });
+            } else if (!tapCalRef.current.applied) {
+              publishTapCal({
+                applied: false,
+                atSec: null,
+                anchors: null,
+                reason: calibrated?.reason || 'calibrate-failed',
+              });
+            }
+          } else if (
+            injected.atSec != null
+            && Number.isFinite(sampleT)
+            && sampleT >= Number(injected.atSec) + TAP_CAL_WINDOW_S
+            && !tapCalRef.current.applied
+          ) {
+            const prior = tapCalRef.current.reason;
+            publishTapCal({
+              applied: false,
+              atSec: null,
+              anchors: null,
+              reason: prior && prior !== 'no-taps' && prior !== 'waiting' ? prior : 'window-missed',
+            });
+          } else if (!tapCalRef.current.applied && sampleT + 1e-3 < Number(injected.atSec)) {
+            publishTapCal({ applied: false, atSec: null, anchors: null, reason: 'waiting' });
+          }
+        }
+      }
+      if (!REPLAY_BUILD || tapTrackerRef.current) {
+        if (!tapTrackerRef.current) return;
+        const grab = grabAt ?? performance.now();
+        const image = grabSourceImage(video);
+        if (!image) return;
+        const read = readCalibratedFrame(image, tapTrackerRef.current);
+        const held = readingHoldRef.current.push({
+          bar: read.ok ? read.bar : null,
+          fresh: read.ok === true,
+          now: wallNow,
+        });
+        const tracking = !read.lost && read.ok ? 'TRACKING' : (held.gap ? 'LOST' : 'UNCERTAIN');
+        const ms = Math.max(0, performance.now() - grab);
+        setLive({
+          ...EMPTY_LIVE,
+          tracking,
+          displayBar: held.bar,
+          pressureBar: held.bar,
+          rawBar: read.bar,
+          displayAngle: read.needleDeg,
+          screenAngle: read.needleDeg,
+          rawAngle: read.needleDeg,
+          gaugeX: read.hub?.x ?? null,
+          gaugeY: read.hub?.y ?? null,
+          gaugeRadius: read.radius ?? null,
+          gaugeRotation: read.shiftDeg ?? null,
+          quality: read.needleQuality ?? null,
+          likeness: read.likeness ?? null,
+          gaugeConfidence: read.score ?? null,
+          uncertainty: read.lost ? 'weak' : 'tracking',
+          frame: { w: image.width, h: image.height },
+          referenceCaptured: true,
+        });
+        if (REPLAY_BUILD) {
+          pushReplayFrame({
+            gaugeFound: read.lost !== true,
+            centreFromGuide: false,
+            centreX: read.hub?.x ?? null,
+            centreY: read.hub?.y ?? null,
+            radius: read.radius ?? null,
+            gaugeRotationDeg: read.shiftDeg ?? null,
+            needleAngleDeg: read.needleDeg ?? null,
+            bar: held.bar,
+            confidence: read.score ?? null,
+            processMs: ms,
+            e2eMs: ms,
+            mainThreadMs: ms,
+            cvMs: ms,
+            flags: read.lost ? 'tap-lost' : 'tap-track',
+            tracking,
+            readPath: 'tap',
+          }, now);
+        }
+        return;
+      }
+      if (useTap) return;
+      const grab = grabAt ?? performance.now();
+      let readWall = 0;
+      let cvDone = 0;
+      const markCv = () => {
+        cvDone = Math.max(0, performance.now() - grab);
+      };
+      const frameTiming = () => {
+        // Blocking time from this grab until the result is applied. A worker
+        // search posted here is added to e2e when that search finishes.
+        const mainThreadMs = Math.max(0, performance.now() - grab);
+        return {
+          e2eMs: mainThreadMs,
+          mainThreadMs,
+          processMs: mainThreadMs,
+          cvMs: cvDone,
+          discDrawMs: 0,
+          discWaitMs: 0,
+          workerSearchMs: null,
+          searchNeeded: lastReadProfile.searchNeeded === true,
+          postedSearch: lastReadProfile.postedSearch === true,
+          readWallMs: readWall,
+          readPath: lastReadProfile.path || null,
+          syncMs: lastReadProfile.syncMs || 0,
+        };
+      };
+      let reading;
+      try {
+        const tRead = performance.now();
+        reading = await readTrackedGauge(video, canvas, null, trackerRef.current);
+        readWall = performance.now() - tRead;
+      } catch (err) {
+        restAnchorRef.current.reset();
+        agreeSamplesRef.current = [];
+        if (REPLAY_BUILD) {
+          pushReplayFrame({
+            gaugeFound: false,
+            centreFromGuide: false,
+            flags: `error:${err?.message || 'read'}`,
+            tracking: 'LOST',
+            ...frameTiming(),
+          }, now);
+        }
+        return;
+      }
+      if (!reading?.gauge) {
+        // A lost face must not keep a confirmed zero. The next lock confirms again.
+        restAnchorRef.current.reset();
+        agreeSamplesRef.current = [];
+        if (REPLAY_BUILD) {
+          pushReplayFrame({
+            gaugeFound: false,
+            centreFromGuide: false,
+            flags: 'no-gauge',
+            tracking: 'LOST',
+            ...frameTiming(),
+          }, now);
+        }
+        return;
+      }
 
       processed += 1;
-      if (now - windowStart >= 1000) {
+      if (wallNow - windowStart >= 1000) {
         fps = processed;
         processed = 0;
-        windowStart = now;
+        windowStart = wallNow;
       }
 
       const gauge = reading.gauge;
@@ -330,25 +770,6 @@ export function FlairPressureLab() {
         || (gauge.poseDeltaPx ?? 0) >= 1
         || Math.abs(gauge.poseDeltaRot ?? 0) >= 1;
       poseAgeRef.current = poseMoved ? 0 : poseAgeRef.current + 1;
-      if (!gauge.held) {
-        const nextRegion = {
-          nx: clamp(gauge.nx, 0.05, 0.95),
-          ny: clamp(gauge.ny, 0.05, 0.95),
-          nr: clamp(gauge.nr, 0.12, 0.48),
-        };
-        const prevRegion = regionRef.current;
-        const minDim = Math.min(reading.videoWidth, reading.videoHeight);
-        const movedPx = Math.hypot(
-          (nextRegion.nx - prevRegion.nx) * reading.videoWidth,
-          (nextRegion.ny - prevRegion.ny) * reading.videoHeight,
-        );
-        const grewPx = Math.abs(nextRegion.nr - prevRegion.nr) * minDim;
-        if (movedPx > 0.5 || grewPx > 0.5) {
-          regionRef.current = nextRegion;
-          setRegion(nextRegion);
-        }
-      }
-
       const candidateAngle = reading.relativeAngleDeg ?? null;
       const secondCandidateAngle = reading.secondAngleDeg == null
         ? null
@@ -452,6 +873,7 @@ export function FlairPressureLab() {
         gaugeHeld: gauge.held,
         gaugeX: gauge.cx,
         gaugeY: gauge.cy,
+        gaugeRadius: gauge.radius,
         poseQuality: gauge.poseQuality ?? null,
         poseRejectReason: gauge.poseRejectReason ?? null,
         posePending: gauge.posePending === true,
@@ -465,15 +887,31 @@ export function FlairPressureLab() {
         poseAge: poseAgeRef.current,
       };
 
+      const frameQualityForAnchor = reading.frameQuality ?? { ok: true, flags: [] };
+      if (gauge.dialRegistered !== true) {
+        restAnchorRef.current.reset();
+        agreeSamplesRef.current = [];
+      }
+      restAnchorRef.current.push({
+        timeMs: now,
+        angleDeg: reading.relativeAngleDeg,
+        usable: gauge.dialRegistered === true
+          && frameQualityForAnchor.ok
+          && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE,
+      });
+      const gate = {
+        dialRegistered: gauge.dialRegistered,
+        confidence: gauge.confidence,
+        dialFaceScore: gauge.dialFaceScore,
+        needleLikeness: reading.likeness,
+        periodMargin: gauge.periodMargin,
+        restAnchor: restAnchorRef.current.status(),
+      };
+      const canRead = gaugeAllowsReading(gate);
+      const confidentDial = gaugeAllowsConfidentReading(gate);
+
       if (!sessionRef.current) {
-        const result = gauge.held || !gauge.referenceCaptured
-          ? { ready: false, count: calibRef.current.count() }
-          : calibRef.current.push({
-            angleDeg: reading.relativeAngleDeg,
-            quality: reading.quality,
-            likeness: reading.likeness,
-          });
-        if (!result.ready) {
+        if (!canRead || gauge.held || deferLegacyLock) {
           const uncertainty = record({
             tracking: 'CALIBRATING',
             smoothedAngle: null,
@@ -490,29 +928,68 @@ export function FlairPressureLab() {
             candidateJump: null,
             poseAge: poseAgeRef.current,
           });
+          const preShotGlare = glareSetupHintVisible({
+            glare: frameQualityForAnchor.flags.includes('glare'),
+            shotRunning: shotRunRef.current.running(),
+          });
+          const preShotClose = moveCloserHintVisible({
+            tooSmall: gaugeTooSmallForNeedle(gauge.radius, minReadableDialRadiusPx()),
+            shotRunning: shotRunRef.current.running(),
+          });
+          const labels = REPLAY_BUILD ? replayGaugeLabels(gauge) : null;
+          const qualityFlags = frameQualityForAnchor.ok ? '' : `|${frameQualityForAnchor.flags.join('|')}`;
+          const hintFlag = `${preShotGlare ? '|glare-hint' : ''}${preShotClose ? '|move-closer' : ''}`;
+          markCv();
           setLive({
             ...EMPTY_LIVE,
             ...gaugeFields,
             tracking: 'CALIBRATING',
-            calibCount: result.count,
+            calibCount: 0,
             needleDecision: 'calibrating',
             uncertainty,
             offScale: false,
+            glareHint: preShotGlare ? GLARE_SETUP_HINT : null,
+            moveCloserHint: preShotClose ? MOVE_CLOSER_HINT : null,
           });
+          if (REPLAY_BUILD) {
+            pushReplayFrame({
+              gaugeFound: labels.gaugeFound,
+              centreFromGuide: labels.centreFromGuide,
+              centreX: gauge.cx,
+              centreY: gauge.cy,
+              radius: gauge.radius,
+              gaugeRotationDeg: gauge.rotationDeg,
+              needleAngleDeg: null,
+              bar: null,
+              confidence: gauge.confidence,
+              conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
+              flags: `CALIBRATING|0|reg:${gauge.dialRegistered ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}${qualityFlags}${hintFlag}${reading.model ? `|model:${reading.model.used ? 'yes' : 'gap'}` : ''}${deferLegacyLock ? '|tap-wait' : ''}`,
+              tracking: 'CALIBRATING',
+              stageTrack: reading.stageMs?.track ?? null,
+              stageTrackDraw: reading.stageMs?.trackDraw ?? null,
+              stageNeedle: reading.stageMs?.needle ?? null,
+              stageModel: reading.stageMs?.model ?? null,
+              stageNeedleDraw: reading.stageMs?.needleDraw ?? null,
+              stageDiscovery: reading.stageMs?.discovery ?? null,
+              stageTrackBlit: reading.stageMs?.trackBlit ?? null,
+              stageTrackRead: reading.stageMs?.trackRead ?? null,
+              stageTrackResize: reading.stageMs?.trackResize ?? null,
+              stageTrackOutput: reading.stageMs?.trackOutput ?? null,
+              ...frameTiming(),
+            }, now);
+          }
           return;
         }
         const next = {
-          zeroAngleDeg: result.zeroAngleDeg,
-          ...FLAIR_58_SCALE,
+          ...FLAIR_STATELESS_SESSION,
           sweepDeg: sweepRef.current,
         };
         sessionRef.current = next;
         setSession(next);
-        lastAngleRef.current = result.zeroAngleDeg;
+        lastAngleRef.current = null;
         angleTrackerRef.current.reset();
-        angleTrackerRef.current.push(result.zeroAngleDeg);
+        kalmanRef.current.reset();
         pressureRef.current.reset();
-        pressureRef.current.push(0);
         jitterRef.current.reset();
         thresholdRef.current.reset();
       }
@@ -523,8 +1000,31 @@ export function FlairPressureLab() {
         oppositeScore: reading.oppositeScore,
         previousAngle: lastAngleRef.current,
       });
+      const frameQuality = reading.frameQuality ?? { ok: true, flags: [] };
       const weak = reading.quality == null || reading.quality < NEEDLE_LOST_QUALITY;
-      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak;
+      // After the anchor has confirmed, a needle under the likeness gate is
+      // still a reading. Confidence stays low until the gate is met.
+      const softNeedle = Boolean(sessionRef.current)
+        && gauge.dialRegistered === true
+        && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE * 0.5;
+      const glareHidden = frameQuality.flags.includes('glare');
+      const modelSure = reading.model?.used === true;
+      const qualityBlocked = !modelSure && qualityBlocksSample({
+        flags: frameQuality.flags,
+        likeness: reading.likeness ?? 0,
+        likenessGate: NEEDLE_LIKENESS_GATE,
+      });
+      const sharpDespiteGlare = glareHidden && !qualityBlocked;
+      // A registered dial keeps its last bar through blur and glare even when
+      // the face score dips. A template conflict still publishes nothing.
+      const coastQuality = qualityBlocked
+        && gauge.dialRegistered === true
+        && restAnchorRef.current.status() !== 'conflict'
+        && !gauge.held
+        && !gauge.pressureHold
+        && !choice.held;
+      const blockSample = gauge.held || gauge.pressureHold || choice.held || weak || qualityBlocked
+        || (!canRead && !softNeedle);
       const candidateJump = lastAngleRef.current == null || choice.angleDeg == null
         ? null
         : wrapDelta(lastAngleRef.current, choice.angleDeg);
@@ -534,44 +1034,141 @@ export function FlairPressureLab() {
       let signal = thresholdRef.current.get();
       let tracked = { angle: lastAngleRef.current, accepted: false, pendingHits: 0, heldReason: null };
       let needleDecision;
+      let predicted = false;
+      const applyKalmanBar = (km) => {
+        if (km?.angle == null) return false;
+        rawBar = angleToBar(km.angle, sessionRef.current);
+        if (rawBar == null) {
+          offScale = true;
+          return false;
+        }
+        return true;
+      };
       if (!blockSample && choice.angleDeg != null) {
         tracked = angleTrackerRef.current.push(choice.angleDeg, {
           quality: reading.quality,
           likeness: reading.likeness,
           poseSnap: gauge.reacquireAccepted === true,
+          hub: reading.hub,
         });
         needleDecision = tracked.accepted ? 'accepted' : (tracked.heldReason || 'held');
         if (tracked.accepted && tracked.angle != null) {
-          lastAngleRef.current = tracked.angle;
-          rawBar = angleToBar(tracked.angle, sessionRef.current);
-          if (rawBar == null) {
-            offScale = true;
-          } else {
+          const km = kalmanRef.current.push(tracked.angle, now, {
+            confidence: reading.quality,
+            accept: true,
+          });
+          lastAngleRef.current = km.angle ?? tracked.angle;
+          tracked = { ...tracked, angle: lastAngleRef.current };
+          if (applyKalmanBar(km)) {
             const smoothed = pressureRef.current.push(rawBar);
             signal = thresholdRef.current.push(smoothed, Date.now());
             signalPaused = false;
           }
+        } else if (tracked.heldReason === 'hub' || !tracked.accepted) {
+          // A ray that misses the pivot, or a jump that is not confirmed,
+          // may keep the last angle when it still agrees. It does not publish
+          // its own angle.
+          const km = kalmanRef.current.push(choice.angleDeg, now, {
+            confidence: reading.quality ?? 0,
+            accept: false,
+            soft: true,
+          });
+          if (applyKalmanBar(km)) {
+            predicted = true;
+            needleDecision = km.gap ? 'hub' : 'coast';
+          }
+        } else {
+          const km = kalmanRef.current.push(null, now);
+          if (applyKalmanBar(km) && km.predicted) {
+            predicted = true;
+            needleDecision = 'coast';
+          }
+        }
+      } else if (coastQuality || (!gauge.held && !gauge.pressureHold && !choice.held && canRead && weak)) {
+        // Blur and a weak ray do not get to move the needle. A measurement
+        // that still agrees can hold the last angle. Glare does not refresh
+        // that hold: hidden for more than about a second is a gap.
+        angleTrackerRef.current.push(null);
+        const km = choice.angleDeg != null
+          ? kalmanRef.current.push(choice.angleDeg, now, {
+            confidence: reading.quality ?? 0,
+            accept: false,
+            soft: true,
+            extend: !glareHidden,
+          })
+          : kalmanRef.current.push(null, now);
+        if (applyKalmanBar(km) && !km.gap) {
+          predicted = true;
+          needleDecision = km.predicted ? 'coast' : 'soft';
+        } else if (qualityBlocked) {
+          needleDecision = `gap-${frameQuality.flags.join('-') || 'quality'}`;
+        } else {
+          needleDecision = 'gap-weak';
         }
       } else {
         angleTrackerRef.current.push(null);
+        kalmanRef.current.push(null, now);
         if (gauge.held) needleDecision = 'held-gauge';
         else if (gauge.pressureHold) needleDecision = 'held-pose';
         else if (choice.held) needleDecision = 'held-flip';
+        else if (qualityBlocked) needleDecision = `held-${frameQuality.flags.join('-') || 'quality'}`;
         else needleDecision = 'held-weak';
       }
       const jitter = jitterRef.current.push(tracked.accepted ? tracked.angle : lastAngleRef.current);
-      const pressureBar = pressureRef.current.get();
+      qualityBridgeRef.current.publish(
+        pressureRef.current.get(),
+        !blockSample && tracked.accepted && !predicted,
+        now,
+      );
       const tracking = classifyTrackingStatus({
         calibrated: true,
         quality: reading.quality,
         jitterDeg: jitter,
-        accepted: Boolean(tracked.accepted) && !blockSample,
+        accepted: Boolean(tracked.accepted) && !blockSample && !predicted,
         heldFlip: choice.held || tracked.rejectedFlip,
         gaugeHeld: gauge.held,
         offScale,
       });
       const screenSmoothed = tracked.angle == null ? null : wrap360(tracked.angle + gauge.rotationDeg);
-      const pressureMeasured = Boolean(tracked.accepted) && !blockSample && rawBar != null;
+      const pressureMeasured = !predicted && !blockSample && rawBar != null && Boolean(tracked.accepted);
+      const freshSighting = rawBar != null
+        && !gauge.held
+        && !choice.held
+        && (!glareHidden || sharpDespiteGlare)
+        && reading.relativeAngleDeg != null
+        && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE;
+      const gated = readingHoldRef.current.push({ bar: rawBar, fresh: freshSighting, now });
+      const pressureBar = gated.bar;
+      const shotRunning = shotRunRef.current.push(pressureMeasured ? rawBar : null);
+      const showGlareHint = glareSetupHintVisible({
+        glare: frameQuality.flags.includes('glare'),
+        shotRunning,
+      });
+      const showMoveCloser = moveCloserHintVisible({
+        tooSmall: gaugeTooSmallForNeedle(gauge.radius, minReadableDialRadiusPx()),
+        shotRunning,
+      });
+      const needleSure = (reading.quality ?? 0) >= NEEDLE_TRACK_QUALITY;
+      // Half the hub samples is a tie, not a needle. A streak that only ties
+      // the pivot check still gets a bar, at low confidence.
+      const hubSure = reading.hub == null || reading.hub > HUB_CONNECTION_MIN;
+      if (
+        gauge.dialRegistered
+        && (reading.likeness ?? 0) >= NEEDLE_LIKENESS_GATE
+        && (reading.hub == null || reading.hub > HUB_CONNECTION_MIN)
+        && reading.relativeAngleDeg != null
+      ) {
+        agreeSamplesRef.current.push({ timeMs: now, angleDeg: reading.relativeAngleDeg });
+        const agreeCutoff = now - REST_ANCHOR_MS - PROCESS_INTERVAL_MS;
+        agreeSamplesRef.current = agreeSamplesRef.current.filter((sample) => sample.timeMs >= agreeCutoff);
+      }
+      const angleAgrees = confidentAngleWindow(agreeSamplesRef.current, now);
+      let publishedConfidence = !predicted && pressureMeasured && needleSure && hubSure && confidentDial && angleAgrees
+        ? gauge.confidence
+        : Math.min(gauge.confidence ?? 0, NEEDLE_LOST_QUALITY);
+      if (gated.held || gated.gap) {
+        publishedConfidence = Math.min(publishedConfidence ?? 0, NEEDLE_LOST_QUALITY);
+      }
       const uncertainty = record({
         tracking,
         smoothedAngle: tracked.angle,
@@ -590,6 +1187,7 @@ export function FlairPressureLab() {
         poseAge: poseAgeRef.current,
         jitterDeg: jitter,
       });
+      markCv();
       setLive({
         tracking,
         displayBar: tracking === 'TRACKING' || tracking === 'UNCERTAIN' ? pressureBar : null,
@@ -610,12 +1208,229 @@ export function FlairPressureLab() {
         uncertainty,
         offScale,
         corrected: choice.corrected,
+        glareHint: showGlareHint ? GLARE_SETUP_HINT : null,
+        moveCloserHint: showMoveCloser ? MOVE_CLOSER_HINT : null,
       });
+      if (REPLAY_BUILD) {
+        const labels = replayGaugeLabels(gauge);
+        const flagParts = [tracking, needleDecision].filter(Boolean);
+        if (gauge.held) flagParts.push('gauge-held');
+        if (weak) flagParts.push('weak-needle');
+        if (!frameQuality.ok) flagParts.push(...frameQuality.flags);
+        if (showGlareHint) flagParts.push('glare-hint');
+        if (showMoveCloser) flagParts.push('move-closer');
+        if (gated.held) flagParts.push('reading-held');
+        if (gated.expired) flagParts.push('reading-gap');
+        if (shotRunning) flagParts.push('shot');
+        pushReplayFrame({
+          gaugeFound: labels.gaugeFound,
+          centreFromGuide: labels.centreFromGuide,
+          centreX: gauge.cx,
+          centreY: gauge.cy,
+          radius: gauge.radius,
+          gaugeRotationDeg: gauge.rotationDeg,
+          needleAngleDeg: tracked.angle,
+          bar: pressureBar,
+          holdMs: gated.holdMs,
+          confidence: publishedConfidence,
+          conflictDeg: gauge.dialRegistered ? templateConflictDeg(reading.relativeAngleDeg) : null,
+          flags: `${flagParts.join('|')}|ref:${gauge.referenceCaptured ? 'yes' : 'no'}|rim:${gauge.confidence?.toFixed(3) ?? 'na'}|like:${reading.likeness?.toFixed(3) ?? 'na'}|end:${reading.needleEnd || 'na'}|hub:${reading.hub == null ? 'na' : reading.hub.toFixed(2)}${reading.model ? `|model:${reading.model.used ? 'yes' : 'gap'}` : ''}`,
+          tracking,
+          stageTrack: reading.stageMs?.track ?? null,
+          stageTrackDraw: reading.stageMs?.trackDraw ?? null,
+          stageNeedle: reading.stageMs?.needle ?? null,
+          stageModel: reading.stageMs?.model ?? null,
+          stageNeedleDraw: reading.stageMs?.needleDraw ?? null,
+          stageDiscovery: reading.stageMs?.discovery ?? null,
+          stageTrackBlit: reading.stageMs?.trackBlit ?? null,
+          stageTrackRead: reading.stageMs?.trackRead ?? null,
+          stageTrackResize: reading.stageMs?.trackResize ?? null,
+          stageTrackOutput: reading.stageMs?.trackOutput ?? null,
+          ...frameTiming(),
+        }, now);
+      }
     };
 
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [status, videoRef]);
+    const tick = (wallNow) => {
+      raf = requestAnimationFrame(tick);
+      const video = videoRef.current;
+      if (!video || video.readyState < 2) return;
+      if (wallNow - last < PROCESS_INTERVAL_MS) return;
+      last = wallNow;
+      void processSample(video, wallNow, wallNow);
+    };
+
+    if (!REPLAY_BUILD) {
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }
+
+    // Read stills taken at each slot. A live camera or a seek lands on a
+    // different picture from run to run, so two replays diverged.
+    let stopped = false;
+    window.__pressureReplayDrained = false;
+    const frameCount = Number(window.__pressureReplayFrameCount) || 0;
+    const frameBase = window.__pressureReplayFrameBase || '';
+    const untilS = Number(window.__pressureReplayUntilS) || 0;
+    const slot = PROCESS_INTERVAL_MS / 1000;
+    const chart = document.createElement('canvas');
+    chart.width = 280;
+    chart.height = 72;
+    const chartCtx = chart.getContext('2d');
+    let chartRaf = 0;
+    let lastChart = 0;
+    let scaleTicks = 0;
+    let longTasks = 0;
+    let harnessLongTasks = 0;
+    let appLongTasks = 0;
+    let longTaskMax = 0;
+    let loopStart = 0;
+    const longTaskDurations = [];
+    const searchDurations = [];
+    let countLongTasks = false;
+    let taskPhase = 'app';
+    setDiscoverySearchListener((searchMs) => {
+      searchDurations.push(searchMs);
+      completeReplaySearch(searchMs);
+    });
+    let slots = 0;
+    const drawChart = (now) => {
+      chartRaf = requestAnimationFrame(drawChart);
+      if (now - lastChart < 1000 / 30) return;
+      lastChart = now;
+      chartCtx.clearRect(0, 0, chart.width, chart.height);
+      chartCtx.beginPath();
+      chartCtx.strokeStyle = '#c45c26';
+      for (let i = 0; i < 40; i += 1) {
+        const y = 36 + Math.sin((scaleTicks + i) * 0.35) * 24;
+        if (i === 0) chartCtx.moveTo(i * 7, y);
+        else chartCtx.lineTo(i * 7, y);
+      }
+      chartCtx.stroke();
+    };
+    chartRaf = requestAnimationFrame(drawChart);
+    const scaleTimer = setInterval(() => {
+      scaleTicks += 1;
+      window.__pressureReplayScale = scaleTicks;
+    }, 100);
+    let longTaskObserver = null;
+    if (typeof PerformanceObserver !== 'undefined') {
+      try {
+        longTaskObserver = new PerformanceObserver((list) => {
+          if (!countLongTasks) return;
+          for (const entry of list.getEntries()) {
+            // A task that started while the stills were loading is not the frame loop.
+            if (loopStart && entry.startTime < loopStart) continue;
+            longTasks += 1;
+            if (taskPhase === 'harness') harnessLongTasks += 1;
+            else appLongTasks += 1;
+            if (entry.duration > longTaskMax) longTaskMax = entry.duration;
+            if (longTaskDurations.length < 8) longTaskDurations.push(Math.round(entry.duration));
+          }
+        });
+        longTaskObserver.observe({ type: 'longtask', buffered: false });
+      } catch {
+        longTaskObserver = null;
+      }
+    }
+    window.__pressureReplaySmoothness = () => ({
+      longTasks,
+      harnessLongTasks,
+      appLongTasks,
+      longTaskMax,
+      longTaskDurations,
+      searchDurations: searchDurations.slice(),
+      scaleTicks,
+      slots,
+    });
+    const loadFrame = (src) => new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('replay frame failed to load'));
+      img.src = src;
+    });
+    const run = async () => {
+      if (!frameBase || frameCount < 1 || untilS <= 0) {
+        window.__pressureReplayError = 'replay frames missing';
+        return;
+      }
+      try {
+        const stills = [];
+        for (let index = 4; !stopped; index += 1) {
+          const t = index * slot;
+          if (t >= untilS) break;
+          const fileIndex = (index % frameCount) + 1;
+          const name = String(fileIndex).padStart(4, '0');
+          const img = await loadFrame(`${frameBase}${name}.png`);
+          if (stopped) return;
+          stills.push({ t, img });
+        }
+        // The fake camera keeps decoding beside the stills and stalls the crop read.
+        // PNG decode stays outside the measured loop. A live frame is already decoded.
+        const liveVideo = videoRef.current;
+        liveVideo?.pause?.();
+        liveVideo?.srcObject?.getTracks?.().forEach((track) => track.stop());
+        const hold = document.createElement('canvas');
+        const frame = document.createElement('canvas');
+        let frameCtx = null;
+        loopStart = performance.now();
+        countLongTasks = true;
+        for (const still of stills) {
+          if (stopped) return;
+          const img = still.img;
+          if (hold.width !== img.naturalWidth || hold.height !== img.naturalHeight) {
+            hold.width = img.naturalWidth;
+            hold.height = img.naturalHeight;
+            frame.width = hold.width;
+            frame.height = hold.height;
+            frame.videoWidth = frame.width;
+            frame.videoHeight = frame.height;
+            frame.readyState = 4;
+            frameCtx = frame.getContext('2d', { willReadFrequently: true });
+          }
+          const holdCtx = hold.getContext('2d', { willReadFrequently: true });
+          // Still install is the harness. Split it so a full-frame read is not
+          // one long task, and keep those tasks out of the app count.
+          taskPhase = 'harness';
+          holdCtx.drawImage(img, 0, 0);
+          await new Promise((resolve) => { setTimeout(resolve, 0); });
+          const installed = holdCtx.getImageData(0, 0, hold.width, hold.height);
+          await new Promise((resolve) => { setTimeout(resolve, 0); });
+          frameCtx.putImageData(installed, 0, 0);
+          await new Promise((resolve) => { setTimeout(resolve, 0); });
+          taskPhase = 'app';
+          // Same path as the live camera: grab, post a search if this frame
+          // needs one, and apply whatever circle is already back. Do not wait.
+          // The live tick also leaves PROCESS_INTERVAL_MS between reads, which
+          // is long enough for the search to finish before the next frame.
+          // Stamp the still clock. The canvas has no currentTime, and the tap
+          // window is half a second of media time, not wall time.
+          frame.currentTime = still.t;
+          const grabAt = performance.now();
+          slots += 1;
+          window.__pressureReplaySlots = slots;
+          await processSample(frame, Math.round(still.t * 1000), performance.now(), { grabAt, mediaTimeS: still.t });
+          const remain = PROCESS_INTERVAL_MS - (performance.now() - grabAt);
+          if (remain > 0) await new Promise((resolve) => { setTimeout(resolve, remain); });
+        }
+        // The last search can still be running. Record it before the harness reads the rows.
+        await whenDiscoverySettled();
+        if (!stopped) window.__pressureReplayDrained = true;
+      } catch (err) {
+        window.__pressureReplayError = err?.message || 'replay frames failed';
+      }
+    };
+    run();
+    return () => {
+      stopped = true;
+      countLongTasks = false;
+      setDiscoverySearchListener(null);
+      clearInterval(scaleTimer);
+      cancelAnimationFrame(chartRaf);
+      longTaskObserver?.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [status, videoRef, opencvReady]);
 
   const stability = stabilityStats(trace);
   const formatPair = (step, spread, digits, unit) => {
@@ -624,19 +1439,23 @@ export function FlairPressureLab() {
     const right = spread == null ? '—' : Number(spread).toFixed(digits);
     return `${left} / ${right}${unit}`;
   };
-  const ring = videoSize && frameBox.w
-    ? videoRegionToPreview(region, videoSize.w, videoSize.h, frameBox.w, frameBox.h, mirrorPreview)
+  const detectedOverlay = videoSize && frameBox.w && live.gaugeX != null && live.gaugeY != null && live.gaugeRadius != null
+    ? videoPointToPreview(live.gaugeX, live.gaugeY, videoSize.w, videoSize.h, frameBox.w, frameBox.h, mirrorPreview)
     : null;
+  const overlayMap = videoSize && frameBox.w ? objectCoverMap(videoSize.w, videoSize.h, frameBox.w, frameBox.h) : null;
+  const overlayRadiusPx = overlayMap && live.gaugeRadius != null ? live.gaugeRadius * overlayMap.scale : null;
   const cameraLive = status === 'live';
   const showNeedle = cameraLive && Boolean(session) && live.displayAngle != null && (live.tracking === 'TRACKING' || live.tracking === 'UNCERTAIN');
   const needleAngle = previewAngleDeg(live.displayAngle, mirrorPreview);
   const needleRad = ((needleAngle ?? 0) * Math.PI) / 180;
   const badge = cameraLive ? live.tracking : 'CALIBRATING';
-  const pressureText = cameraLive && live.displayBar != null ? live.displayBar.toFixed(1) : '—';
+  const pressureText = cameraLive ? formatPressureBar(live.displayBar) : '—';
   const caption = !cameraLive
-    ? 'Start the front camera, then drag the ring onto the gauge.'
+    ? 'Start the front camera with the whole gauge in frame.'
     : !session
-      ? `At rest. Calibrating ${live.calibCount}/${REST_STABLE_SAMPLES}`
+      ? (tapPhase === 'legacy'
+        ? `At rest. Calibrating ${live.calibCount}/${REST_STABLE_SAMPLES}`
+        : (tapNote || 'Tap the centre of the gauge to freeze the rest frame.'))
       : live.tracking === 'TRACKING'
         ? 'Ready'
         : live.gaugeHeld
@@ -671,13 +1490,17 @@ export function FlairPressureLab() {
 
       <main className="flex-1 max-w-xl mx-auto w-full px-4 py-4 space-y-4 pb-10">
         <ol className={`text-sm ${ui.sub} space-y-1.5 list-decimal pl-5`}>
-          <li>Put the phone where the whole gauge stays in frame. Beside the Flair is fine. Small movement is ok.</li>
-          <li>Drag the ring onto the gauge face. Drag the dot to resize it. That is the starting position.</li>
-          <li>At rest, calibration starts on its own once the needle is steady. The ring then follows the gauge.</li>
+          <li>Put the phone where the whole gauge stays in frame, needle resting on the 0 pin.</li>
+          <li>Tap the centre of the gauge to freeze that frame.</li>
+          <li>On the still, tap the centre, the printed 5, and the printed 10. Rough taps are pulled onto the marks.</li>
         </ol>
-        <p className={`text-xs ${ui.muted}`}>Nothing is saved. A large or sudden move drops tracking and holds the last pressure until the gauge is found again.</p>
+        <p className={`text-xs ${ui.muted}`}>Nothing is saved. The frame stays in memory only until you accept or retry. A lost gauge holds the last pressure for about a second, then leaves a gap.</p>
 
-        <div ref={frameRef} className={`relative ${ui.card} rounded-2xl overflow-hidden aspect-[3/4] max-h-[62vh] mx-auto bg-black`}>
+        <div
+          ref={frameRef}
+          className={`relative ${ui.card} rounded-2xl overflow-hidden aspect-[3/4] max-h-[62vh] mx-auto bg-black`}
+          onPointerDown={onPreviewPointer}
+        >
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
@@ -692,18 +1515,60 @@ export function FlairPressureLab() {
               setVideoSize(next);
             }}
           />
-          {ring && (
+          <canvas
+            ref={freezeCanvasRef}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              transform: mirrorPreview ? 'scaleX(-1)' : undefined,
+              display: tapPhase === 'centre' || tapPhase === 'five' || tapPhase === 'ten' || tapPhase === 'review' ? 'block' : 'none',
+            }}
+          />
+          {tapPhase === 'review' && reviewPose && videoSize && frameBox.w ? (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+              {(() => {
+                const hub = videoPointToPreview(
+                  reviewPose.hub.x, reviewPose.hub.y, videoSize.w, videoSize.h, frameBox.w, frameBox.h, mirrorPreview,
+                );
+                const map = objectCoverMap(videoSize.w, videoSize.h, frameBox.w, frameBox.h);
+                if (!hub || !map) return null;
+                const ray = (deg, length, color) => {
+                  const rad = ((previewAngleDeg(deg, mirrorPreview) ?? 0) * Math.PI) / 180;
+                  const span = length * map.scale;
+                  return (
+                    <line
+                      x1={hub.x}
+                      y1={hub.y}
+                      x2={hub.x + span * Math.cos(rad)}
+                      y2={hub.y + span * Math.sin(rad)}
+                      stroke={color}
+                      strokeWidth="2"
+                    />
+                  );
+                };
+                return (
+                  <>
+                    {ray(reviewPose.zeroAngleDeg, reviewPose.radius * 0.9, '#7ee7ff')}
+                    {ray(reviewPose.tenAngleDeg, reviewPose.radius * 0.9, '#ffd24a')}
+                    {ray(reviewPose.fiveAngleDeg, reviewPose.radius * 0.72, '#ffffff')}
+                    <circle cx={hub.x} cy={hub.y} r="5" fill="none" stroke="#ff6b6b" strokeWidth="2" />
+                  </>
+                );
+              })()}
+            </svg>
+          ) : null}
+          {detectedOverlay && overlayRadiusPx != null && overlayRadiusPx > 4 && (
             <div
-              className="absolute border-2 border-dashed border-[#c88a4b] rounded-full touch-none"
-              style={{ left: ring.left, top: ring.top, width: ring.width, height: ring.height }}
-              onPointerDown={(event) => pointerDown(event, 'move')}
-              onPointerMove={pointerMove}
-              onPointerUp={pointerUp}
-              onPointerCancel={pointerUp}
+              className="absolute pointer-events-none"
+              style={{
+                left: detectedOverlay.x - overlayRadiusPx,
+                top: detectedOverlay.y - overlayRadiusPx,
+                width: overlayRadiusPx * 2,
+                height: overlayRadiusPx * 2,
+              }}
             >
-              <div className="absolute left-1/2 top-1/2 w-1.5 h-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c88a4b] pointer-events-none" />
+              <div className="absolute inset-0 border-2 border-[#c88a4b]/90 rounded-full" />
               {showNeedle && (
-                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full pointer-events-none">
+                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
                   <line
                     x1="50"
                     y1="50"
@@ -715,22 +1580,42 @@ export function FlairPressureLab() {
                   />
                 </svg>
               )}
-              <div
-                data-handle="resize"
-                className="absolute w-8 h-8 -right-2 top-1/2 -translate-y-1/2 rounded-full bg-[#c88a4b] border-2 border-[#121110]"
-                onPointerDown={(event) => pointerDown(event, 'resize')}
-                onPointerMove={pointerMove}
-                onPointerUp={pointerUp}
-                onPointerCancel={pointerUp}
-              />
             </div>
           )}
-          <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] text-[#f5f2eb]/80 pointer-events-none">
-            {session ? 'Ring follows the gauge' : 'Drag the ring onto the gauge'}
+          <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] text-[#f5f2eb]/90 pointer-events-none px-3">
+            {tapPhase === 'aim' && 'Tap the centre of the gauge'}
+            {tapPhase === 'centre' && 'Tap the gauge centre'}
+            {tapPhase === 'five' && 'Tap the printed 5'}
+            {tapPhase === 'ten' && 'Tap the printed 10'}
+            {tapPhase === 'review' && 'Check the centre, the 0 ray, and the 10 ray'}
+            {tapPhase === 'tracking' && (live.tracking === 'LOST' ? 'Tracking lost' : 'Tracking the calibrated dial')}
+            {tapPhase === 'legacy' && (session ? 'Tracking detected dial' : 'Searching for gauge…')}
           </p>
+          {tapPhase === 'review' && (
+            <div className="absolute top-3 left-3 right-3 flex justify-center gap-2 pointer-events-auto">
+              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={acceptTapCalibration} className="px-4 py-2 rounded-xl text-sm bg-emerald-600 text-white">OK</button>
+              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={beginTapAim} className="px-4 py-2 rounded-xl text-sm bg-black/60 text-white border border-white/30">Retry</button>
+            </div>
+          )}
+          {tapPhase === 'tracking' && live.tracking === 'LOST' && (
+            <div className="absolute top-3 left-3 right-3 flex justify-center pointer-events-auto">
+              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={beginTapAim} className="px-4 py-2 rounded-xl text-sm bg-black/70 text-white border border-white/30">Re-tap to calibrate</button>
+            </div>
+          )}
         </div>
+        {tapNote ? <p className={`text-sm ${ui.sub}`}>{tapNote}</p> : null}
 
         <div className={`${ui.cardInset} rounded-2xl p-5 text-center`}>
+          {cameraLive && live.moveCloserHint ? (
+            <p className="text-sm font-semibold text-amber-50 bg-amber-500/20 border border-amber-300/50 rounded-xl px-3 py-2 mb-3">
+              {live.moveCloserHint}
+            </p>
+          ) : null}
+          {cameraLive && live.glareHint ? (
+            <p className="text-sm font-semibold text-amber-50 bg-amber-500/20 border border-amber-300/50 rounded-xl px-3 py-2 mb-3">
+              {live.glareHint}
+            </p>
+          ) : null}
           <p className={`text-[10px] uppercase tracking-widest ${ui.muted}`}>Pressure</p>
           <p className="text-5xl font-black tabular-nums text-[#e0c9a8] mt-1">
             {pressureText}
@@ -798,8 +1683,8 @@ export function FlairPressureLab() {
             <dd className={ui.text}>{trackInfo?.facingMode || '—'}</dd>
             <dt>Processing FPS</dt>
             <dd className={ui.text}>{live.fps}</dd>
-            <dt>Ring center</dt>
-            <dd className={ui.text}>{region.nx.toFixed(2)}, {region.ny.toFixed(2)}</dd>
+            <dt>Gauge center</dt>
+            <dd className={ui.text}>{live.gaugeX != null ? `${formatNum(live.gaugeX, 0)}, ${formatNum(live.gaugeY, 0)} px` : '—'}</dd>
             <dt>Screen angle</dt>
             <dd className={ui.text}>{formatNum(live.screenAngle, 0)}°</dd>
             <dt>Relative angle</dt>
@@ -811,15 +1696,15 @@ export function FlairPressureLab() {
             <dt>Clockwise from rest</dt>
             <dd className={ui.text}>{session && live.smoothedAngle != null ? `${clockwiseDelta(live.smoothedAngle, session.zeroAngleDeg).toFixed(1)}°` : '—'}</dd>
             <dt>Calculated pressure</dt>
-            <dd className={ui.text}>{formatNum(live.rawBar, 2)} bar</dd>
+            <dd className={ui.text}>{formatPressureBar(live.rawBar)} bar</dd>
             <dt>Smoothed pressure</dt>
-            <dd className={ui.text}>{formatNum(live.pressureBar, 2)} bar</dd>
+            <dd className={ui.text}>{formatPressureBar(live.pressureBar)} bar</dd>
             <dt>Tracking state</dt>
             <dd className={ui.text}>{badge}</dd>
             <dt>Build</dt>
             <dd className={ui.text}>{PRESSURE_LAB_BUILD}</dd>
             <dt>Scale</dt>
-            <dd className={ui.text}>{FLAIR_58_SCALE.minBar}-{FLAIR_58_SCALE.maxBar} bar / {sweepDeg}° provisional</dd>
+            <dd className={ui.text}>{FLAIR_58_SCALE.minBar}-{FLAIR_58_SCALE.maxBar} bar / {sweepDeg}°</dd>
             <dt>Uncertainty</dt>
             <dd className={ui.text}>{live.uncertainty || '—'}</dd>
             <dt>Pose age</dt>
@@ -930,10 +1815,10 @@ export function FlairPressureLab() {
             The rising-edge line does not start a timer and is not saved.
           </p>
           <label className={`block text-sm ${ui.sub}`}>
-            Scale arc assumption: {sweepDeg}° from 0 to 12 bar
+            Printed scale: {sweepDeg}° from 0 to {FLAIR_58_SCALE.maxBar} bar
             <input
               type="range"
-              min="200"
+              min="140"
               max="320"
               step="1"
               value={sweepDeg}

@@ -1,0 +1,150 @@
+{
+  "id": "flair58-v1",
+  "schemaVersion": 1,
+  "scale": {
+    "anchors": [
+      {
+        "deg": 0,
+        "value": 0
+      },
+      {
+        "deg": 74.0613,
+        "value": 5
+      },
+      {
+        "deg": 161.757,
+        "value": 10
+      }
+    ],
+    "min": 0,
+    "max": 10,
+    "unit": "bar",
+    "interp": "piecewise-linear",
+    "zero": "rest-needle"
+  },
+  "rest": {
+    "deg": 0,
+    "value": 0,
+    "pinOffsetDeg": 5.8019
+  },
+  "needle": {
+    "width": 0.045,
+    "length": 0.86,
+    "tailRatio": 0.5,
+    "shade": 0.08,
+    "softness": 0.35,
+    "hub": 0.12,
+    "tipLenRatio": 1,
+    "tailLenRatio": 0.5,
+    "color": "dark",
+    "template": "needle.png"
+  },
+  "rectify": {
+    "mode": "cartesian",
+    "cartesian": {
+      "size": 96,
+      "dialRadiusPx": 40
+    },
+    "polar": {
+      "radiusBins": 48,
+      "angleBins": 360,
+      "outerRadiusPx": 48
+    }
+  },
+  "masks": [],
+  "background": "dial_clean.png",
+  "maxSlewPerSec": 4,
+  "fit": {
+    "source": "scripts/pressure-label/fixtures/labels-2026-10-22.json",
+    "method": "median clockwise from the 0 pin, minus the rest-needle offset",
+    "restPhases": [
+      "rest",
+      "dry_1",
+      "used_1"
+    ],
+    "pinOffsetDeg": 5.801878892585307,
+    "pinToFiveDeg": 79.86317441846549,
+    "pinToTenDeg": 167.5588413009649,
+    "n": 34,
+    "nRest": 10,
+    "leaveOneClipOutSpread": {
+      "pinOffsetDeg": {
+        "min": 5.740214838111399,
+        "max": 5.863542947059216,
+        "spread": 0.12332810894781687
+      },
+      "anchor5Deg": {
+        "min": 73.82303593899587,
+        "max": 74.36898369682729,
+        "spread": 0.5459477578314136
+      },
+      "anchor10Deg": {
+        "min": 160.76786906808132,
+        "max": 161.92827001296945,
+        "spread": 1.1604009448881243
+      }
+    },
+    "leaveOneClipOut": [
+      {
+        "clip": "20261018_160844",
+        "pinOffsetDeg": 5.740214838111399,
+        "anchor5Deg": 74.10434992402003,
+        "anchor10Deg": 160.89119717702914
+      },
+      {
+        "clip": "20261018_094055",
+        "pinOffsetDeg": 5.740214838111399,
+        "anchor5Deg": 74.36898369682729,
+        "anchor10Deg": 161.70898291273758
+      },
+      {
+        "clip": "20261017_134943",
+        "pinOffsetDeg": 5.863542947059216,
+        "anchor5Deg": 74.01824112774034,
+        "anchor10Deg": 161.91002687481563
+      },
+      {
+        "clip": "20261017_084814",
+        "pinOffsetDeg": 5.863542947059216,
+        "anchor5Deg": 73.82303593899587,
+        "anchor10Deg": 161.91002687481563
+      },
+      {
+        "clip": "20261015_225307",
+        "pinOffsetDeg": 5.863542947059216,
+        "anchor5Deg": 73.98102181507221,
+        "anchor10Deg": 161.58565480378977
+      },
+      {
+        "clip": "20261015_225219",
+        "pinOffsetDeg": 5.740214838111399,
+        "anchor5Deg": 74.10434992402003,
+        "anchor10Deg": 161.70898291273758
+      },
+      {
+        "clip": "20261018_160931",
+        "pinOffsetDeg": 5.740214838111399,
+        "anchor5Deg": 74.10434992402003,
+        "anchor10Deg": 161.70898291273758
+      },
+      {
+        "clip": "20261018_094151",
+        "pinOffsetDeg": 5.863542947059216,
+        "anchor5Deg": 74.01824112774034,
+        "anchor10Deg": 161.91002687481563
+      },
+      {
+        "clip": "20261017_135116",
+        "pinOffsetDeg": 5.863542947059216,
+        "anchor5Deg": 73.82303593899587,
+        "anchor10Deg": 160.76786906808132
+      },
+      {
+        "clip": "20261017_084919",
+        "pinOffsetDeg": 5.740214838111399,
+        "anchor5Deg": 74.14156923668816,
+        "anchor10Deg": 161.92827001296945
+      }
+    ]
+  }
+}

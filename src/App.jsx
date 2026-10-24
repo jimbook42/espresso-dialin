@@ -195,6 +195,20 @@ import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
+import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
+import { ShotLabPressureProvider } from './components/ShotLabPressureContext.jsx';
+import { LabPressureStartPanel } from './components/LabPressureStartPanel.jsx';
+import { LabPressurePreShotConfirm } from './components/LabPressurePreShotConfirm.jsx';
+import { ShotPressureChart } from './components/ShotPressureChart.jsx';
+import {
+  LAB_CAMERA_PRESSURE_KEY,
+  LAB_GAUGE_TAP_CALIBRATION_KEY,
+  isLabCameraPressureEnabled,
+  labGaugeTapCalibrationFromSettings,
+} from './settings/labCameraPressure.js';
+import { LAB_PRESSURE_CAMERA_PREVIEW_KEY } from './flairPressureLab/shotLabPressureTrust.js';
+import { shotTimerLabCompactClass } from './flairPressureLab/shotTimerCompactLayout.js';
+import { isPressureSimAllowed } from './config/pressureSimFlag.js';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { WeighingView } from './components/WeighingView.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
@@ -339,13 +353,21 @@ export default function App() {
   const showBrewGraduationPrompt = brewGuideEnabled
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
+  const labCameraPressureEnabled = isLabCameraPressureEnabled(settingsSetting);
   const devUrlSimScaleActive = isDevUrlSimScaleActive();
   const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
+  const [labPressureShotMetrics, setLabPressureShotMetrics] = useState(null);
+  const labPressureMetricsGetterRef = useRef(() => ({}));
   const [shotCountdownValue, setShotCountdownValue] = useState(null);
   const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
   const shotCountdownStartOptsRef = useRef(null);
   const [weighingViewOpen, setWeighingViewOpen] = useState(false);
+  const [labCalibrateRequest, setLabCalibrateRequest] = useState(0);
+  const [labZeroConfirmOpen, setLabZeroConfirmOpen] = useState(false);
+  const labZeroConfirmedSessionRef = useRef(false);
+  const labPendingStartOptsRef = useRef(null);
+  const labPressureOpenCalibrateRef = useRef(() => {});
   const [scaleDebugLines, setScaleDebugLines] = useState([]);
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
   const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
@@ -699,6 +721,7 @@ export default function App() {
       setScaleShotMetrics(null);
       await timemoreScale.notifyShotStarted({ tareAlreadyDone });
     }
+    setLabPressureShotMetrics(null);
     if (timerUsePreInfusion) setPreInfusionPhase(true);
     else setPreInfusionPhase(false);
     setTimerRunning(true);
@@ -912,6 +935,12 @@ export default function App() {
         setScaleShotMetrics(metrics);
       }
     }
+    if (labCameraPressureEnabled) {
+      const labMetrics = labPressureMetricsGetterRef.current?.() ?? {};
+      setLabPressureShotMetrics(
+        labMetrics?.labPressureCurve?.length ? labMetrics : null
+      );
+    }
     return rounded;
   };
 
@@ -937,6 +966,7 @@ export default function App() {
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
     }
+    setLabPressureShotMetrics(null);
   };
 
   const handleResetTimer = () => {
@@ -1247,6 +1277,61 @@ export default function App() {
   const handleToggleStatsForNerds = async (val) => {
     if (!val) setExpandedShotStatsIds(new Set());
     await patchGlobalSettings(db, { statsForNerdsEnabled: val });
+  };
+
+  const handleToggleLabCameraPressure = async (val) => {
+    await patchGlobalSettings(db, { [LAB_CAMERA_PRESSURE_KEY]: val });
+  };
+
+  const handleSaveLabGaugeCalibration = async (calibration) => {
+    await patchGlobalSettings(db, {
+      [LAB_GAUGE_TAP_CALIBRATION_KEY]: {
+        calibration,
+        savedAt: new Date().toISOString(),
+        viewMoved: false,
+      },
+    });
+    labZeroConfirmedSessionRef.current = true;
+  };
+
+  const handleToggleLabPressurePreview = async (val) => {
+    await patchGlobalSettings(db, { [LAB_PRESSURE_CAMERA_PREVIEW_KEY]: val });
+  };
+
+  const labShotsWithPressureLogged = shots.filter((s) => s.labPressureCurve?.length > 0).length;
+
+  const requestStartTimerWithLab = useCallback(
+    (opts = {}) => {
+      if (shotCountdownValue != null || timerRunning) return;
+      const labOn = isLabCameraPressureEnabled(settingsSetting);
+      const calibration = labGaugeTapCalibrationFromSettings(settingsSetting);
+      const viewMoved = settingsSetting?.labGaugeTapCalibration?.viewMoved === true;
+      if (labOn && (!calibration || viewMoved) && !isPressureSimAllowed()) {
+        setLabCalibrateRequest((n) => n + 1);
+        return;
+      }
+      if (
+        labOn
+        && calibration
+        && !labZeroConfirmedSessionRef.current
+        && !viewMoved
+        && !isPressureSimAllowed()
+      ) {
+        labPendingStartOptsRef.current = opts;
+        setLabZeroConfirmOpen(true);
+        return;
+      }
+      requestStartTimer(opts);
+    },
+    [shotCountdownValue, timerRunning, settingsSetting, requestStartTimer],
+  );
+
+  const captureLabPressureShotMetrics = () => {
+    try {
+      return labPressureMetricsGetterRef.current?.() ?? {};
+    } catch {
+      return {};
+    }
   };
 
   const toggleShotEngineStats = (shotId) => {
@@ -1795,6 +1880,23 @@ export default function App() {
             scaleFlowCurve: scaleShotMetrics.scaleFlowCurve,
           }
         : {}),
+      ...(labPressureShotMetrics?.labPressureCurve?.length
+        ? {
+            labPressureCurve: labPressureShotMetrics.labPressureCurve,
+            labPressurePeakBar: labPressureShotMetrics.labPressurePeakBar ?? undefined,
+            ...(labPressureShotMetrics.labGaugeSnapshotJpeg
+              ? { labGaugeSnapshotJpeg: labPressureShotMetrics.labGaugeSnapshotJpeg }
+              : {}),
+          }
+        : (() => {
+            const lab = captureLabPressureShotMetrics();
+            if (!lab?.labPressureCurve?.length) return {};
+            return {
+              labPressureCurve: lab.labPressureCurve,
+              labPressurePeakBar: lab.labPressurePeakBar ?? undefined,
+              ...(lab.labGaugeSnapshotJpeg ? { labGaugeSnapshotJpeg: lab.labGaugeSnapshotJpeg } : {}),
+            };
+          })()),
     };
 
     try {
@@ -1833,6 +1935,7 @@ export default function App() {
       setExcludeFromLearning(false);
       setKnownIssueReason('puck_prep');
       setScaleShotMetrics(null);
+      setLabPressureShotMetrics(null);
       handleResetTimer();
 
       setTimeout(() => {
@@ -2318,7 +2421,54 @@ export default function App() {
   }
 
   return (
+    <ShotLabPressureProvider
+      settings={settingsSetting}
+      onSaveCalibration={handleSaveLabGaugeCalibration}
+      timerRunning={timerRunning}
+      timerSeconds={timerSeconds}
+      weighingViewOpen={weighingViewOpen}
+      metricsGetterRef={labPressureMetricsGetterRef}
+      ui={ui}
+      flairProfile={activeRecipe?.flairProfile}
+      timerUsePreInfusion={timerUsePreInfusion}
+      preInfusionPhase={preInfusionPhase}
+      extractionElapsedS={scaleExtractionElapsedS}
+      liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
+      scaleConnected={timemoreScale.isConnected}
+      targetTimeMaxS={activeRecipe?.targetTimeMaxS}
+      labShotsLogged={labShotsWithPressureLogged}
+      calibrateRequest={labCalibrateRequest}
+      registerOpenCalibrate={(fn) => {
+        labPressureOpenCalibrateRef.current = fn;
+      }}
+    >
     <div className={`min-h-screen ${ui.page} relative`}>
+      <LabPressurePreShotConfirm
+        open={labZeroConfirmOpen}
+        ui={ui}
+        onYes={() => {
+          labZeroConfirmedSessionRef.current = true;
+          setLabZeroConfirmOpen(false);
+          const opts = labPendingStartOptsRef.current || {};
+          labPendingStartOptsRef.current = null;
+          requestStartTimer(opts);
+        }}
+        onRecalibrate={() => {
+          setLabZeroConfirmOpen(false);
+          labPendingStartOptsRef.current = null;
+          void patchGlobalSettings(db, (row) => ({
+            [LAB_GAUGE_TAP_CALIBRATION_KEY]: {
+              ...(row?.[LAB_GAUGE_TAP_CALIBRATION_KEY] || {}),
+              viewMoved: true,
+            },
+          }));
+          setLabCalibrateRequest((n) => n + 1);
+        }}
+        onCancel={() => {
+          setLabZeroConfirmOpen(false);
+          labPendingStartOptsRef.current = null;
+        }}
+      />
       <PwaInstallBanner ui={ui} darkMode={darkMode} />
 
       <WeighingView
@@ -2350,11 +2500,11 @@ export default function App() {
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
       {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
         <div
-          className="fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+          className={`shot-timer-fullscreen ${shotTimerLabCompactClass(labCameraPressureEnabled)} fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]`}
           onClick={handleTimerSurfaceTap}
           role="presentation"
         >
-          <div className="h-14 px-4 flex items-center justify-between border-b border-[#1e1e1e] shrink-0">
+          <div className="shot-timer-header h-14 px-4 flex items-center justify-between border-b border-[#1e1e1e] shrink-0">
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${timerRunning ? 'bg-[#3dd68c] animate-pulse' : 'bg-[#5a5754]'}`} />
               <span className="text-[11px] tracking-[0.14em] font-semibold text-[#9a9690] uppercase">
@@ -2376,9 +2526,9 @@ export default function App() {
             </button>
           </div>
 
-          <div className="flex-1 flex flex-col items-center justify-center px-5 min-h-0 pointer-events-none">
+          <div className="shot-timer-mid flex-1 flex flex-col items-center justify-start pt-2 px-5 min-h-0 overflow-hidden pointer-events-none">
             {flairEnabled && activeRecipe?.flairProfile && (
-              <div className="w-full max-w-sm mb-6 opacity-35">
+              <div className="shot-timer-profile-wrap w-full max-w-sm mb-2 shrink-0 opacity-35 max-h-[22vh] overflow-hidden">
                 <PressureProfileChart
                   profile={activeRecipe.flairProfile}
                   progress={timerProgress}
@@ -2409,7 +2559,7 @@ export default function App() {
             )}
 
             <div
-              className={`text-[clamp(3.75rem,20vw,5.25rem)] font-bold tabular-nums tracking-[-0.06em] leading-[0.9] ${
+              className={`shot-timer-main-time text-[clamp(3.75rem,20vw,5.25rem)] font-bold tabular-nums tracking-[-0.06em] leading-[0.9] ${
                 timerUsePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#ede9e3]'
               }`}
             >
@@ -2425,7 +2575,8 @@ export default function App() {
                 frozenYieldG={frozenShotWeightG}
               />
             )}
-            <p className="text-[13px] text-[#6b6457] mt-4 text-center">
+            <ShotLabPressureIntegration variant="fullscreen" ui={ui} />
+            <p className="shot-timer-total-label text-[11px] text-[#6b6457] mt-2 text-center shrink-0">
               {timerUsePreInfusion && preInfusionPhase
                 ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
                 : timerUsePreInfusion
@@ -2434,7 +2585,7 @@ export default function App() {
             </p>
           </div>
 
-          <div className="px-4 pb-6 pt-2 space-y-4 max-w-md mx-auto w-full">
+          <div className="shot-timer-footer px-4 pb-6 pt-1 space-y-3 max-w-md mx-auto w-full shrink-0">
             <div className="w-full h-1 bg-[#1e1e1e] rounded-full overflow-hidden pointer-events-none">
               <div
                 className="h-full bg-[#c88a4b] transition-[width] duration-100 ease-linear"
@@ -2442,7 +2593,7 @@ export default function App() {
               />
             </div>
 
-            <p className="text-center text-[11px] text-[#4a4846] pointer-events-none">
+            <p className="shot-timer-hint text-center text-[11px] text-[#4a4846] pointer-events-none">
               {timerUsePreInfusion && preInfusionPhase
                 ? 'Tap anywhere to end pre-infusion'
                 : 'Tap anywhere to stop and fill shot time'}
@@ -2461,7 +2612,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleStopTimer(); }}
-                  className="w-full min-h-[72px] rounded-[20px] bg-[#ede6dd] text-[#121212] font-bold text-base active:scale-[0.99] shadow-[0_12px_32px_rgba(237,230,221,0.2)]"
+                  className="shot-timer-stop-btn w-full min-h-[72px] rounded-[20px] bg-[#ede6dd] text-[#121212] font-bold text-base active:scale-[0.99] shadow-[0_12px_32px_rgba(237,230,221,0.2)]"
                 >
                   Stop shot
                 </button>
@@ -2469,7 +2620,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); handleCancelTimer(); }}
-                className="w-full min-h-[48px] rounded-[14px] bg-[#1e1e1e] border border-[#262626] text-[13px] font-medium text-[#6b6457]"
+                className="shot-timer-cancel-btn w-full min-h-[48px] rounded-[14px] bg-[#1e1e1e] border border-[#262626] text-[13px] font-medium text-[#6b6457]"
               >
                 Cancel
               </button>
@@ -2862,9 +3013,12 @@ export default function App() {
                             frozenYieldG={frozenShotWeightG}
                           />
                         )}
+                        {!timerRunning && (
+                          <ShotLabPressureIntegration variant="inline" ui={ui} />
+                        )}
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        <button type="button" onClick={() => requestStartTimer()} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
+                        <button type="button" onClick={() => requestStartTimerWithLab()} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
                           <Play className="w-4 h-4 fill-current" /> Start
                         </button>
                         <button type="button" onClick={handleResetTimer} className={`p-3.5 min-h-[48px] min-w-[48px] ${ui.secondaryBtn} rounded-xl`}>
@@ -2872,6 +3026,16 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+                    {labCameraPressureEnabled && (
+                      <LabPressureStartPanel
+                        enabled={labCameraPressureEnabled}
+                        calibrated={Boolean(labGaugeTapCalibrationFromSettings(settingsSetting))}
+                        viewMoved={settingsSetting?.labGaugeTapCalibration?.viewMoved === true}
+                        readerReady={true}
+                        onRecalibrate={() => setLabCalibrateRequest((n) => n + 1)}
+                        ui={ui}
+                      />
+                    )}
                     {scaleFeatureEnabled && !devUrlSimScaleActive && (
                       <ScaleTimerControls
                         ui={ui}
@@ -3644,6 +3808,13 @@ export default function App() {
                         compact
                       />
                     )}
+                    {s.labPressureCurve?.length > 0 && (
+                      <ShotPressureChart
+                        samples={s.labPressureCurve.map((p) => ({ tS: p.tS, bar: p.bar, confident: true }))}
+                        compact
+                        peakBar={s.labPressurePeakBar ?? null}
+                      />
+                    )}
 
                     <div className={`flex flex-wrap items-center gap-2 text-[10px] ${ui.muted}`}>
                       {preSec && <span className="italic">Pre-infusion: {preSec}s.</span>}
@@ -4055,6 +4226,44 @@ export default function App() {
                   )}
                 </div>
 
+                <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${ui.muted}`}>Lab</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Pressure from camera (beta)</span>
+                      <span className={`text-[10px] ${ui.muted}`}>
+                        Experimental camera-only Flair gauge reading on the shot screen. Display smoothing only; raw
+                        samples are stored with logged shots.
+                      </span>
+                      {labCameraPressureEnabled && (
+                        <div className="mt-2">
+                          <ShotLabPressureIntegration variant="settings-hint" ui={ui} />
+                        </div>
+                      )}
+                    </div>
+                    <SettingsToggle
+                      checked={labCameraPressureEnabled}
+                      onChange={handleToggleLabCameraPressure}
+                      label="Pressure from camera (beta)"
+                    />
+                  </div>
+                  {labCameraPressureEnabled && (
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <span className={`font-bold block ${ui.text}`}>Gauge camera preview</span>
+                        <span className={`text-[10px] ${ui.muted}`}>
+                          Optional small preview during calibration and shots (off by default).
+                        </span>
+                      </div>
+                      <SettingsToggle
+                        checked={settingsSetting?.[LAB_PRESSURE_CAMERA_PREVIEW_KEY] === true}
+                        onChange={handleToggleLabPressurePreview}
+                        label="Gauge camera preview"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <div className={`flex items-center justify-between pt-2 border-t ${ui.modalDivider}`}>
                   <div>
                     <span className={`font-bold block ${labelClass}`}>Interface appearance</span>
@@ -4258,5 +4467,6 @@ export default function App() {
 
       <Analytics />
     </div>
+    </ShotLabPressureProvider>
   );
 }

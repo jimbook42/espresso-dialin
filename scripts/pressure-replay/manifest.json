@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "clips": [
+    {
+      "id": "20261015_225219",
+      "file": "20261015_225219.mp4",
+      "description": "Static gauge, normal light",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "scoringCentre": { "x": 240, "y": 355, "tolerancePx": 45 },
+      "notes": "Needle at 0 bar throughout"
+    },
+    {
+      "id": "20261015_225240",
+      "file": "20261015_225240.mp4",
+      "description": "Static gauge, heavy shadow",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "scoringCentre": { "x": 240, "y": 355, "tolerancePx": 45 },
+      "notes": "Needle at 0 bar throughout"
+    },
+    {
+      "id": "20261015_225254",
+      "file": "20261015_225254.mp4",
+      "description": "Static gauge, flickering light",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "scoringCentre": { "x": 240, "y": 355, "tolerancePx": 45 },
+      "notes": "Needle at 0 bar throughout"
+    },
+    {
+      "id": "20261015_225307",
+      "file": "20261015_225307.mp4",
+      "description": "Slow pull with ~90° gauge rotation",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "scoringCentre": { "x": 240, "y": 355, "tolerancePx": 45 },
+      "notes": "Needle at 0 bar throughout"
+    },
+    {
+      "id": "20261015_225324",
+      "file": "20261015_225324.mp4",
+      "description": "Fast pumping, heavy blur",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "notes": "Needle at 0 bar throughout"
+    },
+    {
+      "id": "20261015_225337",
+      "file": "20261015_225337.mp4",
+      "description": "Hand-twist glare, then a pull",
+      "expectedBar": 0,
+      "expectedPeakBar": null,
+      "tolerance": 0.5,
+      "notes": "Needle at 0 bar throughout"
+    }
+  ]
+}
