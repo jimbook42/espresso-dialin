@@ -51,5 +51,10 @@ export function pickCameo(rand = Math.random) {
   return rand() < 0.05 ? 'gold' : 'suit';
 }
 
-export const PERFECT_SHOT_CELEBRATION_MS = 1400;
-export const PERFECT_SHOT_CELEBRATION_REDUCED_MS = 1200;
+/** Total celebration duration (JS timers + inline CSS var). Keep index.css ring animation in sync. */
+export const PERFECT_SHOT_CELEBRATION_MS = 4000;
+
+/** Recommendation scroll after a perfect shot — unchanged from when celebration was 1.4 s (1400 + 80). */
+export const PERFECT_SHOT_RECOMMENDATION_SCROLL_DELAY_MS = 1480;
+
+export const PERFECT_SHOT_CAMEO_FADE_OUT_LEAD_MS = 400;
