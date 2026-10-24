@@ -41,6 +41,6 @@ export function scrollPerfectShotIntoView({ yieldEl, notesEl, reducedMotion = fa
     yieldEl.scrollIntoView({ behavior, block: 'center' });
   }
   if (notesEl && typeof notesEl.scrollIntoView === 'function') {
-    notesEl.scrollIntoView({ behavior, block: 'nearest' });
+    notesEl.scrollIntoView({ behavior, block: 'center' });
   }
 }

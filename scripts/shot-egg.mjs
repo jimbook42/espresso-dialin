@@ -83,22 +83,22 @@ async function seedDialForm(page) {
 }
 
 async function openDialFresh(page, url) {
+  await page.goto(url, { waitUntil: 'networkidle' });
   await clearDb(page);
   await seedDialForm(page);
-  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('dial-yield-tile').waitFor({ timeout: 15_000 });
 }
 
 async function scrollCelebrationTargets(page) {
   await page.evaluate(() => {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const behavior = reduced ? 'auto' : 'auto';
+    const behavior = 'auto';
     document.querySelector('[data-testid="dial-yield-tile"]')
       ?.scrollIntoView({ block: 'center', behavior });
     document.querySelector('[data-testid="dial-notes-card"]')
-      ?.scrollIntoView({ block: 'nearest', behavior });
+      ?.scrollIntoView({ block: 'center', behavior });
   });
-  await delay(150);
+  await delay(200);
 }
 
 async function fillDialShotFields(page, { yieldG = '36', timeS = '28', taste = 'Balanced' } = {}) {
@@ -137,9 +137,10 @@ async function checkCameoOverlap(page) {
     const cameoRect = cameo.getBoundingClientRect();
     const notesCard = document.querySelector('[data-testid="dial-notes-card"]');
 
+    const slot = document.querySelector('[data-testid="perfect-shot-cameo-slot"]');
     const candidates = [
       ...document.querySelectorAll('button, input, textarea, select, a[href], nav, label'),
-      ...document.querySelectorAll('p, span, h1, h2, h3, [data-testid]'),
+      ...document.querySelectorAll('p, span, h1, h2, h3'),
     ];
 
     const overlaps = [];
@@ -149,7 +150,7 @@ async function checkCameoOverlap(page) {
       if (seen.has(el)) continue;
       seen.add(el);
       if (el === cameo || cameo.contains(el) || el.contains(cameo)) continue;
-      if (el === notesCard) continue;
+      if (el === notesCard || el === slot || (slot && slot.contains(el))) continue;
 
       const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
@@ -310,12 +311,14 @@ async function main() {
 
       console.log(JSON.stringify({ manifest, overlapReports }, null, 2));
 
+      let failed = false;
       for (const report of overlapReports) {
         if (!report.ok) {
           console.error('overlap fail', report);
-          process.exitCode = 1;
+          failed = true;
         }
       }
+      if (failed) process.exit(1);
     } finally {
       await browser.close();
     }

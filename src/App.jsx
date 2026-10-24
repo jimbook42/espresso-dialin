@@ -190,7 +190,11 @@ import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
 import { brewGuideIntroMachineSettingsLine, brewGuideSettingsToggleDetail } from './brewGuide/copy.js';
 import { APP_VERSION_LABEL } from './config/appVersion.js';
 import { PerfectShotCelebration } from './components/PerfectShotCelebration.jsx';
-import { isPerfectShot, pickCameo } from './utils/perfectShot.js';
+import {
+  isPerfectShot,
+  PERFECT_SHOT_CELEBRATION_MS,
+  pickCameo,
+} from './utils/perfectShot.js';
 import {
   brewRatioOneDecimal,
   formatPerfectShotRatioLabel,
@@ -1981,16 +1985,16 @@ export default function App() {
       setLabPressureShotMetrics(null);
       handleResetTimer();
 
-      if (
-        isPerfectShot({
-          yieldG: parsedYield,
-          targetYieldG: activeRecipe.targetYieldG,
-          timeS: parsedTime,
-          timeMinS: activeRecipe.targetTimeMinS,
-          timeMaxS: activeRecipe.targetTimeMaxS,
-          taste: savedTasteProfile,
-        })
-      ) {
+      const loggedPerfectShot = isPerfectShot({
+        yieldG: parsedYield,
+        targetYieldG: activeRecipe.targetYieldG,
+        timeS: parsedTime,
+        timeMinS: activeRecipe.targetTimeMinS,
+        timeMaxS: activeRecipe.targetTimeMaxS,
+        taste: savedTasteProfile,
+      });
+
+      if (loggedPerfectShot) {
         queueMicrotask(() => {
           triggerPerfectShotCelebration(pickCameo(), true, {
             doseG: parsedDose,
@@ -1999,9 +2003,10 @@ export default function App() {
         });
       }
 
+      const recScrollDelayMs = loggedPerfectShot ? PERFECT_SHOT_CELEBRATION_MS + 80 : 100;
       setTimeout(() => {
         recommendationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+      }, recScrollDelayMs);
     } catch (err) {
       console.error("Database save failed:", err);
       setValidationError(`Error saving to database: ${err.message || 'Unknown IndexedDB Error.'}`);
@@ -3281,7 +3286,7 @@ export default function App() {
                   <div
                     ref={notesCardRef}
                     data-testid="dial-notes-card"
-                    className={`${ui.card} rounded-2xl p-3 relative overflow-visible${perfectShotCelebration ? ' perfect-shot-notes-card--celebrating' : ''}`}
+                    className={`${ui.card} rounded-2xl p-3 relative overflow-hidden`}
                   >
                     <input
                       type="text"
@@ -3291,10 +3296,12 @@ export default function App() {
                       className={`w-full ${inputClass} rounded-xl p-3 text-sm bg-transparent border-0`}
                     />
                     {perfectShotCelebration && (
-                      <PerfectShotCelebration
-                        variant={perfectShotCelebration.variant}
-                        onComplete={clearPerfectShotCelebration}
-                      />
+                      <div className="perfect-shot-cameo-slot" data-testid="perfect-shot-cameo-slot">
+                        <PerfectShotCelebration
+                          variant={perfectShotCelebration.variant}
+                          onComplete={clearPerfectShotCelebration}
+                        />
+                      </div>
                     )}
                   </div>
 
