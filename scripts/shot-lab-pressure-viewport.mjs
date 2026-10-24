@@ -88,6 +88,20 @@ async function seedDb(page, { labOn }) {
           lastSelectedBeanId: 'lab-bean',
           smartScaleDeviceId: 'timemore-dot',
           labCameraPressureEnabled: labEnabled,
+          ...(labEnabled
+            ? {
+                labGaugeTapCalibration: {
+                  savedAt: new Date().toISOString(),
+                  calibration: {
+                    zeroAngleDeg: 200,
+                    fiveAngleDeg: 260,
+                    tenAngleDeg: 320,
+                    centre: { x: 320, y: 360 },
+                    radius: 90,
+                  },
+                },
+              }
+            : {}),
         });
         tx.objectStore('beans').put({
           id: 'lab-bean',
@@ -124,8 +138,8 @@ async function connectSimScale(page) {
   await transport.waitFor({ timeout: 25_000 });
   await transport.selectOption('sim');
   await page.getByRole('button', { name: 'Connect scale' }).click();
-  await page.getByRole('button', { name: /Open weighing view/ }).waitFor({ timeout: 15_000 });
-  await delay(400);
+  await page.getByRole('button', { name: /Open weighing view/ }).waitFor({ timeout: 25_000 });
+  await delay(600);
 }
 
 async function assertNoElementOverlap(page, label, surface = 'timer') {
@@ -221,6 +235,8 @@ async function runScenario(page, viewport, scenario, labOn) {
   await clearDb(page);
   await seedDb(page, { labOn });
   await page.goto(url, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: /^Start$/ }).waitFor({ timeout: 25_000 });
+  await delay(400);
   await connectSimScale(page);
 
   const labTag = labOn ? 'lab-on' : 'lab-off';
@@ -229,7 +245,7 @@ async function runScenario(page, viewport, scenario, labOn) {
 
   if (scenario === 'shot-inline-mid' || scenario === 'fullscreen-timer') {
     await page.getByRole('button', { name: /^Start$/ }).click();
-    await page.getByRole('button', { name: 'Cancel timer' }).waitFor({ timeout: 10_000 });
+    await page.getByLabel('Cancel timer').waitFor({ timeout: 10_000 });
     await delay(800);
     if (labOn) {
       await page.getByTestId('shot-lab-pressure-readout').first().waitFor({ timeout: 8000 });

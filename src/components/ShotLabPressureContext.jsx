@@ -55,7 +55,7 @@ export function ShotLabPressureProvider({
     storedCalibration,
     calibrateSheetOpen: calibrateOpen,
     weighingViewOpen,
-    onCalibrationSaved,
+    onCalibrationSaved: onSaveCalibration,
   });
 
   useEffect(() => {

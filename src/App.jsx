@@ -207,6 +207,7 @@ import {
   labGaugeTapCalibrationFromSettings,
 } from './settings/labCameraPressure.js';
 import { LAB_PRESSURE_CAMERA_PREVIEW_KEY } from './flairPressureLab/shotLabPressureTrust.js';
+import { isPressureSimAllowed } from './config/pressureSimFlag.js';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { WeighingView } from './components/WeighingView.jsx';
 import { useTimemoreScale } from './scales/useTimemoreScale.js';
@@ -1304,7 +1305,7 @@ export default function App() {
       const labOn = isLabCameraPressureEnabled(settingsSetting);
       const calibration = labGaugeTapCalibrationFromSettings(settingsSetting);
       const viewMoved = settingsSetting?.labGaugeTapCalibration?.viewMoved === true;
-      if (labOn && (!calibration || viewMoved)) {
+      if (labOn && (!calibration || viewMoved) && !isPressureSimAllowed()) {
         setLabCalibrateRequest((n) => n + 1);
         return;
       }
@@ -1313,6 +1314,7 @@ export default function App() {
         && calibration
         && !labZeroConfirmedSessionRef.current
         && !viewMoved
+        && !isPressureSimAllowed()
       ) {
         labPendingStartOptsRef.current = opts;
         setLabZeroConfirmOpen(true);
