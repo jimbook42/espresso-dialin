@@ -27,7 +27,7 @@ import {
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Shield, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag } from 'lucide-react';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { FinishBeanToast, TOAST_DURATION_MS } from './components/FinishBeanToast.jsx';
 import {
@@ -189,6 +189,9 @@ import {
 import { buildBrewGuideDialPayload } from './brewGuide/grinderBrewGuide.js';
 import { brewGuideIntroMachineSettingsLine, brewGuideSettingsToggleDetail } from './brewGuide/copy.js';
 import { APP_VERSION_LABEL } from './config/appVersion.js';
+import { PerfectShotCelebration } from './components/PerfectShotCelebration.jsx';
+import { isPerfectShot, pickCameo } from './utils/perfectShot.js';
+import { createLogoTapTester, nextLogoTestCelebrationVariant } from './utils/logoTapTester.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
 import { isBrewGuideExtractCountdownActive } from './brewGuide/brewGuideExtractPhase.js';
 import { formatShotCount } from './utils/shotCountDisplay.js';
@@ -325,12 +328,7 @@ export default function App() {
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [expandedShotStatsIds, setExpandedShotStatsIds] = useState(() => new Set());
 
-  const [logoClickCount, setLogoClickCount] = useState(0);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [mockDate, setMockDate] = useState('');
-
-  const [statsClickCount, setStatsClickCount] = useState(0);
-  const [easterEggActive, setEasterEggActive] = useState(false);
+  const [perfectShotCelebration, setPerfectShotCelebration] = useState(null);
   const [chartType, setChartType] = useState('timeline');
 
   const [showPastBeans, setShowPastBeans] = useState(true);
@@ -373,6 +371,15 @@ export default function App() {
   const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
   const yieldSettleUserEditedRef = useRef(false);
   const yieldSettleTimerRef = useRef(null);
+  const activeTabRef = useRef(activeTab);
+  const activeBeansCountRef = useRef(0);
+  const logoTapTesterRef = useRef(null);
+  const clearPerfectShotCelebration = useCallback(() => {
+    setPerfectShotCelebration(null);
+  }, []);
+  const triggerPerfectShotCelebration = useCallback((variant, showYieldRing) => {
+    setPerfectShotCelebration({ variant, showYieldRing });
+  }, []);
   const [basketChangePromptOpen, setBasketChangePromptOpen] = useState(false);
   const [pendingBasketAdjustment, setPendingBasketAdjustment] = useState(null);
   const [appliedRecommendationDisplay, setAppliedRecommendationDisplay] = useState(null);
@@ -537,7 +544,20 @@ export default function App() {
     document.body.style.color = darkMode ? '#f5f2eb' : '#2a261f';
   }, [darkMode]);
 
+  useEffect(() => {
+    logoTapTesterRef.current = createLogoTapTester({
+      onTrigger: () => {
+        const variant = nextLogoTestCelebrationVariant();
+        const showYieldRing =
+          activeTabRef.current === 'dial' && activeBeansCountRef.current > 0;
+        triggerPerfectShotCelebration(variant, showYieldRing);
+      },
+    });
+  }, [triggerPerfectShotCelebration]);
+
   const activeBeansList = beans.filter(b => !b?.isFinished);
+  activeTabRef.current = activeTab;
+  activeBeansCountRef.current = activeBeansList.length;
   const effectiveBeanId = (() => {
     if (selectedBeanId && beans.some((b) => b.id === selectedBeanId)) return selectedBeanId;
     const remembered = settingsSetting?.lastSelectedBeanId;
@@ -1082,7 +1102,7 @@ export default function App() {
       activeBean,
       recipes,
       beans,
-      mockDate,
+      mockDate: null,
       flairEnabled,
       settings: appSettings,
     });
@@ -1097,7 +1117,6 @@ export default function App() {
     activeBean,
     grinderModel,
     beans,
-    mockDate,
     flairEnabled,
     recipes,
     shots,
@@ -1436,23 +1455,7 @@ export default function App() {
   };
 
   const handleLogoClick = () => {
-    const nextCount = logoClickCount + 1;
-    setLogoClickCount(nextCount);
-    if (nextCount >= 5) {
-      setIsAdminOpen(true);
-      setLogoClickCount(0);
-    }
-  };
-
-  const handleStatsTabClick = () => {
-    setActiveTab('stats');
-    const nextCount = statsClickCount + 1;
-    setStatsClickCount(nextCount);
-    if (nextCount >= 5) {
-      setEasterEggActive(true);
-      setStatsClickCount(0);
-      setTimeout(() => setEasterEggActive(false), 8000);
-    }
+    logoTapTesterRef.current?.handleTap();
   };
 
   const handleFactoryReset = async () => {
@@ -1664,7 +1667,7 @@ export default function App() {
 
   const handleThawNewBag = async () => {
     if (!activeBean) return;
-    const todayStr = mockDate || new Date().toISOString().slice(0, 10);
+    const todayStr = new Date().toISOString().slice(0, 10);
     const currentHistory = activeBean.thawHistory || [];
     const newHistoryEntry = { thawDate: activeBean.thawDate || null };
     
@@ -1780,7 +1783,7 @@ export default function App() {
     const recommendationFollowed = resolveRecommendationFollowedForSave({
       lastLearningShot,
       activeBean,
-      mockDate,
+      mockDate: null,
       settings: appSettings,
       savedGrind: {
         setteMacro: finalMacro,
@@ -1799,15 +1802,9 @@ export default function App() {
       customGrindValue: lastLearningShot.customGrindValue,
     } : null;
 
-    let referenceNow = new Date();
-    if (mockDate) {
-      const parsedMock = new Date(mockDate);
-      if (!isNaN(parsedMock.getTime())) {
-        referenceNow = parsedMock;
-      }
-    }
+    const referenceNow = new Date();
 
-    const ageData = calculateEffectiveBeanAge(activeBean, mockDate);
+    const ageData = calculateEffectiveBeanAge(activeBean, null);
     const recentBeanShots = filterShotsForGrinderLearning(shots, {
       beanId: activeBean.id,
       grinderModel: logGrinderModel,
@@ -1938,6 +1935,21 @@ export default function App() {
       setLabPressureShotMetrics(null);
       handleResetTimer();
 
+      if (
+        isPerfectShot({
+          yieldG: parsedYield,
+          targetYieldG: activeRecipe.targetYieldG,
+          timeS: parsedTime,
+          timeMinS: activeRecipe.targetTimeMinS,
+          timeMaxS: activeRecipe.targetTimeMaxS,
+          taste: savedTasteProfile,
+        })
+      ) {
+        queueMicrotask(() => {
+          triggerPerfectShotCelebration(pickCameo(), true);
+        });
+      }
+
       setTimeout(() => {
         recommendationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
@@ -1965,13 +1977,13 @@ export default function App() {
   });
   const previousRecipeRec =
     usePreviousRecipeRecommendation && lastLoggedShot
-      ? getAgeAdjustedRecommendation(lastLoggedShot, activeBean, mockDate, appSettings)
+      ? getAgeAdjustedRecommendation(lastLoggedShot, activeBean, null, appSettings)
       : null;
   const ageAdjustedRec =
     !usePreviousRecipeRecommendation
     && lastLearningShot
     && lastLearningShot.grinderModel === grinderModel
-      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate, appSettings)
+      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, null, appSettings)
       : null;
   const liveReferenceLearningRec =
     !usePreviousRecipeRecommendation
@@ -2046,7 +2058,7 @@ export default function App() {
         recipes,
         shots,
         beans,
-        mockDate,
+        null,
         flairEnabled,
         appSettings
       )
@@ -2264,7 +2276,7 @@ export default function App() {
     }
   };
 
-  const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, mockDate) : null;
+  const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, null) : null;
   const filteredShots = historyFilterBeanId === 'all' ? shots : shots.filter(s => s.beanId === historyFilterBeanId);
 
   const totalShots = shots.length;
@@ -2320,7 +2332,7 @@ export default function App() {
 
   const formatShotWhen = (timestamp) => {
     const d = new Date(timestamp);
-    const now = mockDate ? new Date(mockDate) : new Date();
+    const now = new Date();
     const isToday = d.toDateString() === now.toDateString();
     const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return isToday ? `Today • ${time}` : `${d.toLocaleDateString()} • ${time}`;
@@ -2629,17 +2641,11 @@ export default function App() {
         </div>
       )}
 
-      {easterEggActive && (
-        <div className="fixed inset-0 z-50 pointer-events-none bg-black/95 flex flex-col items-center justify-center p-6 text-center animate-pulse overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-red-600 via-emerald-500 to-blue-600 opacity-40 animate-spin" style={{ animationDuration: '2s' }} />
-          <div className="relative z-10 space-y-6">
-            <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-500 to-cyan-400 animate-bounce">
-              ⚡ QUANTUM ESPRESSO SINGULARITY ⚡
-            </h1>
-            <p className="text-lg font-mono text-emerald-300">MOLECULAR COFFEE EXTRACTION AT 50,000 RPM. REALITY DISTORTED.</p>
-            <div className="text-7xl animate-spin">☕🌀⚛️💥</div>
-          </div>
-        </div>
+      {perfectShotCelebration && (
+        <PerfectShotCelebration
+          variant={perfectShotCelebration.variant}
+          onComplete={clearPerfectShotCelebration}
+        />
       )}
 
       {/* Main scrollable content — padded for fixed bottom nav (+ log bar on dial) */}
@@ -2652,7 +2658,12 @@ export default function App() {
       }`}>
         
         <header className={`flex items-center justify-between pb-5 mb-6 border-b ${ui.headerBorder}`}>
-          <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoClick} title="Espresso Dial-In">
+          <div
+            className="flex items-center gap-3 cursor-pointer select-none"
+            onClick={handleLogoClick}
+            title="Espresso Dial-In"
+            data-testid="app-header-logo"
+          >
             <img
               src={darkMode ? '/logo-header-dark.svg' : '/logo-header-light.svg'}
               alt="Espresso Dial-In"
@@ -3122,7 +3133,8 @@ export default function App() {
                     </div>
                     <div
                       ref={yieldInputRef}
-                      className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.yield)}`}
+                      data-testid="dial-yield-tile"
+                      className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.yield)}${perfectShotCelebration?.showYieldRing ? ' perfect-shot-yield-ring' : ''}`}
                     >
                       <label className={`${ui.fieldLabel} block mb-2`}>Yield (g) *</label>
                       <input
@@ -4358,35 +4370,6 @@ export default function App() {
           </div>
         )}
 
-        {isAdminOpen && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className={`${currentTheme.card} border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
-              <div className={`flex items-center gap-2 border-b pb-3 ${ui.modalDivider}`}>
-                <Shield className={`w-5 h-5 ${currentTheme.text}`} />
-                <h3 className={`text-base font-bold ${ui.text}`}>Admin Panel (Testing Mode)</h3>
-              </div>
-              
-              <div>
-                <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Mock Todays Date</label>
-                <input
-                  type="date"
-                  value={mockDate}
-                  onChange={(e) => setMockDate(e.target.value)}
-                  className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
-                />
-                <p className={`text-[10px] ${subTextClass} mt-1`}>Leave blank to use actual live system date.</p>
-              </div>
-
-              <button
-                onClick={() => setIsAdminOpen(false)}
-                className={`w-full ${currentTheme.primary} font-bold py-2.5 rounded-xl text-sm shadow`}
-              >
-                Close Admin Panel
-              </button>
-            </div>
-          </div>
-        )}
-
         {showResetConfirm && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
             <div className={`${currentTheme.card} border p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-xl`}>
@@ -4441,7 +4424,7 @@ export default function App() {
               : []),
             { id: 'beans', label: 'Beans', icon: PlusCircle, onClick: () => setActiveTab('beans') },
             { id: 'history', label: 'History', icon: History, onClick: () => setActiveTab('history') },
-            { id: 'stats', label: 'Stats', icon: BarChart2, onClick: handleStatsTabClick },
+            { id: 'stats', label: 'Stats', icon: BarChart2, onClick: () => setActiveTab('stats') },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
