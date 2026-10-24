@@ -167,6 +167,27 @@ def load_profile():
     return load_gauge_profile(str(PROFILE_PATH))
 
 
+def replay_zero_at_sec(payload: dict) -> tuple[float, float]:
+    """Tap anchors when present; else first TRACKING ~0 bar frame (legacy replay)."""
+    tap = payload.get("tapCalibration") or {}
+    anchors = tap.get("anchors") or {}
+    if anchors.get("zeroAngleDeg") is not None:
+        return float(anchors["zeroAngleDeg"]), float(tap.get("atSec") or 0.0)
+    rest = [
+        frame for frame in payload.get("frames") or []
+        if frame.get("tracking") == "TRACKING"
+        and frame.get("needleAngleDeg") is not None
+        and frame.get("bar") is not None
+        and float(frame["bar"]) < 0.3
+    ]
+    if not rest:
+        raise SystemExit(f"cannot derive replay zero for {payload.get('clipId', 'clip')}")
+    frame = rest[0]
+    rot = float(frame.get("gaugeRotationDeg") or 0.0)
+    corrected = wrap360(float(frame["needleAngleDeg"]) - rot)
+    return corrected, float(frame["timeS"])
+
+
 def load_train_rows() -> list[dict]:
     rows = []
     for line in REAL_LABELS.read_text().splitlines():
@@ -245,8 +266,7 @@ def cache() -> None:
     for clip in clips:
         payload = json.loads((REPLAY / f"{clip['id']}.json").read_text())
         names = png_list(clip["id"])
-        zero = float(payload["tapCalibration"]["anchors"]["zeroAngleDeg"])
-        at_sec = payload["tapCalibration"].get("atSec")
+        zero, at_sec = replay_zero_at_sec(payload)
         for i, frame in enumerate(payload["frames"]):
             pose_ok = frame.get("centreX") is not None and frame.get("centreY") is not None and frame.get("radius") and float(frame["radius"]) > 1
             meta_frames.append({
