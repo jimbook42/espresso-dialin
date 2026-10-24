@@ -39,11 +39,11 @@ describe('PerfectShotCelebration', () => {
     document.body.innerHTML = '';
   });
 
-  it('uses pointer-events none on overlay layer', () => {
+  it('uses pointer-events none on cameo', () => {
     const { container } = renderCelebration();
-    const layer = container.querySelector('.perfect-shot-celebration-layer');
-    expect(layer).toBeTruthy();
-    expect(layer.style.pointerEvents).toBe('none');
+    const cameo = container.querySelector('[data-testid="perfect-shot-cameo"]');
+    expect(cameo).toBeTruthy();
+    expect(cameo.style.pointerEvents).toBe('none');
   });
 
   it('removes via onComplete after timers', () => {

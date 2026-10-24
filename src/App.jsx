@@ -191,6 +191,11 @@ import { brewGuideIntroMachineSettingsLine, brewGuideSettingsToggleDetail } from
 import { APP_VERSION_LABEL } from './config/appVersion.js';
 import { PerfectShotCelebration } from './components/PerfectShotCelebration.jsx';
 import { isPerfectShot, pickCameo } from './utils/perfectShot.js';
+import {
+  brewRatioOneDecimal,
+  formatPerfectShotRatioLabel,
+  scrollPerfectShotIntoView,
+} from './utils/celebrationOverlap.js';
 import { createLogoTapTester, nextLogoTestCelebrationVariant } from './utils/logoTapTester.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
 import { isBrewGuideExtractCountdownActive } from './brewGuide/brewGuideExtractPhase.js';
@@ -377,8 +382,8 @@ export default function App() {
   const clearPerfectShotCelebration = useCallback(() => {
     setPerfectShotCelebration(null);
   }, []);
-  const triggerPerfectShotCelebration = useCallback((variant, showYieldRing) => {
-    setPerfectShotCelebration({ variant, showYieldRing });
+  const triggerPerfectShotCelebration = useCallback((variant, showYieldRing, snapshot = null) => {
+    setPerfectShotCelebration({ variant, showYieldRing, snapshot });
   }, []);
   const [basketChangePromptOpen, setBasketChangePromptOpen] = useState(false);
   const [pendingBasketAdjustment, setPendingBasketAdjustment] = useState(null);
@@ -446,7 +451,10 @@ export default function App() {
   const doseInputRef = useRef(null);
   const timeInputRef = useRef(null);
   const yieldInputRef = useRef(null);
+  const notesCardRef = useRef(null);
   const tasteInputRef = useRef(null);
+  const actualDoseGRef = useRef(actualDoseG);
+  const actualYieldGRef = useRef(actualYieldG);
   const recommendationRef = useRef(null);
   const grindSettingsRef = useRef(null);
   const flairPressureProfileRef = useRef(null);
@@ -545,15 +553,42 @@ export default function App() {
   }, [darkMode]);
 
   useEffect(() => {
+    actualDoseGRef.current = actualDoseG;
+    actualYieldGRef.current = actualYieldG;
+  }, [actualDoseG, actualYieldG]);
+
+  useEffect(() => {
     logoTapTesterRef.current = createLogoTapTester({
       onTrigger: () => {
         const variant = nextLogoTestCelebrationVariant();
         const showYieldRing =
           activeTabRef.current === 'dial' && activeBeansCountRef.current > 0;
-        triggerPerfectShotCelebration(variant, showYieldRing);
+        const dose = parseFloat(actualDoseGRef.current);
+        const yld = parseFloat(actualYieldGRef.current);
+        const snapshot =
+          showYieldRing && Number.isFinite(dose) && Number.isFinite(yld) && yld > 0
+            ? { doseG: dose, yieldG: yld }
+            : null;
+        triggerPerfectShotCelebration(variant, showYieldRing, snapshot);
       },
     });
   }, [triggerPerfectShotCelebration]);
+
+  useEffect(() => {
+    if (!perfectShotCelebration) return undefined;
+    const reduced =
+      typeof window !== 'undefined'
+      && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    queueMicrotask(() => {
+      scrollPerfectShotIntoView({
+        yieldEl: yieldInputRef.current,
+        notesEl: notesCardRef.current,
+        reducedMotion: reduced,
+      });
+    });
+    return undefined;
+  }, [perfectShotCelebration]);
 
   const activeBeansList = beans.filter(b => !b?.isFinished);
   activeTabRef.current = activeTab;
@@ -641,6 +676,17 @@ export default function App() {
   }, []);
 
   const brewRatio = actualDoseG > 0 && actualYieldG > 0 ? (parseFloat(actualYieldG) / parseFloat(actualDoseG)).toFixed(1) : '0.0';
+  const perfectShotSnapshot = perfectShotCelebration?.snapshot;
+  const perfectShotYieldRing = Boolean(perfectShotCelebration?.showYieldRing);
+  const yieldTileCelebrating = perfectShotYieldRing && perfectShotSnapshot;
+  const yieldDisplayValue = yieldTileCelebrating
+    ? perfectShotSnapshot.yieldG
+    : actualYieldG;
+  const yieldRatioLine = yieldTileCelebrating
+    ? formatPerfectShotRatioLabel(
+        brewRatioOneDecimal(perfectShotSnapshot.doseG, perfectShotSnapshot.yieldG),
+      )
+    : `1:${brewRatio}`;
 
   // Timer Logic (0.1s resolution for mobile fullscreen display)
   useEffect(() => {
@@ -1946,7 +1992,10 @@ export default function App() {
         })
       ) {
         queueMicrotask(() => {
-          triggerPerfectShotCelebration(pickCameo(), true);
+          triggerPerfectShotCelebration(pickCameo(), true, {
+            doseG: parsedDose,
+            yieldG: parsedYield,
+          });
         });
       }
 
@@ -2641,13 +2690,6 @@ export default function App() {
         </div>
       )}
 
-      {perfectShotCelebration && (
-        <PerfectShotCelebration
-          variant={perfectShotCelebration.variant}
-          onComplete={clearPerfectShotCelebration}
-        />
-      )}
-
       {/* Main scrollable content — padded for fixed bottom nav (+ log bar on dial) */}
       <div className={`max-w-xl mx-auto px-4 pt-5 ${
         activeTab === 'dial' && activeBeansList.length > 0
@@ -3134,21 +3176,27 @@ export default function App() {
                     <div
                       ref={yieldInputRef}
                       data-testid="dial-yield-tile"
-                      className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.yield)}${perfectShotCelebration?.showYieldRing ? ' perfect-shot-yield-ring' : ''}`}
+                      className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.yield)}${perfectShotYieldRing ? ' perfect-shot-yield-ring' : ''}`}
                     >
                       <label className={`${ui.fieldLabel} block mb-2`}>Yield (g) *</label>
                       <input
                         type="number" step="0.1"
                         placeholder="36"
-                        value={actualYieldG}
+                        value={yieldDisplayValue}
+                        readOnly={yieldTileCelebrating}
                         onChange={(e) => {
                           if (yieldSettleActive) yieldSettleUserEditedRef.current = true;
                           setActualYieldG(e.target.value);
                           setShotFieldHighlights((prev) => ({ ...prev, yield: false }));
                         }}
-                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}${yieldTileCelebrating ? ' perfect-shot-yield-value' : ''}`}
                       />
-                      <p className={`text-[9px] ${ui.accentText} text-center mt-1`}>1:{brewRatio}</p>
+                      <p
+                        className={`text-[9px] text-center mt-1 ${yieldTileCelebrating ? 'perfect-shot-yield-ratio' : ui.accentText}`}
+                        data-testid="dial-yield-ratio"
+                      >
+                        {yieldRatioLine}
+                      </p>
                       {yieldSettleActive && (
                         <p className={`text-[10px] ${ui.muted} text-center mt-2`} role="status">
                           Reading final weight…
@@ -3157,6 +3205,7 @@ export default function App() {
                     </div>
                     <div
                       ref={timeInputRef}
+                      data-testid="dial-time-tile"
                       className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.time)}`}
                     >
                       <label className={`${ui.fieldLabel} block mb-2`}>Time (s) *</label>
@@ -3170,6 +3219,11 @@ export default function App() {
                         }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
                       />
+                      {yieldTileCelebrating && (
+                        <p className="text-[8px] perfect-shot-time-in-range text-center mt-1" data-testid="dial-time-in-range">
+                          in range
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -3224,13 +3278,25 @@ export default function App() {
                   </div>
 
                   {/* Notes */}
-                  <input
-                    type="text"
-                    placeholder="Notes — puck prep, channeling, batch size…"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className={`w-full ${inputClass} rounded-xl p-3 text-sm`}
-                  />
+                  <div
+                    ref={notesCardRef}
+                    data-testid="dial-notes-card"
+                    className={`${ui.card} rounded-2xl p-3 relative overflow-visible${perfectShotCelebration ? ' perfect-shot-notes-card--celebrating' : ''}`}
+                  >
+                    <input
+                      type="text"
+                      placeholder="Notes — puck prep, channeling, batch size…"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className={`w-full ${inputClass} rounded-xl p-3 text-sm bg-transparent border-0`}
+                    />
+                    {perfectShotCelebration && (
+                      <PerfectShotCelebration
+                        variant={perfectShotCelebration.variant}
+                        onComplete={clearPerfectShotCelebration}
+                      />
+                    )}
+                  </div>
 
                   <div className={`${ui.card} p-4 rounded-2xl space-y-3`}>
                     <div className="flex items-center justify-between gap-3">

@@ -53,22 +53,17 @@ export function PerfectShotCelebration({ variant, onComplete }) {
   const reduced = prefersReducedMotion();
 
   return (
-    <div
-      className="perfect-shot-celebration-layer"
-      data-testid="perfect-shot-celebration"
+    <img
+      data-testid="perfect-shot-cameo"
+      className={`perfect-shot-cameo perfect-shot-cameo--anchored ${reduced ? 'perfect-shot-cameo--static' : motionClass}`}
+      src={src1x}
+      srcSet={`${src1x} 1x, ${src2x} 2x`}
+      width={CAMEO_WIDTH}
+      height={CAMEO_HEIGHT}
+      alt=""
+      decoding="async"
       aria-hidden="true"
       style={{ pointerEvents: 'none' }}
-    >
-      <img
-        data-testid="perfect-shot-cameo"
-        className={`perfect-shot-cameo ${reduced ? 'perfect-shot-cameo--static' : motionClass}`}
-        src={src1x}
-        srcSet={`${src1x} 1x, ${src2x} 2x`}
-        width={CAMEO_WIDTH}
-        height={CAMEO_HEIGHT}
-        alt=""
-        decoding="async"
-      />
-    </div>
+    />
   );
 }
