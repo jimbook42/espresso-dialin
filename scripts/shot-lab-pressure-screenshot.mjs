@@ -15,7 +15,16 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: VIEWPORT });
   const base = process.env.PREVIEW_URL || 'http://127.0.0.1:4173';
+  await page.addInitScript(() => {
+    const settings = {
+      id: 'global',
+      labCameraPressureEnabled: true,
+      smartScaleDeviceId: 'simulated',
+    };
+    localStorage.setItem('espresso-dialin.global-settings-v1', JSON.stringify(settings));
+  });
   await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1500);
   const outPath = path.join(OUT_DIR, 'shot-lab-pressure-390x844.png');
   await page.screenshot({ path: outPath, fullPage: false });
   await browser.close();
