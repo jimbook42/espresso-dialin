@@ -380,7 +380,7 @@ function examPhase() {
       metricsAll: metricsAll,
       handFramesRead: `${handErrs.length}/${handDoc.rows.length}`,
       handMedianBarErr: medHand,
-      handWildPct,
+      handWildPct: wildHandPct,
       liveBackwardSpikes,
       handRows,
       pass,
