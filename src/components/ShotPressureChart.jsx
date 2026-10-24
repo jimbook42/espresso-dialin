@@ -1,5 +1,9 @@
 import { useId } from 'react';
 import { pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
+import {
+  shotPressureChartY,
+  shotPressureChartYMax,
+} from '../flairPressureLab/shotPressureChartLayout.js';
 import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js';
 
 /**
@@ -7,7 +11,11 @@ import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js
  *   samples?: import('../flairPressureLab/pressureDisplaySmoothing.js').LabPressureRawSample[],
  *   compact?: boolean,
  *   peakBar?: number | null,
- *   phaseGoal?: { targetBar?: number | null, taperBand?: { lowBar: number, highBar: number } | null },
+ *   phaseGoal?: {
+ *     targetBar?: number | null,
+ *     taperBand?: { lowBar: number, highBar: number } | null,
+ *     chartMaxBar?: number | null,
+ *   },
  * }} props
  */
 export function ShotPressureChart({
@@ -35,9 +43,13 @@ export function ShotPressureChart({
     phaseGoal?.taperBand?.lowBar,
     phaseGoal?.taperBand?.highBar,
   ].filter((v) => v != null && Number.isFinite(v));
-  const maxBar = Math.max(...points.map((p) => p.bar), ...goalBars, 1);
+  const yMax = shotPressureChartYMax({
+    chartMaxBar: phaseGoal?.chartMaxBar,
+    sampleBars: points.map((p) => p.bar),
+    goalBars,
+  });
   const x = (t) => padL + (t / maxT) * chartW;
-  const y = (bar) => padT + chartH - (bar / maxBar) * chartH;
+  const y = (bar) => shotPressureChartY(bar, yMax, padT, chartH);
 
   let path = '';
   points.forEach((p, i) => {

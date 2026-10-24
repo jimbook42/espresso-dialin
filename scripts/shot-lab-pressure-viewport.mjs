@@ -277,13 +277,38 @@ async function startShotFromHome(page) {
   await page.getByLabel('Cancel timer').waitFor({ timeout: 15_000 });
 }
 
+const PHASE_HEADER = {
+  pre: /pre-infusion/i,
+  peak: /extracting|extraction/i,
+  taper: /extracting|extraction/i,
+};
+
+async function assertTimerPhaseHeader(page, phaseTag) {
+  if (!phaseTag || phaseTag === '') return;
+  const pattern = PHASE_HEADER[phaseTag];
+  if (!pattern) return;
+  const header = page.locator('.shot-timer-header').first();
+  const text = (await header.innerText()).trim();
+  if (!pattern.test(text)) {
+    throw new Error(
+      `phase ${phaseTag}: header "${text}" does not match ${pattern}`,
+    );
+  }
+  if (phaseTag === 'pre' && /extraction/i.test(text) && !/pre-infusion/i.test(text)) {
+    throw new Error(`phase pre: header shows extraction, not pre-infusion: "${text}"`);
+  }
+}
+
 async function runFullscreenTimer(page, viewport, labOn, { phaseWaitMs = 800, phaseTag = '' } = {}) {
   const { tag } = viewport;
   const labTag = labOn ? 'lab-on' : 'lab-off';
   const phaseSuffix = phaseTag ? `-${phaseTag}` : '';
-  const base = `fullscreen-timer-${labTag}-${tag}${phaseSuffix}-v4`;
+  const base = `fullscreen-timer-${labTag}-${tag}${phaseSuffix}-v5`;
   await startShotFromHome(page);
   await delay(phaseWaitMs);
+  if (labOn && phaseTag) {
+    await assertTimerPhaseHeader(page, phaseTag);
+  }
   if (labOn) {
     await assertFullscreenLabVisible(page);
   }
@@ -332,7 +357,7 @@ async function runScenario(page, viewport, scenario, labOn) {
       await page.goto(url, { waitUntil: 'networkidle' });
       await connectSimScale(page);
       results.push(await runFullscreenTimer(page, viewport, labOn, {
-        phaseWaitMs: 14_000,
+        phaseWaitMs: 19_500,
         phaseTag: 'taper',
       }));
     }

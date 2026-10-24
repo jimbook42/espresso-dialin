@@ -207,6 +207,7 @@ import {
   labGaugeTapCalibrationFromSettings,
 } from './settings/labCameraPressure.js';
 import { LAB_PRESSURE_CAMERA_PREVIEW_KEY } from './flairPressureLab/shotLabPressureTrust.js';
+import { shotTimerLabCompactClass } from './flairPressureLab/shotTimerCompactLayout.js';
 import { isPressureSimAllowed } from './config/pressureSimFlag.js';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { WeighingView } from './components/WeighingView.jsx';
@@ -2499,7 +2500,7 @@ export default function App() {
       {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
       {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
         <div
-          className="shot-timer-fullscreen fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+          className={`shot-timer-fullscreen ${shotTimerLabCompactClass(labCameraPressureEnabled)} fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]`}
           onClick={handleTimerSurfaceTap}
           role="presentation"
         >
