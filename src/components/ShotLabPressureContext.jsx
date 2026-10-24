@@ -3,7 +3,7 @@ import { useShotLabPressure } from '../flairPressureLab/hooks/useShotLabPressure
 import { isLabCameraPressureEnabled, labGaugeTapCalibrationFromSettings } from '../settings/labCameraPressure.js';
 import { LabGaugeTapCalibrateSheet } from './LabGaugeTapCalibrateSheet.jsx';
 
-const ShotLabPressureContext = createContext(null);
+export const ShotLabPressureContext = createContext(null);
 
 export function ShotLabPressureProvider({
   settings,
@@ -41,6 +41,7 @@ export function ShotLabPressureProvider({
   const value = {
     enabled,
     calibrated: pressure.calibrated,
+    readoutVisible: pressure.readoutVisible,
     showLive: pressure.showLive,
     displayBar: pressure.displayBar,
     hold: pressure.hold,

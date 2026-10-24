@@ -173,7 +173,8 @@ async function runScenario(page, viewport, scenario, labOn) {
   await connectSimScale(page);
 
   const labTag = labOn ? 'lab-on' : 'lab-off';
-  const base = `${scenario}-${labTag}-${tag}`;
+  const vSuffix = scenario === 'fullscreen-timer' ? '-v2' : '';
+  const base = `${scenario}-${labTag}-${tag}${vSuffix}`;
 
   if (scenario === 'shot-inline-mid' || scenario === 'fullscreen-timer') {
     await page.getByRole('button', { name: /^Start$/ }).click();

@@ -14,6 +14,10 @@ import {
 import { createShotLabPressureSession } from '../shotLabPressureSession.js';
 import { simulatedPressureBarAt } from '../shotPressureSimFeed.js';
 import { isPressureSimAllowed } from '../../config/pressureSimFlag.js';
+import {
+  shotLabPressureReadoutVisible,
+  shotLabPressureShowLive,
+} from '../shotLabPressureDisplay.js';
 
 /**
  * Camera pressure during shots — isolated from scale/timer; errors are swallowed.
@@ -43,6 +47,8 @@ export function useShotLabPressure({
   const trackerRef = useRef(null);
   const qualityCanvasRef = useRef(null);
   const shotEpochRef = useRef(null);
+  const timerSecondsRef = useRef(timerSeconds);
+  timerSecondsRef.current = timerSeconds;
   const simMode = isPressureSimAllowed();
 
   const [samples, setSamples] = useState([]);
@@ -98,13 +104,25 @@ export function useShotLabPressure({
 
   useEffect(() => {
     if (timerRunning) {
-      sessionRef.current.begin();
-      shotEpochRef.current = Date.now();
+      const epoch = Date.now();
+      sessionRef.current.begin(epoch);
+      shotEpochRef.current = epoch;
+      holdRef.current.reset();
+      setSamples([]);
+      setDisplayBar(null);
+      setHold({ held: false, gap: true });
+      setPeakBar(null);
       return;
     }
     if (weighingViewOpen) {
-      sessionRef.current.begin();
-      shotEpochRef.current = Date.now();
+      const epoch = Date.now();
+      sessionRef.current.begin(epoch);
+      shotEpochRef.current = epoch;
+      holdRef.current.reset();
+      setSamples([]);
+      setDisplayBar(null);
+      setHold({ held: false, gap: true });
+      setPeakBar(null);
       return;
     }
     resetShotSession();
@@ -167,7 +185,7 @@ export function useShotLabPressure({
           sessionRef.current.pushRaw(read.bar, true);
         }
         const all = sessionRef.current.getSamples();
-        const tS = epoch ? (Date.now() - epoch) / 1000 : timerSeconds;
+        const tS = epoch ? (Date.now() - epoch) / 1000 : timerSecondsRef.current;
         setSamples([...all]);
         setHold({ held: held.held, gap: held.gap });
         setDisplayBar(rollingDisplayBar(all, tS) ?? (held.gap ? null : held.bar));
@@ -181,11 +199,9 @@ export function useShotLabPressure({
   }, [
     enabled,
     displaySurfaceActive,
-    timerRunning,
     calibrated,
     simMode,
     grabSourceImage,
-    timerSeconds,
     videoRef,
   ]);
 
@@ -203,11 +219,19 @@ export function useShotLabPressure({
     return sessionRef.current.getShotMetrics();
   }, [timerRunning]);
 
-  const showLive =
-    enabled
-    && displaySurfaceActive
-    && (calibrated || simMode)
-    && (simMode || status === 'live');
+  const readoutVisible = shotLabPressureReadoutVisible({
+    enabled,
+    displaySurfaceActive,
+    calibrated,
+    simMode,
+  });
+  const showLive = shotLabPressureShowLive({
+    enabled,
+    displaySurfaceActive,
+    calibrated,
+    simMode,
+    cameraStatus: status,
+  });
 
   return {
     videoRef,
@@ -216,6 +240,7 @@ export function useShotLabPressure({
     hold,
     peakBar,
     calibrated,
+    readoutVisible,
     showLive,
     readerError,
     acceptCalibration,

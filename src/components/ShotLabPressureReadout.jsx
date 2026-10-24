@@ -58,7 +58,7 @@ function ShotLabPressureReadoutInner({
         variant === 'weighing'
           ? 'mt-1 w-full max-w-xs shrink-0'
           : variant === 'fullscreen'
-            ? 'mt-3 w-full max-w-sm'
+            ? 'mt-3 w-full max-w-sm shrink-0'
             : 'mt-2'
       } space-y-1`}
       data-testid="shot-lab-pressure-readout"

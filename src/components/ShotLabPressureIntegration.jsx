@@ -36,7 +36,7 @@ export function ShotLabPressureIntegration({ variant, ui }) {
 
   return (
     <>
-      {ctx.showLive && (
+      {ctx.readoutVisible && (
         <ShotLabPressureReadout
           displayBar={ctx.displayBar}
           hold={ctx.hold}
