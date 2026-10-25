@@ -73,17 +73,98 @@ export function paintFrozenCrop(displayCtx, sourceCanvas, boxW, boxH, crop, mirr
 }
 
 /** Loupe: magnify a region of the 1:1 source canvas around a video pixel. */
+function paintLoupeEdgeExtended(loupeCtx, sourceCanvas, videoX, videoY, loupeSize, srcR) {
+  const sw = sourceCanvas.width;
+  const sh = sourceCanvas.height;
+  const size = srcR * 2;
+  const scale = loupeSize / size;
+  const idealL = videoX - srcR;
+  const idealT = videoY - srcR;
+  const idealR = idealL + size;
+  const idealB = idealT + size;
+
+  const visL = Math.max(0, idealL);
+  const visT = Math.max(0, idealT);
+  const visR = Math.min(sw, idealR);
+  const visB = Math.min(sh, idealB);
+  const dVisL = (visL - idealL) * scale;
+  const dVisT = (visT - idealT) * scale;
+  const dVisW = (visR - visL) * scale;
+  const dVisH = (visB - visT) * scale;
+
+  const blit = (sx, sy, swidth, sheight, dx, dy, dwidth, dheight) => {
+    if (swidth <= 0 || sheight <= 0 || dwidth <= 0 || dheight <= 0) return;
+    loupeCtx.drawImage(sourceCanvas, sx, sy, swidth, sheight, dx, dy, dwidth, dheight);
+  };
+
+  blit(visL, visT, visR - visL, visB - visT, dVisL, dVisT, dVisW, dVisH);
+
+  if (idealL < 0) {
+    const dw = (-idealL) * scale;
+    blit(0, visT, 1, visB - visT, 0, dVisT, dw, dVisH);
+  }
+  if (idealR > sw) {
+    const dw = (idealR - sw) * scale;
+    blit(sw - 1, visT, 1, visB - visT, loupeSize - dw, dVisT, dw, dVisH);
+  }
+  if (idealT < 0) {
+    const dh = (-idealT) * scale;
+    blit(visL, 0, visR - visL, 1, dVisL, 0, dVisW, dh);
+  }
+  if (idealB > sh) {
+    const dh = (idealB - sh) * scale;
+    blit(visL, sh - 1, visR - visL, 1, dVisL, loupeSize - dh, dVisW, dh);
+  }
+  if (idealL < 0 && idealT < 0) {
+    const dw = (-idealL) * scale;
+    const dh = (-idealT) * scale;
+    blit(0, 0, 1, 1, 0, 0, dw, dh);
+  }
+  if (idealR > sw && idealT < 0) {
+    const dw = (idealR - sw) * scale;
+    const dh = (-idealT) * scale;
+    blit(sw - 1, 0, 1, 1, loupeSize - dw, 0, dw, dh);
+  }
+  if (idealL < 0 && idealB > sh) {
+    const dw = (-idealL) * scale;
+    const dh = (idealB - sh) * scale;
+    blit(0, sh - 1, 1, 1, 0, loupeSize - dh, dw, dh);
+  }
+  if (idealR > sw && idealB > sh) {
+    const dw = (idealR - sw) * scale;
+    const dh = (idealB - sh) * scale;
+    blit(sw - 1, sh - 1, 1, 1, loupeSize - dw, loupeSize - dh, dw, dh);
+  }
+}
+
+/** Fraction of non-transparent pixels inside the loupe circle (for tests). */
+export function loupeCircleFillRatio(loupeCtx, loupeSize) {
+  const data = loupeCtx.getImageData(0, 0, loupeSize, loupeSize).data;
+  const cx = loupeSize / 2;
+  const cy = loupeSize / 2;
+  const r = loupeSize / 2 - 2;
+  let inside = 0;
+  let filled = 0;
+  for (let y = 0; y < loupeSize; y += 1) {
+    for (let x = 0; x < loupeSize; x += 1) {
+      if (Math.hypot(x - cx, y - cy) > r) continue;
+      inside += 1;
+      const a = data[(y * loupeSize + x) * 4 + 3];
+      if (a > 8) filled += 1;
+    }
+  }
+  return inside ? filled / inside : 0;
+}
+
 export function paintLoupeFromSource(loupeCtx, sourceCanvas, videoX, videoY, loupeSize, zoom) {
   if (!loupeCtx || !sourceCanvas) return;
   const srcR = Math.max(8, (loupeSize / zoom) / 2);
-  const sx = videoX - srcR;
-  const sy = videoY - srcR;
   loupeCtx.clearRect(0, 0, loupeSize, loupeSize);
   loupeCtx.save();
   loupeCtx.beginPath();
   loupeCtx.arc(loupeSize / 2, loupeSize / 2, loupeSize / 2 - 2, 0, Math.PI * 2);
   loupeCtx.clip();
-  loupeCtx.drawImage(sourceCanvas, sx, sy, srcR * 2, srcR * 2, 0, 0, loupeSize, loupeSize);
+  paintLoupeEdgeExtended(loupeCtx, sourceCanvas, videoX, videoY, loupeSize, srcR);
   loupeCtx.strokeStyle = '#c88a4b';
   loupeCtx.lineWidth = 2;
   loupeCtx.beginPath();

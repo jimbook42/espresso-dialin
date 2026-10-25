@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   initialDialCrop,
+  loupeCircleFillRatio,
+  paintLoupeFromSource,
   previewPointToVideoCrop,
   videoPointToPreviewCrop,
 } from './labGaugeTapView.js';
@@ -29,5 +31,32 @@ describe('labGaugeTapView crop mapping', () => {
     expect(c.half).toBeGreaterThan(100);
     expect(c.half).toBeLessThan(280);
     expect(c.cx).toBe(398);
+  });
+});
+
+describe('loupeCircleFillRatio', () => {
+  it('measures opaque pixels inside the loupe circle', () => {
+    const loupeSize = 80;
+    const data = new Uint8ClampedArray(loupeSize * loupeSize * 4);
+    for (let y = 0; y < loupeSize; y += 1) {
+      for (let x = 0; x < loupeSize; x += 1) {
+        const o = (y * loupeSize + x) * 4;
+        const inside = Math.hypot(x - loupeSize / 2, y - loupeSize / 2) <= loupeSize / 2 - 2;
+        data[o + 3] = inside ? 255 : 0;
+      }
+    }
+    const ctx = {
+      getImageData: () => ({ data, width: loupeSize, height: loupeSize }),
+    };
+    expect(loupeCircleFillRatio(ctx, loupeSize)).toBeGreaterThan(0.98);
+    const mid = Math.floor(loupeSize / 2);
+    data[(mid * loupeSize + mid) * 4 + 3] = 0;
+    expect(loupeCircleFillRatio(ctx, loupeSize)).toBeLessThan(0.98);
+  });
+});
+
+describe('paintLoupeFromSource', () => {
+  it('is exported for the setup sheet and screenshot pixel checks', () => {
+    expect(typeof paintLoupeFromSource).toBe('function');
   });
 });
