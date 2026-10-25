@@ -17,6 +17,7 @@ import { DIAL_RECALIBRATE_HINT } from '../flairPressureLab/hooks/useShotLabPress
  *   variant: 'inline' | 'fullscreen' | 'weighing',
  *   viewportWidth?: number,
  *   phaseGoal?: { targetBar?: number | null, taperBand?: { lowBar: number, highBar: number } | null },
+ *   aimText?: string | null,
  *   testingLabel?: string | null,
  *   dialRecalibrateHint?: boolean,
  *   ui?: { muted?: string, accentText?: string, text?: string },
@@ -31,6 +32,7 @@ function ShotLabPressureReadoutInner({
   variant,
   viewportWidth,
   phaseGoal,
+  aimText,
   testingLabel,
   dialRecalibrateHint = false,
   ui,
@@ -102,6 +104,14 @@ function ShotLabPressureReadoutInner({
         </div>
         {peakChip}
       </div>
+      {aimText ? (
+        <p
+          className="text-[14px] font-semibold leading-tight text-[#ede6dd]"
+          data-testid="shot-lab-pressure-aim"
+        >
+          {aimText}
+        </p>
+      ) : null}
       <ShotPressureChart
         samples={samples}
         compact={variant === 'inline' || variant === 'weighing'}

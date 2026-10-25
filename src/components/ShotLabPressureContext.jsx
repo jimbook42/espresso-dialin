@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useShotLabPressure } from '../flairPressureLab/hooks/useShotLabPressure.js';
+import { shotLabPressureAimText } from '../flairPressureLab/shotLabPressureAimText.js';
 import { shotLabPressurePhaseGoal } from '../flairPressureLab/shotLabPressurePhaseGoal.js';
 import {
   labPressureCameraPreviewEnabled,
@@ -101,6 +102,17 @@ export function ShotLabPressureProvider({
     ],
   );
 
+  const aimText = useMemo(
+    () =>
+      shotLabPressureAimText({
+        flairProfile,
+        phaseGoal,
+        timerRunning,
+        timerUsePreInfusion,
+      }),
+    [flairProfile, phaseGoal, timerRunning, timerUsePreInfusion],
+  );
+
   const testingLabel = enabled
     ? labPressureTestingShotLabel(labShotsLogged)
     : null;
@@ -124,6 +136,7 @@ export function ShotLabPressureProvider({
     peakBar: pressure.peakBar,
     samples: pressure.samples,
     phaseGoal,
+    aimText,
     testingLabel,
     openCalibrate: () => {
       if (enabled) setCalibrateOpen(true);

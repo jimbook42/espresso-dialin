@@ -48,6 +48,7 @@ export function ShotLabPressureIntegration({ variant, ui }) {
           peakBar={ctx.peakBar}
           samples={ctx.samples}
           phaseGoal={ctx.phaseGoal}
+          aimText={ctx.aimText}
           testingLabel={ctx.testingLabel}
           dialRecalibrateHint={ctx.dialRecalibrateHint}
           variant={variant === 'inline' ? 'inline' : variant === 'weighing' ? 'weighing' : 'fullscreen'}
