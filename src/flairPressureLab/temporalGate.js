@@ -43,7 +43,10 @@ export const TEMPORAL_GATE = {
   /** Republish the last bar while a newer R2 stays inside holdBandBar. */
   holdGapS: 0.5,
   holdBandBar: 0.5,
-  /** R7: publish cleaned classical when in-arc and R5 absent or within veto band. */
+  /**
+   * R7: prefer cleaned classical whenever it is published; fall back to R5 only when
+   * classical is missing or |classical − R5| exceeds classicalDirectMaxDisagreeBar.
+   */
   classicalDirect: false,
   classicalDirectMaxDisagreeBar: 2,
   classicalDirectMinConfidence: 0.18,
@@ -100,6 +103,27 @@ function classicalIsFlip(sample, config) {
   if (model == null || classical == null) return false;
   if (!Number.isFinite(model) || !Number.isFinite(classical)) return false;
   return circularSeparation(model, classical) >= config.flipDeg;
+}
+
+function classicalIsPublished(sample, config) {
+  return sample.classicalBar != null
+    && Number.isFinite(sample.classicalBar)
+    && sample.classicalConfidence != null
+    && Number.isFinite(sample.classicalConfidence)
+    && sample.classicalConfidence >= config.classicalDirectMinConfidence
+    && !classicalIsFlip(sample, config);
+}
+
+/** When classicalDirect is on, publish classical unless R5 disagrees beyond the guard band. */
+function preferClassicalBar(sample, config, r2Bar, currentBar) {
+  if (config.classicalDirect !== true || !classicalIsPublished(sample, config)) {
+    return { bar: currentBar, reason: null };
+  }
+  const guard = config.classicalDirectMaxDisagreeBar;
+  if (r2Bar != null && Math.abs(sample.classicalBar - r2Bar) > guard) {
+    return { bar: currentBar, reason: null };
+  }
+  return { bar: sample.classicalBar, reason: 'classical-direct' };
 }
 
 /**
@@ -207,8 +231,11 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
     }
     if (!ok) bar = null;
     else {
+      const preferred = preferClassicalBar(sample, config, r2Bar, bar);
+      bar = preferred.bar;
       last = { t, bar };
-      if (reason !== 'prelock') reason = 'ok';
+      if (preferred.reason) reason = preferred.reason;
+      else if (reason !== 'prelock') reason = 'ok';
     }
   }
 
@@ -224,26 +251,13 @@ export function stepTemporalGate(state, sample, config = TEMPORAL_GATE) {
     reason = 'classical';
   }
 
-  if (
-    bar == null
-    && sample.rest !== true
-    && config.classicalDirect === true
-    && sample.classicalBar != null
-    && Number.isFinite(sample.classicalBar)
-    && sample.classicalConfidence != null
-    && sample.classicalConfidence >= config.classicalDirectMinConfidence
-    && !classicalIsFlip(sample, config)
-  ) {
-    const veto = config.classicalDirectMaxDisagreeBar;
-    const r2Weak = r2Bar == null
-      || sample.r2Conf == null
-      || (config.classicalDirectMaxR2Conf != null && sample.r2Conf < config.classicalDirectMaxR2Conf);
-    const withinVeto = r2Bar != null && Math.abs(sample.classicalBar - r2Bar) <= veto;
-    if ((r2Weak && config.classicalDirectAllowWeakR2 === true) || withinVeto) {
-      bar = sample.classicalBar;
+  if (bar == null && sample.rest !== true) {
+    const preferred = preferClassicalBar(sample, config, r2Bar, bar);
+    if (preferred.bar != null) {
+      bar = preferred.bar;
       last = { t, bar };
       pending = [];
-      reason = 'classical-direct';
+      reason = preferred.reason;
     }
   }
 

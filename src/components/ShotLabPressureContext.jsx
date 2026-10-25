@@ -30,6 +30,7 @@ export function ShotLabPressureProvider({
   labShotsLogged = 0,
   calibrateRequest = 0,
   registerOpenCalibrate,
+  preShotDialCheckSurface = false,
   children,
 }) {
   const enabled = isLabCameraPressureEnabled(settings);
@@ -56,6 +57,7 @@ export function ShotLabPressureProvider({
     storedCalibration,
     calibrateSheetOpen: calibrateOpen,
     weighingViewOpen,
+    preShotDialCheckSurface,
     onCalibrationSaved: onSaveCalibration,
   });
 
@@ -65,8 +67,15 @@ export function ShotLabPressureProvider({
   }, [enabled, metricsGetterRef, pressure.getShotMetrics]);
 
   const displaySurfaceActive = timerRunning || weighingViewOpen;
+  const preShotDialCheckActive =
+    enabled
+    && Boolean(storedCalibration)
+    && !calibrateOpen
+    && !timerRunning
+    && preShotDialCheckSurface;
   const shouldRunHiddenCamera =
-    enabled && (calibrateOpen || (displaySurfaceActive && Boolean(storedCalibration)));
+    enabled
+    && (calibrateOpen || ((displaySurfaceActive || preShotDialCheckActive) && Boolean(storedCalibration)));
 
   const phaseGoal = useMemo(
     () =>
@@ -121,6 +130,8 @@ export function ShotLabPressureProvider({
     },
     storedCalibration: Boolean(storedCalibration),
     timerRunning,
+    dialRecalibrateHint: pressure.dialRecalibrateHint,
+    preShotDialStatus: pressure.preShotDialStatus,
   };
 
   const showCornerPreview =

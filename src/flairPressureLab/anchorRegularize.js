@@ -36,8 +36,29 @@ export function regularizeTapAnchors(
     fiveToTenToleranceDeg = 4,
     blendWeight = 0.7,
     spanOutOfToleranceMode = 'fallback',
+    userPlaced = false,
   } = {},
 ) {
+  const spanSnappedEarly = clockwiseDeg(zeroAngleDeg, tenAngleDeg);
+  const fiveToTenSnappedEarly = clockwiseDeg(fiveAngleDeg, tenAngleDeg);
+  const spanErrEarly = Math.abs(wrapDelta(spanSnappedEarly, PROFILE_REST_TO_TEN_DEG));
+  const ftErrEarly = Math.abs(wrapDelta(fiveToTenSnappedEarly, PROFILE_FIVE_TO_TEN_DEG));
+
+  if (userPlaced) {
+    return {
+      zeroAngleDeg,
+      fiveAngleDeg,
+      tenAngleDeg,
+      spanDeg: spanSnappedEarly,
+      fiveToTenDeg: fiveToTenSnappedEarly,
+      rejected: false,
+      blended: false,
+      reason: null,
+      spanErr: spanErrEarly,
+      ftErr: ftErrEarly,
+    };
+  }
+
   const h = pointOf(hub);
   const fTap = pointOf(fiveTap);
   const tTap = pointOf(tenTap);
