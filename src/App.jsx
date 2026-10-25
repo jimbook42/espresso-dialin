@@ -3911,9 +3911,20 @@ export default function App() {
                         flowCurve={s.scaleFlowCurve}
                         averageFlowRateGs={s.scaleFlowRateGs}
                         compact
+                        {...(s.labPressureCurve?.length > 0
+                          ? {
+                              pressureSamples: s.labPressureCurve.map((p) => ({
+                                tS: p.tS,
+                                bar: p.bar,
+                                confident: true,
+                              })),
+                              pressurePeakBar: s.labPressurePeakBar ?? null,
+                              flairProfile: s.flairProfile ?? null,
+                            }
+                          : {})}
                       />
                     )}
-                    {s.labPressureCurve?.length > 0 && (
+                    {s.labPressureCurve?.length > 0 && !s.scaleFlowCurve?.length && (
                       <ShotPressureChart
                         samples={s.labPressureCurve.map((p) => ({ tS: p.tS, bar: p.bar, confident: true }))}
                         compact
