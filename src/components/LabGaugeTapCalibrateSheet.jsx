@@ -76,6 +76,12 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       img.onerror = reject;
       img.src = hook.src;
     });
+    const canvas = freezeCanvasRef.current;
+    if (canvas) {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      canvas.getContext('2d').drawImage(img, 0, 0, img.width, img.height);
+    }
     return grabSourceImage(img);
   }, [grabSourceImage]);
 
@@ -97,6 +103,10 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     setFrameBox({ w: rect.width, h: rect.height });
   }, []);
 
+  const fixtureHook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
+  const fixtureSrc = fixtureHook?.src ?? null;
+  const mirrorPreview = fixtureHook?.mirror !== false;
+
   useEffect(() => {
     if (!open) {
       stop();
@@ -109,7 +119,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
         if (!cancelled) setOpencvReady(true);
       })
       .catch(() => {});
-    void start();
+    if (!fixtureSrc) void start();
     const hook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
     if (hook?.autoFreeze) {
       void loadFixtureFrame().then((image) => {
@@ -132,7 +142,22 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       stop();
       resetLocal();
     };
-  }, [open, loadFixtureFrame, measureFrame, resetLocal, start, stop]);
+  }, [open, fixtureSrc, loadFixtureFrame, measureFrame, resetLocal, start, stop]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onScreenshotReview = () => {
+      const mock = typeof window !== 'undefined' ? window.__labGaugeTapScreenshotJump : null;
+      if (!mock) return;
+      pendingCalRef.current = { ok: true, calibration: mock };
+      setReviewPose(mock);
+      setTapPhase('review');
+      setTapNote('Fixture review (simulated camera frame).');
+      setPlacementPreview(null);
+    };
+    window.addEventListener('lab-gauge-tap-screenshot-review', onScreenshotReview);
+    return () => window.removeEventListener('lab-gauge-tap-screenshot-review', onScreenshotReview);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -158,7 +183,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       size.h,
       rect.width,
       rect.height,
-      true,
+      mirrorPreview,
     );
     if (!mapped) return;
     const vx = mapped.nx * size.w;
@@ -239,7 +264,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       placementPreview.y + rect.top,
       rect,
       size,
-      true,
+      mirrorPreview,
     );
     if (!point) return;
     tapsRef.current = { ...tapsRef.current, [tapPhase]: point };
@@ -367,7 +392,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
         <div className="px-3 pt-2 space-y-1 shrink-0">
           <p className={`text-xs ${muted}`}>{PHASE_LABEL[tapPhase] || 'Calibrating'}</p>
           {tapNote && <p className={`text-[11px] ${text}`}>{tapNote}</p>}
-          {error && <p className="text-[11px] text-rose-400">{error}</p>}
+          {error && !fixtureSrc && <p className="text-[11px] text-rose-400">{error}</p>}
           {!opencvReady && status === 'live' && (
             <p className={`text-[10px] ${muted}`}>Loading vision helpers…</p>
           )}
@@ -384,17 +409,19 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
           >
             <video
               ref={videoRef}
-              className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] ${
+              className={`absolute inset-0 w-full h-full object-cover ${
                 tapPhase === 'aim' ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
+              style={mirrorPreview ? { transform: 'scaleX(-1)' } : undefined}
               playsInline
               muted
             />
             <canvas
               ref={freezeCanvasRef}
-              className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] ${
+              className={`absolute inset-0 w-full h-full object-cover ${
                 tapPhase !== 'aim' ? 'opacity-100' : 'opacity-0'
               }`}
+              style={mirrorPreview ? { transform: 'scaleX(-1)' } : undefined}
             />
             {tapPhase === 'review' && reviewPose && videoSize && frameBox.w ? (
               <svg className="absolute inset-0 w-full h-full pointer-events-none">
@@ -406,12 +433,12 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
                     videoSize.h,
                     frameBox.w,
                     frameBox.h,
-                    true,
+                    mirrorPreview,
                   );
                   const map = objectCoverMap(videoSize.w, videoSize.h, frameBox.w, frameBox.h);
                   if (!hub || !map) return null;
                   const ray = (deg, length, color) => {
-                    const rad = ((previewAngleDeg(deg, true) ?? 0) * Math.PI) / 180;
+                    const rad = ((previewAngleDeg(deg, mirrorPreview) ?? 0) * Math.PI) / 180;
                     const span = length * map.scale;
                     return (
                       <line

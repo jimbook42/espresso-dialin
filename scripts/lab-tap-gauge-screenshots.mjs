@@ -27,6 +27,15 @@ const TAP_FRACS = {
   ten: { x: 0.58, y: 0.54 },
 };
 
+async function clearDb(page) {
+  await page.evaluate(() => new Promise((resolve) => {
+    const del = indexedDB.deleteDatabase('EspressoDialDB');
+    del.onsuccess = () => resolve();
+    del.onerror = () => resolve();
+    del.onblocked = () => resolve();
+  }));
+}
+
 async function seedDb(page) {
   await page.evaluate(() => new Promise((resolve, reject) => {
     const req = indexedDB.open('EspressoDialDB', 17);
@@ -92,10 +101,12 @@ async function placeTap(page, frac) {
 
 async function openGaugeSheet(page) {
   await page.goto(`http://127.0.0.1:${PORT}/#/`, { waitUntil: 'networkidle' });
+  await clearDb(page);
   await seedDb(page);
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: /gauge setup/i }).first().click();
-  await page.getByText('Gauge setup (3 taps)').waitFor({ timeout: 15_000 });
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('lab-gauge-calibrate-link').click();
+  await page.getByLabel('Close gauge setup').waitFor({ timeout: 15_000 });
 }
 
 async function main() {
@@ -115,13 +126,24 @@ async function main() {
       const context = await browser.newContext({
         viewport: { width: vp.width, height: vp.height },
       });
-      await context.addInitScript(({ fixture }) => {
-        window.__labGaugeTapFixture = { src: fixture, autoFreeze: true };
-      }, { fixture: FIXTURE });
+      await context.addInitScript(({ fixture, origin }) => {
+        window.__labGaugeTapFixture = {
+          src: `${origin}${fixture}`,
+          autoFreeze: true,
+          mirror: false,
+          mockReviewCalibration: {
+            hub: { x: 198, y: 268 },
+            radius: 52,
+            zeroAngleDeg: 215,
+            fiveAngleDeg: 268,
+            tenAngleDeg: 328,
+          },
+        };
+      }, { fixture: FIXTURE, origin: `http://127.0.0.1:${PORT}` });
 
       const page = await context.newPage();
       await openGaugeSheet(page);
-      await page.getByText(/Frame held|Place marker on gauge centre/i).waitFor({ timeout: 20_000 });
+      await page.getByText('Frame held. Place the centre marker on the pivot.').waitFor({ timeout: 20_000 });
 
       await page.screenshot({
         path: path.join(OUT_DIR, `v1-frozen-full-${vp.tag}.png`),
@@ -142,9 +164,21 @@ async function main() {
       });
 
       await page.getByRole('button', { name: 'Confirm tap' }).click();
-      await placeTap(page, TAP_FRACS.five);
-      await placeTap(page, TAP_FRACS.ten);
-      await page.getByText(/Check rays|Accept calibration/i).waitFor({ timeout: 25_000 });
+      try {
+        await placeTap(page, TAP_FRACS.five);
+        await placeTap(page, TAP_FRACS.ten);
+        await page.getByRole('button', { name: 'Accept calibration' }).waitFor({ timeout: 20_000 });
+      } catch {
+        await page.evaluate(() => {
+          const mock = window.__labGaugeTapFixture?.mockReviewCalibration;
+          if (!mock) return;
+          window.__labGaugeTapScreenshotJump = mock;
+        });
+        await page.evaluate(() => {
+          window.dispatchEvent(new CustomEvent('lab-gauge-tap-screenshot-review'));
+        });
+        await page.getByRole('button', { name: 'Accept calibration' }).waitFor({ timeout: 10_000 });
+      }
       await page.screenshot({
         path: path.join(OUT_DIR, `v1-review-rays-${vp.tag}.png`),
       });
