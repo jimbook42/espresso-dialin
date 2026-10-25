@@ -180,7 +180,10 @@ async function main() {
 
         await page.getByRole('button', { name: /Open weighing view/ }).click();
         await delay(600);
-        await page.getByTestId('shot-lab-pressure-aim').waitFor({ timeout: 12_000 });
+        const weighAim = page
+          .getByRole('dialog', { name: 'Live scale weight' })
+          .getByTestId('shot-lab-pressure-aim');
+        await weighAim.waitFor({ timeout: 12_000 });
         const weighPath = path.join(OUT_DIR, `v6-aim-before-start-${tag}.png`);
         await page.screenshot({ path: weighPath, fullPage: false });
         process.stderr.write(`ok ${weighPath}\n`);
@@ -202,7 +205,8 @@ async function main() {
           null,
           { timeout: 25_000 },
         );
-        await page.getByTestId('shot-lab-pressure-aim').waitFor({ timeout: 12_000 });
+        const timerAim = page.locator('.shot-timer-fullscreen').getByTestId('shot-lab-pressure-aim');
+        await timerAim.waitFor({ timeout: 12_000 });
         const shotPath = path.join(OUT_DIR, `v6-aim-extraction-peak-${tag}.png`);
         await page.screenshot({ path: shotPath, fullPage: false });
         process.stderr.write(`ok ${shotPath}\n`);
