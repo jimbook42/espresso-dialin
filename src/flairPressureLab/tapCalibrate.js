@@ -878,10 +878,21 @@ export function calibrateFromTaps(image, taps) {
   let hubPx;
 
   if (geomOk) {
+    const rimAtHub = rimMeasure(
+      image,
+      centreTap.x,
+      centreTap.y,
+      36,
+      1,
+      Math.max(estRadius, REFERENCE_GAUGE_RADIUS_PX),
+    );
+    const trackRadius = rimAtHub && rimAtHub.radius > estRadius * 1.08
+      ? rimAtHub.radius
+      : estRadius;
     hub = {
       x: centreTap.x,
       y: centreTap.y,
-      radius: estRadius,
+      radius: trackRadius,
       score: snapAttempt.ok ? snapAttempt.score : 0,
       ok: true,
     };

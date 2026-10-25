@@ -7,6 +7,7 @@ import {
   barFromRestSpan,
   calibrateFromTaps,
   captureTipTemplate,
+  createCalibratedTracker,
   detectBadTap,
   estimateGaugeRadiusFromTaps,
   formatTapRejectReason,
@@ -15,6 +16,7 @@ import {
   matchTipAngle,
   mapStoredTapPoint,
   parseTapCalQuery,
+  readCalibratedFrame,
   replayMediaTimeSec,
   scaledTapTolerances,
   tapsForDisplayFrame,
@@ -25,6 +27,15 @@ import {
   tapAnchorRecord,
   tapsFromReplayHook,
 } from './tapCalibrate.js';
+import {
+  DARK_BAND_INNER_FRACTION,
+  DARK_BAND_OUTER_FRACTION,
+  ESPRESSO_SECTOR,
+  RED_BAND_INNER_FRACTION,
+  RED_BAND_OUTER_FRACTION,
+  STOP_SECTOR,
+} from './dialFaceTemplate.js';
+import { wrap360, wrapDelta } from './gaugeConfig.js';
 
 function point(angleDeg, radius, origin = { x: 200, y: 180 }) {
   const rad = (angleDeg * Math.PI) / 180;
@@ -220,6 +231,54 @@ describe('replay tap window', () => {
     });
   });
 });
+
+function inPrintedSector(deg, start, end) {
+  return wrap360(deg - start) <= wrap360(end - start);
+}
+
+/** Rim-sized dial with colour bands; taps may sit nearer the hub than the bezel. */
+function paintBandDial(size, hub, rimRadius) {
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const dx = x - hub.x;
+      const dy = y - hub.y;
+      const rr = Math.hypot(dx, dy);
+      const deg = wrap360((Math.atan2(dy, dx) * 180) / Math.PI);
+      const o = (y * size + x) * 4;
+      let r = 248;
+      let g = 248;
+      let b = 248;
+      if (rr < rimRadius * 0.92) {
+        r = 226;
+        g = 224;
+        b = 216;
+        const rf = rr / rimRadius;
+        if (rf >= RED_BAND_INNER_FRACTION && rf <= RED_BAND_OUTER_FRACTION
+          && inPrintedSector(deg, ESPRESSO_SECTOR.startDeg, ESPRESSO_SECTOR.endDeg)) {
+          r = 200;
+          g = 35;
+          b = 30;
+        } else if (rf >= DARK_BAND_INNER_FRACTION && rf <= DARK_BAND_OUTER_FRACTION
+          && inPrintedSector(deg, STOP_SECTOR.startDeg, STOP_SECTOR.endDeg)) {
+          r = 28;
+          g = 28;
+          b = 30;
+        }
+      }
+      if (rr >= rimRadius * 0.95 && rr <= rimRadius + 10) {
+        r = 18;
+        g = 18;
+        b = 18;
+      }
+      data[o] = r;
+      data[o + 1] = g;
+      data[o + 2] = b;
+      data[o + 3] = 255;
+    }
+  }
+  return { width: size, height: size, data };
+}
 
 function paintDial(size, hub, radius) {
   const data = new Uint8ClampedArray(size * size * 4);
@@ -432,5 +491,32 @@ describe('calibrateFromTaps gauge sizes', () => {
     expect(result.ok).toBe(false);
     expect(result.redo).toBe('centre');
     expect(formatTapRejectReason(result)).toMatch(/pivot|line up/i);
+  });
+});
+
+describe('userPlaced rim radius vs tap radius', () => {
+  it('stores the bezel radius when taps sit at ~0.55 rim and keeps rotation near 0', () => {
+    const hub = { x: 200, y: 200 };
+    const rimRadius = 88;
+    const tapRadius = 50;
+    const image = paintBandDial(400, hub, rimRadius);
+    const taps = idealTapsAtRadius(tapRadius, hub);
+    const result = calibrateFromTaps(image, {
+      centre: hub,
+      five: taps.five,
+      ten: taps.ten,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.userPlaced).toBe(true);
+    expect(result.calibration.hub.x).toBe(hub.x);
+    expect(result.calibration.five.x).toBe(taps.five.x);
+    expect(result.calibration.radius).toBeGreaterThan(tapRadius * 1.25);
+    expect(result.calibration.radius).toBeLessThan(rimRadius * 1.05);
+    const tracker = createCalibratedTracker(result.calibration);
+    const read = readCalibratedFrame(image, tracker);
+    const scale = tracker.pose.radius / result.calibration.radius;
+    expect(scale).toBeGreaterThan(0.88);
+    expect(scale).toBeLessThan(1.12);
+    expect(Math.abs(wrapDelta(read.shiftDeg ?? 0, 0))).toBeLessThan(1);
   });
 });
