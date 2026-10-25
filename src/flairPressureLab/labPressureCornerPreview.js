@@ -11,6 +11,9 @@ export const CORNER_PREVIEW_SMOOTH_ALPHA = 0.38;
 export const CORNER_PREVIEW_MIN_HALF_PX = 72;
 export const CORNER_PREVIEW_MAX_HALF_FRACTION = 0.48;
 export const CORNER_PREVIEW_MAX_ZOOM = 6;
+export const CORNER_PREVIEW_BOX = { w: 80, h: 112 };
+/** Minimum ms between DOM style writes (~12/s). */
+export const CORNER_PREVIEW_STYLE_MIN_WRITE_MS = 80;
 
 export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -136,4 +139,31 @@ export function cornerPreviewCropFromPose(pose, videoW, videoH, nowMs = Date.now
   const target = dialCropFromPose(pose.hubX, pose.hubY, pose.radius, videoW, videoH);
   if (!target) return null;
   return blendCropToFullFrame(target, videoW, videoH, factor);
+}
+
+/** Rounded key so tiny float drift does not trigger DOM writes. */
+export function cornerPreviewStyleWriteKey(style) {
+  if (!style) return '';
+  const transform = style.transform ?? '';
+  const zoomMatch = transform.match(/scale\(([\d.]+)\)/);
+  const zoom = zoomMatch ? Number(zoomMatch[1]) : 1;
+  const parts = (style.objectPosition ?? '50% 50%').split(/\s+/);
+  const ox = Number.parseFloat(parts[0]) || 50;
+  const oy = Number.parseFloat(parts[1]) || 50;
+  return `${Math.round(zoom * 1000)}|${Math.round(ox * 10)}|${Math.round(oy * 10)}`;
+}
+
+export function shouldWriteCornerPreviewStyle(key, lastKey, nowMs, lastWriteMs) {
+  if (!key || key === lastKey) return false;
+  if (!lastWriteMs) return true;
+  return nowMs - lastWriteMs >= CORNER_PREVIEW_STYLE_MIN_WRITE_MS;
+}
+
+export function applyCornerPreviewVideoStyle(el, style) {
+  if (!el || !style) return;
+  el.style.objectFit = style.objectFit ?? 'cover';
+  el.style.objectPosition = style.objectPosition ?? '50% 50%';
+  const origin = style.transformOrigin ?? style.objectPosition ?? '50% 50%';
+  el.style.transformOrigin = origin;
+  el.style.transform = style.transform ?? '';
 }

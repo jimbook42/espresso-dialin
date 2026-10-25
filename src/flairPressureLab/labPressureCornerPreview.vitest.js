@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   blendCropToFullFrame,
+  CORNER_PREVIEW_BOX,
+  CORNER_PREVIEW_STYLE_MIN_WRITE_MS,
   cornerPreviewCropFactor,
   cornerPreviewCropFromPose,
+  cornerPreviewStyleWriteKey,
   cornerPreviewVideoStyle,
   dialCropFromPose,
+  shouldWriteCornerPreviewStyle,
   smoothDialCrop,
 } from './labPressureCornerPreview.js';
 
@@ -132,4 +136,32 @@ describe('blendCropToFullFrame', () => {
     expect(full.cx).toBeCloseTo(VIDEO.videoW / 2, 0);
     expect(full.cy).toBeCloseTo(VIDEO.videoH / 2, 0);
   });
+});
+
+describe('corner preview box and DOM style helpers', () => {
+  it('keeps the on-screen preview box at 80×112 px', () => {
+    expect(CORNER_PREVIEW_BOX.w).toBe(80);
+    expect(CORNER_PREVIEW_BOX.h).toBe(112);
+  });
+
+  it('skips writes when the rounded style key is unchanged', () => {
+    const style = cornerPreviewVideoStyle({
+      ...VIDEO,
+      ...BOX,
+      crop: { cx: 640, cy: 360, half: 90 },
+    });
+    const key = cornerPreviewStyleWriteKey(style);
+    expect(shouldWriteCornerPreviewStyle(key, key, 1000, 0)).toBe(false);
+    expect(cornerPreviewStyleWriteKey({ ...style, transform: style.transform })).toBe(key);
+  });
+
+  it('throttles writes to at most ~15/s when the key changes', () => {
+    const t0 = 10_000;
+    expect(shouldWriteCornerPreviewStyle('a', '', t0, 0)).toBe(true);
+    expect(shouldWriteCornerPreviewStyle('b', 'a', t0 + 10, t0)).toBe(false);
+    expect(
+      shouldWriteCornerPreviewStyle('b', 'a', t0 + CORNER_PREVIEW_STYLE_MIN_WRITE_MS, t0),
+    ).toBe(true);
+  });
+
 });

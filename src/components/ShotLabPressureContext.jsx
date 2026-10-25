@@ -126,7 +126,7 @@ export function ShotLabPressureProvider({
   const showCornerPreview =
     previewOn && timerRunning && displaySurfaceActive && Boolean(storedCalibration);
 
-  const { style: cornerPreviewStyle } = useLabPressureCornerPreviewStyle(
+  useLabPressureCornerPreviewStyle(
     showCornerPreview ? pressure.cornerPreviewPose : null,
     previewRef,
   );
@@ -143,22 +143,26 @@ export function ShotLabPressureProvider({
         />
       )}
       {showCornerPreview && (
-        <video
-          ref={(node) => {
-            previewRef.current = node;
-            const stream = pressure.videoRef.current?.srcObject;
-            if (node && stream && node.srcObject !== stream) {
-              node.srcObject = stream;
-              void node.play().catch(() => {});
-            }
-          }}
-          className="fixed bottom-24 right-3 w-20 h-28 rounded-lg border border-[#2e2b26] object-cover z-[61] opacity-90 pointer-events-none"
-          style={cornerPreviewStyle}
-          playsInline
-          muted
-          aria-hidden
+        <div
           data-testid="lab-pressure-corner-preview"
-        />
+          className="pointer-events-none fixed bottom-24 right-3 z-[61] h-28 w-20 overflow-hidden rounded-lg border border-[#2e2b26] opacity-90"
+          aria-hidden
+        >
+          <video
+            ref={(node) => {
+              previewRef.current = node;
+              const stream = pressure.videoRef.current?.srcObject;
+              if (node && stream && node.srcObject !== stream) {
+                node.srcObject = stream;
+                void node.play().catch(() => {});
+              }
+            }}
+            className="absolute inset-0 h-full w-full object-cover"
+            playsInline
+            muted
+            aria-hidden
+          />
+        </div>
       )}
       <LabGaugeTapCalibrateSheet
         open={calibrateOpen}
