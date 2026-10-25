@@ -165,8 +165,8 @@ async function prepareHome(page, opts) {
 }
 
 async function startShot(page) {
-  await page.getByRole('button', { name: /^Start$/ }).click();
-  await page.getByLabel('Cancel timer').waitFor({ timeout: 15_000 });
+  await page.getByRole('button', { name: /^Start$/ }).click({ timeout: 20_000 });
+  await page.getByLabel('Cancel timer').waitFor({ timeout: 25_000 });
 }
 
 async function main() {
@@ -178,28 +178,33 @@ async function main() {
     await waitForServer(url);
     const browser = await chromium.launch();
     const context = await browser.newContext();
-    const page = await context.newPage();
 
     try {
-      for (const { w, h, tag } of VIEWPORTS) {
-        for (const labOn of [false, true]) {
-          await page.setViewportSize({ width: w, height: h });
-          await prepareHome(page, { labOn, flairProfile: WEIGHT_PEAK_PROFILE });
-          await startShot(page);
-          await page.getByTestId('shot-timer-weight-goals').waitFor({ timeout: 12_000 });
-          await page.waitForFunction(
+      const onlyTag = process.env.V10_VIEWPORT_TAG;
+      const viewports = onlyTag
+        ? VIEWPORTS.filter((v) => v.tag === onlyTag)
+        : VIEWPORTS;
+
+      for (const { w, h, tag } of viewports) {
+        const shotPage = await context.newPage();
+        try {
+          await shotPage.setViewportSize({ width: w, height: h });
+          await prepareHome(shotPage, { labOn: false, flairProfile: WEIGHT_PEAK_PROFILE });
+          await startShot(shotPage);
+          await shotPage.getByTestId('shot-timer-weight-goals').waitFor({ timeout: 15_000 });
+          await shotPage.waitForFunction(
             () => {
               const el = document.querySelector('[data-testid="shot-timer-weight-goals"]');
               return el?.textContent?.includes('Peak → 16 g');
             },
             null,
-            { timeout: 15_000 },
+            { timeout: 20_000 },
           );
-          const labTag = labOn ? 'lab-on' : 'lab-off';
-          const outPath = path.join(OUT_DIR, `v10-g56-weight-goals-peak-${labTag}-${tag}.png`);
-          await page.screenshot({ path: outPath, fullPage: false });
+          const outPath = path.join(OUT_DIR, `v10-g56-weight-goals-peak-${tag}.png`);
+          await shotPage.screenshot({ path: outPath, fullPage: false });
           process.stderr.write(`ok ${outPath}\n`);
-          await page.getByLabel('Cancel timer').click({ timeout: 5000 }).catch(() => {});
+        } finally {
+          await shotPage.close();
         }
       }
     } finally {
