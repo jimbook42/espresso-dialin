@@ -866,91 +866,86 @@ export function calibrateFromTaps(image, taps) {
 
   const estRadius = estimateGaugeRadiusFromTaps(centreTap, fiveTap, tenTap);
   const tol = scaledTapTolerances(estRadius);
+  const geometry = {
+    markPx: markResidualPx(centreTap, fiveTap, tenTap),
+    centrePx: centreResidualPx(centreTap, fiveTap, tenTap),
+  };
+  const snapAttempt = snapHub(image, centreTap, { windowPx: tol.hubWindowPx, estRadius });
+  const snapHubPx = snapAttempt.ok ? pointDist(snapAttempt, centreTap) : Number.POSITIVE_INFINITY;
+  const geomOk = tapsGeometricallyConsistent(centreTap, fiveTap, tenTap, tol);
   let userPlaced = false;
-  let hub = snapHub(image, centreTap, { windowPx: tol.hubWindowPx, estRadius });
-  let hubPx = pointDist(hub, centreTap);
-  if (!hub.ok || hubPx > tol.badTapPx) {
-    const geometry = {
-      markPx: markResidualPx(centreTap, fiveTap, tenTap),
-      centrePx: centreResidualPx(centreTap, fiveTap, tenTap),
+  let hub;
+  let hubPx;
+
+  if (geomOk) {
+    hub = {
+      x: centreTap.x,
+      y: centreTap.y,
+      radius: estRadius,
+      score: snapAttempt.ok ? snapAttempt.score : 0,
+      ok: true,
     };
-    if (tapsGeometricallyConsistent(centreTap, fiveTap, tenTap, tol)) {
-      hub = {
-        x: centreTap.x,
-        y: centreTap.y,
-        radius: estRadius,
-        score: hub.score ?? 0,
-        ok: true,
-      };
-      hubPx = 0;
-      userPlaced = true;
-    } else {
-      return {
-        ok: false,
-        redo: 'centre',
-        reason: 'hub',
-        hub,
-        geometry,
-        snapPx: { centre: hubPx, five: null, ten: null },
-      };
-    }
+    hubPx = 0;
+    userPlaced = true;
+  } else if (!snapAttempt.ok || snapHubPx > tol.badTapPx) {
+    return {
+      ok: false,
+      redo: 'centre',
+      reason: 'hub',
+      hub: snapAttempt,
+      geometry,
+      snapPx: { centre: snapHubPx, five: null, ten: null },
+    };
+  } else {
+    hub = snapAttempt;
+    hubPx = snapHubPx;
   }
 
   const needle = readNeedleAt(image, hub.x, hub.y, hub.radius);
   let marks = snapScaleMarks(image, hub, fiveTap, tenTap, needle.angleDeg);
-  if (!marks.ok) {
-    if (tapsGeometricallyConsistent(centreTap, fiveTap, tenTap, tol)) {
-      const fiveDeg = pointAngle(hub, fiveTap);
-      const tenDeg = pointAngle(hub, tenTap);
-      marks = {
-        ok: true,
-        five: fiveTap,
-        ten: tenTap,
-        fiveDeg,
-        tenDeg,
-        fivePx: 0,
-        tenPx: 0,
-        rotationDeg: 0,
-        colorRadius: hub.radius * 1.4,
-        margin: 0,
-      };
-      userPlaced = true;
-    } else {
-      return {
-        ok: false,
-        redo: null,
-        reason: 'unregistered',
-        hub,
-        marks,
-        snapPx: { centre: hubPx, five: null, ten: null },
-      };
-    }
+  if (geomOk) {
+    const fiveDeg = pointAngle(hub, fiveTap);
+    const tenDeg = pointAngle(hub, tenTap);
+    const snapped = marks.ok ? marks : {};
+    marks = {
+      ok: true,
+      five: fiveTap,
+      ten: tenTap,
+      fiveDeg,
+      tenDeg,
+      fivePx: 0,
+      tenPx: 0,
+      rotationDeg: snapped.rotationDeg ?? 0,
+      colorRadius: hub.radius * 1.4,
+      margin: snapped.margin ?? 0,
+      bands: snapped.bands,
+    };
+    userPlaced = true;
+  } else if (!marks.ok) {
+    return {
+      ok: false,
+      redo: null,
+      reason: 'unregistered',
+      hub,
+      marks,
+      snapPx: { centre: hubPx, five: null, ten: null },
+    };
   }
   const named = detectBadTap(centreTap, fiveTap, tenTap, {
-    hubPx,
-    fivePx: marks.fivePx,
-    tenPx: marks.tenPx,
+    hubPx: geomOk ? 0 : hubPx,
+    fivePx: geomOk ? 0 : marks.fivePx,
+    tenPx: geomOk ? 0 : marks.tenPx,
   }, tol.badTapPx);
-  if (named.bad) {
-    if (userPlaced && named.bad !== 'centre') {
-      // User-placed hub: trust tap positions for 5/10 when geometry is consistent.
-    } else if (named.bad === 'centre' && userPlaced) {
-      // already accepted
-    } else if (!userPlaced && named.bad === 'centre' && tapsGeometricallyConsistent(centreTap, fiveTap, tenTap, tol)) {
-      hub = { x: centreTap.x, y: centreTap.y, radius: estRadius, score: hub.score ?? 0, ok: true };
-      hubPx = 0;
-      userPlaced = true;
-    } else {
-      return {
-        ok: false,
-        redo: named.bad,
-        reason: 'mark',
-        hub,
-        marks,
-        snapPx: { centre: hubPx, five: marks.fivePx, ten: marks.tenPx },
-        geometry: named.geometry,
-      };
-    }
+  if (named.bad && !geomOk) {
+    return {
+      ok: false,
+      redo: named.bad,
+      reason: 'mark',
+      hub,
+      marks,
+      snapPx: { centre: hubPx, five: marks.fivePx, ten: marks.tenPx },
+      geometry: named.geometry,
+    };
   }
   const needleWeak = needle.angleDeg == null || (needle.quality ?? 0) < NEEDLE_LOST_QUALITY * 0.5;
   if (needleWeak && !userPlaced) {

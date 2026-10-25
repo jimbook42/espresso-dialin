@@ -382,6 +382,30 @@ describe('calibrateFromTaps gauge sizes', () => {
     expect(scaled.ok).toBe(true);
   });
 
+  it('keeps the centre tap exactly when snap would move the hub', () => {
+    const trueHub = { x: 120, y: 110 };
+    const radius = 72;
+    const image = paintDial(240, trueHub, radius);
+    const centreTap = { x: trueHub.x + 14, y: trueHub.y - 11 };
+    const taps = idealTapsAtRadius(radius, centreTap);
+    const snapped = snapHub(image, centreTap, { estRadius: radius });
+    expect(snapped.ok).toBe(true);
+    expect(Math.hypot(snapped.x - centreTap.x, snapped.y - centreTap.y)).toBeGreaterThan(6);
+    const result = calibrateFromTaps(image, {
+      centre: centreTap,
+      five: taps.five,
+      ten: taps.ten,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.calibration.hub.x).toBe(centreTap.x);
+    expect(result.calibration.hub.y).toBe(centreTap.y);
+    expect(result.calibration.five.x).toBe(taps.five.x);
+    expect(result.calibration.five.y).toBe(taps.five.y);
+    expect(result.calibration.ten.x).toBe(taps.ten.x);
+    expect(result.calibration.ten.y).toBe(taps.ten.y);
+    expect(result.userPlaced).toBe(true);
+  });
+
   it('falls back to user taps when snap fails but geometry is consistent', () => {
     const hub = { x: 100, y: 100 };
     const radius = 48;
