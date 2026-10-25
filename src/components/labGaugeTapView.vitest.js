@@ -49,9 +49,14 @@ describe('loupeCircleFillRatio', () => {
       getImageData: () => ({ data, width: loupeSize, height: loupeSize }),
     };
     expect(loupeCircleFillRatio(ctx, loupeSize)).toBeGreaterThan(0.98);
-    const mid = Math.floor(loupeSize / 2);
-    data[(mid * loupeSize + mid) * 4 + 3] = 0;
-    expect(loupeCircleFillRatio(ctx, loupeSize)).toBeLessThan(0.98);
+    for (let y = 0; y < loupeSize; y += 1) {
+      for (let x = 0; x < loupeSize; x += 1) {
+        if (Math.hypot(x - loupeSize / 2, y - loupeSize / 2) <= loupeSize / 2 - 2) {
+          data[(y * loupeSize + x) * 4 + 3] = 0;
+        }
+      }
+    }
+    expect(loupeCircleFillRatio(ctx, loupeSize)).toBeLessThan(0.02);
   });
 });
 

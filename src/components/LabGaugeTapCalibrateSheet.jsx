@@ -549,6 +549,8 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
                 <canvas
                   ref={loupeCanvasRef}
                   data-testid="gauge-tap-loupe"
+                  width={LOUPE_SIZE}
+                  height={LOUPE_SIZE}
                   className="absolute top-3 right-3 z-20 rounded-full border-2 border-[#c88a4b] shadow-lg pointer-events-none"
                   style={{ width: LOUPE_SIZE, height: LOUPE_SIZE }}
                 />
