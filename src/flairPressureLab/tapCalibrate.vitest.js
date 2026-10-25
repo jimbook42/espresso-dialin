@@ -3,17 +3,22 @@ import {
   BAD_TAP_PX,
   FIVE_WARN_BAR,
   MARK_SWEEP_DEG,
+  USER_PLACED_NOTE,
   barFromRestSpan,
   calibrateFromTaps,
   captureTipTemplate,
   detectBadTap,
+  estimateGaugeRadiusFromTaps,
+  formatTapRejectReason,
   fiveCheckBar,
   markResidualPx,
   matchTipAngle,
   mapStoredTapPoint,
   parseTapCalQuery,
   replayMediaTimeSec,
+  scaledTapTolerances,
   tapsForDisplayFrame,
+  tapsGeometricallyConsistent,
   replayTapWindowOpen,
   shouldDeferLegacyLock,
   snapHub,
@@ -306,7 +311,93 @@ describe('matchTipAngle', () => {
   });
 });
 
-describe('calibrateFromTaps', () => {
+function idealTapsAtRadius(radius, hub = { x: 120, y: 110 }) {
+  const five = point(20, radius, hub);
+  const ten = point(20 + MARK_SWEEP_DEG, radius, hub);
+  return { centre: { ...hub }, five, ten };
+}
+
+describe('estimateGaugeRadiusFromTaps', () => {
+  it('reads radius from centre→5/10 distances', () => {
+    const taps = idealTapsAtRadius(52);
+    expect(estimateGaugeRadiusFromTaps(taps.centre, taps.five, taps.ten)).toBeCloseTo(52, 0);
+    expect(estimateGaugeRadiusFromTaps(taps.centre, taps.five, taps.ten)).toBeGreaterThan(30);
+  });
+});
+
+describe('tapsGeometricallyConsistent', () => {
+  it('accepts a loose finger triple and rejects a wild ten', () => {
+    const good = idealTapsAtRadius(90);
+    expect(tapsGeometricallyConsistent(good.centre, good.five, good.ten)).toBe(true);
+    const bad = { ...good, ten: { x: good.ten.x + 120, y: good.ten.y + 40 } };
+    expect(tapsGeometricallyConsistent(bad.centre, bad.five, bad.ten)).toBe(false);
+  });
+});
+
+describe('scaledTapTolerances', () => {
+  it('shrinks bad-tap threshold for a small gauge (Isaac ~50px class)', () => {
+    const small = scaledTapTolerances(50);
+    const large = scaledTapTolerances(140);
+    expect(small.badTapPx).toBeLessThan(BAD_TAP_PX);
+    expect(large.badTapPx).toBeGreaterThan(BAD_TAP_PX);
+    expect(small.badTapPx).toBeCloseTo(BAD_TAP_PX * (50 / 90), 0);
+  });
+});
+
+describe('formatTapRejectReason', () => {
+  it('names the five tap in plain words', () => {
+    expect(formatTapRejectReason({ ok: false, redo: 'five', reason: 'mark' }))
+      .toMatch(/5/);
+    expect(formatTapRejectReason({ ok: false, redo: 'centre', reason: 'hub' }))
+      .toMatch(/pivot|line up/i);
+  });
+});
+
+describe('calibrateFromTaps gauge sizes', () => {
+  const radii = [30, 50, 90, 140];
+
+  for (const radius of radii) {
+    it(`accepts a consistent triple at ~${radius}px radius (hub snap or user placement)`, () => {
+      const hub = { x: 160, y: 160 };
+      const image = paintDial(360, hub, radius);
+      const taps = idealTapsAtRadius(radius, hub);
+      const noisyCentre = { x: hub.x + 6, y: hub.y - 4 };
+      const result = calibrateFromTaps(image, {
+        centre: noisyCentre,
+        five: taps.five,
+        ten: taps.ten,
+      });
+      expect(result.ok, `radius ${radius} reason=${result.reason}`).toBe(true);
+      expect(result.calibration.radius).toBeGreaterThan(radius * 0.55);
+      expect(result.calibration.radius).toBeLessThan(radius * 1.6);
+    });
+  }
+
+  it('documents fixed 78–110px bezel search miss at radius 30 (root cause class)', () => {
+    const hub = { x: 120, y: 110 };
+    const image = paintDial(240, hub, 30);
+    const snapped = snapHub(image, { x: hub.x + 4, y: hub.y - 3 }, { estRadius: 90 });
+    expect(snapped.ok).toBe(false);
+    const scaled = snapHub(image, { x: hub.x + 4, y: hub.y - 3 }, { estRadius: 30 });
+    expect(scaled.ok).toBe(true);
+  });
+
+  it('falls back to user taps when snap fails but geometry is consistent', () => {
+    const hub = { x: 100, y: 100 };
+    const radius = 48;
+    const image = paintDial(220, hub, radius);
+    const taps = idealTapsAtRadius(radius, hub);
+    const result = calibrateFromTaps(image, {
+      centre: { x: hub.x + 3, y: hub.y + 2 },
+      five: taps.five,
+      ten: taps.ten,
+    });
+    expect(result.ok).toBe(true);
+    if (result.userPlaced) {
+      expect(result.userPlacedNote).toBe(USER_PLACED_NOTE);
+    }
+  });
+
   it('asks for the centre again when that tap misses the dial', () => {
     const image = paintDial(240, { x: 120, y: 110 }, 72);
     const result = calibrateFromTaps(image, {
@@ -316,5 +407,6 @@ describe('calibrateFromTaps', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.redo).toBe('centre');
+    expect(formatTapRejectReason(result)).toMatch(/pivot|line up/i);
   });
 });
