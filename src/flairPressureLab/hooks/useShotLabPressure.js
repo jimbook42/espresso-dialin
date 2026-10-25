@@ -22,6 +22,7 @@ import { createShotLabR7Publisher } from '../shotLabR7Live.js';
 import { r5SampleFromTapFrame } from '../shotLabR7Needle.js';
 import { loadNeedleModel, isNeedleModelReady, needleModelStatus } from '../needleModel.js';
 import { gaugeSnapshotJpegFromImageData } from '../gaugeSnapshotJpeg.js';
+import { shouldPublishCornerPreviewPose } from '../labPressureCornerPreview.js';
 
 /** Live shots use the R7 gated stack (classical R6 + R5 + TemporalGate). */
 export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
@@ -71,6 +72,8 @@ export function useShotLabPressure({
   const [readerError, setReaderError] = useState('');
   const [readerUncertain, setReaderUncertain] = useState(false);
   const [readerReady, setReaderReady] = useState(false);
+  const [cornerPreviewPose, setCornerPreviewPose] = useState(null);
+  const lastCornerPosePublishRef = useRef(0);
 
   useEffect(() => {
     setCalibrated(Boolean(storedCalibration));
@@ -125,6 +128,8 @@ export function useShotLabPressure({
     setPeakBar(null);
     setReaderError('');
     setReaderUncertain(false);
+    setCornerPreviewPose(null);
+    lastCornerPosePublishRef.current = 0;
     r7Ref.current?.reset();
   }, []);
 
@@ -249,6 +254,17 @@ export function useShotLabPressure({
             : rollingDisplayBar(all, tS) ?? (held.gap ? null : held.bar),
         );
         setPeakBar(peakBarFromRaw(all));
+        if (shouldPublishCornerPreviewPose(nowMs, lastCornerPosePublishRef.current)) {
+          lastCornerPosePublishRef.current = nowMs;
+          setCornerPreviewPose({
+            hubX: read.hub.x,
+            hubY: read.hub.y,
+            radius: read.radius,
+            lost: read.lost,
+            uncertain: gated.uncertain,
+            atMs: nowMs,
+          });
+        }
       } catch {
         setReaderError('Pressure reader paused');
         setReaderUncertain(true);
@@ -315,5 +331,6 @@ export function useShotLabPressure({
     acceptCalibration,
     getShotMetrics,
     cameraStatus: status,
+    cornerPreviewPose,
   };
 }

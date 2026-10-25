@@ -8,6 +8,7 @@ import {
 } from '../flairPressureLab/shotLabPressureTrust.js';
 import { isLabCameraPressureEnabled, labGaugeTapCalibrationFromSettings } from '../settings/labCameraPressure.js';
 import { LabGaugeTapCalibrateSheet } from './LabGaugeTapCalibrateSheet.jsx';
+import { useLabPressureCornerPreviewStyle } from '../flairPressureLab/hooks/useLabPressureCornerPreviewStyle.js';
 
 export const ShotLabPressureContext = createContext(null);
 
@@ -125,6 +126,11 @@ export function ShotLabPressureProvider({
   const showCornerPreview =
     previewOn && timerRunning && displaySurfaceActive && Boolean(storedCalibration);
 
+  const { style: cornerPreviewStyle } = useLabPressureCornerPreviewStyle(
+    showCornerPreview ? pressure.cornerPreviewPose : null,
+    previewRef,
+  );
+
   return (
     <ShotLabPressureContext.Provider value={value}>
       {shouldRunHiddenCamera && (
@@ -147,6 +153,7 @@ export function ShotLabPressureProvider({
             }
           }}
           className="fixed bottom-24 right-3 w-20 h-28 rounded-lg border border-[#2e2b26] object-cover z-[61] opacity-90 pointer-events-none"
+          style={cornerPreviewStyle}
           playsInline
           muted
           aria-hidden
