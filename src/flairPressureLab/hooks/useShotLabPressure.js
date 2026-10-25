@@ -24,6 +24,11 @@ import { loadNeedleModel, isNeedleModelReady, needleModelStatus } from '../needl
 import { gaugeSnapshotJpegFromImageData } from '../gaugeSnapshotJpeg.js';
 import { shouldPublishCornerPreviewPose } from '../labPressureCornerPreview.js';
 import { dialPoseMismatchWarning } from '../shotStartDialPoseCheck.js';
+import {
+  createPreShotDialVerdictSampler,
+  preShotDialMismatch,
+  PRE_SHOT_DIAL_SAMPLE_MS,
+} from '../preShotDialCheck.js';
 
 export const DIAL_RECALIBRATE_HINT = 'Dial not where you calibrated. Recalibrate.';
 
@@ -41,6 +46,7 @@ export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
  *   onCalibrationSaved?: (calibration: object) => void,
  *   calibrateSheetOpen: boolean,
  *   weighingViewOpen: boolean,
+ *   preShotDialCheckSurface: boolean,
  * }} options
  */
 export function useShotLabPressure({
@@ -51,6 +57,7 @@ export function useShotLabPressure({
   onCalibrationSaved,
   calibrateSheetOpen,
   weighingViewOpen = false,
+  preShotDialCheckSurface = false,
 }) {
   const { videoRef, start, stop, status } = useFrontCameraStream();
   const sessionRef = useRef(createShotLabPressureSession());
@@ -79,6 +86,9 @@ export function useShotLabPressure({
   const lastCornerPosePublishRef = useRef(0);
   const [dialRecalibrateHint, setDialRecalibrateHint] = useState(false);
   const dialPoseCheckActiveRef = useRef(false);
+  const [preShotDialStatus, setPreShotDialStatus] = useState(null);
+  const preShotDialSamplerRef = useRef(createPreShotDialVerdictSampler());
+  const preShotDialSamplerLockedRef = useRef(false);
 
   useEffect(() => {
     setCalibrated(Boolean(storedCalibration));
@@ -92,9 +102,16 @@ export function useShotLabPressure({
   }, [storedCalibration]);
 
   const displaySurfaceActive = timerRunning || weighingViewOpen;
+  const preShotDialCheckActive =
+    enabled
+    && calibrated
+    && !calibrateSheetOpen
+    && !timerRunning
+    && preShotDialCheckSurface
+    && !simMode;
   const shouldRunCamera =
     enabled
-    && (calibrateSheetOpen || (displaySurfaceActive && calibrated && !simMode));
+    && (calibrateSheetOpen || ((displaySurfaceActive || preShotDialCheckActive) && calibrated && !simMode));
 
   useEffect(() => {
     if (!shouldRunCamera) {
@@ -137,8 +154,32 @@ export function useShotLabPressure({
     lastCornerPosePublishRef.current = 0;
     setDialRecalibrateHint(false);
     dialPoseCheckActiveRef.current = false;
+    preShotDialSamplerRef.current.reset();
+    preShotDialSamplerLockedRef.current = false;
+    setPreShotDialStatus(null);
     r7Ref.current?.reset();
   }, []);
+
+  const observePreShotDialPose = useCallback((read, cal) => {
+    if (!preShotDialCheckActive || preShotDialSamplerLockedRef.current) return;
+    const mismatch = preShotDialMismatch({
+      trackedHub: read.lost ? null : read.hub,
+      calibratedHub: cal?.hub,
+      calibratedRadius: cal?.radius,
+      poseLost: read.lost,
+    });
+    const next = preShotDialSamplerRef.current.observe(mismatch, Date.now());
+    if (next.locked) preShotDialSamplerLockedRef.current = true;
+    setPreShotDialStatus(next.status);
+  }, [preShotDialCheckActive]);
+
+  useEffect(() => {
+    if (!preShotDialCheckActive) {
+      preShotDialSamplerRef.current.reset();
+      preShotDialSamplerLockedRef.current = false;
+      setPreShotDialStatus(null);
+    }
+  }, [preShotDialCheckActive]);
 
   useEffect(() => {
     if (timerRunning) {
@@ -224,6 +265,7 @@ export function useShotLabPressure({
         lastFrameRef.current = image;
         const read = readCalibratedFrame(image, trackerRef.current);
         const cal = trackerRef.current.calibration;
+        observePreShotDialPose(read, cal);
         if (dialPoseCheckActiveRef.current && cal?.hub) {
           const mismatch = dialPoseMismatchWarning({
             trackedHub: read.lost ? null : read.hub,
@@ -305,12 +347,49 @@ export function useShotLabPressure({
     simMode,
     grabSourceImage,
     videoRef,
+    observePreShotDialPose,
+  ]);
+
+  useEffect(() => {
+    if (!preShotDialCheckActive || !trackerRef.current) return undefined;
+    if (displaySurfaceActive) return undefined;
+    let raf = 0;
+    let last = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const wallNow = performance.now();
+      if (wallNow - last < PRE_SHOT_DIAL_SAMPLE_MS) return;
+      if (preShotDialSamplerLockedRef.current) return;
+      last = wallNow;
+      try {
+        const video = videoRef.current;
+        if (!video || video.readyState < 2) return;
+        const image = grabSourceImage(video);
+        if (!image) return;
+        const read = readCalibratedFrame(image, trackerRef.current);
+        const cal = trackerRef.current.calibration;
+        observePreShotDialPose(read, cal);
+      } catch {
+        // ignore — informational only
+      }
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [
+    preShotDialCheckActive,
+    displaySurfaceActive,
+    grabSourceImage,
+    videoRef,
+    observePreShotDialPose,
   ]);
 
   const acceptCalibration = useCallback(
     ({ calibration, tracker }) => {
       trackerRef.current = tracker ?? createCalibratedTracker(calibration);
       r7Ref.current = createShotLabR7Publisher(calibration);
+      preShotDialSamplerRef.current.reset();
+      preShotDialSamplerLockedRef.current = false;
+      setPreShotDialStatus('checking');
       setCalibrated(true);
       setReaderReady(isNeedleModelReady());
       onCalibrationSaved?.(calibration);
@@ -359,5 +438,6 @@ export function useShotLabPressure({
     cameraStatus: status,
     cornerPreviewPose,
     dialRecalibrateHint,
+    preShotDialStatus,
   };
 }

@@ -192,4 +192,45 @@ describe('temporal gate', () => {
     expect(TEMPORAL_GATE.holdGapS).toBe(0.5);
     expect(TEMPORAL_GATE.holdBandBar).toBe(0.5);
   });
+
+  const R7_DIRECT = {
+    ...BASE,
+    classicalDirect: true,
+    classicalDirectMaxDisagreeBar: 2,
+    classicalDirectMinConfidence: 0.18,
+  };
+
+  it('prefers classical over R5 when both are within the disagreement guard', () => {
+    const [frame] = runTemporalGate([
+      sample(0, 5.2, 4.8, { classicalConfidence: 0.25, r2Angle: 50, classicalAngle: 55 }),
+    ], R7_DIRECT);
+    expect(frame.bar).toBeCloseTo(4.8, 5);
+    expect(frame.reason).toBe('classical-direct');
+  });
+
+  it('falls back to R5 when classical is missing', () => {
+    const [frame] = runTemporalGate([
+      sample(0, 5.0, null, { classicalConfidence: null }),
+    ], R7_DIRECT);
+    expect(frame.bar).toBeNull();
+    expect(frame.reason).toBe('no-classical');
+  });
+
+  it('keeps R5 when classical disagrees beyond the guard band', () => {
+    const config = { ...R7_DIRECT, disagreeBar: 10, recovery: 'off' };
+    const [frame] = runTemporalGate([
+      sample(0, 1.0, 5.0, { classicalConfidence: 0.25, r2Angle: 10, classicalAngle: 80 }),
+    ], config);
+    expect(frame.bar).toBeCloseTo(1.0, 5);
+    expect(frame.reason).toBe('ok');
+  });
+
+  it('does not jump beyond the guard when switching to classical', () => {
+    const frames = runTemporalGate([
+      sample(0, 5.0, 5.0, { classicalConfidence: 0.25 }),
+      sample(0.125, 5.1, 5.05, { classicalConfidence: 0.25 }),
+    ], R7_DIRECT);
+    expect(frames[1].bar).toBeCloseTo(5.05, 5);
+    expect(Math.abs(frames[1].bar - frames[0].bar)).toBeLessThanOrEqual(2);
+  });
 });

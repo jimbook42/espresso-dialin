@@ -211,6 +211,7 @@ import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
 import { ShotLabPressureProvider } from './components/ShotLabPressureContext.jsx';
 import { LabPressureStartPanel } from './components/LabPressureStartPanel.jsx';
+import { LabPreShotDialUnderScale } from './components/LabPreShotDialUnderScale.jsx';
 import { LabPressurePreShotConfirm } from './components/LabPressurePreShotConfirm.jsx';
 import { ShotPressureChart } from './components/ShotPressureChart.jsx';
 import {
@@ -2508,6 +2509,9 @@ export default function App() {
       registerOpenCalibrate={(fn) => {
         labPressureOpenCalibrateRef.current = fn;
       }}
+      preShotDialCheckSurface={
+        (activeTab === 'dial' && activeBeansList.length > 0 && !timerRunning) || weighingViewOpen
+      }
     >
     <div className={`min-h-screen ${ui.page} relative`}>
       <LabPressurePreShotConfirm
@@ -3115,6 +3119,14 @@ export default function App() {
                         }}
                         onTare={timemoreScale.tare}
                         scaleDebugLines={scaleDebugLines}
+                      />
+                    )}
+                    {labCameraPressureEnabled && (
+                      <LabPreShotDialUnderScale
+                        labEnabled={labCameraPressureEnabled}
+                        calibrated={Boolean(labGaugeTapCalibrationFromSettings(settingsSetting))}
+                        timerRunning={timerRunning}
+                        ui={ui}
                       />
                     )}
                     <p className="text-[10px] text-[#6b6457]">Fullscreen timer: tap anywhere to end pre-infusion, then tap again to stop.</p>
