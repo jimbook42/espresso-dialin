@@ -3,10 +3,21 @@
  */
 
 import { previewPointToVideo } from '../flairPressureLab/geometry.js';
+import { previewPointToVideoCrop } from './labGaugeTapView.js';
 
 /** Map a pointer position on the frame box to video pixels (mirrored preview). */
-export function pointerToVideoPoint(clientX, clientY, frameRect, videoSize, mirrored = true) {
+export function pointerToVideoPoint(clientX, clientY, frameRect, videoSize, mirrored = true, crop = null) {
   if (!frameRect || !videoSize?.w) return null;
+  if (crop) {
+    return previewPointToVideoCrop(
+      clientX - frameRect.left,
+      clientY - frameRect.top,
+      frameRect.width,
+      frameRect.height,
+      crop,
+      mirrored,
+    );
+  }
   const mapped = previewPointToVideo(
     clientX - frameRect.left,
     clientY - frameRect.top,

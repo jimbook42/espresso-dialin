@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useFrontCameraStream } from '../flairPressureLab/hooks/useFrontCameraStream.js';
 import {
   calibrateFromTaps,
@@ -10,7 +10,6 @@ import {
 import {
   objectCoverMap,
   previewAngleDeg,
-  previewPointToVideo,
   videoPointToPreview,
 } from '../flairPressureLab/geometry.js';
 import { loadOpenCv } from '../flairPressureLab/opencvRuntime.js';
@@ -19,6 +18,16 @@ import {
   phaseAfterRedo,
   pointerToVideoPoint,
 } from './labGaugeTapPlacement.js';
+import {
+  initialDialCrop,
+  paintFrozenCrop,
+  paintLoupeFromSource,
+  paintObjectCover,
+  panCropToVideoPoint,
+  previewPointToVideoCrop,
+  videoPointToPreviewCrop,
+  zoomCrop,
+} from './labGaugeTapView.js';
 
 const PHASE_LABEL = {
   aim: 'Tap anywhere to freeze a rest frame',
@@ -29,7 +38,7 @@ const PHASE_LABEL = {
 };
 
 const LOUPE_SIZE = 112;
-const LOUPE_ZOOM = 2.5;
+const LOUPE_ZOOM = 3.2;
 const MARKER_HIT = 44;
 
 /**
@@ -42,9 +51,11 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
   const [reviewPose, setReviewPose] = useState(null);
   const [placementPreview, setPlacementPreview] = useState(null);
   const [frameBox, setFrameBox] = useState({ w: 0, h: 0 });
+  const [dialCrop, setDialCrop] = useState(null);
   const frameNodeRef = useRef(null);
   const videoSizeRef = useRef(null);
   const frozenRef = useRef(null);
+  const sourceCanvasRef = useRef(null);
   const freezeCanvasRef = useRef(null);
   const loupeCanvasRef = useRef(null);
   const tapsRef = useRef({ centre: null, five: null, ten: null });
@@ -52,6 +63,20 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
   const qualityCanvasRef = useRef(null);
   const dragRef = useRef(false);
   const [opencvReady, setOpencvReady] = useState(false);
+
+  const fixtureHook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
+  const fixtureSrc = fixtureHook?.src ?? null;
+  const mirrorPreview = fixtureHook?.mirror !== false;
+
+  const syncSourceCanvas = useCallback((image) => {
+    if (!image) return null;
+    const canvas = sourceCanvasRef.current || document.createElement('canvas');
+    sourceCanvasRef.current = canvas;
+    canvas.width = image.width;
+    canvas.height = image.height;
+    canvas.getContext('2d').putImageData(image, 0, 0);
+    return canvas;
+  }, []);
 
   const grabSourceImage = useCallback((source) => {
     const width = source.videoWidth || source.width;
@@ -76,25 +101,8 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       img.onerror = reject;
       img.src = hook.src;
     });
-    const canvas = freezeCanvasRef.current;
-    if (canvas) {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      canvas.getContext('2d').drawImage(img, 0, 0, img.width, img.height);
-    }
     return grabSourceImage(img);
   }, [grabSourceImage]);
-
-  const resetLocal = useCallback(() => {
-    frozenRef.current = null;
-    pendingCalRef.current = null;
-    tapsRef.current = { centre: null, five: null, ten: null };
-    setReviewPose(null);
-    setPlacementPreview(null);
-    setTapPhase('aim');
-    setTapNote('');
-    dragRef.current = false;
-  }, []);
 
   const measureFrame = useCallback(() => {
     const node = frameNodeRef.current;
@@ -103,9 +111,57 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     setFrameBox({ w: rect.width, h: rect.height });
   }, []);
 
-  const fixtureHook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
-  const fixtureSrc = fixtureHook?.src ?? null;
-  const mirrorPreview = fixtureHook?.mirror !== false;
+  const beginDialCrop = useCallback((image, focus) => {
+    const hook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
+    const fx = focus?.x ?? hook?.initialFocus?.x ?? image.width / 2;
+    const fy = focus?.y ?? hook?.initialFocus?.y ?? image.height / 2;
+    const r = hook?.initialFocus?.radius ?? 90;
+    const halfOverride = hook?.initialHalf;
+    const crop = initialDialCrop(image.width, image.height, fx, fy, r);
+    if (halfOverride) crop.half = halfOverride;
+    setDialCrop(crop);
+  }, []);
+
+  const repaintFrame = useCallback(() => {
+    const display = freezeCanvasRef.current;
+    const source = sourceCanvasRef.current;
+    const size = videoSizeRef.current;
+    const node = frameNodeRef.current;
+    if (!display || !source || !size?.w || !node) return;
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return;
+    const ctx = display.getContext('2d');
+    display.width = Math.round(rect.width);
+    display.height = Math.round(rect.height);
+    if (tapPhase === 'review' || !dialCrop) {
+      paintObjectCover(ctx, source, rect.width, rect.height, mirrorPreview);
+    } else {
+      paintFrozenCrop(ctx, source, rect.width, rect.height, dialCrop, mirrorPreview);
+    }
+  }, [dialCrop, mirrorPreview, tapPhase]);
+
+  const resetLocal = useCallback(() => {
+    frozenRef.current = null;
+    pendingCalRef.current = null;
+    tapsRef.current = { centre: null, five: null, ten: null };
+    setReviewPose(null);
+    setPlacementPreview(null);
+    setDialCrop(null);
+    setTapPhase('aim');
+    setTapNote('');
+    dragRef.current = false;
+  }, []);
+
+  const holdFrozenImage = useCallback((image) => {
+    frozenRef.current = image;
+    syncSourceCanvas(image);
+    videoSizeRef.current = { w: image.width, h: image.height };
+    beginDialCrop(image);
+    setTapPhase('centre');
+    setTapNote('Frame held. Pinch-zoom or use +/−, then place the centre marker on the pivot.');
+    measureFrame();
+    requestAnimationFrame(() => repaintFrame());
+  }, [beginDialCrop, repaintFrame, syncSourceCanvas]);
 
   useEffect(() => {
     if (!open) {
@@ -124,17 +180,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     if (hook?.autoFreeze) {
       void loadFixtureFrame().then((image) => {
         if (!image || cancelled) return;
-        frozenRef.current = image;
-        const canvas = freezeCanvasRef.current;
-        if (canvas) {
-          canvas.width = image.width;
-          canvas.height = image.height;
-          canvas.getContext('2d').putImageData(image, 0, 0);
-        }
-        videoSizeRef.current = { w: image.width, h: image.height };
-        setTapPhase('centre');
-        setTapNote('Frame held. Place the centre marker on the pivot.');
-        measureFrame();
+        holdFrozenImage(image);
       });
     }
     return () => {
@@ -142,82 +188,60 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       stop();
       resetLocal();
     };
-  }, [open, fixtureSrc, loadFixtureFrame, measureFrame, resetLocal, start, stop]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onScreenshotReview = () => {
-      const mock = typeof window !== 'undefined' ? window.__labGaugeTapScreenshotJump : null;
-      if (!mock) return;
-      pendingCalRef.current = { ok: true, calibration: mock };
-      setReviewPose(mock);
-      setTapPhase('review');
-      setTapNote('Fixture review (simulated camera frame).');
-      setPlacementPreview(null);
-    };
-    window.addEventListener('lab-gauge-tap-screenshot-review', onScreenshotReview);
-    return () => window.removeEventListener('lab-gauge-tap-screenshot-review', onScreenshotReview);
-  }, [open]);
+  }, [open, fixtureSrc, holdFrozenImage, loadFixtureFrame, resetLocal, start, stop]);
 
   useEffect(() => {
     if (!open) return undefined;
     measureFrame();
     const node = frameNodeRef.current;
     if (!node || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(() => measureFrame());
+    const ro = new ResizeObserver(() => {
+      measureFrame();
+      repaintFrame();
+    });
     ro.observe(node);
     return () => ro.disconnect();
-  }, [open, measureFrame, tapPhase]);
+  }, [open, measureFrame, repaintFrame, tapPhase, dialCrop]);
+
+  useEffect(() => {
+    repaintFrame();
+  }, [repaintFrame, dialCrop, tapPhase, frameBox.w]);
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return;
+    window.__labGaugeTapViewState = {
+      crop: dialCrop,
+      mirror: mirrorPreview,
+      videoSize: videoSizeRef.current,
+      frameBox,
+      tapPhase,
+    };
+  }, [open, dialCrop, mirrorPreview, frameBox, tapPhase]);
 
   const updateLoupe = useCallback((previewX, previewY) => {
     const loupe = loupeCanvasRef.current;
-    const frozen = freezeCanvasRef.current;
-    const size = videoSizeRef.current;
+    const source = sourceCanvasRef.current;
     const node = frameNodeRef.current;
-    if (!loupe || !frozen || !size?.w || !node) return;
+    if (!loupe || !source || !node || !dialCrop) return;
     const rect = node.getBoundingClientRect();
-    const mapped = previewPointToVideo(
+    const videoPt = previewPointToVideoCrop(
       previewX,
       previewY,
-      size.w,
-      size.h,
       rect.width,
       rect.height,
+      dialCrop,
       mirrorPreview,
     );
-    if (!mapped) return;
-    const vx = mapped.nx * size.w;
-    const vy = mapped.ny * size.h;
-    const srcR = Math.max(12, (LOUPE_SIZE / LOUPE_ZOOM) / 2);
-    const ctx = loupe.getContext('2d');
-    loupe.width = LOUPE_SIZE;
-    loupe.height = LOUPE_SIZE;
-    ctx.clearRect(0, 0, LOUPE_SIZE, LOUPE_SIZE);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(LOUPE_SIZE / 2, LOUPE_SIZE / 2, LOUPE_SIZE / 2 - 2, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(
-      frozen,
-      vx - srcR,
-      vy - srcR,
-      srcR * 2,
-      srcR * 2,
-      0,
-      0,
+    if (!videoPt) return;
+    paintLoupeFromSource(
+      loupe.getContext('2d'),
+      source,
+      videoPt.x,
+      videoPt.y,
       LOUPE_SIZE,
-      LOUPE_SIZE,
+      LOUPE_ZOOM,
     );
-    ctx.strokeStyle = '#c88a4b';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(LOUPE_SIZE / 2, 8);
-    ctx.lineTo(LOUPE_SIZE / 2, LOUPE_SIZE - 8);
-    ctx.moveTo(8, LOUPE_SIZE / 2);
-    ctx.lineTo(LOUPE_SIZE - 8, LOUPE_SIZE / 2);
-    ctx.stroke();
-    ctx.restore();
-  }, []);
+  }, [dialCrop, mirrorPreview]);
 
   const pointerToPreview = (event) => {
     const node = frameNodeRef.current;
@@ -241,23 +265,28 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       setPlacementPreview(null);
       setTapPhase(again);
       setTapNote(formatTapRejectReason(result));
+      if (taps.centre) {
+        beginDialCrop(image, taps.centre);
+      }
       return;
     }
     pendingCalRef.current = result;
     setReviewPose(result.calibration);
     setTapPhase('review');
     setPlacementPreview(null);
+    setDialCrop(null);
     const placed = result.userPlacedNote === USER_PLACED_NOTE
       ? `${USER_PLACED_NOTE}. `
       : '';
     setTapNote(`${placed}Rest needle is 0 bar. Accept if the rays look right.`);
+    requestAnimationFrame(() => repaintFrame());
   };
 
   const confirmPlacement = () => {
     if (!placementPreview || !['centre', 'five', 'ten'].includes(tapPhase)) return;
     const node = frameNodeRef.current;
     const size = videoSizeRef.current;
-    if (!node || !size?.w) return;
+    if (!node || !size?.w || !dialCrop) return;
     const rect = node.getBoundingClientRect();
     const point = pointerToVideoPoint(
       placementPreview.x + rect.left,
@@ -265,12 +294,17 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       rect,
       size,
       mirrorPreview,
+      dialCrop,
     );
     if (!point) return;
     tapsRef.current = { ...tapsRef.current, [tapPhase]: point };
     const next = nextTapPhaseAfterConfirm(tapPhase);
     setPlacementPreview(null);
     dragRef.current = false;
+    const image = frozenRef.current;
+    if (image) {
+      setDialCrop(panCropToVideoPoint(dialCrop, point.x, point.y, image.width, image.height));
+    }
     if (next === 'runCalibration') {
       runTapCalibration();
       return;
@@ -297,8 +331,16 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     pendingCalRef.current = null;
     setReviewPose(null);
     setPlacementPreview(null);
+    const image = frozenRef.current;
+    if (image) beginDialCrop(image, tapsRef.current.centre);
     setTapPhase(phase);
     setTapNote(`Redo: place the ${phase === 'centre' ? 'centre' : phase} marker again.`);
+  };
+
+  const adjustZoom = (factor) => {
+    const size = videoSizeRef.current;
+    if (!size?.w || !dialCrop) return;
+    setDialCrop(zoomCrop(dialCrop, factor, size.w, size.h));
   };
 
   const onPreviewPointerDown = (event) => {
@@ -311,22 +353,11 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
         ? loadFixtureFrame()
         : Promise.resolve(video && video.readyState >= 2 ? grabSourceImage(video) : null);
       void imagePromise.then((image) => {
-        if (!image) return;
-        frozenRef.current = image;
-        const canvas = freezeCanvasRef.current;
-        if (canvas) {
-          canvas.width = image.width;
-          canvas.height = image.height;
-          canvas.getContext('2d').putImageData(image, 0, 0);
-        }
-        videoSizeRef.current = { w: image.width, h: image.height };
-        setTapPhase('centre');
-        setTapNote('Frame held. Place the centre marker on the pivot.');
-        measureFrame();
+        if (image) holdFrozenImage(image);
       });
       return;
     }
-    if (!['centre', 'five', 'ten'].includes(tapPhase)) return;
+    if (!['centre', 'five', 'ten'].includes(tapPhase) || !dialCrop) return;
     const pt = pointerToPreview(event);
     if (!pt) return;
     dragRef.current = true;
@@ -391,15 +422,38 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
         </div>
         <div className="px-3 pt-2 space-y-1 shrink-0">
           <p className={`text-xs ${muted}`}>{PHASE_LABEL[tapPhase] || 'Calibrating'}</p>
-          {tapNote && <p className={`text-[11px] ${text}`}>{tapNote}</p>}
+          {tapNote && <p className={`text-[11px] ${text}`} data-testid="gauge-tap-note">{tapNote}</p>}
           {error && !fixtureSrc && <p className="text-[11px] text-rose-400">{error}</p>}
           {!opencvReady && status === 'live' && (
             <p className={`text-[10px] ${muted}`}>Loading vision helpers…</p>
           )}
         </div>
         <div className="flex-1 min-h-0 flex flex-col px-3 pb-2">
+          {placing && (
+            <div className="flex justify-end gap-2 py-1 shrink-0">
+              <button
+                type="button"
+                aria-label="Zoom in on dial"
+                data-testid="gauge-zoom-in"
+                onClick={() => adjustZoom(0.82)}
+                className="min-w-[44px] min-h-[44px] rounded-xl border border-[#3a3836] flex items-center justify-center"
+              >
+                <ZoomIn className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Zoom out on dial"
+                data-testid="gauge-zoom-out"
+                onClick={() => adjustZoom(1.18)}
+                className="min-w-[44px] min-h-[44px] rounded-xl border border-[#3a3836] flex items-center justify-center"
+              >
+                <ZoomOut className="w-5 h-5" />
+              </button>
+            </div>
+          )}
           <div
             ref={frameNodeRef}
+            data-testid="gauge-tap-viewport"
             className="relative flex-1 min-h-[200px] w-full bg-black rounded-xl overflow-hidden touch-none select-none"
             style={{ touchAction: 'none' }}
             onPointerDown={onPreviewPointerDown}
@@ -418,10 +472,9 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
             />
             <canvas
               ref={freezeCanvasRef}
-              className={`absolute inset-0 w-full h-full object-cover ${
+              className={`absolute inset-0 w-full h-full ${
                 tapPhase !== 'aim' ? 'opacity-100' : 'opacity-0'
               }`}
-              style={mirrorPreview ? { transform: 'scaleX(-1)' } : undefined}
             />
             {tapPhase === 'review' && reviewPose && videoSize && frameBox.w ? (
               <svg className="absolute inset-0 w-full h-full pointer-events-none">
@@ -485,7 +538,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
             )}
           </div>
           {tapPhase === 'review' && reviewPose && (
-            <p className={`text-[10px] ${muted} mt-1 shrink-0`}>
+            <p className={`text-[10px] ${muted} mt-1 shrink-0`} data-testid="gauge-review-meta">
               Hub at ({Math.round(reviewPose.hub.x)}, {Math.round(reviewPose.hub.y)}), radius{' '}
               {Math.round(reviewPose.radius)}px
             </p>

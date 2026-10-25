@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Gauge tap setup screenshots (simulated fixture frame, no real camera).
+ * Gauge tap setup v2 screenshots (fixture frame, real calibrateFromTaps flow).
  * Requires: npm run build first.
  * Run: /workspace/bin/box-test-slot node scripts/lab-tap-gauge-screenshots.mjs
  */
@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { ROOT, startPreviewServer, waitForServer } from './lib/previewServer.mjs';
+import { ISAAC_GAUGE_DIAL_FOCUS, ISAAC_GAUGE_TAPS } from '../src/flairPressureLab/fixtures/isaacGaugeTapCoords.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = '/workspace/pl-state/lab-tap';
@@ -20,12 +21,14 @@ const VIEWPORTS = [
   { width: 360, height: 640, tag: '360x640' },
 ];
 
-/** Fractions on the frozen frame box (Isaac crop, gauge ~centre-left). */
-const TAP_FRACS = {
-  centre: { x: 0.48, y: 0.58 },
-  five: { x: 0.38, y: 0.54 },
-  ten: { x: 0.58, y: 0.54 },
-};
+function videoPointToScreen(vp, state, box) {
+  const crop = state.crop;
+  if (!crop || !box) return null;
+  let lx = (vp.x - (crop.cx - crop.half)) / (2 * crop.half);
+  const ly = (vp.y - (crop.cy - crop.half)) / (2 * crop.half);
+  if (state.mirror) lx = 1 - lx;
+  return { x: box.x + lx * box.width, y: box.y + ly * box.height };
+}
 
 async function clearDb(page) {
   await page.evaluate(() => new Promise((resolve) => {
@@ -36,8 +39,8 @@ async function clearDb(page) {
   }));
 }
 
-async function seedDb(page) {
-  await page.evaluate(() => new Promise((resolve, reject) => {
+async function seedDb(page, { labOn }) {
+  await page.evaluate(({ labEnabled }) => new Promise((resolve, reject) => {
     const req = indexedDB.open('EspressoDialDB', 17);
     req.onupgradeneeded = (event) => {
       const idb = event.target.result;
@@ -59,7 +62,7 @@ async function seedDb(page) {
         id: 'global',
         grinderModel: 'Sette 270Wi',
         flairEnabled: true,
-        labCameraPressureEnabled: true,
+        labCameraPressureEnabled: labEnabled,
         lastSelectedBeanId: 'lab-bean',
       });
       tx.objectStore('beans').put({
@@ -86,27 +89,37 @@ async function seedDb(page) {
       tx.onerror = () => reject(tx.error);
     };
     req.onerror = () => reject(req.error);
-  }));
-}
-
-async function placeTap(page, frac) {
-  const frame = page.locator('.touch-none').filter({ has: page.locator('canvas') }).first();
-  const box = await frame.boundingBox();
-  if (!box) throw new Error('frame box missing');
-  const x = box.x + box.width * frac.x;
-  const y = box.y + box.height * frac.y;
-  await page.mouse.click(x, y);
-  await page.getByRole('button', { name: 'Confirm tap' }).click();
+  }), { labEnabled: labOn });
 }
 
 async function openGaugeSheet(page) {
   await page.goto(`http://127.0.0.1:${PORT}/#/`, { waitUntil: 'networkidle' });
   await clearDb(page);
-  await seedDb(page);
+  await seedDb(page, { labOn: true });
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByTitle('Settings').click();
   await page.getByTestId('lab-gauge-calibrate-link').click();
   await page.getByLabel('Close gauge setup').waitFor({ timeout: 15_000 });
+}
+
+async function viewportBox(page) {
+  return page.getByTestId('gauge-tap-viewport').boundingBox();
+}
+
+async function placeVideoTap(page, videoPoint) {
+  const box = await viewportBox(page);
+  const state = await page.evaluate(() => window.__labGaugeTapViewState);
+  const screen = videoPointToScreen(videoPoint, state, box);
+  if (!screen) throw new Error('could not map video tap to screen');
+  await page.mouse.click(screen.x, screen.y);
+  await page.getByRole('button', { name: 'Confirm tap' }).click();
+}
+
+async function captureLabOff(page, tag) {
+  await clearDb(page);
+  await seedDb(page, { labOn: false });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.screenshot({ path: path.join(OUT_DIR, `v2-lab-off-${tag}.png`) });
 }
 
 async function main() {
@@ -126,69 +139,70 @@ async function main() {
       const context = await browser.newContext({
         viewport: { width: vp.width, height: vp.height },
       });
-      await context.addInitScript(({ fixture, origin }) => {
+      await context.addInitScript(({ fixture, origin, focus }) => {
         window.__labGaugeTapFixture = {
           src: `${origin}${fixture}`,
           autoFreeze: true,
           mirror: false,
-          mockReviewCalibration: {
-            hub: { x: 198, y: 268 },
-            radius: 52,
-            zeroAngleDeg: 215,
-            fiveAngleDeg: 268,
-            tenAngleDeg: 328,
-          },
+          initialFocus: focus,
+          initialHalf: 125,
         };
-      }, { fixture: FIXTURE, origin: `http://127.0.0.1:${PORT}` });
+      }, {
+        fixture: FIXTURE,
+        origin: `http://127.0.0.1:${PORT}`,
+        focus: ISAAC_GAUGE_DIAL_FOCUS,
+      });
 
       const page = await context.newPage();
       await openGaugeSheet(page);
-      await page.getByText('Frame held. Place the centre marker on the pivot.').waitFor({ timeout: 20_000 });
+      await page.getByText(/Frame held/i).waitFor({ timeout: 20_000 });
+      await page.screenshot({ path: path.join(OUT_DIR, `v2-frozen-zoomed-${vp.tag}.png`) });
 
-      await page.screenshot({
-        path: path.join(OUT_DIR, `v1-frozen-full-${vp.tag}.png`),
-      });
-
-      const frame = page.locator('.touch-none').filter({ has: page.locator('canvas') }).first();
-      const box = await frame.boundingBox();
-      if (!box) throw new Error('frame missing for loupe shot');
-      const cx = box.x + box.width * TAP_FRACS.centre.x;
-      const cy = box.y + box.height * TAP_FRACS.centre.y;
-      await page.mouse.move(cx, cy);
+      const centre = ISAAC_GAUGE_TAPS.centre;
+      const box = await viewportBox(page);
+      const state = await page.evaluate(() => window.__labGaugeTapViewState);
+      const cScreen = videoPointToScreen(centre, state, box);
+      await page.mouse.move(cScreen.x, cScreen.y);
       await page.mouse.down();
-      await page.mouse.move(cx + 6, cy - 4);
+      await page.mouse.move(cScreen.x + 4, cScreen.y - 3);
       await page.mouse.up();
-      await page.locator('canvas').nth(1).waitFor({ state: 'visible', timeout: 5000 });
-      await page.screenshot({
-        path: path.join(OUT_DIR, `v1-zoom-marker-${vp.tag}.png`),
-      });
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: path.join(OUT_DIR, `v2-marker-centre-${vp.tag}.png`) });
+      await placeVideoTap(page, centre);
 
+      await placeVideoTap(page, ISAAC_GAUGE_TAPS.five);
+      const ten = ISAAC_GAUGE_TAPS.ten;
+      const box2 = await viewportBox(page);
+      const state2 = await page.evaluate(() => window.__labGaugeTapViewState);
+      const tScreen = videoPointToScreen(ten, state2, box2);
+      await page.mouse.click(tScreen.x, tScreen.y);
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: path.join(OUT_DIR, `v2-marker-ten-${vp.tag}.png`) });
       await page.getByRole('button', { name: 'Confirm tap' }).click();
-      try {
-        await placeTap(page, TAP_FRACS.five);
-        await placeTap(page, TAP_FRACS.ten);
-        await page.getByRole('button', { name: 'Accept calibration' }).waitFor({ timeout: 20_000 });
-      } catch {
-        await page.evaluate(() => {
-          const mock = window.__labGaugeTapFixture?.mockReviewCalibration;
-          if (!mock) return;
-          window.__labGaugeTapScreenshotJump = mock;
-        });
-        await page.evaluate(() => {
-          window.dispatchEvent(new CustomEvent('lab-gauge-tap-screenshot-review'));
-        });
-        await page.getByRole('button', { name: 'Accept calibration' }).waitFor({ timeout: 10_000 });
+
+      await page.getByRole('button', { name: 'Accept calibration' }).waitFor({ timeout: 25_000 });
+      const meta = await page.getByTestId('gauge-review-meta').textContent();
+      if (!meta || !meta.includes('398')) {
+        throw new Error(`review meta missing real hub: ${meta}`);
       }
-      await page.screenshot({
-        path: path.join(OUT_DIR, `v1-review-rays-${vp.tag}.png`),
-      });
+      await page.screenshot({ path: path.join(OUT_DIR, `v2-review-rays-${vp.tag}.png`) });
+
+      await page.getByRole('button', { name: 'Retry' }).click();
+      await page.getByText(/Frame held|Place the centre/i).waitFor({ timeout: 15_000 });
+      await placeVideoTap(page, centre);
+      await placeVideoTap(page, { x: 120, y: 180 });
+      await placeVideoTap(page, { x: 140, y: 200 });
+      await page.getByTestId('gauge-tap-note').waitFor({ timeout: 15_000 });
+      await page.screenshot({ path: path.join(OUT_DIR, `v2-inconsistent-${vp.tag}.png`) });
+
+      await captureLabOff(page, vp.tag);
       await context.close();
     }
   } finally {
     await browser.close();
     await server.kill();
   }
-  process.stdout.write('lab-tap gauge screenshots written to /workspace/pl-state/lab-tap/\n');
+  process.stdout.write('v2 lab-tap screenshots written to /workspace/pl-state/lab-tap/\n');
 }
 
 main().catch((err) => {
