@@ -56,15 +56,30 @@ describe('fullscreen shot lab pressure', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders live bar number, peak chip, and profile line (not flex-collapsed)', () => {
-    const { container } = renderReadout();
+  it('renders live bar number, peak chip, aim line, and profile line (not flex-collapsed)', () => {
+    const { container } = renderReadout({
+      aimText: 'Aim: 9.0 bar',
+    });
     const readout = container.querySelector('[data-testid="shot-lab-pressure-readout"]');
     expect(readout).toBeTruthy();
     expect(readout.className).toContain('shrink-0');
     expect(readout.textContent).toMatch(/5\.2/);
     expect(readout.textContent).toMatch(/6\.8 peak/);
+    expect(container.querySelector('[data-testid="shot-lab-pressure-aim"]')?.textContent).toBe(
+      'Aim: 9.0 bar',
+    );
     expect(container.querySelector('[data-testid="shot-pressure-chart"]')).toBeTruthy();
     expect(container.querySelector('[data-testid="shot-pressure-peak-chip"]')).toBeTruthy();
+  });
+
+  it('renders aim text before start on weighing variant', () => {
+    const { container } = renderReadout({
+      variant: 'weighing',
+      aimText: 'Aim: 3 bar pre-infusion, then 9 bar',
+    });
+    const aim = container.querySelector('[data-testid="shot-lab-pressure-aim"]');
+    expect(aim?.textContent).toBe('Aim: 3 bar pre-infusion, then 9 bar');
+    expect(aim?.className).toContain('text-[14px]');
   });
 
   it('ShotLabPressureIntegration fullscreen uses readoutVisible with fake feed', () => {
@@ -78,6 +93,8 @@ describe('fullscreen shot lab pressure', () => {
       hold: { held: false, gap: false },
       peakBar: 7.2,
       samples: PRESSURE_SAMPLES,
+      phaseGoal: { phase: 'peak', targetBar: 9 },
+      aimText: 'Aim: 9.0 bar',
       openCalibrate: () => {},
       storedCalibration: true,
     });
