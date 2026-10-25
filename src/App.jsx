@@ -210,6 +210,12 @@ import { Analytics } from '@vercel/analytics/react';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
 import { ShotLabPressureProvider } from './components/ShotLabPressureContext.jsx';
+import { LabShotReplayScreen } from './components/LabShotReplayScreen.jsx';
+import {
+  loadLastLabShotReplayMeta,
+  loadLastLabShotReplayWithBlob,
+} from './flairPressureLab/labShotReplayDb.js';
+import { shouldShowLabShotReplayPlay } from './flairPressureLab/historyLabShotReplay.js';
 import { LabPressureStartPanel } from './components/LabPressureStartPanel.jsx';
 import { LabPreShotDialUnderScale } from './components/LabPreShotDialUnderScale.jsx';
 import { LabPressurePreShotConfirm } from './components/LabPressurePreShotConfirm.jsx';
@@ -377,6 +383,11 @@ export default function App() {
   const labZeroConfirmedSessionRef = useRef(false);
   const labPendingStartOptsRef = useRef(null);
   const labPressureOpenCalibrateRef = useRef(() => {});
+  const labShotReplayCommitRef = useRef(null);
+  const labShotReplayDiscardRef = useRef(null);
+  const [labReplayShotId, setLabReplayShotId] = useState(null);
+  const [labReplayOpen, setLabReplayOpen] = useState(false);
+  const [labReplayPayload, setLabReplayPayload] = useState(null);
   const [scaleDebugLines, setScaleDebugLines] = useState([]);
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
   const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
@@ -1039,6 +1050,7 @@ export default function App() {
       void timemoreScale.notifyShotCancelled();
     }
     setLabPressureShotMetrics(null);
+    labShotReplayDiscardRef.current?.();
   };
 
   const handleResetTimer = () => {
@@ -1053,6 +1065,7 @@ export default function App() {
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
     }
+    labShotReplayDiscardRef.current?.();
   };
 
   const handleTimerSurfaceTap = (e) => {
@@ -1370,6 +1383,23 @@ export default function App() {
   };
 
   const labShotsWithPressureLogged = shots.filter((s) => s.labPressureCurve?.length > 0).length;
+
+  const refreshLabReplayShotId = useCallback(() => {
+    void loadLastLabShotReplayMeta().then((meta) => {
+      setLabReplayShotId(meta?.shotId ?? null);
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshLabReplayShotId();
+  }, [refreshLabReplayShotId, shots.length]);
+
+  const openLabShotReplay = useCallback(async () => {
+    const data = await loadLastLabShotReplayWithBlob();
+    if (!data) return;
+    setLabReplayPayload(data);
+    setLabReplayOpen(true);
+  }, []);
 
   const requestStartTimerWithLab = useCallback(
     (opts = {}) => {
@@ -1950,6 +1980,9 @@ export default function App() {
 
     try {
       await db.shots.add(shotRecord);
+      if (shotRecord.labPressureCurve?.length) {
+        await labShotReplayCommitRef.current?.(shotRecord.id);
+      }
       const displayHoldClear = clearRecommendationCardDisplayHoldPatch(
         appSettings,
         activeBean.id,
@@ -2334,6 +2367,7 @@ export default function App() {
 
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, null) : null;
   const filteredShots = historyFilterBeanId === 'all' ? shots : shots.filter(s => s.beanId === historyFilterBeanId);
+  const newestShotId = shots[0]?.id ?? null;
 
   const totalShots = shots.length;
   const compliantShots = shots.filter(s => {
@@ -2512,6 +2546,9 @@ export default function App() {
       preShotDialCheckSurface={
         (activeTab === 'dial' && activeBeansList.length > 0 && !timerRunning) || weighingViewOpen
       }
+      shotReplayCommitRef={labShotReplayCommitRef}
+      shotReplayDiscardRef={labShotReplayDiscardRef}
+      onLabShotReplayStored={refreshLabReplayShotId}
     >
     <div className={`min-h-screen ${ui.page} relative`}>
       <LabPressurePreShotConfirm
@@ -3906,6 +3943,25 @@ export default function App() {
                       ))}
                     </div>
 
+                    {shouldShowLabShotReplayPlay({
+                      shotId: s.id,
+                      newestShotId,
+                      labReplayShotId,
+                    }) && (
+                      <div className="flex justify-end -mb-1">
+                        <button
+                          type="button"
+                          onClick={() => void openLabShotReplay()}
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${ui.accentText} hover:opacity-90`}
+                          data-testid="history-lab-shot-replay-play"
+                          aria-label="Play shot replay"
+                        >
+                          <Play className="w-4 h-4 fill-current" />
+                          Replay
+                        </button>
+                      </div>
+                    )}
+
                     {s.scaleFlowCurve?.length > 0 && (
                       <ScaleFlowChart
                         flowCurve={s.scaleFlowCurve}
@@ -4553,6 +4609,20 @@ export default function App() {
       </nav>
 
       <Analytics />
+      <LabShotReplayScreen
+        open={labReplayOpen}
+        onClose={() => {
+          setLabReplayOpen(false);
+          setLabReplayPayload(null);
+        }}
+        onDeleted={() => {
+          setLabReplayShotId(null);
+          setLabReplayPayload(null);
+        }}
+        blob={labReplayPayload?.blob ?? null}
+        meta={labReplayPayload?.meta ?? null}
+        ui={ui}
+      />
     </div>
     </ShotLabPressureProvider>
   );

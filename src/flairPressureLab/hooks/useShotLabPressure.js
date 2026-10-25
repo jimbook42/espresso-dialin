@@ -47,6 +47,7 @@ export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
  *   calibrateSheetOpen: boolean,
  *   weighingViewOpen: boolean,
  *   preShotDialCheckSurface: boolean,
+ *   replayFrameObserverRef?: import('react').MutableRefObject<((frame: object) => void) | null>,
  * }} options
  */
 export function useShotLabPressure({
@@ -58,6 +59,7 @@ export function useShotLabPressure({
   calibrateSheetOpen,
   weighingViewOpen = false,
   preShotDialCheckSurface = false,
+  replayFrameObserverRef,
 }) {
   const { videoRef, start, stop, status } = useFrontCameraStream();
   const sessionRef = useRef(createShotLabPressureSession());
@@ -322,6 +324,15 @@ export function useShotLabPressure({
             : rollingDisplayBar(all, tS) ?? (held.gap ? null : held.bar),
         );
         setPeakBar(peakBarFromRaw(all));
+        replayFrameObserverRef?.current?.({
+          tS,
+          bar: rawBar,
+          needleDeg: read.needleDeg ?? r5.r5Angle ?? null,
+          hubX: read.hub?.x ?? null,
+          hubY: read.hub?.y ?? null,
+          radius: read.radius ?? null,
+          valid: confident && !read.lost,
+        });
         if (shouldPublishCornerPreviewPose(nowMs, lastCornerPosePublishRef.current)) {
           lastCornerPosePublishRef.current = nowMs;
           setCornerPreviewPose({

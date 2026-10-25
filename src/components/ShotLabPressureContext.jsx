@@ -10,6 +10,7 @@ import {
 import { isLabCameraPressureEnabled, labGaugeTapCalibrationFromSettings } from '../settings/labCameraPressure.js';
 import { LabGaugeTapCalibrateSheet } from './LabGaugeTapCalibrateSheet.jsx';
 import { useLabPressureCornerPreviewStyle } from '../flairPressureLab/hooks/useLabPressureCornerPreviewStyle.js';
+import { useLabShotReplay } from '../flairPressureLab/hooks/useLabShotReplay.js';
 
 export const ShotLabPressureContext = createContext(null);
 
@@ -32,8 +33,12 @@ export function ShotLabPressureProvider({
   calibrateRequest = 0,
   registerOpenCalibrate,
   preShotDialCheckSurface = false,
+  shotReplayCommitRef,
+  shotReplayDiscardRef,
+  onLabShotReplayStored,
   children,
 }) {
+  const replayFrameObserverRef = useRef(null);
   const enabled = isLabCameraPressureEnabled(settings);
   const storedCalibration = labGaugeTapCalibrationFromSettings(settings);
   const viewMoved = settings?.labGaugeTapCalibration?.viewMoved === true;
@@ -60,6 +65,17 @@ export function ShotLabPressureProvider({
     weighingViewOpen,
     preShotDialCheckSurface,
     onCalibrationSaved: onSaveCalibration,
+    replayFrameObserverRef,
+  });
+
+  useLabShotReplay({
+    enabled,
+    timerRunning,
+    videoRef: pressure.videoRef,
+    replayFrameObserverRef,
+    shotReplayCommitRef,
+    shotReplayDiscardRef,
+    onReplayStored: onLabShotReplayStored,
   });
 
   useEffect(() => {
