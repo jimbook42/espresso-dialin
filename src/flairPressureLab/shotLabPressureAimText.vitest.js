@@ -52,6 +52,28 @@ describe('shotLabPressureAimText', () => {
     ).toBe('Aim: 3 bar');
   });
 
+  it('shows chart-matched pre aim when preinfusionPressure is missing', () => {
+    const peakOnly = { peakPressure: 10, preinfusionTime: 5 };
+    expect(
+      shotLabPressureAimText({
+        flairProfile: peakOnly,
+        phaseGoal: { phase: 'pre', targetBar: 3.5 },
+        timerRunning: true,
+        timerUsePreInfusion: true,
+      }),
+    ).toBe('Aim: 3.5 bar');
+  });
+
+  it('summarises pre-infusion before start using chart fallback pressure', () => {
+    expect(
+      shotLabPressureAimText({
+        flairProfile: { peakPressure: 10, preinfusionTime: 5 },
+        timerRunning: false,
+        timerUsePreInfusion: true,
+      }),
+    ).toBe('Aim: 3.5 bar pre-infusion, then 10 bar');
+  });
+
   it('shows peak aim with one decimal during extraction', () => {
     expect(
       shotLabPressureAimText({

@@ -2,6 +2,8 @@
  * Plain-language pressure target for the shot timer / weigh surfaces (display only).
  */
 
+import { flairProfileChartPreBar } from './flairProfileChartPressures.js';
+
 function positiveNum(raw) {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -45,18 +47,20 @@ export function shotLabPressureAimText({
   const preP = positiveNum(flairProfile.preinfusionPressure);
   const peakP = positiveNum(flairProfile.peakPressure);
   const taperP = positiveNum(flairProfile.taperPressure);
+  const chartPreP = () => flairProfileChartPreBar(flairProfile);
 
   if (!timerRunning) {
-    const usePre = timerUsePreInfusion && preP != null;
-    if (usePre && peakP != null) {
-      let line = `Aim: ${formatAimBarCompact(preP)} bar pre-infusion, then ${formatAimBarCompact(peakP)} bar`;
+    const usePre = timerUsePreInfusion;
+    const preAim = preP ?? (usePre ? chartPreP() : null);
+    if (usePre && preAim != null && peakP != null) {
+      let line = `Aim: ${formatAimBarCompact(preAim)} bar pre-infusion, then ${formatAimBarCompact(peakP)} bar`;
       if (taperP != null) {
         line += `, then ${formatAimBarCompact(taperP)} bar`;
       }
       return line;
     }
-    if (usePre) {
-      return `Aim: ${formatAimBarCompact(preP)} bar`;
+    if (usePre && preAim != null) {
+      return `Aim: ${formatAimBarCompact(preAim)} bar`;
     }
     if (peakP != null) {
       return `Aim: ${formatAimBarPeak(peakP)} bar`;

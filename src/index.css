@@ -50,7 +50,8 @@
 /* Full-screen shot timer: compact stack on short viewports when lab pressure is on only. */
 @media (max-height: 700px) {
   .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-profile-wrap {
-    display: none;
+    max-height: 11vh;
+    margin-bottom: 0.35rem;
   }
 
   .shot-timer-fullscreen.shot-timer-lab-compact .shot-timer-header {
