@@ -28,11 +28,88 @@ import { regularizeTapAnchors } from './anchorRegularize.js';
 /** Clockwise travel from the printed 5 to the printed 10. */
 export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
 
-/** A tap this far from its feature is the one bad tap. */
+/** Legacy reference radius (replay / QA dial size). Scaling uses this as 1.0. */
+export const REFERENCE_GAUGE_RADIUS_PX = 90;
+/** A tap this far from its feature is the one bad tap at reference radius. */
 export const BAD_TAP_PX = 48;
-/** Finger noise the snap is expected to absorb. */
+/** Finger noise the snap is expected to absorb at reference radius. */
 export const SNAP_NEAR_PX = 36;
 const HUB_WINDOW_PX = 28;
+
+/** Estimate dial radius from three user taps (centre → 5 / 10 chords). */
+export function estimateGaugeRadiusFromTaps(centre, five, ten) {
+  const c = pointOf(centre);
+  const f = pointOf(five);
+  const t = pointOf(ten);
+  if (!c || !f || !t) return REFERENCE_GAUGE_RADIUS_PX;
+  const r5 = pointDist(c, f);
+  const r10 = pointDist(c, t);
+  const chord = pointDist(f, t);
+  const theta = (MARK_SWEEP_DEG * Math.PI) / 180;
+  const fromChord = chord > 12 ? chord / (2 * Math.sin(theta / 2)) : 0;
+  const blended = [r5, r10, fromChord].filter((v) => v > 14);
+  if (!blended.length) return REFERENCE_GAUGE_RADIUS_PX;
+  const mean = blended.reduce((s, v) => s + v, 0) / blended.length;
+  return clamp(mean, 22, 200);
+}
+
+/** Pixel tolerances scaled to the estimated gauge radius. */
+export function scaledTapTolerances(estRadiusPx) {
+  const scale = estRadiusPx / REFERENCE_GAUGE_RADIUS_PX;
+  return {
+    estRadius: estRadiusPx,
+    badTapPx: clamp(BAD_TAP_PX * scale, 18, 80),
+    snapNearPx: clamp(SNAP_NEAR_PX * scale, 14, 64),
+    hubWindowPx: clamp(HUB_WINDOW_PX * scale, 14, 56),
+    looseMarkPx: clamp(96 * scale, 48, 160),
+    looseCentrePx: clamp(72 * scale, 36, 120),
+  };
+}
+
+/** True when centre, 5, and 10 form a plausible printed dial (loose finger tolerance). */
+export function tapsGeometricallyConsistent(centre, five, ten, tolerances = null) {
+  const c = pointOf(centre);
+  const f = pointOf(five);
+  const t = pointOf(ten);
+  if (!c || !f || !t) return false;
+  const est = estimateGaugeRadiusFromTaps(c, f, t);
+  const tol = tolerances || scaledTapTolerances(est);
+  const markPx = markResidualPx(c, f, t);
+  const centrePx = centreResidualPx(c, f, t);
+  const fiveR = pointDist(c, f);
+  const tenR = pointDist(c, t);
+  const radiusRatio = fiveR / Math.max(1, tenR);
+  const sweep = clockwiseDeg(pointAngle(c, f), pointAngle(c, t));
+  const sweepErr = Math.abs(wrapDelta(sweep, MARK_SWEEP_DEG));
+  if (sweepErr > 22) return false;
+  if (markPx > tol.looseMarkPx) return false;
+  if (centrePx > tol.looseCentrePx) return false;
+  if (radiusRatio < 0.55 || radiusRatio > 1.45) return false;
+  const minR = est * 0.45;
+  const maxR = est * 1.55;
+  if (fiveR < minR || tenR < minR || fiveR > maxR || tenR > maxR) return false;
+  return true;
+}
+
+/** Plain-language redo hint for the sheet. */
+export function formatTapRejectReason(result) {
+  if (!result || result.ok) return '';
+  if (result.userPlaced) return '';
+  const named = result.redo || 'centre';
+  if (result.reason === 'hub' || named === 'centre') {
+    if (result.geometry && result.geometry.centrePx > (result.geometry.markPx || 0) * 0.9) {
+      return 'Centre tap does not line up with your 5 and 10 — adjust the pivot.';
+    }
+    return 'Centre tap missed the pivot — try again.';
+  }
+  if (named === 'five') return 'The 5 tap does not match your centre and 10 — try the printed 5 again.';
+  if (named === 'ten') return 'The 10 tap does not match your centre and 5 — try the printed 10 again.';
+  if (result.reason === 'needle') return 'Could not read the rest needle on this frame — refreeze with the needle visible.';
+  if (result.reason === 'unregistered') return 'Could not read the colour bands — tap closer to the printed 5 and 10.';
+  return 'Tap calibration failed — try again.';
+}
+
+export const USER_PLACED_NOTE = 'Using your taps as placed';
 const LOST_BEZEL = 0.35;
 const LOST_RIM_STD = 10;
 const TRACK_NEAR_PX = 10;
@@ -129,7 +206,7 @@ export function centreResidualPx(centre, five, ten) {
  * is that tap. Geometry alone flags an inconsistent triple when no feature
  * distances are available.
  */
-export function detectBadTap(centre, five, ten, snapped = null) {
+export function detectBadTap(centre, five, ten, snapped = null, badTapPx = BAD_TAP_PX) {
   const c = pointOf(centre);
   const f = pointOf(five);
   const t = pointOf(ten);
@@ -149,7 +226,7 @@ export function detectBadTap(centre, five, ten, snapped = null) {
   let bad = null;
   if (distances) {
     const far = Object.entries(distances)
-      .filter(([, px]) => px > BAD_TAP_PX)
+      .filter(([, px]) => px > badTapPx)
       .sort((a, b) => b[1] - a[1]);
     if (far.length === 1) bad = far[0][0];
     else if (far.length > 1) bad = far[0][0];
@@ -228,24 +305,29 @@ function lumaAt(data, width, height, x, y) {
  * A real pivot has one crossing radius. An offset centre swings.
  * Returns null when the surround is not brighter than the face.
  */
-export function rimMeasure(image, cx, cy, angles = 36, rStep = 1) {
+export function rimMeasure(image, cx, cy, angles = 36, rStep = 1, radiusPrior = REFERENCE_GAUGE_RADIUS_PX) {
   const { data, width, height } = image;
   const radii = [];
   const prevGap = Math.max(2, rStep);
+  const scale = radiusPrior / REFERENCE_GAUGE_RADIUS_PX;
+  const faceRs = [48, 56, 64].map((r) => r * scale);
+  const outsideRs = [112, 120].map((r) => r * scale);
+  const rMin = 70 * scale;
+  const rMax = 115 * scale;
   for (let i = 0; i < angles; i += 1) {
     const angle = (i / angles) * Math.PI * 2;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const at = (r) => lumaAt(data, width, height, Math.round(cx + r * cos), Math.round(cy + r * sin));
-    const faceSamples = [at(48), at(56), at(64)].filter((v) => v != null);
-    const outsideSamples = [at(112), at(120)].filter((v) => v != null);
+    const faceSamples = faceRs.map((r) => at(r)).filter((v) => v != null);
+    const outsideSamples = outsideRs.map((r) => at(r)).filter((v) => v != null);
     if (faceSamples.length < 2 || outsideSamples.length < 1) continue;
     const face = faceSamples.reduce((s, v) => s + v, 0) / faceSamples.length;
     const outside = outsideSamples.reduce((s, v) => s + v, 0) / outsideSamples.length;
     if (outside < face + 12) continue;
     const mid = face + (outside - face) * 0.55;
     let cross = 0;
-    for (let r = 70; r <= 115; r += rStep) {
+    for (let r = rMin; r <= rMax; r += rStep) {
       const cur = at(r);
       const prev = at(r - prevGap);
       if (cur != null && prev != null && cur >= mid && prev < mid) {
@@ -261,7 +343,7 @@ export function rimMeasure(image, cx, cy, angles = 36, rStep = 1) {
   return { std: Math.sqrt(variance), radius: mean * 0.9, n: radii.length };
 }
 
-function searchRim(image, prior, span, step, radiusPrior = 0, angles = 36, rStep = 1, strictMin = false) {
+function searchRim(image, prior, span, step, radiusPrior = 0, angles = 36, rStep = 1, strictMin = false, measurePrior = REFERENCE_GAUGE_RADIUS_PX) {
   let best = null;
   const x0 = prior.x;
   const y0 = prior.y;
@@ -270,11 +352,11 @@ function searchRim(image, prior, span, step, radiusPrior = 0, angles = 36, rStep
     for (let dx = -span; dx <= span; dx += step) {
       const cx = x0 + dx;
       if (dx * dx + dy * dy > span * span) continue;
-      const measured = rimMeasure(image, cx, cy, angles, rStep);
+      const measured = rimMeasure(image, cx, cy, angles, rStep, measurePrior);
       if (!measured) continue;
       if (radiusPrior > 20) {
         const scale = measured.radius / radiusPrior;
-        if (scale < 0.88 || scale > 1.14) continue;
+        if (scale < 0.82 || scale > 1.22) continue;
       }
       const dist = dx * dx + dy * dy;
       const nearer = !strictMin && best && Math.abs(measured.std - best.std) < 0.35 && dist < best.dist;
@@ -330,31 +412,37 @@ function radiusList(minR, maxR, step) {
  * Pull a centre tap onto the bezel pivot. The screw is the centre of that
  * circle; at replay size the screw itself is only a couple of pixels.
  */
-function snapHubContrast(image, origin, windowPx) {
-  const coarse = searchBezel(image, origin, windowPx, 2, radiusList(78, 110, 2));
+function snapHubContrast(image, origin, windowPx, estRadius = REFERENCE_GAUGE_RADIUS_PX) {
+  const step = Math.max(1, Math.round(estRadius * 0.028));
+  const minR = Math.max(22, Math.round(estRadius * 0.72));
+  const maxR = Math.round(estRadius * 1.38);
+  const coarse = searchBezel(image, origin, windowPx, 2, radiusList(minR, maxR, step));
   if (!coarse || coarse.score < 0.28) {
-    return { ...origin, radius: coarse?.radius ?? 90, score: coarse?.score ?? 0, ok: false };
+    return { ...origin, radius: coarse?.radius ?? estRadius, score: coarse?.score ?? 0, ok: false };
   }
   const fine = searchBezel(
     image,
     coarse,
     3,
     1,
-    radiusList(Math.max(70, coarse.radius - 4), coarse.radius + 4, 2),
+    radiusList(Math.max(20, coarse.radius - 4), coarse.radius + 4, Math.max(1, step)),
   );
   const chosen = fine && fine.score >= coarse.score ? fine : coarse;
   return { x: chosen.x, y: chosen.y, radius: chosen.radius, score: chosen.score, ok: chosen.score >= 0.34 };
 }
 
-export function snapHub(image, tap, { windowPx = HUB_WINDOW_PX } = {}) {
+export function snapHub(image, tap, { windowPx = HUB_WINDOW_PX, estRadius = REFERENCE_GAUGE_RADIUS_PX } = {}) {
   const origin = pointOf(tap);
-  const coarse = searchRim(image, origin, Math.max(windowPx, 32), 4);
-  const fine = coarse && coarse.std <= LOST_RIM_STD ? searchRim(image, coarse, 4, 1) : null;
+  const rimSpan = Math.max(windowPx, Math.round(estRadius * 0.38));
+  const coarse = searchRim(image, origin, rimSpan, 4, estRadius, 36, 1, false, estRadius);
+  const fine = coarse && coarse.std <= LOST_RIM_STD
+    ? searchRim(image, coarse, 4, 1, estRadius, 36, 1, false, estRadius)
+    : null;
   const rim = fine && fine.std <= coarse.std ? fine : coarse;
   if (rim && rim.std <= 8.5) {
     return { x: rim.x, y: rim.y, radius: rim.radius, score: rim.score, ok: true };
   }
-  return snapHubContrast(image, origin, windowPx);
+  return snapHubContrast(image, origin, windowPx, estRadius);
 }
 
 function cropImage(image, cx, cy, radius) {
@@ -776,51 +864,102 @@ export function calibrateFromTaps(image, taps) {
     return { ok: false, redo: 'centre', reason: 'missing-tap' };
   }
 
-  const hub = snapHub(image, centreTap);
-  const hubPx = pointDist(hub, centreTap);
-  if (!hub.ok || hubPx > BAD_TAP_PX) {
-    return {
-      ok: false,
-      redo: 'centre',
-      reason: 'hub',
-      hub,
-      snapPx: { centre: hubPx, five: null, ten: null },
+  const estRadius = estimateGaugeRadiusFromTaps(centreTap, fiveTap, tenTap);
+  const tol = scaledTapTolerances(estRadius);
+  let userPlaced = false;
+  let hub = snapHub(image, centreTap, { windowPx: tol.hubWindowPx, estRadius });
+  let hubPx = pointDist(hub, centreTap);
+  if (!hub.ok || hubPx > tol.badTapPx) {
+    const geometry = {
+      markPx: markResidualPx(centreTap, fiveTap, tenTap),
+      centrePx: centreResidualPx(centreTap, fiveTap, tenTap),
     };
+    if (tapsGeometricallyConsistent(centreTap, fiveTap, tenTap, tol)) {
+      hub = {
+        x: centreTap.x,
+        y: centreTap.y,
+        radius: estRadius,
+        score: hub.score ?? 0,
+        ok: true,
+      };
+      hubPx = 0;
+      userPlaced = true;
+    } else {
+      return {
+        ok: false,
+        redo: 'centre',
+        reason: 'hub',
+        hub,
+        geometry,
+        snapPx: { centre: hubPx, five: null, ten: null },
+      };
+    }
   }
 
   const needle = readNeedleAt(image, hub.x, hub.y, hub.radius);
-  const marks = snapScaleMarks(image, hub, fiveTap, tenTap, needle.angleDeg);
+  let marks = snapScaleMarks(image, hub, fiveTap, tenTap, needle.angleDeg);
   if (!marks.ok) {
-    return {
-      ok: false,
-      redo: null,
-      reason: 'unregistered',
-      hub,
-      marks,
-      snapPx: { centre: hubPx, five: null, ten: null },
-    };
+    if (tapsGeometricallyConsistent(centreTap, fiveTap, tenTap, tol)) {
+      const fiveDeg = pointAngle(hub, fiveTap);
+      const tenDeg = pointAngle(hub, tenTap);
+      marks = {
+        ok: true,
+        five: fiveTap,
+        ten: tenTap,
+        fiveDeg,
+        tenDeg,
+        fivePx: 0,
+        tenPx: 0,
+        rotationDeg: 0,
+        colorRadius: hub.radius * 1.4,
+        margin: 0,
+      };
+      userPlaced = true;
+    } else {
+      return {
+        ok: false,
+        redo: null,
+        reason: 'unregistered',
+        hub,
+        marks,
+        snapPx: { centre: hubPx, five: null, ten: null },
+      };
+    }
   }
   const named = detectBadTap(centreTap, fiveTap, tenTap, {
     hubPx,
     fivePx: marks.fivePx,
     tenPx: marks.tenPx,
-  });
-  if (named.bad && named.bad !== 'centre') {
-    return {
-      ok: false,
-      redo: named.bad,
-      reason: 'mark',
-      hub,
-      marks,
-      snapPx: { centre: hubPx, five: marks.fivePx, ten: marks.tenPx },
-      geometry: named.geometry,
-    };
+  }, tol.badTapPx);
+  if (named.bad) {
+    if (userPlaced && named.bad !== 'centre') {
+      // User-placed hub: trust tap positions for 5/10 when geometry is consistent.
+    } else if (named.bad === 'centre' && userPlaced) {
+      // already accepted
+    } else if (!userPlaced && named.bad === 'centre' && tapsGeometricallyConsistent(centreTap, fiveTap, tenTap, tol)) {
+      hub = { x: centreTap.x, y: centreTap.y, radius: estRadius, score: hub.score ?? 0, ok: true };
+      hubPx = 0;
+      userPlaced = true;
+    } else {
+      return {
+        ok: false,
+        redo: named.bad,
+        reason: 'mark',
+        hub,
+        marks,
+        snapPx: { centre: hubPx, five: marks.fivePx, ten: marks.tenPx },
+        geometry: named.geometry,
+      };
+    }
   }
-  if (needle.angleDeg == null || (needle.quality ?? 0) < NEEDLE_LOST_QUALITY * 0.5) {
+  const needleWeak = needle.angleDeg == null || (needle.quality ?? 0) < NEEDLE_LOST_QUALITY * 0.5;
+  if (needleWeak && !userPlaced) {
     return { ok: false, redo: null, reason: 'needle', hub, marks };
   }
 
-  let zeroAngleDeg = chooseRestNeedle(needle.angleDeg, marks.tenDeg);
+  let zeroAngleDeg = needleWeak
+    ? wrap360(marks.tenDeg - FLAIR_58_SCALE.sweepDeg)
+    : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
   let tenAngleDeg = marks.tenDeg;
   let fiveAngleDeg = marks.fiveDeg;
   const r6 = taps.r6Anchor ?? taps.r6;
@@ -845,6 +984,8 @@ export function calibrateFromTaps(image, taps) {
     ok: true,
     redo: null,
     reason: null,
+    userPlaced,
+    userPlacedNote: userPlaced ? USER_PLACED_NOTE : null,
     fiveWarn: fiveBar == null || Math.abs(fiveBar - 5) > FIVE_WARN_BAR,
     fiveBar,
     snapPx: { centre: hubPx, five: marks.fivePx, ten: marks.tenPx },
