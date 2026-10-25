@@ -5,6 +5,7 @@ import {
   pressureLiveTextClass,
 } from '../flairPressureLab/shotLabPressureTokens.js';
 import { ShotPressureChart } from './ShotPressureChart.jsx';
+import { DIAL_RECALIBRATE_HINT } from '../flairPressureLab/hooks/useShotLabPressure.js';
 
 /**
  * @param {{
@@ -17,6 +18,7 @@ import { ShotPressureChart } from './ShotPressureChart.jsx';
  *   viewportWidth?: number,
  *   phaseGoal?: { targetBar?: number | null, taperBand?: { lowBar: number, highBar: number } | null },
  *   testingLabel?: string | null,
+ *   dialRecalibrateHint?: boolean,
  *   ui?: { muted?: string, accentText?: string, text?: string },
  * }} props
  */
@@ -30,6 +32,7 @@ function ShotLabPressureReadoutInner({
   viewportWidth,
   phaseGoal,
   testingLabel,
+  dialRecalibrateHint = false,
   ui,
 }) {
   const uncertain = readerUncertain === true;
@@ -81,6 +84,14 @@ function ShotLabPressureReadoutInner({
         >
           {testingLabel}
         </span>
+      )}
+      {dialRecalibrateHint && (
+        <p
+          className="text-[10px] leading-snug text-amber-700/90"
+          data-testid="shot-lab-dial-recalibrate-hint"
+        >
+          {DIAL_RECALIBRATE_HINT}
+        </p>
       )}
       <div className="flex flex-nowrap items-end justify-between gap-2 w-full min-w-0">
         <div className="flex flex-nowrap items-baseline gap-1.5 min-w-0">

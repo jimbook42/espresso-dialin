@@ -965,7 +965,9 @@ export function calibrateFromTaps(image, taps) {
 
   let zeroAngleDeg = needleWeak
     ? wrap360(marks.tenDeg - FLAIR_58_SCALE.sweepDeg)
-    : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
+    : userPlaced
+      ? wrap360(needle.angleDeg)
+      : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
   let tenAngleDeg = marks.tenDeg;
   let fiveAngleDeg = marks.fiveDeg;
   const r6 = taps.r6Anchor ?? taps.r6;
@@ -975,7 +977,7 @@ export function calibrateFromTaps(image, taps) {
       hub,
       fiveTap,
       tenTap,
-      r6,
+      { ...r6, userPlaced },
     );
     zeroAngleDeg = reg.zeroAngleDeg;
     fiveAngleDeg = reg.fiveAngleDeg;
@@ -1011,6 +1013,7 @@ export function calibrateFromTaps(image, taps) {
       template: templateBands,
       needleTemplate: captureTipTemplate(image, hub.x, hub.y, zeroAngleDeg, hub.radius),
       needleQuality: needle.quality,
+      userPlaced,
     },
   };
 }

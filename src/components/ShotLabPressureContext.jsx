@@ -121,6 +121,7 @@ export function ShotLabPressureProvider({
     },
     storedCalibration: Boolean(storedCalibration),
     timerRunning,
+    dialRecalibrateHint: pressure.dialRecalibrateHint,
   };
 
   const showCornerPreview =

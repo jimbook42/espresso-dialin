@@ -40,6 +40,12 @@ function circSep(a, b) {
   return Math.min(d, 360 - d);
 }
 
+function tapCalibrationUserPlaced(tapCalibration) {
+  if (tapCalibration?.userPlaced === true) return true;
+  const anchors = tapCalibration?.anchors ?? tapCalibration;
+  return anchors?.userPlaced === true;
+}
+
 export function regularizeReplayAnchors(tapCalibration, config = DEFAULT_R6_CONFIG) {
   const anchors = tapCalibration?.anchors ?? tapCalibration;
   if (!anchors?.zeroAngleDeg || anchors.tenAngleDeg == null) {
@@ -57,7 +63,10 @@ export function regularizeReplayAnchors(tapCalibration, config = DEFAULT_R6_CONF
     hub,
     five,
     ten,
-    config,
+    {
+      ...config,
+      userPlaced: tapCalibrationUserPlaced(tapCalibration),
+    },
   );
   return {
     anchors: {

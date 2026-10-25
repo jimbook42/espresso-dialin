@@ -23,6 +23,9 @@ import { r5SampleFromTapFrame } from '../shotLabR7Needle.js';
 import { loadNeedleModel, isNeedleModelReady, needleModelStatus } from '../needleModel.js';
 import { gaugeSnapshotJpegFromImageData } from '../gaugeSnapshotJpeg.js';
 import { shouldPublishCornerPreviewPose } from '../labPressureCornerPreview.js';
+import { dialPoseMismatchWarning } from '../shotStartDialPoseCheck.js';
+
+export const DIAL_RECALIBRATE_HINT = 'Dial not where you calibrated. Recalibrate.';
 
 /** Live shots use the R7 gated stack (classical R6 + R5 + TemporalGate). */
 export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
@@ -74,6 +77,8 @@ export function useShotLabPressure({
   const [readerReady, setReaderReady] = useState(false);
   const [cornerPreviewPose, setCornerPreviewPose] = useState(null);
   const lastCornerPosePublishRef = useRef(0);
+  const [dialRecalibrateHint, setDialRecalibrateHint] = useState(false);
+  const dialPoseCheckActiveRef = useRef(false);
 
   useEffect(() => {
     setCalibrated(Boolean(storedCalibration));
@@ -130,6 +135,8 @@ export function useShotLabPressure({
     setReaderUncertain(false);
     setCornerPreviewPose(null);
     lastCornerPosePublishRef.current = 0;
+    setDialRecalibrateHint(false);
+    dialPoseCheckActiveRef.current = false;
     r7Ref.current?.reset();
   }, []);
 
@@ -145,6 +152,8 @@ export function useShotLabPressure({
       setHold({ held: false, gap: true });
       setPeakBar(null);
       setReaderUncertain(false);
+      setDialRecalibrateHint(false);
+      dialPoseCheckActiveRef.current = true;
       return;
     }
     if (weighingViewOpen) {
@@ -158,6 +167,8 @@ export function useShotLabPressure({
       setHold({ held: false, gap: true });
       setPeakBar(null);
       setReaderUncertain(false);
+      setDialRecalibrateHint(false);
+      dialPoseCheckActiveRef.current = true;
       return;
     }
     resetShotSession();
@@ -212,6 +223,21 @@ export function useShotLabPressure({
         if (!image) return;
         lastFrameRef.current = image;
         const read = readCalibratedFrame(image, trackerRef.current);
+        const cal = trackerRef.current.calibration;
+        if (dialPoseCheckActiveRef.current && cal?.hub) {
+          const mismatch = dialPoseMismatchWarning({
+            trackedHub: read.lost ? null : read.hub,
+            calibratedHub: cal.hub,
+            calibratedRadius: cal.radius,
+            poseLost: read.lost,
+          });
+          if (mismatch) {
+            setDialRecalibrateHint(true);
+          } else {
+            setDialRecalibrateHint(false);
+            dialPoseCheckActiveRef.current = false;
+          }
+        }
         const nowMs = Date.now();
         if (!r5InferBusyRef.current) {
           r5InferBusyRef.current = true;
@@ -332,5 +358,6 @@ export function useShotLabPressure({
     getShotMetrics,
     cameraStatus: status,
     cornerPreviewPose,
+    dialRecalibrateHint,
   };
 }
