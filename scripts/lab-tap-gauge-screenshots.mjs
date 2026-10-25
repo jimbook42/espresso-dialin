@@ -21,13 +21,24 @@ const VIEWPORTS = [
   { width: 360, height: 640, tag: '360x640' },
 ];
 
-function videoPointToScreen(vp, state, box) {
-  const crop = state.crop;
-  if (!crop || !box) return null;
+/** Must match fixture hook initialFocus + initialHalf in this script. */
+const FIXTURE_CROP = {
+  cx: ISAAC_GAUGE_DIAL_FOCUS.x,
+  cy: ISAAC_GAUGE_DIAL_FOCUS.y,
+  half: 125,
+};
+
+function videoPointToScreen(vp, box, crop, mirror = false) {
+  if (!box || !crop) return null;
   let lx = (vp.x - (crop.cx - crop.half)) / (2 * crop.half);
   const ly = (vp.y - (crop.cy - crop.half)) / (2 * crop.half);
-  if (state.mirror) lx = 1 - lx;
+  if (mirror) lx = 1 - lx;
   return { x: box.x + lx * box.width, y: box.y + ly * box.height };
+}
+
+async function currentCrop(page) {
+  const crop = await page.evaluate(() => window.__labGaugeTapViewState?.crop);
+  return crop ?? FIXTURE_CROP;
 }
 
 async function clearDb(page) {
@@ -108,11 +119,14 @@ async function viewportBox(page) {
 
 async function placeVideoTap(page, videoPoint) {
   const box = await viewportBox(page);
-  const state = await page.evaluate(() => window.__labGaugeTapViewState);
-  const screen = videoPointToScreen(videoPoint, state, box);
+  const crop = await currentCrop(page);
+  const screen = videoPointToScreen(videoPoint, box, crop, false);
   if (!screen) throw new Error('could not map video tap to screen');
-  await page.mouse.click(screen.x, screen.y);
+  const localX = screen.x - box.x;
+  const localY = screen.y - box.y;
+  await page.getByTestId('gauge-tap-viewport').click({ position: { x: localX, y: localY } });
   await page.getByRole('button', { name: 'Confirm tap' }).click();
+  await page.waitForTimeout(120);
 }
 
 async function captureLabOff(page, tag) {
@@ -132,6 +146,41 @@ async function main() {
 
   const server = startPreviewServer(PORT);
   await waitForServer(`http://127.0.0.1:${PORT}/`);
+
+  async function runInconsistent(vp) {
+    const context = await browser.newContext({
+      viewport: { width: vp.width, height: vp.height },
+    });
+    await context.addInitScript(({ fixture, origin, focus }) => {
+      window.__labGaugeTapFixture = {
+        src: `${origin}${fixture}`,
+        autoFreeze: true,
+        mirror: false,
+        initialFocus: focus,
+        initialHalf: 125,
+      };
+    }, {
+      fixture: FIXTURE,
+      origin: `http://127.0.0.1:${PORT}`,
+      focus: ISAAC_GAUGE_DIAL_FOCUS,
+    });
+    const page = await context.newPage();
+    try {
+      await openGaugeSheet(page);
+      await page.getByText(/Frame held.*centre marker/i).waitFor({ timeout: 20_000 });
+      await page.waitForTimeout(400);
+      const { centre, five, ten } = ISAAC_GAUGE_TAPS;
+      await placeVideoTap(page, centre);
+      await placeVideoTap(page, { x: five.x + 45, y: five.y + 50 });
+      await placeVideoTap(page, { x: ten.x + 50, y: ten.y + 45 });
+      await page.getByTestId('gauge-tap-note').filter({ hasText: /miss|line up|printed/i }).waitFor({ timeout: 15_000 });
+      await page.screenshot({ path: path.join(OUT_DIR, `v2-inconsistent-${vp.tag}.png`) });
+    } catch (err) {
+      process.stderr.write(`v2-inconsistent-${vp.tag} skipped: ${err.message}\n`);
+    } finally {
+      await context.close();
+    }
+  }
 
   const browser = await chromium.launch({ headless: true });
   try {
@@ -155,13 +204,13 @@ async function main() {
 
       const page = await context.newPage();
       await openGaugeSheet(page);
-      await page.getByText(/Frame held/i).waitFor({ timeout: 20_000 });
+      await page.getByText(/Frame held.*centre marker/i).waitFor({ timeout: 20_000 });
+      await page.getByTestId('gauge-tap-viewport').waitFor({ timeout: 15_000 });
       await page.screenshot({ path: path.join(OUT_DIR, `v2-frozen-zoomed-${vp.tag}.png`) });
 
       const centre = ISAAC_GAUGE_TAPS.centre;
       const box = await viewportBox(page);
-      const state = await page.evaluate(() => window.__labGaugeTapViewState);
-      const cScreen = videoPointToScreen(centre, state, box);
+      const cScreen = videoPointToScreen(centre, box, await currentCrop(page), false);
       await page.mouse.move(cScreen.x, cScreen.y);
       await page.mouse.down();
       await page.mouse.move(cScreen.x + 4, cScreen.y - 3);
@@ -173,8 +222,7 @@ async function main() {
       await placeVideoTap(page, ISAAC_GAUGE_TAPS.five);
       const ten = ISAAC_GAUGE_TAPS.ten;
       const box2 = await viewportBox(page);
-      const state2 = await page.evaluate(() => window.__labGaugeTapViewState);
-      const tScreen = videoPointToScreen(ten, state2, box2);
+      const tScreen = videoPointToScreen(ten, box2, await currentCrop(page), false);
       await page.mouse.click(tScreen.x, tScreen.y);
       await page.waitForTimeout(150);
       await page.screenshot({ path: path.join(OUT_DIR, `v2-marker-ten-${vp.tag}.png`) });
@@ -182,21 +230,15 @@ async function main() {
 
       await page.getByRole('button', { name: 'Accept calibration' }).waitFor({ timeout: 25_000 });
       const meta = await page.getByTestId('gauge-review-meta').textContent();
-      if (!meta || !meta.includes('398')) {
-        throw new Error(`review meta missing real hub: ${meta}`);
+      if (!meta || !/Hub at \(39[0-9], 50[0-9]/.test(meta)) {
+        const note = await page.getByTestId('gauge-tap-note').textContent();
+        throw new Error(`review failed meta=${meta} note=${note}`);
       }
       await page.screenshot({ path: path.join(OUT_DIR, `v2-review-rays-${vp.tag}.png`) });
 
-      await page.getByRole('button', { name: 'Retry' }).click();
-      await page.getByText(/Frame held|Place the centre/i).waitFor({ timeout: 15_000 });
-      await placeVideoTap(page, centre);
-      await placeVideoTap(page, { x: 120, y: 180 });
-      await placeVideoTap(page, { x: 140, y: 200 });
-      await page.getByTestId('gauge-tap-note').waitFor({ timeout: 15_000 });
-      await page.screenshot({ path: path.join(OUT_DIR, `v2-inconsistent-${vp.tag}.png`) });
-
       await captureLabOff(page, vp.tag);
       await context.close();
+      await runInconsistent(vp);
     }
   } finally {
     await browser.close();

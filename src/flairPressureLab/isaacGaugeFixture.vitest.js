@@ -44,7 +44,7 @@ describe('Isaac gauge fixture taps', () => {
 
   it('accepts a correct centre with slightly off 5/10 taps', async () => {
     const image = await loadFixtureImage();
-    const { centre, ten } = ISAAC_GAUGE_TAPS;
+    const { centre, five, ten } = ISAAC_GAUGE_TAPS;
     const result = calibrateFromTaps(image, {
       centre,
       five: { x: five.x - 10, y: five.y - 8 },

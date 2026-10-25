@@ -62,6 +62,8 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
   const pendingCalRef = useRef(null);
   const qualityCanvasRef = useRef(null);
   const dragRef = useRef(false);
+  const autoFrozenRef = useRef(false);
+  const holdFrozenRef = useRef(null);
   const [opencvReady, setOpencvReady] = useState(false);
 
   const fixtureHook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
@@ -111,6 +113,19 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     setFrameBox({ w: rect.width, h: rect.height });
   }, []);
 
+  const publishViewState = useCallback((cropOverride = undefined, phaseOverride = undefined) => {
+    if (typeof window === 'undefined') return;
+    const crop = cropOverride === undefined ? dialCrop : cropOverride;
+    const phase = phaseOverride === undefined ? tapPhase : phaseOverride;
+    window.__labGaugeTapViewState = {
+      crop,
+      mirror: mirrorPreview,
+      videoSize: videoSizeRef.current,
+      frameBox,
+      tapPhase: phase,
+    };
+  }, [dialCrop, frameBox, mirrorPreview, tapPhase]);
+
   const beginDialCrop = useCallback((image, focus) => {
     const hook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
     const fx = focus?.x ?? hook?.initialFocus?.x ?? image.width / 2;
@@ -120,7 +135,8 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     const crop = initialDialCrop(image.width, image.height, fx, fy, r);
     if (halfOverride) crop.half = halfOverride;
     setDialCrop(crop);
-  }, []);
+    publishViewState(crop, 'centre');
+  }, [publishViewState]);
 
   const repaintFrame = useCallback(() => {
     const display = freezeCanvasRef.current;
@@ -150,6 +166,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     setTapPhase('aim');
     setTapNote('');
     dragRef.current = false;
+    autoFrozenRef.current = false;
   }, []);
 
   const holdFrozenImage = useCallback((image) => {
@@ -161,7 +178,9 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     setTapNote('Frame held. Pinch-zoom or use +/−, then place the centre marker on the pivot.');
     measureFrame();
     requestAnimationFrame(() => repaintFrame());
-  }, [beginDialCrop, repaintFrame, syncSourceCanvas]);
+  }, [beginDialCrop, measureFrame, repaintFrame, syncSourceCanvas]);
+
+  holdFrozenRef.current = holdFrozenImage;
 
   useEffect(() => {
     if (!open) {
@@ -177,18 +196,18 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
       .catch(() => {});
     if (!fixtureSrc) void start();
     const hook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
-    if (hook?.autoFreeze) {
+    if (hook?.autoFreeze && !autoFrozenRef.current) {
+      autoFrozenRef.current = true;
       void loadFixtureFrame().then((image) => {
         if (!image || cancelled) return;
-        holdFrozenImage(image);
+        holdFrozenRef.current?.(image);
       });
     }
     return () => {
       cancelled = true;
       stop();
-      resetLocal();
     };
-  }, [open, fixtureSrc, holdFrozenImage, loadFixtureFrame, resetLocal, start, stop]);
+  }, [open, fixtureSrc, loadFixtureFrame, start, stop, resetLocal]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -208,15 +227,9 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
   }, [repaintFrame, dialCrop, tapPhase, frameBox.w]);
 
   useEffect(() => {
-    if (!open || typeof window === 'undefined') return;
-    window.__labGaugeTapViewState = {
-      crop: dialCrop,
-      mirror: mirrorPreview,
-      videoSize: videoSizeRef.current,
-      frameBox,
-      tapPhase,
-    };
-  }, [open, dialCrop, mirrorPreview, frameBox, tapPhase]);
+    if (!open) return;
+    publishViewState();
+  }, [open, publishViewState]);
 
   const updateLoupe = useCallback((previewX, previewY) => {
     const loupe = loupeCanvasRef.current;
@@ -303,7 +316,9 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
     dragRef.current = false;
     const image = frozenRef.current;
     if (image) {
-      setDialCrop(panCropToVideoPoint(dialCrop, point.x, point.y, image.width, image.height));
+      const nextCrop = panCropToVideoPoint(dialCrop, point.x, point.y, image.width, image.height);
+      setDialCrop(nextCrop);
+      publishViewState(nextCrop);
     }
     if (next === 'runCalibration') {
       runTapCalibration();
@@ -340,7 +355,9 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
   const adjustZoom = (factor) => {
     const size = videoSizeRef.current;
     if (!size?.w || !dialCrop) return;
-    setDialCrop(zoomCrop(dialCrop, factor, size.w, size.h));
+    const next = zoomCrop(dialCrop, factor, size.w, size.h);
+    setDialCrop(next);
+    publishViewState(next);
   };
 
   const onPreviewPointerDown = (event) => {
