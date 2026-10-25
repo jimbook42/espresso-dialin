@@ -45,6 +45,7 @@ import { PastBeansList } from './components/PastBeansList.jsx';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx';
+import { ShotTimerWeightGoalLine } from './components/ShotTimerWeightGoalLine.jsx';
 import { GrinderGrindControls } from './components/GrindControls';
 import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
 import { formatBeanDisplayName, formatBeanRoasterRoastLine } from './utils/beanDisplayName.js';
@@ -168,6 +169,10 @@ import {
   stepFlowEndAutoStop,
 } from './scales/flowEndAutoStop.js';
 import { normalizeScaleFlowAutoStopEnabled } from './settings/scaleFlowAutoStop.js';
+import {
+  isShotScreenWeightGoalsEnabled,
+  SHOT_SCREEN_WEIGHT_GOALS_KEY,
+} from './settings/shotScreenWeightGoals.js';
 import {
   applyBasketChangeToRecommendation,
   buildBasketAdjustmentBasisRec,
@@ -369,6 +374,7 @@ export default function App() {
     && shouldShowGraduationPrompt(settingsSetting, loggedShotCount);
   const statsForNerdsEnabled = settingsSetting?.statsForNerdsEnabled === true;
   const labCameraPressureEnabled = isLabCameraPressureEnabled(settingsSetting);
+  const shotScreenWeightGoalsEnabled = isShotScreenWeightGoalsEnabled(settingsSetting);
   const devUrlSimScaleActive = isDevUrlSimScaleActive();
   const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
@@ -1345,6 +1351,10 @@ export default function App() {
 
   const handleToggleScaleFlowAutoStop = async (val) => {
     await patchGlobalSettings(db, { scaleFlowAutoStopEnabled: val });
+  };
+
+  const handleToggleShotScreenWeightGoals = async (val) => {
+    await patchGlobalSettings(db, { [SHOT_SCREEN_WEIGHT_GOALS_KEY]: val });
   };
 
   const handleToggleDarkMode = async () => {
@@ -2684,6 +2694,19 @@ export default function App() {
               />
             )}
             <ShotLabPressureIntegration variant="fullscreen" ui={ui} />
+            <ShotTimerWeightGoalLine
+              enabled={shotScreenWeightGoalsEnabled}
+              scaleConnected={timemoreScale.isConnected}
+              scaleFeatureEnabled={scaleFeatureEnabled}
+              flairProfile={activeRecipe?.flairProfile}
+              targetYieldG={activeRecipe?.targetYieldG}
+              timerRunning={timerRunning}
+              timerUsePreInfusion={timerUsePreInfusion}
+              preInfusionPhase={preInfusionPhase}
+              extractionElapsedS={scaleExtractionElapsedS}
+              liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
+              targetTimeMaxS={activeRecipe?.targetTimeMaxS}
+            />
             <p className="shot-timer-total-label text-[11px] text-[#6b6457] mt-2 text-center shrink-0">
               {timerUsePreInfusion && preInfusionPhase
                 ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
@@ -4337,6 +4360,21 @@ export default function App() {
                         checked={normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled)}
                         onChange={handleToggleScaleFlowAutoStop}
                         label="Auto-stop timer when flow ends"
+                      />
+                    </div>
+                  )}
+                  {scaleFeatureEnabled && (
+                    <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
+                      <div>
+                        <span className={`font-bold block ${ui.text}`}>Show weight goals on shot screen</span>
+                        <span className={`text-[10px] ${ui.muted}`}>
+                          Compact stage targets on the full-screen timer when a scale is connected
+                        </span>
+                      </div>
+                      <SettingsToggle
+                        checked={shotScreenWeightGoalsEnabled}
+                        onChange={handleToggleShotScreenWeightGoals}
+                        label="Show weight goals on shot screen"
                       />
                     </div>
                   )}
