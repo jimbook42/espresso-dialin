@@ -24,6 +24,20 @@ describe('shotLabPressurePhaseGoal', () => {
     expect(g.targetBar).toBe(2);
   });
 
+  it('uses chart pre bar when preinfusionPressure is missing during pre-infusion', () => {
+    const g = shotLabPressurePhaseGoal({
+      flairProfile: { peakPressure: 10, preinfusionTime: 6 },
+      timerRunning: true,
+      timerUsePreInfusion: true,
+      preInfusionPhase: true,
+      extractionElapsedS: 1,
+      liveRelativeWeightG: 0,
+      scaleConnected: false,
+    });
+    expect(g.phase).toBe('pre');
+    expect(g.targetBar).toBe(3.5);
+  });
+
   it('hides taper band before taper begins', () => {
     const g = shotLabPressurePhaseGoal({
       flairProfile: profile,

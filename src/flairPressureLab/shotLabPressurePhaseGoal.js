@@ -1,3 +1,4 @@
+import { flairProfileChartPreBar } from './flairProfileChartPressures.js';
 import { resolveFlairPressurePhase } from '../scales/flairScaleTriggers.js';
 
 function positiveNum(raw) {
@@ -44,7 +45,8 @@ export function shotLabPressurePhaseGoal({
     peakP != null ? peakP : Math.max(preP ?? 0, taperP ?? 0, 1) || null;
 
   if (phase === 'pre') {
-    return { phase, targetBar: preP ?? null, taperBand: null, chartMaxBar };
+    const targetBar = preP ?? flairProfileChartPreBar(flairProfile);
+    return { phase, targetBar, taperBand: null, chartMaxBar };
   }
   if (phase === 'peak') {
     return { phase, targetBar: peakP ?? null, taperBand: null, chartMaxBar };

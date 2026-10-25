@@ -25,4 +25,15 @@ describe('shotTimerLabCompactClass', () => {
     expect(block).toContain('.shot-timer-fullscreen.shot-timer-lab-compact');
     expect(block).not.toMatch(/\.shot-timer-fullscreen \.shot-timer-/);
   });
+
+  it('keeps profile chart visible on short viewports when lab is on', () => {
+    const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const css = readFileSync(path.join(root, 'index.css'), 'utf8');
+    const profileRule =
+      css.match(
+        /\.shot-timer-fullscreen\.shot-timer-lab-compact \.shot-timer-profile-wrap\s*\{[^}]+\}/,
+      )?.[0] ?? '';
+    expect(profileRule).not.toContain('display: none');
+    expect(profileRule).toMatch(/max-height/);
+  });
 });

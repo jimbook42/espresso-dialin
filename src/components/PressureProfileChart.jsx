@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { smoothFlowSeriesForPlot } from '../scales/flowMetrics.js';
+import { flairProfileChartPressures } from '../flairPressureLab/flairProfileChartPressures.js';
 import {
   flairProfileMarkerProgress,
   flairProfileTaperStartChartProgress,
@@ -9,11 +10,8 @@ import {
 const AMBER = '#c88a4b';
 
 function buildSmoothProfilePath(profile, w, h, compact) {
-  const preP = Number(profile?.preinfusionPressure) || 0;
   const preT = Number(profile?.preinfusionTime) || 0;
-  const peakP = Number(profile?.peakPressure) || 0;
-  const taperP = Number(profile?.taperPressure) || 0;
-  const hasData = preP > 0 || peakP > 0 || taperP > 0;
+  const { preP, peakP, taperP, pPre, pPeak, pTaper, hasData } = flairProfileChartPressures(profile);
   if (!hasData) return null;
 
   const padL = 4;
@@ -23,10 +21,6 @@ function buildSmoothProfilePath(profile, w, h, compact) {
   const chartW = w - padL - padR;
   const chartH = h - padT - padB;
   const yBase = padT + chartH;
-
-  const pPre = preP || peakP * 0.35 || 2;
-  const pPeak = peakP || preP || 9;
-  const pTaper = taperP || peakP * 0.5 || 4.5;
   const maxP = Math.max(pPre, pPeak, pTaper, 1);
   const yFor = (p) => padT + chartH - (p / maxP) * chartH;
 

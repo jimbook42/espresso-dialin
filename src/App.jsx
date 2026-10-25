@@ -2599,7 +2599,7 @@ export default function App() {
 
           <div className="shot-timer-mid flex-1 flex flex-col items-center justify-start pt-2 px-5 min-h-0 overflow-hidden pointer-events-none">
             {flairEnabled && activeRecipe?.flairProfile && (
-              <div className="shot-timer-profile-wrap w-full max-w-sm mb-2 shrink-0 opacity-35 max-h-[22vh] overflow-hidden">
+              <div className="shot-timer-profile-wrap w-full max-w-sm mb-2 shrink-0 opacity-70 max-h-[22vh] overflow-hidden">
                 <PressureProfileChart
                   profile={activeRecipe.flairProfile}
                   progress={timerProgress}
