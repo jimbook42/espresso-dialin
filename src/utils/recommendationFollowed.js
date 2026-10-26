@@ -1,26 +1,24 @@
 import { grindMatchesStoredRecommendation } from '../grinders/grinderRegistry.js';
-import { getAgeAdjustedRecommendation } from './grinderLogic.js';
 
 /**
- * Whether the user followed the prior shot's grind recommendation when logging a new shot.
- * @returns {true|false|null} null when there was no recommendation to follow (e.g. first shot on a bean).
+ * Whether the user followed the grind recommendation shown on the Dial-in screen when logging.
+ * Uses the same displayed recommendation object as the UI (not a recomputed last-shot snapshot).
+ * @returns {true|false|null} null when the screen shows no recommendation to follow.
  */
 export function resolveRecommendationFollowedForSave({
-  lastLearningShot,
-  activeBean,
-  mockDate,
+  displayedRecommendation,
+  grinderModel,
   savedGrind,
   settings = null,
 }) {
-  if (!lastLearningShot?.recommendation?.recommendedSetting) {
+  const recSetting = displayedRecommendation?.recommendedSetting;
+  if (!recSetting || !grinderModel) {
     return null;
   }
-  const adjustedRec = getAgeAdjustedRecommendation(lastLearningShot, activeBean, mockDate, settings);
-  const rec = adjustedRec?.recommendedSetting || lastLearningShot.recommendation.recommendedSetting;
   const matches = grindMatchesStoredRecommendation(
-    lastLearningShot.grinderModel,
+    grinderModel,
     savedGrind,
-    rec,
+    recSetting,
     settings
   );
   return matches ? true : false;

@@ -176,8 +176,8 @@ export function runGrind618Repair1Tests() {
     beanAgeDays: 5,
   };
   const followed = resolveRecommendationFollowedForSave({
-    lastLearningShot: lastShot,
-    activeBean: bean,
+    displayedRecommendation: lastShot.recommendation,
+    grinderModel: NICHE_ZERO_GRINDER_ID,
     savedGrind: { nicheZeroSetting: 23 },
   });
   assert.equal(followed, true);

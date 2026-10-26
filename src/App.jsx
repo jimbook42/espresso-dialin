@@ -131,6 +131,7 @@ import {
   formatRecFollowedForCsv,
   resolveRecommendationFollowedForSave,
 } from './utils/recommendationFollowed.js';
+import { buildLabPressureShotFields } from './flairPressureLab/labPressureShotFields.js';
 import {
   buildShotsCsvContent,
   buildShotsCsvRows,
@@ -391,6 +392,8 @@ export default function App() {
   const labPressureOpenCalibrateRef = useRef(() => {});
   const labShotReplayCommitRef = useRef(null);
   const labShotReplayDiscardRef = useRef(null);
+  /** Dial-in recommendation card source of truth at save time (see displayDynamicRec). */
+  const displayedDialInRecRef = useRef(null);
   const [labReplayShotId, setLabReplayShotId] = useState(null);
   const [labReplayOpen, setLabReplayOpen] = useState(false);
   const [labReplayPayload, setLabReplayPayload] = useState(null);
@@ -959,6 +962,16 @@ export default function App() {
     resetFlowAutoStop();
     if (endExtractionS == null) return;
 
+    if (labCameraPressureEnabled) {
+      try {
+        const labMetrics = labPressureMetricsGetterRef.current?.() ?? {};
+        setLabPressureShotMetrics(
+          labMetrics?.labPressureCurve?.length ? labMetrics : null
+        );
+      } catch {
+        setLabPressureShotMetrics(null);
+      }
+    }
     setTimerRunning(false);
     const rounded = Math.round(endExtractionS);
     setActualTimeS(rounded);
@@ -996,10 +1009,21 @@ export default function App() {
     resetFlowAutoStop,
     clearYieldSettleTimer,
     finalizeYieldSettle,
+    labCameraPressureEnabled,
   ]);
 
   const handleStopTimer = () => {
     resetFlowAutoStop();
+    if (labCameraPressureEnabled) {
+      try {
+        const labMetrics = labPressureMetricsGetterRef.current?.() ?? {};
+        setLabPressureShotMetrics(
+          labMetrics?.labPressureCurve?.length ? labMetrics : null
+        );
+      } catch {
+        setLabPressureShotMetrics(null);
+      }
+    }
     setTimerRunning(false);
     let finalExtractionTime = timerSeconds;
     if (timerUsePreInfusion && !preInfusionPhase) {
@@ -1023,12 +1047,6 @@ export default function App() {
         }
         setScaleShotMetrics(metrics);
       }
-    }
-    if (labCameraPressureEnabled) {
-      const labMetrics = labPressureMetricsGetterRef.current?.() ?? {};
-      setLabPressureShotMetrics(
-        labMetrics?.labPressureCurve?.length ? labMetrics : null
-      );
     }
     return rounded;
   };
@@ -1873,9 +1891,8 @@ export default function App() {
     }
 
     const recommendationFollowed = resolveRecommendationFollowedForSave({
-      lastLearningShot,
-      activeBean,
-      mockDate: null,
+      displayedRecommendation: displayedDialInRecRef.current,
+      grinderModel: logGrinderModel,
       settings: appSettings,
       savedGrind: {
         setteMacro: finalMacro,
@@ -1903,6 +1920,12 @@ export default function App() {
     });
 
     const savedTasteProfile = tasteProfileForSave(tasteProfile);
+
+    const labPressureSave = buildLabPressureShotFields({
+      labCameraPressureEnabled,
+      labPressureShotMetrics,
+      captureLabPressureShotMetrics,
+    });
 
     const rec = calculateRecommendation(
       { 
@@ -1969,29 +1992,17 @@ export default function App() {
             scaleFlowCurve: scaleShotMetrics.scaleFlowCurve,
           }
         : {}),
-      ...(labPressureShotMetrics?.labPressureCurve?.length
-        ? {
-            labPressureCurve: labPressureShotMetrics.labPressureCurve,
-            labPressurePeakBar: labPressureShotMetrics.labPressurePeakBar ?? undefined,
-            ...(labPressureShotMetrics.labGaugeSnapshotJpeg
-              ? { labGaugeSnapshotJpeg: labPressureShotMetrics.labGaugeSnapshotJpeg }
-              : {}),
-          }
-        : (() => {
-            const lab = captureLabPressureShotMetrics();
-            if (!lab?.labPressureCurve?.length) return {};
-            return {
-              labPressureCurve: lab.labPressureCurve,
-              labPressurePeakBar: lab.labPressurePeakBar ?? undefined,
-              ...(lab.labGaugeSnapshotJpeg ? { labGaugeSnapshotJpeg: lab.labGaugeSnapshotJpeg } : {}),
-            };
-          })()),
+      ...labPressureSave.fields,
     };
 
     try {
       await db.shots.add(shotRecord);
-      if (shotRecord.labPressureCurve?.length) {
-        await labShotReplayCommitRef.current?.(shotRecord.id);
+      if (labCameraPressureEnabled) {
+        try {
+          await labShotReplayCommitRef.current?.(shotRecord.id);
+        } catch (err) {
+          console.warn('[lab-pressure] replay commit failed (shot curve kept):', err);
+        }
       }
       const displayHoldClear = clearRecommendationCardDisplayHoldPatch(
         appSettings,
@@ -2236,6 +2247,8 @@ export default function App() {
   const grindRecommendationSummary = displayDynamicRec?.recommendedSetting
     ? formatGrindRecommendationSummary(grinderModel, displayDynamicRec, appSettings)
     : null;
+
+  displayedDialInRecRef.current = displayDynamicRec;
 
   const initialGrindHint = (() => {
     if (!initialGrindHintSource) return null;

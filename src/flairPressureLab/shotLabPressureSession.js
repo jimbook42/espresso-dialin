@@ -36,10 +36,13 @@ export function createShotLabPressureSession() {
     },
     getShotMetrics() {
       if (!samples.length) return {};
-      const curve = samples
-        .filter((s) => s.bar != null && Number.isFinite(s.bar) && s.confident !== false)
-        .map((s) => ({ tS: s.tS, bar: s.bar }));
-      if (!curve.length) return {};
+      const valid = samples.filter((s) => s.bar != null && Number.isFinite(s.bar));
+      const confident = valid.filter((s) => s.confident !== false);
+      const curveSource = confident.length ? confident : valid;
+      const curve = curveSource.map((s) => ({ tS: s.tS, bar: s.bar }));
+      if (!curve.length) {
+        return valid.length ? { labPressureRawSampleCount: valid.length } : {};
+      }
       const peak = curve.reduce((m, s) => Math.max(m, s.bar), curve[0].bar);
       return {
         labPressureCurve: curve,

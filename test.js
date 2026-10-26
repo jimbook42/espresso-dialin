@@ -295,33 +295,25 @@ function runRecFollowedCsvTests() {
   assert.equal(parseRecFollowedFromCsv('N/A'), null);
 
   const noRec = resolveRecommendationFollowedForSave({
-    lastLearningShot: { grinderModel: 'Sette 270Wi', recommendation: {} },
-    activeBean: { id: 'b1' },
-    mockDate: null,
+    displayedRecommendation: null,
     grinderModel: 'Sette 270Wi',
     savedGrind: { setteMacro: 13, setteMicro: 'E' },
   });
   assert.equal(noRec, null);
 
   const followed = resolveRecommendationFollowedForSave({
-    lastLearningShot: {
-      grinderModel: 'Sette 270Wi',
-      recommendation: { recommendedSetting: { macro: 13, micro: 'E' } },
+    displayedRecommendation: {
+      recommendedSetting: { macro: 13, micro: 'E' },
     },
-    activeBean: { id: 'b1' },
-    mockDate: null,
     grinderModel: 'Sette 270Wi',
     savedGrind: { setteMacro: 13, setteMicro: 'E' },
   });
   assert.equal(followed, true);
 
   const notFollowed = resolveRecommendationFollowedForSave({
-    lastLearningShot: {
-      grinderModel: 'Sette 270Wi',
-      recommendation: { recommendedSetting: { macro: 14, micro: 'F' } },
+    displayedRecommendation: {
+      recommendedSetting: { macro: 14, micro: 'F' },
     },
-    activeBean: { id: 'b1' },
-    mockDate: null,
     grinderModel: 'Sette 270Wi',
     savedGrind: { setteMacro: 13, setteMicro: 'E' },
   });

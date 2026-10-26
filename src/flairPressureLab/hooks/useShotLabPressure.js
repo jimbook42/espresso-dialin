@@ -70,6 +70,8 @@ export function useShotLabPressure({
   const shotEpochRef = useRef(null);
   const lastFrameRef = useRef(null);
   const gaugeSnapshotRef = useRef(null);
+  /** Metrics frozen when the shot timer stops (session may reset immediately after). */
+  const stoppedShotMetricsRef = useRef(null);
   const r5InferBusyRef = useRef(false);
   const lastR5Ref = useRef({ r5Bar: null, r5Conf: null, r5Angle: null });
   const timerSecondsRef = useRef(timerSeconds);
@@ -140,6 +142,14 @@ export function useShotLabPressure({
     };
   }, [shouldRunCamera, start, stop]);
 
+  const metricsFromLiveSession = useCallback(() => {
+    const base = sessionRef.current.getShotMetrics();
+    if (gaugeSnapshotRef.current && base.labPressureCurve?.length) {
+      return { ...base, labGaugeSnapshotJpeg: gaugeSnapshotRef.current };
+    }
+    return base;
+  }, []);
+
   const resetShotSession = useCallback(() => {
     sessionRef.current.reset();
     holdRef.current.reset();
@@ -187,6 +197,7 @@ export function useShotLabPressure({
 
   useEffect(() => {
     if (timerRunning) {
+      stoppedShotMetricsRef.current = null;
       const epoch = Date.now();
       sessionRef.current.begin(epoch);
       shotEpochRef.current = epoch;
@@ -218,8 +229,12 @@ export function useShotLabPressure({
       shotStartHintDoneRef.current = false;
       return;
     }
+    const snap = metricsFromLiveSession();
+    if (snap.labPressureCurve?.length || snap.labPressureRawSampleCount) {
+      stoppedShotMetricsRef.current = snap;
+    }
     resetShotSession();
-  }, [timerRunning, weighingViewOpen, resetShotSession]);
+  }, [timerRunning, weighingViewOpen, resetShotSession, metricsFromLiveSession]);
 
   const grabSourceImage = useCallback((source) => {
     const width = source.videoWidth || source.width;
@@ -410,13 +425,11 @@ export function useShotLabPressure({
   );
 
   const getShotMetrics = useCallback(() => {
-    if (!timerRunning) return {};
-    const base = sessionRef.current.getShotMetrics();
-    if (gaugeSnapshotRef.current) {
-      return { ...base, labGaugeSnapshotJpeg: gaugeSnapshotRef.current };
+    if (stoppedShotMetricsRef.current) {
+      return { ...stoppedShotMetricsRef.current };
     }
-    return base;
-  }, [timerRunning]);
+    return metricsFromLiveSession();
+  }, [metricsFromLiveSession]);
 
   const readoutVisible = shotLabPressureReadoutVisible({
     enabled,
