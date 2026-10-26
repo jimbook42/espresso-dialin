@@ -23,9 +23,9 @@ import { r5SampleFromTapFrame } from '../shotLabR7Needle.js';
 import { loadNeedleModel, isNeedleModelReady, needleModelStatus } from '../needleModel.js';
 import { gaugeSnapshotJpegFromImageData } from '../gaugeSnapshotJpeg.js';
 import { shouldPublishCornerPreviewPose } from '../labPressureCornerPreview.js';
-import { dialPoseMismatchWarning } from '../shotStartDialPoseCheck.js';
 import {
   createPreShotDialVerdictSampler,
+  createShotStartDialHintTracker,
   preShotDialMismatch,
   PRE_SHOT_DIAL_SAMPLE_MS,
 } from '../preShotDialCheck.js';
@@ -87,7 +87,8 @@ export function useShotLabPressure({
   const [cornerPreviewPose, setCornerPreviewPose] = useState(null);
   const lastCornerPosePublishRef = useRef(0);
   const [dialRecalibrateHint, setDialRecalibrateHint] = useState(false);
-  const dialPoseCheckActiveRef = useRef(false);
+  const shotStartDialHintRef = useRef(createShotStartDialHintTracker());
+  const shotStartHintDoneRef = useRef(false);
   const [preShotDialStatus, setPreShotDialStatus] = useState(null);
   const preShotDialSamplerRef = useRef(createPreShotDialVerdictSampler());
   const preShotDialSamplerLockedRef = useRef(false);
@@ -155,7 +156,8 @@ export function useShotLabPressure({
     setCornerPreviewPose(null);
     lastCornerPosePublishRef.current = 0;
     setDialRecalibrateHint(false);
-    dialPoseCheckActiveRef.current = false;
+    shotStartDialHintRef.current.reset();
+    shotStartHintDoneRef.current = false;
     preShotDialSamplerRef.current.reset();
     preShotDialSamplerLockedRef.current = false;
     setPreShotDialStatus(null);
@@ -196,7 +198,8 @@ export function useShotLabPressure({
       setPeakBar(null);
       setReaderUncertain(false);
       setDialRecalibrateHint(false);
-      dialPoseCheckActiveRef.current = true;
+      shotStartDialHintRef.current.reset();
+      shotStartHintDoneRef.current = false;
       return;
     }
     if (weighingViewOpen) {
@@ -211,7 +214,8 @@ export function useShotLabPressure({
       setPeakBar(null);
       setReaderUncertain(false);
       setDialRecalibrateHint(false);
-      dialPoseCheckActiveRef.current = true;
+      shotStartDialHintRef.current.reset();
+      shotStartHintDoneRef.current = false;
       return;
     }
     resetShotSession();
@@ -268,21 +272,18 @@ export function useShotLabPressure({
         const read = readCalibratedFrame(image, trackerRef.current);
         const cal = trackerRef.current.calibration;
         observePreShotDialPose(read, cal);
-        if (dialPoseCheckActiveRef.current && cal?.hub) {
-          const mismatch = dialPoseMismatchWarning({
+        const nowMs = Date.now();
+        if (cal?.hub && !shotStartHintDoneRef.current) {
+          const mismatch = preShotDialMismatch({
             trackedHub: read.lost ? null : read.hub,
             calibratedHub: cal.hub,
             calibratedRadius: cal.radius,
             poseLost: read.lost,
           });
-          if (mismatch) {
-            setDialRecalibrateHint(true);
-          } else {
-            setDialRecalibrateHint(false);
-            dialPoseCheckActiveRef.current = false;
-          }
+          const hint = shotStartDialHintRef.current.observe(mismatch, nowMs);
+          setDialRecalibrateHint(hint.showHint);
+          if (hint.done) shotStartHintDoneRef.current = true;
         }
-        const nowMs = Date.now();
         if (!r5InferBusyRef.current) {
           r5InferBusyRef.current = true;
           void r5SampleFromTapFrame(image, read)
