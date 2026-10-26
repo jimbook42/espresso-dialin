@@ -1,5 +1,8 @@
 import { useId } from 'react';
-import { pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
+import {
+  pressureChartPointsForDisplay,
+  pressureChartPointsForSavedCurve,
+} from '../flairPressureLab/pressureDisplaySmoothing.js';
 import {
   shotPressureChartY,
   shotPressureChartYMax,
@@ -16,6 +19,7 @@ import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js
  *     taperBand?: { lowBar: number, highBar: number } | null,
  *     chartMaxBar?: number | null,
  *   },
+ *   savedCurve?: boolean,
  * }} props
  */
 export function ShotPressureChart({
@@ -23,9 +27,12 @@ export function ShotPressureChart({
   compact = false,
   peakBar = null,
   phaseGoal = null,
+  savedCurve = false,
 }) {
   const labelId = useId();
-  const points = pressureChartPointsForDisplay(samples);
+  const points = savedCurve
+    ? pressureChartPointsForSavedCurve(samples)
+    : pressureChartPointsForDisplay(samples);
   if (!points.length) return null;
 
   const w = compact ? 280 : 320;

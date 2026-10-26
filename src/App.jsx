@@ -4021,6 +4021,7 @@ export default function App() {
                         samples={s.labPressureCurve.map((p) => ({ tS: p.tS, bar: p.bar, confident: true }))}
                         compact
                         peakBar={s.labPressurePeakBar ?? null}
+                        savedCurve
                       />
                     )}
 

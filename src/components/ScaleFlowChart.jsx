@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { flowRateSeriesFromWeightCurve } from '../scales/flowMetrics.js';
-import { pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
+import { pressureChartPointsForSavedCurve } from '../flairPressureLab/pressureDisplaySmoothing.js';
 import { shotPressureChartY } from '../flairPressureLab/shotPressureChartLayout.js';
 import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js';
 import {
@@ -36,7 +36,7 @@ export function ScaleFlowChart({
   if (!flowSeries.length) return null;
 
   const pressurePoints = pressureSamples?.length
-    ? pressureChartPointsForDisplay(pressureSamples)
+    ? pressureChartPointsForSavedCurve(pressureSamples)
     : [];
   const showPressure = pressurePoints.length > 0;
 

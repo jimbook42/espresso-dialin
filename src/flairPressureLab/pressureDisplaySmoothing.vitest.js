@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LAB_PRESSURE_CURVE_LEAD_S,
   PRESSURE_DISPLAY_WINDOW_S,
+  labPressureCurvePlotTimeS,
   labPressureReadoutState,
   peakBarFromRaw,
+  rollingCenteredBar,
   rollingDisplayBar,
   pressureChartPointsForDisplay,
+  pressureChartPointsForSavedCurve,
   pressureChartPointsFromRaw,
 } from './pressureDisplaySmoothing.js';
 
@@ -52,5 +56,42 @@ describe('pressureDisplaySmoothing', () => {
     const display = pressureChartPointsForDisplay(samples);
     expect(raw[raw.length - 1].bar).toBe(8);
     expect(display[display.length - 1].bar).toBeLessThan(8);
+  });
+
+  it('plot lead shifts saved-curve times earlier', () => {
+    expect(LAB_PRESSURE_CURVE_LEAD_S).toBeGreaterThan(0);
+    expect(labPressureCurvePlotTimeS(2)).toBeCloseTo(2 - LAB_PRESSURE_CURVE_LEAD_S, 5);
+    expect(labPressureCurvePlotTimeS(0.1)).toBe(0);
+  });
+
+  it('saved-curve ramp crosses 50% earlier than trailing display on a synthetic step', () => {
+    const samples = [];
+    for (let i = 0; i <= 40; i += 1) {
+      const tS = i * 0.1;
+      const bar = tS < 2 ? 0 : 10;
+      samples.push({ tS, bar, confident: true });
+    }
+    const crossHalf = (points) => {
+      for (const p of points) {
+        if (p.bar >= 5) return p.tS;
+      }
+      return null;
+    };
+    const trailingCross = crossHalf(pressureChartPointsForDisplay(samples));
+    const savedCross = crossHalf(pressureChartPointsForSavedCurve(samples));
+    expect(trailingCross).not.toBeNull();
+    expect(savedCross).not.toBeNull();
+    expect(savedCross).toBeLessThan(trailingCross);
+  });
+
+  it('centered bar at a step is not delayed like trailing bar at the same instant', () => {
+    const samples = [
+      { tS: 1.5, bar: 0 },
+      { tS: 2, bar: 10 },
+      { tS: 2.5, bar: 10 },
+    ];
+    const at2 = rollingDisplayBar(samples, 2);
+    const centered = rollingCenteredBar(samples, 2);
+    expect(centered).toBeGreaterThan(at2);
   });
 });
