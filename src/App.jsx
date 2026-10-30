@@ -222,6 +222,7 @@ import {
   loadLastLabShotReplayWithBlob,
 } from './flairPressureLab/labShotReplayDb.js';
 import { shouldShowLabShotReplayPlay } from './flairPressureLab/historyLabShotReplay.js';
+import { exportLabShotReplayDownloads } from './flairPressureLab/labShotReplayExport.js';
 import { LabPressureStartPanel } from './components/LabPressureStartPanel.jsx';
 import { LabPreShotDialUnderScale } from './components/LabPreShotDialUnderScale.jsx';
 import { LabPressurePreShotConfirm } from './components/LabPressurePreShotConfirm.jsx';
@@ -1427,6 +1428,16 @@ export default function App() {
     if (!data) return;
     setLabReplayPayload(data);
     setLabReplayOpen(true);
+  }, []);
+
+  const exportLabShotReplay = useCallback(async (shot) => {
+    const data = await loadLastLabShotReplayWithBlob();
+    if (!data || data.meta.shotId !== shot?.id) return;
+    exportLabShotReplayDownloads({
+      shot,
+      blob: data.blob,
+      mimeType: data.meta.mimeType || data.blob.type,
+    });
   }, []);
 
   const requestStartTimerWithLab = useCallback(
@@ -3984,7 +3995,7 @@ export default function App() {
                       newestShotId,
                       labReplayShotId,
                     }) && (
-                      <div className="flex justify-end -mb-1">
+                      <div className="flex justify-end gap-3 -mb-1">
                         <button
                           type="button"
                           onClick={() => void openLabShotReplay()}
@@ -3994,6 +4005,16 @@ export default function App() {
                         >
                           <Play className="w-4 h-4 fill-current" />
                           Replay
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void exportLabShotReplay(s)}
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${ui.accentText} hover:opacity-90`}
+                          data-testid="history-lab-shot-replay-export"
+                          aria-label="Export shot replay"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Export replay
                         </button>
                       </div>
                     )}
