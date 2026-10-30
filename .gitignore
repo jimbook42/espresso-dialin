@@ -13,6 +13,7 @@ __pycache__/
 public/flair-pressure-lab/opencv.js
 public/flair-pressure-lab/ort/
 scripts/pressure-model/.venv/
+scripts/needle-reader/out/
 scripts/pressure-model/data/
 dist
 dist-ssr

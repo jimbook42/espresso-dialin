@@ -1,5 +1,5 @@
 import { TEMPORAL_GATE } from './temporalGate.js';
-import r7ConfigJson from '../../scripts/needle-reader/r7_config.json';
+import r7ConfigJson from '../../scripts/needle-reader/r7_config.json' with { type: 'json' };
 
 /** Browser-safe mirror of scripts/needle-reader/score_r7.mjs loadR7Config / gateConfigR7. */
 export function loadR7Config() {

@@ -375,6 +375,20 @@ function r2Exam() {
 }
 
 function main() {
+  if (process.argv.includes('--live')) {
+    import('./examLive.mjs').then((mod) => mod.runLiveExam()).catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+    return;
+  }
+  if (process.argv.includes('--models')) {
+    import('./examModels.mjs').then((mod) => mod.runModelExam()).catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+    return;
+  }
   if (process.argv.includes('--r2')) {
     r2Exam();
     return;

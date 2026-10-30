@@ -48,6 +48,7 @@ export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
  *   weighingViewOpen: boolean,
  *   preShotDialCheckSurface: boolean,
  *   replayFrameObserverRef?: import('react').MutableRefObject<((frame: object) => void) | null>,
+ *   leapCap?: boolean,
  * }} options
  */
 export function useShotLabPressure({
@@ -60,6 +61,7 @@ export function useShotLabPressure({
   weighingViewOpen = false,
   preShotDialCheckSurface = false,
   replayFrameObserverRef,
+  leapCap = true,
 }) {
   const { videoRef, start, stop, status } = useFrontCameraStream();
   const sessionRef = useRef(createShotLabPressureSession());
@@ -98,13 +100,13 @@ export function useShotLabPressure({
   useEffect(() => {
     setCalibrated(Boolean(storedCalibration));
     if (storedCalibration) {
-      trackerRef.current = createCalibratedTracker(storedCalibration);
+      trackerRef.current = createCalibratedTracker(storedCalibration, { leapCap });
       r7Ref.current = createShotLabR7Publisher(storedCalibration);
     } else {
       trackerRef.current = null;
       r7Ref.current = null;
     }
-  }, [storedCalibration]);
+  }, [storedCalibration, leapCap]);
 
   const displaySurfaceActive = timerRunning || weighingViewOpen;
   const preShotDialCheckActive =
@@ -412,7 +414,7 @@ export function useShotLabPressure({
 
   const acceptCalibration = useCallback(
     ({ calibration, tracker }) => {
-      trackerRef.current = tracker ?? createCalibratedTracker(calibration);
+      trackerRef.current = tracker ?? createCalibratedTracker(calibration, { leapCap });
       r7Ref.current = createShotLabR7Publisher(calibration);
       preShotDialSamplerRef.current.reset();
       preShotDialSamplerLockedRef.current = false;
@@ -421,7 +423,7 @@ export function useShotLabPressure({
       setReaderReady(isNeedleModelReady());
       onCalibrationSaved?.(calibration);
     },
-    [onCalibrationSaved],
+    [onCalibrationSaved, leapCap],
   );
 
   const getShotMetrics = useCallback(() => {

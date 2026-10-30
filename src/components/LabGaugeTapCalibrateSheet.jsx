@@ -44,7 +44,14 @@ const MARKER_HIT = 44;
 /**
  * Reuses the pressure-lab tap-calibrate flow in a modal sheet.
  */
-export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showCameraPreview = false }) {
+export function LabGaugeTapCalibrateSheet({
+  open,
+  onClose,
+  onAccepted,
+  ui,
+  showCameraPreview = false,
+  leapCap = true,
+}) {
   const { videoRef, start, stop, status, error } = useFrontCameraStream();
   const [tapPhase, setTapPhase] = useState('aim');
   const [tapNote, setTapNote] = useState('');
@@ -410,7 +417,7 @@ export function LabGaugeTapCalibrateSheet({ open, onClose, onAccepted, ui, showC
   const accept = () => {
     const pending = pendingCalRef.current;
     if (!pending?.ok) return;
-    const tracker = createCalibratedTracker(pending.calibration);
+    const tracker = createCalibratedTracker(pending.calibration, { leapCap });
     onAccepted?.({ calibration: pending.calibration, tracker });
     onClose?.();
   };

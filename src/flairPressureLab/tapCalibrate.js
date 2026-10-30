@@ -114,6 +114,8 @@ const LOST_BEZEL = 0.35;
 const LOST_RIM_STD = 10;
 const TRACK_NEAR_PX = 10;
 const TRACK_FAR_PX = 36;
+/** Farther than this, the rim search locks a different circle. Default on. */
+const TRACK_LEAP_PX = 48;
 
 const RING = 28;
 const COS = new Float64Array(RING);
@@ -1018,7 +1020,7 @@ export function calibrateFromTaps(image, taps) {
   };
 }
 
-export function createCalibratedTracker(calibration) {
+export function createCalibratedTracker(calibration, options = {}) {
   return {
     calibration,
     pose: {
@@ -1031,6 +1033,8 @@ export function createCalibratedTracker(calibration) {
     needleDeg: calibration.zeroAngleDeg,
     needleMisses: 0,
     score: 1,
+    /** False restores the v4.13.17 search, which can leap onto another circle. */
+    leapCap: options.leapCap !== false,
   };
 }
 
@@ -1051,10 +1055,12 @@ function trackPose(image, tracker) {
   // A weak local rim means the gauge moved. Look further, cheaply, and only
   // accept a centre that is clearly rounder than staying put.
   if (!found || found.std > 5.4) {
-    const far = searchRim(image, prior, 48, 6, prior.radius, 16, 2);
+    const far = searchRim(image, prior, TRACK_LEAP_PX, 6, prior.radius, 16, 2);
     if (far && (!found || far.std + 0.8 < found.std)) found = far;
   }
-  if (!found || found.std > 5.4) {
+  // The wider search locked onto a different circle about 90 px away and
+  // the rest of the shot published from there. v4.13.17 still runs it.
+  if (tracker.leapCap === false && (!found || found.std > 5.4)) {
     const wider = searchRim(image, prior, 96, 8, prior.radius, 16, 2);
     if (wider && (!found || wider.std + 0.8 < (found?.std ?? 99))) found = wider;
   }

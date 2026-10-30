@@ -15,3 +15,11 @@ export function labGaugeTapCalibrationFromSettings(settings) {
   if (!calibration || typeof calibration !== 'object') return null;
   return calibration;
 }
+
+/** Previous tracker. Anything else, including unset, is the current reader. */
+export const LAB_PRESSURE_READER_KEY = 'labPressureReader';
+export const LAB_PRESSURE_READER_LEGACY = 'v4.13.17';
+
+export function labPressureReaderLegacy(settings) {
+  return settings?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_LEGACY;
+}
