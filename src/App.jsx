@@ -161,15 +161,20 @@ import {
   SHOT_START_COUNTDOWN_ON,
 } from './settings/shotStartCountdown.js';
 import { SHOT_YIELD_SETTLE_MS } from './scales/scaleShotStopSettle.js';
-import { smoothFlowSeriesForPlot } from './scales/flowMetrics.js';
+import { FLOW_PLOT_SMOOTH_WINDOW_S, smoothFlowSeriesForPlot } from './scales/flowMetrics.js';
 import {
   createFlowEndAutoStopState,
   flowEndAutoStopRecordedEndExtractionS,
   flowEndAutoStopShouldFreezeTimer,
   flowEndAutoStopShouldStop,
+  FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S,
   stepFlowEndAutoStop,
 } from './scales/flowEndAutoStop.js';
-import { normalizeScaleFlowAutoStopEnabled } from './settings/scaleFlowAutoStop.js';
+import {
+  normalizeScaleFlowAutoStopEnabled,
+  SCALE_FLOW_AUTO_STOP_ALGORITHM_LEGACY,
+  scaleFlowAutoStopLegacyAlgorithm,
+} from './settings/scaleFlowAutoStop.js';
 import {
   isShotScreenWeightGoalsEnabled,
   SHOT_SCREEN_WEIGHT_GOALS_KEY,
@@ -936,14 +941,21 @@ export default function App() {
     const series = timemoreScale.liveFlowSeries;
     if (!series.length) return;
 
-    const smoothed = smoothFlowSeriesForPlot(series);
-    const last = smoothed[smoothed.length - 1];
+    const legacyMode = scaleFlowAutoStopLegacyAlgorithm(settingsSetting);
+    const detectSmoothed = smoothFlowSeriesForPlot(series, FLOW_PLOT_SMOOTH_WINDOW_S);
+    const backdateSmoothed = legacyMode
+      ? detectSmoothed
+      : smoothFlowSeriesForPlot(series, FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S);
+    const last = detectSmoothed[detectSmoothed.length - 1];
+    const backdateLast = backdateSmoothed[backdateSmoothed.length - 1];
     flowAutoStopStateRef.current = stepFlowEndAutoStop(flowAutoStopStateRef.current, {
       enabled: true,
+      legacyMode,
       preinfusionActive: preInfusionPhase,
       extractionActive: !preInfusionPhase,
       tExtractionS: last.tS,
       smoothedFlowGs: last.flowGs,
+      backdateFlowGs: backdateLast.flowGs,
     });
 
     const autoState = flowAutoStopStateRef.current;
@@ -1009,6 +1021,7 @@ export default function App() {
     timemoreScale.liveFlowSeries,
     flowAutoStopTimerFrozen,
     settingsSetting?.scaleFlowAutoStopEnabled,
+    settingsSetting?.scaleFlowAutoStopAlgorithm,
     timemoreScale,
     resetFlowAutoStop,
     clearYieldSettleTimer,
@@ -1373,6 +1386,13 @@ export default function App() {
 
   const handleToggleScaleFlowAutoStop = async (val) => {
     await patchGlobalSettings(db, { scaleFlowAutoStopEnabled: val });
+  };
+
+  const handleScaleFlowAutoStopAlgorithm = async (value) => {
+    const next = value === SCALE_FLOW_AUTO_STOP_ALGORITHM_LEGACY
+      ? SCALE_FLOW_AUTO_STOP_ALGORITHM_LEGACY
+      : 'current';
+    await patchGlobalSettings(db, { scaleFlowAutoStopAlgorithm: next });
   };
 
   const handleToggleShotScreenWeightGoals = async (val) => {
@@ -4392,11 +4412,12 @@ export default function App() {
                     })}. Manual shot logging always works.
                   </p>
                   {timemoreScale.isConnected && (
+                    <>
                     <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
                       <div>
                         <span className={`font-bold block ${ui.text}`}>Auto-stop timer when flow ends</span>
                         <span className={`text-[10px] ${ui.muted}`}>
-                          Stops at flow tail-off; yield still settles from drips
+                          Stops when flow drops at lever lift; yield still settles from drips
                         </span>
                       </div>
                       <SettingsToggle
@@ -4405,6 +4426,25 @@ export default function App() {
                         label="Auto-stop timer when flow ends"
                       />
                     </div>
+                    {normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled) && (
+                      <div className={`border-t ${ui.modalDivider} pt-3`}>
+                        <span className={`font-bold block ${ui.text}`}>Flow end detection</span>
+                        <span className={`text-[10px] ${ui.muted}`}>
+                          Current ends on the sharp drop (~37% of peak). Tail-off is the previous low-flow rule.
+                        </span>
+                        <select
+                          value={scaleFlowAutoStopLegacyAlgorithm(settingsSetting)
+                            ? SCALE_FLOW_AUTO_STOP_ALGORITHM_LEGACY
+                            : 'current'}
+                          onChange={(e) => handleScaleFlowAutoStopAlgorithm(e.target.value)}
+                          className={`mt-2 w-full ${inputClass} border rounded-lg p-2.5 font-semibold text-xs`}
+                        >
+                          <option value="current">Current (sharp drop)</option>
+                          <option value={SCALE_FLOW_AUTO_STOP_ALGORITHM_LEGACY}>Tail-off (legacy)</option>
+                        </select>
+                      </div>
+                    )}
+                    </>
                   )}
                   {scaleFeatureEnabled && (
                     <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>

@@ -1,14 +1,20 @@
 /** Minimum smoothed flow (g/s) before auto-stop can arm after pre-infusion. */
 export const FLOW_AUTO_STOP_ARM_MIN_GS = 1;
 
-/** End shot when smoothed flow falls below this fraction of peak smoothed flow. */
-export const FLOW_AUTO_STOP_PEAK_END_FRACTION = 0.2;
+/** End shot when smoothed flow falls below this fraction of peak smoothed flow (current algorithm). */
+export const FLOW_AUTO_STOP_PEAK_END_FRACTION = 0.375;
 
-/** Cap on end threshold (g/s); end uses min(peak × fraction, this value). */
+/** Legacy end fraction (tail-off detection). */
+export const FLOW_AUTO_STOP_PEAK_END_FRACTION_LEGACY = 0.2;
+
+/** Legacy cap on end threshold (g/s); end uses min(peak × fraction, this value). */
 export const FLOW_AUTO_STOP_END_ABS_MAX_GS = 0.3;
 
 /** Smoothed flow must stay below the end threshold for this long (s). */
 export const FLOW_AUTO_STOP_CONFIRM_S = 1.5;
+
+/** Less-smoothed flow window (s) for backdating the recorded end to the start of the drop. */
+export const FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S = 0.45;
 
 /**
  * @typedef {{
@@ -16,6 +22,7 @@ export const FLOW_AUTO_STOP_CONFIRM_S = 1.5;
  *   peakSmoothedGs: number,
  *   recordedEndExtractionS: number | null,
  *   belowThresholdSinceS: number | null,
+ *   backdateRecordedEndExtractionS: number | null,
  *   stopConfirmed: boolean,
  * }} FlowEndAutoStopState
  */
@@ -26,8 +33,23 @@ export function createFlowEndAutoStopState() {
     peakSmoothedGs: 0,
     recordedEndExtractionS: null,
     belowThresholdSinceS: null,
+    backdateRecordedEndExtractionS: null,
     stopConfirmed: false,
   };
+}
+
+/**
+ * @param {number} peakSmoothedGs
+ * @param {boolean} legacyMode
+ */
+export function flowEndThresholdForPeak(peakSmoothedGs, legacyMode) {
+  if (legacyMode) {
+    return Math.min(
+      peakSmoothedGs * FLOW_AUTO_STOP_PEAK_END_FRACTION_LEGACY,
+      FLOW_AUTO_STOP_END_ABS_MAX_GS,
+    );
+  }
+  return peakSmoothedGs * FLOW_AUTO_STOP_PEAK_END_FRACTION;
 }
 
 /**
@@ -36,10 +58,12 @@ export function createFlowEndAutoStopState() {
  * @param {FlowEndAutoStopState} state
  * @param {{
  *   enabled: boolean,
+ *   legacyMode?: boolean,
  *   preinfusionActive: boolean,
  *   extractionActive: boolean,
  *   tExtractionS: number,
  *   smoothedFlowGs: number | null,
+ *   backdateFlowGs?: number | null,
  * }} input
  * @returns {FlowEndAutoStopState}
  */
@@ -51,6 +75,13 @@ export function stepFlowEndAutoStop(state, input) {
   if (flow == null || !Number.isFinite(flow)) {
     return { ...state };
   }
+  if (state.stopConfirmed) {
+    return { ...state };
+  }
+
+  const legacyMode = input.legacyMode === true;
+  const backdateFlow = input.backdateFlowGs ?? flow;
+  const t = input.tExtractionS;
 
   let next = { ...state };
 
@@ -63,20 +94,25 @@ export function stepFlowEndAutoStop(state, input) {
   }
 
   next.peakSmoothedGs = Math.max(next.peakSmoothedGs, flow);
-  const endThreshold = Math.min(
-    next.peakSmoothedGs * FLOW_AUTO_STOP_PEAK_END_FRACTION,
-    FLOW_AUTO_STOP_END_ABS_MAX_GS,
-  );
+  const endThreshold = flowEndThresholdForPeak(next.peakSmoothedGs, legacyMode);
+
+  if (
+    Number.isFinite(backdateFlow)
+    && backdateFlow < endThreshold
+    && next.backdateRecordedEndExtractionS == null
+  ) {
+    next.backdateRecordedEndExtractionS = t;
+  }
 
   if (flow >= endThreshold) {
     next.recordedEndExtractionS = null;
     next.belowThresholdSinceS = null;
+    next.backdateRecordedEndExtractionS = null;
     return next;
   }
 
-  const t = input.tExtractionS;
   if (next.recordedEndExtractionS == null) {
-    next.recordedEndExtractionS = t;
+    next.recordedEndExtractionS = next.backdateRecordedEndExtractionS ?? t;
     next.belowThresholdSinceS = t;
     return next;
   }
