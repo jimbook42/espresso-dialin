@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { wrap360 } from '../../src/flairPressureLab/gaugeConfig.js';
 import {
+  barFromTapAnchors,
   calibrateFromTaps,
   createCalibratedTracker,
   mapStoredTapPoint,
@@ -42,7 +43,9 @@ import {
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const CLIPS_DIR = process.env.DIALIN_EXAM_CLIPS || 'C:\\Users\\Isaac\\dialin-exam-clips';
+const REPLAY_CLIPS = '/workspace/pl-state/nr/replay';
+export const CLIPS_DIR = process.env.DIALIN_EXAM_CLIPS
+  || (existsSync('C:\\Users\\Isaac\\dialin-exam-clips') ? 'C:\\Users\\Isaac\\dialin-exam-clips' : REPLAY_CLIPS);
 const LABELS_PATH = path.join(ROOT, 'scripts/pressure-label/fixtures/labels-2026-10-22.json');
 const MANIFEST_PATH = path.join(ROOT, 'scripts/pressure-label/fixtures/manifest-2026-10-22.json');
 const MODEL_PATH = path.join(ROOT, 'public/flair-pressure-lab/needle.onnx');
@@ -96,10 +99,13 @@ export function restOffsetDeg(rows, holdClip) {
   return medianOf(deltas) ?? 0;
 }
 
-/** Rest-phase frames are 0. Every other labelled frame uses labelBarFor. */
+/** Rest-phase frames are 0. Every other labelled frame uses the 5 and 10 marks when they exist. */
 export function truthBarForLabel(row, offsetDeg) {
   if (REST_PHASES.has(row.phase)) return 0;
   const zero = wrap360(row.labelZero + offsetDeg);
+  if (row.labelFive != null && row.labelTen != null) {
+    return barFromTapAnchors(row.labelNeedle, zero, row.labelFive, row.labelTen);
+  }
   return truthBar(row.labelNeedle, zero, row.labelTen);
 }
 
@@ -139,6 +145,7 @@ export function loadLabelRows() {
     const hub = { x: mark.hub[0], y: mark.hub[1] };
     const tip = { x: mark.tip[0], y: mark.tip[1] };
     const zero = { x: mark.zero[0], y: mark.zero[1] };
+    const five = mark.five ? { x: mark.five[0], y: mark.five[1] } : null;
     const ten = { x: mark.ten[0], y: mark.ten[1] };
     rows.push({
       id: entry.id,
@@ -148,9 +155,11 @@ export function loadLabelRows() {
       hub,
       tip,
       zero,
+      five,
       ten,
       labelNeedle: imageAngle(hub, tip),
       labelZero: imageAngle(hub, zero),
+      labelFive: five ? imageAngle(hub, five) : null,
       labelTen: imageAngle(hub, ten),
     });
   }
@@ -206,12 +215,12 @@ export function decodeStill(file, atSec, width, height) {
   return rgbaImage(result.stdout, width, height);
 }
 
-export async function* streamFrames(file, width, height) {
+export async function* streamFrames(file, width, height, vf = 'fps=8') {
   const ffmpeg = tool(FFMPEG_BIN, 'ffmpeg');
   const child = spawn(ffmpeg, [
     '-hide_banner', '-loglevel', 'error', '-nostdin',
     '-i', file,
-    '-vf', 'fps=8',
+    '-vf', vf,
     '-f', 'rawvideo', '-pix_fmt', 'rgba', '-',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
   const errors = [];
@@ -355,21 +364,23 @@ async function scoreClip(clipId, labels, cv, ort, session) {
       r5Conf: r5ForGate.r5Conf,
       r5Angle: r5ForGate.r5Angle,
     });
-    const published = gated.bar;
+    const published = read.bar;
     if (published != null) displaySamples.push({ tS: timeS, bar: published, confident: true });
     const display = published == null ? null : rollingDisplayBar(displaySamples, timeS);
     ms.push(performance.now() - t0);
     frames.push({
       timeS,
       bar: published,
-      tracking: published == null ? 'LOST' : 'TRACKING',
-      reason: gated.reason,
+      tracking: read.lost ? 'LOST' : (read.ok ? 'TRACKING' : 'UNCERTAIN'),
+      reason: 'tap',
+      falseTen: published != null && published >= 9.95,
     });
     snaps.push({
       timeS,
       published,
       display,
-      reason: gated.reason,
+      gateBar: gated.bar,
+      reason: 'tap',
       hub: read?.hub ? { x: read.hub.x, y: read.hub.y } : null,
       r5Bar: r5ForGate.r5Bar,
       r5Angle: r5ForGate.r5Angle,
@@ -385,12 +396,14 @@ async function scoreClip(clipId, labels, cv, ort, session) {
     const hub = mapLabelPoint(label.hub, storedW, storedH, rotation);
     const tip = mapLabelPoint(label.tip, storedW, storedH, rotation);
     const zero = mapLabelPoint(label.zero, storedW, storedH, rotation);
+    const five = label.five ? mapLabelPoint(label.five, storedW, storedH, rotation) : null;
     const ten = mapLabelPoint(label.ten, storedW, storedH, rotation);
     const mapped = {
       ...label,
       hub,
       labelNeedle: imageAngle(hub, tip),
       labelZero: imageAngle(hub, zero),
+      labelFive: five ? imageAngle(hub, five) : null,
       labelTen: imageAngle(hub, ten),
     };
     const truth = truthBarForLabel(mapped, offsetDeg);
@@ -492,6 +505,7 @@ function clipSummary(result) {
     flipPct: round(flipRatePct(shown.map((hit) => hit.needleErr)), 2),
     restOffsetBar: round(restOffsetBar(result.frames), 3),
     restLabelAbs: round(restLabel, 3),
+    falseTen: (result.frames || []).filter((frame) => frame.falseTen).length,
     jitterRms: round(jitterRms(result.frames), 4),
     msFrame: round(medianOf(result.ms), 1),
     hubPx: round(medianOf(hits.map((hit) => hit.hubPx)), 1),
@@ -511,11 +525,11 @@ function clipSummary(result) {
 
 function render(rows) {
   const lines = [
-    'Live r7 exam. Hand labels and rest = 0. Classical bar is not the answer.',
+    'Live tap exam. The scored bar is the pressure-lab on-screen reading (tap anchors, not the model gate).',
     'command: node scripts/needle-reader/exam.mjs --live',
     `clips: ${CLIPS_DIR}`,
-    'The model sample is applied one frame later, matching the live hook.',
-    'median/p90/wild/flip are labelled frames only. Coverage, rest, jitter, and ms/frame are the 125 ms stream.',
+    'The old exam scored the R7 gate against a label span, so a wrong scale could still look accurate.',
+    'median/p90/wild/flip are labelled or hand frames only. Coverage and false-10 counts are the 125 ms stream.',
     '',
     ['clip'.padEnd(16), 'cov%'.padStart(7), 'med'.padStart(7), 'p90'.padStart(7), 'wild%'.padStart(7), 'flip%'.padStart(7), 'rest'.padStart(7), 'ms'.padStart(7), 'n'.padStart(4)].join(' '),
   ];
@@ -549,9 +563,113 @@ function render(rows) {
     const parts = Object.entries(row.reasons);
     const stream = Object.entries(row.streamReasons || {});
     lines.push(`  ${row.calOk ? 'calibrated' : `calibration failed (${row.calReason})`}; label reasons ${parts.length ? parts.map(([key, value]) => `${key}=${value}`).join(' ') : 'none'}`);
-    lines.push(`  stream reasons ${stream.length ? stream.map(([key, value]) => `${key}=${value}`).join(' ') : 'none'}`);
+    lines.push(`  stream reasons ${stream.length ? stream.map(([key, value]) => `${key}=${value}`).join(' ') : 'none'}; false10=${row.falseTen ?? 0}`);
   }
   return lines;
+}
+
+const HAND_CLIPS = [
+  {
+    id: '20261024_124006',
+    file: '/workspace/dialin-promo/_work/rec/20261024_124006.mjpeg',
+    hand: '/workspace/pl-state/nr/cal3/hand-20261024_124006.json',
+    taps: {
+      centre: { x: 290.5, y: 396.3 },
+      five: { x: 248.2, y: 365.3 },
+      ten: { x: 316.1, y: 357.2 },
+    },
+  },
+  {
+    id: '20261025_130022',
+    file: '/workspace/dialin-promo/_work/rec/20261025_130022.mjpeg',
+    hand: '/workspace/pl-state/nr/exam1025/hand-bars-reference.json',
+    taps: {
+      centre: { x: 481, y: 342.5 },
+      five: { x: 522.8, y: 375.6 },
+      ten: { x: 453.3, y: 381.7 },
+    },
+  },
+];
+
+function loadHandRows(file) {
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  const rows = doc.rows || [];
+  if (rows.length && Array.isArray(rows[0])) {
+    return rows.map((row) => ({ frame: String(row[0]), timeS: row[1], hand_bar: row[3] }));
+  }
+  return rows.filter((row) => row.timeS != null && row.hand_bar != null);
+}
+
+function decodeCroppedStill(file, atSec) {
+  const ffmpeg = tool(FFMPEG_BIN, 'ffmpeg');
+  const result = spawnSync(ffmpeg, [
+    '-hide_banner', '-loglevel', 'error', '-nostdin',
+    '-ss', String(atSec), '-i', file,
+    '-frames:v', '1',
+    '-vf', 'crop=720:720:0:280',
+    '-f', 'rawvideo', '-pix_fmt', 'rgba', '-',
+  ], { maxBuffer: 720 * 720 * 4 + 1024 });
+  if (result.status !== 0) throw new Error(`still ${file}: ${result.stderr}`);
+  return rgbaImage(result.stdout, 720, 720);
+}
+
+/** Same Chrome centre-crop and taps as the live fake-camera check. */
+export async function scoreHandClip(spec) {
+  const still = decodeCroppedStill(spec.file, 1);
+  const calibrated = calibrateFromTaps(still, spec.taps);
+  const hands = loadHandRows(spec.hand);
+  if (!calibrated.ok) {
+    return {
+      id: spec.id,
+      calOk: false,
+      calReason: calibrated.reason || 'no-calibration',
+      frames: [],
+      labelHits: hands.map((row) => ({
+        id: row.frame,
+        phase: 'hand',
+        t: row.timeS,
+        truth: row.hand_bar,
+        published: null,
+      })),
+      ms: [],
+    };
+  }
+  const tracker = createCalibratedTracker(calibrated.calibration);
+  const frames = [];
+  const samples = [];
+  const ms = [];
+  for await (const { timeS, image } of streamFrames(spec.file, 720, 720, 'crop=720:720:0:280,fps=8')) {
+    const t0 = performance.now();
+    const read = readCalibratedFrame(image, tracker);
+    ms.push(performance.now() - t0);
+    const bar = read.bar;
+    frames.push({
+      timeS,
+      bar,
+      tracking: read.lost ? 'LOST' : (read.ok ? 'TRACKING' : 'UNCERTAIN'),
+      falseTen: bar != null && bar >= 9.95,
+    });
+    if (bar != null) samples.push({ timeS, bar });
+  }
+  const labelHits = hands.map((row) => {
+    const window = samples.filter((sample) => Math.abs(sample.timeS - row.timeS) <= 0.3);
+    const published = window.length ? medianOf(window.map((sample) => sample.bar)) : null;
+    return {
+      id: row.frame,
+      phase: 'hand',
+      t: row.timeS,
+      truth: row.hand_bar,
+      published,
+      display: published,
+      reason: published == null ? 'no-frame' : 'tap',
+      hubPx: null,
+      r5Bar: null,
+      classicalBar: published,
+      r6Bar: null,
+      needleErr: null,
+    };
+  });
+  return { id: spec.id, calOk: true, calReason: null, frames, labelHits, ms };
 }
 
 export async function runLiveExam() {
@@ -582,7 +700,15 @@ export async function runLiveExam() {
     process.stderr.write(`clip ${id}\n`);
     const result = await scoreClip(id, labels, cv, ort, session);
     rows.push(clipSummary(result));
-    process.stderr.write(`done ${id} cov=${rows.at(-1).coveragePct} med=${rows.at(-1).medianAbsBar}\n`);
+    process.stderr.write(`done ${id} cov=${rows.at(-1).coveragePct} med=${rows.at(-1).medianAbsBar} false10=${rows.at(-1).falseTen}\n`);
+  }
+  if (!only) {
+    for (const spec of HAND_CLIPS) {
+      process.stderr.write(`hand ${spec.id}\n`);
+      const result = await scoreHandClip(spec);
+      rows.push(clipSummary(result));
+      process.stderr.write(`done ${spec.id} cov=${rows.at(-1).coveragePct} med=${rows.at(-1).medianAbsBar} false10=${rows.at(-1).falseTen}\n`);
+    }
   }
   const allHits = rows.flatMap((row) => row.hits);
   const shown = allHits.filter((hit) => hit.published != null && hit.truth != null);

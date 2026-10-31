@@ -5,6 +5,10 @@ import {
   MARK_SWEEP_DEG,
   USER_PLACED_NOTE,
   barFromRestSpan,
+  barFromTapAnchors,
+  publishTapBar,
+  tickOrTapAngle,
+  TICK_SNAP_MAX_DEG,
   calibrateFromTaps,
   captureTipTemplate,
   createCalibratedTracker,
@@ -70,6 +74,56 @@ describe('barFromRestSpan', () => {
     expect(Math.abs(five - 5)).toBeLessThan(FIVE_WARN_BAR);
     const skewed = fiveCheckBar(zero + 40, zero, ten);
     expect(Math.abs(skewed - 5)).toBeGreaterThan(FIVE_WARN_BAR);
+  });
+});
+
+describe('barFromTapAnchors', () => {
+  const zero = 140;
+  const five = 140 + 74;
+  const ten = 140 + 162;
+
+  it('reads 0, 5, and 10 on the taps and bends the span at 5', () => {
+    expect(barFromTapAnchors(zero, zero, five, ten)).toBeCloseTo(0, 5);
+    expect(barFromTapAnchors(five, zero, five, ten)).toBeCloseTo(5, 5);
+    expect(barFromTapAnchors(ten, zero, five, ten)).toBeCloseTo(10, 5);
+    const mid = barFromTapAnchors(five + 44, zero, five, ten);
+    expect(mid).toBeGreaterThan(7);
+    expect(mid).toBeLessThan(8);
+  });
+
+  it('lets the needle sit just under the rest pin', () => {
+    const below = barFromTapAnchors(zero - 4, zero, five, ten);
+    expect(below).toBeLessThan(0);
+    expect(below).toBeGreaterThan(-0.6);
+  });
+
+  it('does not turn the opposite ray into 10', () => {
+    expect(barFromTapAnchors(zero + 180, zero, five, ten)).toBeNull();
+  });
+});
+
+describe('publishTapBar', () => {
+  it('hides a 10 that was not climbed to', () => {
+    expect(publishTapBar({ bar: 10, needleDeg: 300, tenDeg: 303, previousBar: 0 })).toBeNull();
+    expect(publishTapBar({ bar: 10, needleDeg: 300, tenDeg: 303, previousBar: null })).toBeNull();
+    expect(publishTapBar({ bar: 10, needleDeg: 220, tenDeg: 303, previousBar: 9 })).toBeNull();
+  });
+
+  it('keeps a 10 the needle reached continuously', () => {
+    expect(publishTapBar({ bar: 9.6, needleDeg: 301, tenDeg: 303, previousBar: 8.4 })).toBeCloseTo(9.6, 5);
+    expect(publishTapBar({ bar: 6.7, needleDeg: 260, tenDeg: 303, previousBar: 6.2 })).toBeCloseTo(6.7, 5);
+  });
+});
+
+describe('tickOrTapAngle', () => {
+  const hub = { x: 100, y: 100 };
+  const tap = { x: 140, y: 80 };
+
+  it('snaps only inside a few degrees', () => {
+    const tapDeg = tickOrTapAngle(hub, tap, null);
+    expect(tickOrTapAngle(hub, tap, tapDeg + 3)).toBeCloseTo(tapDeg + 3, 5);
+    expect(tickOrTapAngle(hub, tap, tapDeg + 10)).toBeCloseTo(tapDeg, 5);
+    expect(TICK_SNAP_MAX_DEG).toBeLessThanOrEqual(8);
   });
 });
 

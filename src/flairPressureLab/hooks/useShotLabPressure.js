@@ -50,6 +50,7 @@ export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
  *   replayFrameObserverRef?: import('react').MutableRefObject<((frame: object) => void) | null>,
  *   leapCap?: boolean,
  *   modelTiebreak?: boolean,
+ *   legacyScale?: boolean,
  * }} options
  */
 export function useShotLabPressure({
@@ -64,6 +65,7 @@ export function useShotLabPressure({
   replayFrameObserverRef,
   leapCap = true,
   modelTiebreak = true,
+  legacyScale = false,
 }) {
   const { videoRef, start, stop, status } = useFrontCameraStream();
   const sessionRef = useRef(createShotLabPressureSession());
@@ -102,13 +104,13 @@ export function useShotLabPressure({
   useEffect(() => {
     setCalibrated(Boolean(storedCalibration));
     if (storedCalibration) {
-      trackerRef.current = createCalibratedTracker(storedCalibration, { leapCap });
+      trackerRef.current = createCalibratedTracker(storedCalibration, { leapCap, legacyScale });
       r7Ref.current = createShotLabR7Publisher(storedCalibration, { modelTiebreak });
     } else {
       trackerRef.current = null;
       r7Ref.current = null;
     }
-  }, [storedCalibration, leapCap, modelTiebreak]);
+  }, [storedCalibration, leapCap, legacyScale, modelTiebreak]);
 
   const displaySurfaceActive = timerRunning || weighingViewOpen;
   const preShotDialCheckActive =
@@ -416,7 +418,7 @@ export function useShotLabPressure({
 
   const acceptCalibration = useCallback(
     ({ calibration, tracker }) => {
-      trackerRef.current = tracker ?? createCalibratedTracker(calibration, { leapCap });
+      trackerRef.current = tracker ?? createCalibratedTracker(calibration, { leapCap, legacyScale });
       r7Ref.current = createShotLabR7Publisher(calibration, { modelTiebreak });
       preShotDialSamplerRef.current.reset();
       preShotDialSamplerLockedRef.current = false;
@@ -425,7 +427,7 @@ export function useShotLabPressure({
       setReaderReady(isNeedleModelReady());
       onCalibrationSaved?.(calibration);
     },
-    [onCalibrationSaved, leapCap, modelTiebreak],
+    [onCalibrationSaved, leapCap, legacyScale, modelTiebreak],
   );
 
   const getShotMetrics = useCallback(() => {

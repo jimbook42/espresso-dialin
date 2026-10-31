@@ -21,6 +21,8 @@ export const LAB_PRESSURE_READER_KEY = 'labPressureReader';
 export const LAB_PRESSURE_READER_LEGACY = 'v4.13.17';
 /** Leap-cap tracker that still withholds a frame when the needle model disagrees. */
 export const LAB_PRESSURE_READER_BLOCKER = 'v4.13.20';
+/** Previous scale: snap-band template, linear 0–10, and an unguarded 10. */
+export const LAB_PRESSURE_READER_SCALE = 'v4.13.21';
 
 export function labPressureReaderLegacy(settings) {
   return settings?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_LEGACY;
@@ -30,4 +32,9 @@ export function labPressureReaderLegacy(settings) {
 export function labPressureModelTiebreak(settings) {
   const value = settings?.[LAB_PRESSURE_READER_KEY];
   return value !== LAB_PRESSURE_READER_LEGACY && value !== LAB_PRESSURE_READER_BLOCKER;
+}
+
+/** v4.13.21 keeps the scale from before the tap anchors were trusted. */
+export function labPressureScaleLegacy(settings) {
+  return settings?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_SCALE;
 }

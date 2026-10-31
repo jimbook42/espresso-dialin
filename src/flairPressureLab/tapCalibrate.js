@@ -27,6 +27,17 @@ import { regularizeTapAnchors } from './anchorRegularize.js';
 
 /** Clockwise travel from the printed 5 to the printed 10. */
 export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
+/**
+ * Real Flair 58 travel from the resting needle to the printed 10.
+ * The design-dial sweep (179.52°) is longer than the gauge in Isaac's taps.
+ */
+export const REST_TO_TEN_DEG = 161.757;
+/** A detected tick may replace a tap only inside this angle. Farther, the tap wins. */
+export const TICK_SNAP_MAX_DEG = 6;
+/** Top of the scale is shown only after the needle has already climbed there. */
+export const TOP_BAR_MIN = 9.2;
+export const TOP_BAR_FROM = 8;
+export const TOP_BAR_STEP = 1.6;
 
 /** Legacy reference radius (replay / QA dial size). Scaling uses this as 1.0. */
 export const REFERENCE_GAUGE_RADIUS_PX = 90;
@@ -266,6 +277,52 @@ export function fiveCheckBar(fiveDeg, zeroDeg, tenDeg) {
   return barFromRestSpan(fiveDeg, zeroDeg, tenDeg);
 }
 
+/**
+ * Bar through the resting needle, the printed 5, and the printed 10.
+ * The 5 and 10 angles are the taps (or a tick within a few degrees of them).
+ * Just under rest is a small negative. Just past 10 is 10. The rest of the
+ * circle is not a reading.
+ */
+export function barFromTapAnchors(needleDeg, zeroDeg, fiveDeg, tenDeg) {
+  if (needleDeg == null || zeroDeg == null || tenDeg == null) return null;
+  const span = clockwiseDeg(zeroDeg, tenDeg);
+  if (!(span > 40) || span > 280) return null;
+  const delta = clockwiseDeg(zeroDeg, needleDeg);
+  const edge = Math.min(8, span * 0.05);
+  const fiveSpan = fiveDeg == null ? null : clockwiseDeg(zeroDeg, fiveDeg);
+  const fiveOnArc = fiveSpan != null && fiveSpan > 12 && fiveSpan < span - 12;
+  if (delta >= 360 - edge) {
+    const below = delta - 360;
+    if (!fiveOnArc) return 0;
+    return Math.max(-0.6, (below / fiveSpan) * 5);
+  }
+  if (delta <= span) {
+    if (!fiveOnArc) return (delta / span) * 10;
+    if (delta <= fiveSpan) return (delta / fiveSpan) * 5;
+    return 5 + ((delta - fiveSpan) / (span - fiveSpan)) * 5;
+  }
+  if (delta <= span + edge) return 10;
+  return null;
+}
+
+/**
+ * A 10 is a reading only when the needle is on that mark and the shot
+ * already climbed there. A flip, a hand on the lever, or the edge clamp
+ * must not publish 10.
+ */
+export function publishTapBar({ bar, needleDeg, tenDeg, previousBar }) {
+  if (bar == null || Number.isNaN(bar)) return null;
+  if (bar < TOP_BAR_MIN) return bar;
+  const nearTen = needleDeg != null
+    && tenDeg != null
+    && Math.abs(wrapDelta(needleDeg, tenDeg)) <= 8;
+  const rose = previousBar != null
+    && previousBar >= TOP_BAR_FROM
+    && bar - previousBar <= TOP_BAR_STEP;
+  if (nearTen && rose) return bar;
+  return null;
+}
+
 export const FIVE_WARN_BAR = 0.75;
 
 function bezelScoreAt(data, width, height, cx, cy, radius) {
@@ -467,16 +524,28 @@ function cropImage(image, cx, cy, radius) {
   };
 }
 
-/** The rest needle points at the pin, about one sweep short of the printed 10. */
+/**
+ * The rest needle is 0 bar. It sits on the stop pin, one real 0→10 span
+ * short of the printed 10 — not the longer design-dial sweep. The tail is
+ * the opposite ray; keep the ray that matches that span.
+ */
 export function chooseRestNeedle(angleDeg, tenDeg) {
   if (angleDeg == null || tenDeg == null) return angleDeg;
-  const target = FLAIR_58_SCALE.sweepDeg;
+  const target = REST_TO_TEN_DEG;
   const direct = clockwiseDeg(angleDeg, tenDeg);
   const flipped = clockwiseDeg(wrap360(angleDeg + 180), tenDeg);
   if (Math.abs(wrapDelta(flipped, target)) + 12 < Math.abs(wrapDelta(direct, target))) {
     return wrap360(angleDeg + 180);
   }
   return angleDeg;
+}
+
+/** Detected tick wins only when it is within a few degrees of the tap. */
+export function tickOrTapAngle(hub, tap, detectedDeg) {
+  const tapDeg = pointAngle(hub, tap);
+  if (detectedDeg == null || !Number.isFinite(detectedDeg)) return tapDeg;
+  if (Math.abs(wrapDelta(tapDeg, detectedDeg)) <= TICK_SNAP_MAX_DEG) return detectedDeg;
+  return tapDeg;
 }
 
 export function readNeedleAt(image, cx, cy, radius, hintDeg = null) {
@@ -943,6 +1012,15 @@ export function calibrateFromTaps(image, taps) {
       marks,
       snapPx: { centre: hubPx, five: null, ten: null },
     };
+  } else {
+    const fiveKept = tickOrTapAngle(hub, fiveTap, marks.fiveDeg);
+    const tenKept = tickOrTapAngle(hub, tenTap, marks.tenDeg);
+    if (fiveKept !== marks.fiveDeg) {
+      marks = { ...marks, fiveDeg: fiveKept, five: fiveTap, fivePx: 0 };
+    }
+    if (tenKept !== marks.tenDeg) {
+      marks = { ...marks, tenDeg: tenKept, ten: tenTap, tenPx: 0 };
+    }
   }
   const named = detectBadTap(centreTap, fiveTap, tenTap, {
     hubPx: geomOk ? 0 : hubPx,
@@ -966,10 +1044,8 @@ export function calibrateFromTaps(image, taps) {
   }
 
   let zeroAngleDeg = needleWeak
-    ? wrap360(marks.tenDeg - FLAIR_58_SCALE.sweepDeg)
-    : userPlaced
-      ? wrap360(needle.angleDeg)
-      : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
+    ? wrap360(marks.tenDeg - REST_TO_TEN_DEG)
+    : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
   let tenAngleDeg = marks.tenDeg;
   let fiveAngleDeg = marks.fiveDeg;
   const r6 = taps.r6Anchor ?? taps.r6;
@@ -987,7 +1063,11 @@ export function calibrateFromTaps(image, taps) {
   }
   const spanDeg = clockwiseDeg(zeroAngleDeg, tenAngleDeg);
   const fiveBar = fiveCheckBar(fiveAngleDeg, zeroAngleDeg, tenAngleDeg);
-  const templateBands = marks.bands
+  const legacyScale = taps.legacyScale === true;
+  // The snap histogram is measured on another radius, so correlating it
+  // against the live annulus rotates a correct 10 tap by about 10°.
+  // The tracking template is the same annulus the reader samples.
+  const templateBands = legacyScale && marks.bands
     ? packTemplate(marks.bands)
     : packTemplate(fixedBands(image, hub.x, hub.y, marks.colorRadius, zeroAngleDeg));
   return {
@@ -1016,6 +1096,7 @@ export function calibrateFromTaps(image, taps) {
       needleTemplate: captureTipTemplate(image, hub.x, hub.y, zeroAngleDeg, hub.radius),
       needleQuality: needle.quality,
       userPlaced,
+      legacyScale,
     },
   };
 }
@@ -1035,6 +1116,9 @@ export function createCalibratedTracker(calibration, options = {}) {
     score: 1,
     /** False restores the v4.13.17 search, which can leap onto another circle. */
     leapCap: options.leapCap !== false,
+    /** v4.13.21 kept the snap-band template, the linear span, and an unguarded 10. */
+    legacyScale: options.legacyScale === true || calibration.legacyScale === true,
+    lastGoodBar: null,
   };
 }
 
@@ -1164,9 +1248,17 @@ export function readCalibratedFrame(image, tracker) {
   const darkShift = correlateShift(tracker.calibration.template.dark, bands.dark);
   const shiftDisagree = Math.abs(wrapDelta(redShift.shiftDeg, darkShift.shiftDeg));
   const shiftSmall = Math.abs(wrapDelta(redShift.shiftDeg, 0)) <= 14;
-  const shiftAgrees = darkShift.corr < 0.45 || shiftDisagree <= 12;
+  // v4.13.21 trusted a red-only match. That match sat ~10° off the 10 tap
+  // and stuck for the whole shot. Both bands have to agree now.
+  const shiftAgrees = tracker.legacyScale
+    ? (darkShift.corr < 0.45 || shiftDisagree <= 12)
+    : (darkShift.corr >= 0.45 && shiftDisagree <= TICK_SNAP_MAX_DEG);
   const shiftOk = bands.redMass > 1.2 && redShift.corr >= 0.72 && shiftSmall && shiftAgrees;
-  const shiftDeg = shiftOk ? redShift.shiftDeg : tracker.pose.shiftDeg;
+  // A placed 5 and 10 are the scale. The colour match was moving that 10 by
+  // about 10° and leaving it there, so the needle angle was right and the bar was low.
+  const shiftDeg = tracker.calibration.userPlaced === true && !tracker.legacyScale
+    ? 0
+    : (shiftOk ? redShift.shiftDeg : (tracker.pose.shiftDeg || 0));
   const match = redShift.corr;
   const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
   const lost = !bezelOk;
@@ -1186,9 +1278,20 @@ export function readCalibratedFrame(image, tracker) {
   const zero = wrap360(tracker.calibration.zeroAngleDeg + shiftDeg);
   const ten = wrap360(tracker.calibration.tenAngleDeg + shiftDeg);
   const five = wrap360(tracker.calibration.fiveAngleDeg + shiftDeg);
-  const bar = !lost && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY
-    ? barFromRestSpan(needle.angleDeg, zero, ten)
+  const rawBar = !lost && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY
+    ? (tracker.legacyScale
+      ? barFromRestSpan(needle.angleDeg, zero, ten)
+      : barFromTapAnchors(needle.angleDeg, zero, five, ten))
     : null;
+  const bar = tracker.legacyScale
+    ? rawBar
+    : publishTapBar({
+      bar: rawBar,
+      needleDeg: needle.angleDeg,
+      tenDeg: ten,
+      previousBar: tracker.lastGoodBar,
+    });
+  if (bar != null) tracker.lastGoodBar = bar;
   return {
     ok: bar != null,
     lost,

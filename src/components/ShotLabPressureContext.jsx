@@ -7,7 +7,7 @@ import {
   labPressureNeedsGaugeSetup,
   labPressureTestingShotLabel,
 } from '../flairPressureLab/shotLabPressureTrust.js';
-import { isLabCameraPressureEnabled, labGaugeTapCalibrationFromSettings, labPressureModelTiebreak, labPressureReaderLegacy } from '../settings/labCameraPressure.js';
+import { isLabCameraPressureEnabled, labGaugeTapCalibrationFromSettings, labPressureModelTiebreak, labPressureReaderLegacy, labPressureScaleLegacy } from '../settings/labCameraPressure.js';
 import { LabGaugeTapCalibrateSheet } from './LabGaugeTapCalibrateSheet.jsx';
 import { useLabPressureCornerPreviewStyle } from '../flairPressureLab/hooks/useLabPressureCornerPreviewStyle.js';
 import { useLabShotReplay } from '../flairPressureLab/hooks/useLabShotReplay.js';
@@ -68,6 +68,7 @@ export function ShotLabPressureProvider({
     replayFrameObserverRef,
     leapCap: !labPressureReaderLegacy(settings),
     modelTiebreak: labPressureModelTiebreak(settings),
+    legacyScale: labPressureScaleLegacy(settings),
   });
 
   useLabShotReplay({
@@ -213,6 +214,7 @@ export function ShotLabPressureProvider({
         ui={ui}
         showCameraPreview={previewOn}
         leapCap={!labPressureReaderLegacy(settings)}
+        legacyScale={labPressureScaleLegacy(settings)}
       />
       {children}
     </ShotLabPressureContext.Provider>

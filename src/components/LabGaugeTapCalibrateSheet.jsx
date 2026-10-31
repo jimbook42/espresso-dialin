@@ -51,6 +51,7 @@ export function LabGaugeTapCalibrateSheet({
   ui,
   showCameraPreview = false,
   leapCap = true,
+  legacyScale = false,
 }) {
   const { videoRef, start, stop, status, error } = useFrontCameraStream();
   const [tapPhase, setTapPhase] = useState('aim');
@@ -278,7 +279,7 @@ export function LabGaugeTapCalibrateSheet({
     const image = frozenRef.current;
     const taps = tapsRef.current;
     if (!image || !taps.centre || !taps.five || !taps.ten) return;
-    const result = calibrateFromTaps(image, taps);
+    const result = calibrateFromTaps(image, { ...taps, legacyScale });
     if (!result.ok) {
       const again = result.redo || 'centre';
       tapsRef.current = { ...tapsRef.current, [again]: null };
@@ -417,7 +418,7 @@ export function LabGaugeTapCalibrateSheet({
   const accept = () => {
     const pending = pendingCalRef.current;
     if (!pending?.ok) return;
-    const tracker = createCalibratedTracker(pending.calibration, { leapCap });
+    const tracker = createCalibratedTracker(pending.calibration, { leapCap, legacyScale });
     onAccepted?.({ calibration: pending.calibration, tracker });
     onClose?.();
   };
