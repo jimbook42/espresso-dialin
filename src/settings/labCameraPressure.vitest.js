@@ -3,6 +3,7 @@ import {
   isLabCameraPressureEnabled,
   labGaugeTapCalibrationFromSettings,
   labPressureReaderLegacy,
+  labPressureModelTiebreak,
 } from './labCameraPressure.js';
 
 describe('labCameraPressure settings', () => {
@@ -28,5 +29,14 @@ describe('labCameraPressure settings', () => {
     expect(labPressureReaderLegacy({})).toBe(false);
     expect(labPressureReaderLegacy({ labPressureReader: 'current' })).toBe(false);
     expect(labPressureReaderLegacy({ labPressureReader: 'v4.13.17' })).toBe(true);
+    expect(labPressureReaderLegacy({ labPressureReader: 'v4.13.20' })).toBe(false);
+  });
+
+  it('uses the model as a tiebreak unless an older reader is stored', () => {
+    expect(labPressureModelTiebreak(null)).toBe(true);
+    expect(labPressureModelTiebreak({})).toBe(true);
+    expect(labPressureModelTiebreak({ labPressureReader: 'current' })).toBe(true);
+    expect(labPressureModelTiebreak({ labPressureReader: 'v4.13.20' })).toBe(false);
+    expect(labPressureModelTiebreak({ labPressureReader: 'v4.13.17' })).toBe(false);
   });
 });

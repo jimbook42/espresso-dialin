@@ -12,9 +12,10 @@ export const SHOT_LAB_R7_FRAME_MS = PROCESS_INTERVAL_MS;
  * Live R7 publisher: tap-calibrated classical (R6-cleaned) + R5 sample + TemporalGate.
  * Reader numbers come from frozen r7_config.json only.
  */
-export function createShotLabR7Publisher(tapCalibration) {
+export function createShotLabR7Publisher(tapCalibration, options = {}) {
   const bundle = loadR7Config();
   const gateCfg = gateConfigR7(bundle);
+  if (options.modelTiebreak === false) gateCfg.modelTiebreak = false;
   const { anchors } = regularizeReplayAnchors(tapCalibration, bundle.reader);
   const classical = createClassicalReaderR6(bundle.reader);
   let gateState = initialTemporalState();
@@ -63,6 +64,9 @@ export function createShotLabR7Publisher(tapCalibration) {
     const classicalBar = classicalStep.published ? classicalStep.bar : null;
     const classicalConfidence =
       classicalStep.published && classicalBar != null ? NEEDLE_TRACK_QUALITY : null;
+    // The classical reader already says when it is guessing: it did not publish,
+    // or it is holding the last bar through an UNCERTAIN stretch.
+    const classicalUnsure = !classicalStep.published || classicalStep.reason === 'uncertain-hold';
     const gated = stepTemporalGate(gateState, {
       t,
       r2Bar: r5Bar,
@@ -71,6 +75,7 @@ export function createShotLabR7Publisher(tapCalibration) {
       classicalBar,
       classicalAngle: classicalStep.needleDeg,
       classicalConfidence,
+      classicalUnsure,
       rest,
     }, gateCfg);
     gateState = gated.state;

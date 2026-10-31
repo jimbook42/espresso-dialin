@@ -22,6 +22,7 @@ function sample(t, r2Bar, classicalBar, extra = {}) {
     classicalBar,
     classicalConfidence: extra.classicalConfidence ?? 0.5,
     classicalAngle: extra.classicalAngle ?? null,
+    classicalUnsure: extra.classicalUnsure === true,
     rest: extra.rest === true,
   };
 }
@@ -223,6 +224,24 @@ describe('temporal gate', () => {
     ], config);
     expect(frame.bar).toBeCloseTo(1.0, 5);
     expect(frame.reason).toBe('ok');
+  });
+
+  it('publishes a sure classical bar when the model disagrees and tiebreak is on', () => {
+    const config = { ...R7_DIRECT, modelTiebreak: true };
+    const [frame] = runTemporalGate([
+      sample(0, 0.2, 6.4, { classicalConfidence: 0.25, r2Angle: 150, classicalAngle: 40, classicalUnsure: false }),
+    ], config);
+    expect(frame.bar).toBeCloseTo(6.4, 5);
+    expect(frame.reason).toBe('classical-direct');
+  });
+
+  it('withholds when classical is unsure and the model disagrees', () => {
+    const config = { ...R7_DIRECT, modelTiebreak: true };
+    const [frame] = runTemporalGate([
+      sample(0, 0.2, 6.4, { classicalConfidence: 0.25, r2Angle: 150, classicalAngle: 40, classicalUnsure: true }),
+    ], config);
+    expect(frame.bar).toBeNull();
+    expect(frame.reason).toBe('disagree');
   });
 
   it('does not jump beyond the guard when switching to classical', () => {

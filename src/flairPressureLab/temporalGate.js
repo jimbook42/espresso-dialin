@@ -44,10 +44,12 @@ export const TEMPORAL_GATE = {
   holdGapS: 0.5,
   holdBandBar: 0.5,
   /**
-   * R7: prefer cleaned classical whenever it is published; fall back to R5 only when
-   * classical is missing or |classical − R5| exceeds classicalDirectMaxDisagreeBar.
+   * R7: prefer cleaned classical whenever it is published.
+   * modelTiebreak: a disagreement withholds only when classical is already unsure.
+   * Off, the model still blocks a published classical bar past classicalDirectMaxDisagreeBar.
    */
   classicalDirect: false,
+  modelTiebreak: false,
   classicalDirectMaxDisagreeBar: 2,
   classicalDirectMinConfidence: 0.18,
   /** When set, classicalDirect only runs if R2 confidence is below this (or R2 bar missing). */
@@ -114,13 +116,14 @@ function classicalIsPublished(sample, config) {
     && !classicalIsFlip(sample, config);
 }
 
-/** When classicalDirect is on, publish classical unless R5 disagrees beyond the guard band. */
+/** When classicalDirect is on, publish classical. A model disagreement withholds only when asked. */
 function preferClassicalBar(sample, config, r2Bar, currentBar) {
   if (config.classicalDirect !== true || !classicalIsPublished(sample, config)) {
     return { bar: currentBar, reason: null };
   }
   const guard = config.classicalDirectMaxDisagreeBar;
-  if (r2Bar != null && Math.abs(sample.classicalBar - r2Bar) > guard) {
+  const disagrees = r2Bar != null && Math.abs(sample.classicalBar - r2Bar) > guard;
+  if (disagrees && (config.modelTiebreak !== true || sample.classicalUnsure === true)) {
     return { bar: currentBar, reason: null };
   }
   return { bar: sample.classicalBar, reason: 'classical-direct' };
@@ -136,6 +139,7 @@ function preferClassicalBar(sample, config, r2Bar, currentBar) {
  *   classicalBar?: number|null,
  *   classicalConfidence?: number|null,
  *   classicalAngle?: number|null,
+ *   classicalUnsure?: boolean,
  *   rest?: boolean,
  * }} sample
  * @param {typeof TEMPORAL_GATE} [config]

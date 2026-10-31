@@ -19,7 +19,15 @@ export function labGaugeTapCalibrationFromSettings(settings) {
 /** Previous tracker. Anything else, including unset, is the current reader. */
 export const LAB_PRESSURE_READER_KEY = 'labPressureReader';
 export const LAB_PRESSURE_READER_LEGACY = 'v4.13.17';
+/** Leap-cap tracker that still withholds a frame when the needle model disagrees. */
+export const LAB_PRESSURE_READER_BLOCKER = 'v4.13.20';
 
 export function labPressureReaderLegacy(settings) {
   return settings?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_LEGACY;
+}
+
+/** Current reader. v4.13.20 and v4.13.17 keep the model veto. */
+export function labPressureModelTiebreak(settings) {
+  const value = settings?.[LAB_PRESSURE_READER_KEY];
+  return value !== LAB_PRESSURE_READER_LEGACY && value !== LAB_PRESSURE_READER_BLOCKER;
 }

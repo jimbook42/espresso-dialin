@@ -30,5 +30,6 @@ export function gateConfigR7(r7 = loadR7Config()) {
     classicalDirectMaxDisagreeBar: r7.gate.classicalDirectMaxDisagreeBar ?? 2,
     classicalDirectMaxR2Conf: r7.gate.classicalDirectMaxR2Conf ?? null,
     classicalDirectAllowWeakR2: false,
+    modelTiebreak: true,
   };
 }

@@ -16,6 +16,8 @@ describe('shotLabR7Live', () => {
   it('publisher uses temporal gate config from frozen r7_config', () => {
     const pub = createShotLabR7Publisher(TAP_CAL);
     expect(pub.gateConfig.classicalDirect).toBe(true);
+    expect(pub.gateConfig.modelTiebreak).toBe(true);
+    expect(createShotLabR7Publisher(TAP_CAL, { modelTiebreak: false }).gateConfig.modelTiebreak).toBe(false);
     expect(pub.readerConfig.frameIntervalMs).toBe(125);
   });
 

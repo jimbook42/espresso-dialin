@@ -235,11 +235,11 @@ import { ShotPressureChart } from './components/ShotPressureChart.jsx';
 import {
   LAB_CAMERA_PRESSURE_KEY,
   LAB_GAUGE_TAP_CALIBRATION_KEY,
+  LAB_PRESSURE_READER_BLOCKER,
   LAB_PRESSURE_READER_KEY,
   LAB_PRESSURE_READER_LEGACY,
   isLabCameraPressureEnabled,
   labGaugeTapCalibrationFromSettings,
-  labPressureReaderLegacy,
 } from './settings/labCameraPressure.js';
 import { LAB_PRESSURE_CAMERA_PREVIEW_KEY } from './flairPressureLab/shotLabPressureTrust.js';
 import { shotTimerLabCompactClass } from './flairPressureLab/shotTimerCompactLayout.js';
@@ -1435,7 +1435,9 @@ export default function App() {
   };
 
   const handleLabPressureReader = async (value) => {
-    const next = value === LAB_PRESSURE_READER_LEGACY ? LAB_PRESSURE_READER_LEGACY : 'current';
+    const next = value === LAB_PRESSURE_READER_LEGACY || value === LAB_PRESSURE_READER_BLOCKER
+      ? value
+      : 'current';
     await patchGlobalSettings(db, { [LAB_PRESSURE_READER_KEY]: next });
   };
 
@@ -4558,14 +4560,20 @@ export default function App() {
                     <div>
                       <span className={`font-bold block ${ui.text}`}>Pressure reader</span>
                       <span className={`text-[10px] ${ui.muted}`}>
-                        Current stops the hub jumping onto another circle. v4.13.17 is the previous tracker.
+                        Current keeps a sure classical reading when the needle model disagrees. v4.13.20 withholds that frame. v4.13.17 is the previous tracker.
                       </span>
                       <select
-                        value={labPressureReaderLegacy(settingsSetting) ? LAB_PRESSURE_READER_LEGACY : 'current'}
+                        value={
+                          settingsSetting?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_LEGACY
+                          || settingsSetting?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_BLOCKER
+                            ? settingsSetting[LAB_PRESSURE_READER_KEY]
+                            : 'current'
+                        }
                         onChange={(e) => handleLabPressureReader(e.target.value)}
                         className={`mt-2 w-full ${inputClass} border rounded-lg p-2.5 font-semibold text-xs`}
                       >
                         <option value="current">Current</option>
+                        <option value={LAB_PRESSURE_READER_BLOCKER}>v4.13.20</option>
                         <option value={LAB_PRESSURE_READER_LEGACY}>v4.13.17</option>
                       </select>
                     </div>

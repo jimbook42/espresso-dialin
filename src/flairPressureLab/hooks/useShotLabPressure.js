@@ -49,6 +49,7 @@ export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
  *   preShotDialCheckSurface: boolean,
  *   replayFrameObserverRef?: import('react').MutableRefObject<((frame: object) => void) | null>,
  *   leapCap?: boolean,
+ *   modelTiebreak?: boolean,
  * }} options
  */
 export function useShotLabPressure({
@@ -62,6 +63,7 @@ export function useShotLabPressure({
   preShotDialCheckSurface = false,
   replayFrameObserverRef,
   leapCap = true,
+  modelTiebreak = true,
 }) {
   const { videoRef, start, stop, status } = useFrontCameraStream();
   const sessionRef = useRef(createShotLabPressureSession());
@@ -101,12 +103,12 @@ export function useShotLabPressure({
     setCalibrated(Boolean(storedCalibration));
     if (storedCalibration) {
       trackerRef.current = createCalibratedTracker(storedCalibration, { leapCap });
-      r7Ref.current = createShotLabR7Publisher(storedCalibration);
+      r7Ref.current = createShotLabR7Publisher(storedCalibration, { modelTiebreak });
     } else {
       trackerRef.current = null;
       r7Ref.current = null;
     }
-  }, [storedCalibration, leapCap]);
+  }, [storedCalibration, leapCap, modelTiebreak]);
 
   const displaySurfaceActive = timerRunning || weighingViewOpen;
   const preShotDialCheckActive =
@@ -415,7 +417,7 @@ export function useShotLabPressure({
   const acceptCalibration = useCallback(
     ({ calibration, tracker }) => {
       trackerRef.current = tracker ?? createCalibratedTracker(calibration, { leapCap });
-      r7Ref.current = createShotLabR7Publisher(calibration);
+      r7Ref.current = createShotLabR7Publisher(calibration, { modelTiebreak });
       preShotDialSamplerRef.current.reset();
       preShotDialSamplerLockedRef.current = false;
       setPreShotDialStatus('checking');
@@ -423,7 +425,7 @@ export function useShotLabPressure({
       setReaderReady(isNeedleModelReady());
       onCalibrationSaved?.(calibration);
     },
-    [onCalibrationSaved, leapCap],
+    [onCalibrationSaved, leapCap, modelTiebreak],
   );
 
   const getShotMetrics = useCallback(() => {
