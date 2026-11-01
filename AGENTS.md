@@ -8,7 +8,7 @@
 
 ## Commands (run from repo root)
 - Install: `npm ci`
-- Unit tests: `npm run test:vitest` (main suite). Known env-only failures on Windows: tests needing python/ffmpeg/box files. Report them; don't "fix" them by deleting tests.
+- Unit tests: `npm run test:vitest` (main suite). Known environment-only failures on Isaac's PC: the 2 needle-reader tests that need Python, and the temporal replay suite that needs `/workspace/.../raw-frames.json` (box-only). These do NOT count as failures: if everything else passes and the build passes, treat tests as green and carry on (merge/deploy if the prompt says so). Any other failure is real: stop and report. Never delete or skip tests to get green.
 - Legacy tests: `npm test`
 - Lint: `npm run lint`
 - Build: `npm run build`
