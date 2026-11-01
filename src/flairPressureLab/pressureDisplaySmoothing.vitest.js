@@ -23,8 +23,8 @@ describe('pressureDisplaySmoothing', () => {
       { tS: 0.5, bar: 4 },
       { tS: 1.2, bar: 10 },
     ];
-    expect(rollingDisplayBar(samples, 1.0)).toBe(3);
-    expect(rollingDisplayBar(samples, 1.2)).toBe(7);
+    expect(rollingDisplayBar(samples, 1.0)).toBe(4);
+    expect(rollingDisplayBar(samples, 1.2)).toBe(10);
   });
 
   it('peak uses raw confident samples only', () => {
@@ -55,7 +55,7 @@ describe('pressureDisplaySmoothing', () => {
     const raw = pressureChartPointsFromRaw(samples);
     const display = pressureChartPointsForDisplay(samples);
     expect(raw[raw.length - 1].bar).toBe(8);
-    expect(display[display.length - 1].bar).toBeLessThan(8);
+    expect(display[display.length - 1].bar).toBe(8);
   });
 
   it('plot lead shifts saved-curve times earlier', () => {
@@ -84,6 +84,17 @@ describe('pressureDisplaySmoothing', () => {
     expect(savedCross).toBeLessThan(trailingCross);
   });
 
+  it('follows a drop instead of holding the plateau in the trailing mean', () => {
+    const samples = [
+      { tS: 0.2, bar: 7.5 },
+      { tS: 0.6, bar: 7.4 },
+      { tS: 1.0, bar: 7.2 },
+      { tS: 1.2, bar: 5.1 },
+      { tS: 1.3, bar: 4.6 },
+    ];
+    expect(rollingDisplayBar(samples, 1.3)).toBeCloseTo(4.6, 5);
+  });
+
   it('centered bar at a step is not delayed like trailing bar at the same instant', () => {
     const samples = [
       { tS: 1.5, bar: 0 },
@@ -92,6 +103,7 @@ describe('pressureDisplaySmoothing', () => {
     ];
     const at2 = rollingDisplayBar(samples, 2);
     const centered = rollingCenteredBar(samples, 2);
-    expect(centered).toBeGreaterThan(at2);
+    expect(at2).toBe(10);
+    expect(centered).toBeGreaterThan(5);
   });
 });

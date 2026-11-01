@@ -124,6 +124,8 @@ export const USER_PLACED_NOTE = 'Using your taps as placed';
 const LOST_BEZEL = 0.35;
 const LOST_RIM_STD = 10;
 const TRACK_NEAR_PX = 10;
+/** Rest-to-plateau hub travel on 124006. Searched every frame, inside the leap cap. */
+const HUB_FOLLOW_PX = 28;
 const TRACK_FAR_PX = 36;
 /** Farther than this, the rim search locks a different circle. Default on. */
 const TRACK_LEAP_PX = 48;
@@ -318,9 +320,27 @@ export function publishTapBar({ bar, needleDeg, tenDeg, previousBar }) {
     && Math.abs(wrapDelta(needleDeg, tenDeg)) <= 8;
   const rose = previousBar != null
     && previousBar >= TOP_BAR_FROM
-    && bar - previousBar <= TOP_BAR_STEP;
+    && bar - previousBar <= TOP_BAR_STEP
+    && bar >= previousBar - 0.4;
   if (nearTen && rose) return bar;
-  return null;
+  // Hold the last reading. A 10 that was not climbed to is not shown.
+  return previousBar != null ? previousBar : null;
+}
+
+/**
+ * A centre that has moved with the lever should replace the pose when the
+ * new rim is about as round. Quiet jitter and a leap onto another circle stay put.
+ */
+export function hubFollowsMove(prior, found, {
+  minMovePx = 12,
+  maxMovePx = 48,
+  stdSlack = 0.45,
+} = {}) {
+  if (!prior || !found || found.x == null || found.y == null) return false;
+  const dist = Math.hypot(found.x - prior.x, found.y - prior.y);
+  if (!(dist >= minMovePx) || dist > maxMovePx) return false;
+  if (prior.std == null || found.std == null) return true;
+  return found.std <= prior.std + stdSlack;
 }
 
 export const FIVE_WARN_BAR = 0.75;
@@ -755,15 +775,31 @@ export function matchTipAngle(image, cx, cy, radius, template, zeroDeg, tenDeg, 
     if (near && Math.abs(wrapDelta(near.deg, priorDeg)) <= half - 4) found = near;
   }
   if (!found) found = scanTip(image, cx, cy, radius, template, anglesOnArc(zeroDeg, tenDeg), priorDeg);
-  if (!found || barFromRestSpan(found.deg, zeroDeg, tenDeg) == null) return null;
+  if (!found || barFromRestSpan(found.deg, zeroDeg, tenDeg) == null) {
+    // A fast rise blurs the tip below the strict gate. A short step forward
+    // from the last angle is the needle, not the pin.
+    const loose = gatherTip(image, cx, cy, radius, template, anglesOnArc(zeroDeg, tenDeg), priorDeg, 4);
+    const row = loose.byCorr;
+    const step = row && priorDeg != null ? clockwiseDeg(priorDeg, row.deg) : 999;
+    if (misses >= 1 && row && row.corr >= 0.85 && row.bins >= 4 && step >= 1.5 && step <= 18) {
+      found = row;
+    } else {
+      return null;
+    }
+  }
   const refined = refineTip(image, cx, cy, radius, template, found);
   if (barFromRestSpan(refined.deg, zeroDeg, tenDeg) == null) return null;
   const jump = priorDeg == null ? 0 : Math.abs(wrapDelta(refined.deg, priorDeg));
   const jumpLimit = misses >= 2 ? 150 : 85;
   if (jump > jumpLimit) return null;
   // A line that barely leaves the last angle is usually the tail or the pin.
-  // The detector already had that neighbourhood and declined it.
-  if (jump < 30 && refined.corr < 0.95 && refined.bins < 7) return null;
+  // The detector already had that neighbourhood and declined it. A step
+  // forward along the scale is the needle moving.
+  const forward = priorDeg != null && clockwiseDeg(priorDeg, refined.deg) >= 1.5
+    && clockwiseDeg(priorDeg, refined.deg) <= 18;
+  if (jump < 30 && refined.corr < 0.95 && refined.bins < 7 && !(forward && refined.corr >= 0.85 && refined.bins >= 5)) {
+    return null;
+  }
   return {
     angleDeg: refined.deg,
     quality: Math.max(NEEDLE_LOST_QUALITY, Math.min(1, refined.corr)),
@@ -1119,6 +1155,7 @@ export function createCalibratedTracker(calibration, options = {}) {
     /** v4.13.21 kept the snap-band template, the linear span, and an unguarded 10. */
     legacyScale: options.legacyScale === true || calibration.legacyScale === true,
     lastGoodBar: null,
+    pendingShift: null,
   };
 }
 
@@ -1136,8 +1173,19 @@ function trackPose(image, tracker) {
   const prior = tracker.pose;
   const here = rimMeasure(image, prior.x, prior.y);
   let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius);
-  // A weak local rim means the gauge moved. Look further, cheaply, and only
-  // accept a centre that is clearly rounder than staying put.
+  // The near window is 10 px. The lever shifts the hub by ~25 px, and the old
+  // centre can still look round, so the far search never started. Look that
+  // far every frame and take a centre that is about as round.
+  const follow = searchRim(image, prior, HUB_FOLLOW_PX, 4, prior.radius, 24, 2);
+  const herePose = here ? { x: prior.x, y: prior.y, std: here.std } : prior;
+  if (follow && (
+    hubFollowsMove(herePose, follow)
+    || !found
+    || follow.std + 0.2 < found.std
+  )) {
+    found = follow;
+  }
+  // A weak local rim means the gauge moved further. Look out to the leap cap.
   if (!found || found.std > 5.4) {
     const far = searchRim(image, prior, TRACK_LEAP_PX, 6, prior.radius, 16, 2);
     if (far && (!found || far.std + 0.8 < found.std)) found = far;
@@ -1152,7 +1200,8 @@ function trackPose(image, tracker) {
     const checked = rimMeasure(image, found.x, found.y);
     if (checked) found = { ...found, std: checked.std, radius: checked.radius, score: Math.max(0, (12 - checked.std) / 12) };
   }
-  if (here && here.std <= LOST_RIM_STD && (!found || found.std > here.std - 0.8)) {
+  const followedMove = Boolean(found && hubFollowsMove(herePose, found));
+  if (!followedMove && here && here.std <= LOST_RIM_STD && (!found || found.std > here.std - 0.8)) {
     found = asPose(prior, here);
   }
   if (found && found.std <= LOST_RIM_STD) {
@@ -1247,18 +1296,33 @@ export function readCalibratedFrame(image, tracker) {
   const redShift = correlateShift(tracker.calibration.template.red, bands.red);
   const darkShift = correlateShift(tracker.calibration.template.dark, bands.dark);
   const shiftDisagree = Math.abs(wrapDelta(redShift.shiftDeg, darkShift.shiftDeg));
-  const shiftSmall = Math.abs(wrapDelta(redShift.shiftDeg, 0)) <= 14;
-  // v4.13.21 trusted a red-only match. That match sat ~10° off the 10 tap
-  // and stuck for the whole shot. Both bands have to agree now.
+  const stepFromPrev = Math.abs(wrapDelta(prevShift, redShift.shiftDeg));
+  // A large jump off the taps has to be agreed by both bands. A small step
+  // is the lever tilting the gauge, and one band is enough to follow it.
+  const largeJump = stepFromPrev > 8;
   const shiftAgrees = tracker.legacyScale
     ? (darkShift.corr < 0.45 || shiftDisagree <= 12)
-    : (darkShift.corr >= 0.45 && shiftDisagree <= TICK_SNAP_MAX_DEG);
-  const shiftOk = bands.redMass > 1.2 && redShift.corr >= 0.72 && shiftSmall && shiftAgrees;
-  // A placed 5 and 10 are the scale. The colour match was moving that 10 by
-  // about 10° and leaving it there, so the needle angle was right and the bar was low.
-  const shiftDeg = tracker.calibration.userPlaced === true && !tracker.legacyScale
-    ? 0
-    : (shiftOk ? redShift.shiftDeg : (tracker.pose.shiftDeg || 0));
+    : (largeJump
+      ? (darkShift.corr >= 0.45 && shiftDisagree <= 8)
+      : (darkShift.corr < 0.45 || shiftDisagree <= 12));
+  const shiftReach = tracker.legacyScale
+    ? Math.abs(wrapDelta(redShift.shiftDeg, 0)) <= 14
+    : stepFromPrev <= 18 && Math.abs(wrapDelta(redShift.shiftDeg, 0)) <= 36;
+  const shiftOk = bands.redMass > 1.2 && redShift.corr >= 0.72 && shiftReach && shiftAgrees;
+  let shiftDeg = prevShift;
+  if (shiftOk && !tracker.legacyScale && largeJump) {
+    // A one-frame 10° match used to stick for the whole shot. A real tilt repeats.
+    const pending = tracker.pendingShift;
+    if (pending != null && Math.abs(wrapDelta(pending, redShift.shiftDeg)) <= 4) {
+      shiftDeg = redShift.shiftDeg;
+      tracker.pendingShift = null;
+    } else {
+      tracker.pendingShift = redShift.shiftDeg;
+    }
+  } else if (shiftOk) {
+    tracker.pendingShift = null;
+    shiftDeg = redShift.shiftDeg;
+  }
   const match = redShift.corr;
   const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
   const lost = !bezelOk;

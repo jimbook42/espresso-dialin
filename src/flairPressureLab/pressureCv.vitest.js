@@ -39,6 +39,7 @@ import {
   scoreDialFaceInterior,
   scoreDiscoveryCandidate,
   scoreRim,
+  shouldCommitSubBinTilt,
 } from './gaugeTrack.js';
 import { grayscale, prepareEdges } from './framePrep.js';
 import {
@@ -1540,5 +1541,17 @@ describe('pressure CV units', () => {
     const edges = prepareEdges(frame, { contrastRadius: 3 }).edges;
     expect(scoreRim(edges, 160, 160, 80, 80, 36)).toBeGreaterThan(0.4);
     expect(scoreRim(edges, 160, 160, 20, 20, 36)).toBeLessThan(0.2);
+  });
+});
+
+describe('sub-bin gauge tilt', () => {
+  it('commits a confident fraction of a bin and leaves a full-bin step to the confirm path', () => {
+    expect(shouldCommitSubBinTilt({ magnitude: 2.4, stepBins: 0, confidence: 0.8, needleStep: 2.4 })).toBe(true);
+    expect(shouldCommitSubBinTilt({ magnitude: 0.4, stepBins: 0, confidence: 0.9, needleStep: 0.4 })).toBe(false);
+    expect(shouldCommitSubBinTilt({ magnitude: 5, stepBins: 1, confidence: 0.9, needleStep: 5 })).toBe(false);
+    expect(shouldCommitSubBinTilt({ magnitude: 2.4, stepBins: 0, confidence: 0.4, needleStep: 2.4 })).toBe(false);
+    expect(shouldCommitSubBinTilt({
+      magnitude: 2.4, stepBins: 0, confidence: 0.9, needleAgrees: true, needleStep: 0,
+    })).toBe(false);
   });
 });

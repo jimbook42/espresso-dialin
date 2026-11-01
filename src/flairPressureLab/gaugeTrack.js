@@ -418,6 +418,28 @@ function wholeBins(deltaDeg) {
   return Math.round(deltaDeg / PROFILE_BIN_DEG);
 }
 
+/**
+ * A tilt smaller than one profile bin was discarded as "quiet" whenever the
+ * needle did not move by the same whole bin. Commit that refined angle.
+ * A step of a full bin or more still waits for the existing confirm.
+ */
+export function shouldCommitSubBinTilt({
+  magnitude,
+  stepBins,
+  confidence,
+  needleAgrees = true,
+  needleStep = null,
+  quietDeg = ROTATION_QUIET_DEG,
+  binDeg = PROFILE_BIN_DEG,
+  minConfidence = LARGE_ROTATION_CONFIDENCE,
+} = {}) {
+  if (stepBins !== 0 || magnitude < quietDeg || magnitude >= binDeg) return false;
+  if (confidence < minConfidence || needleAgrees === false) return false;
+  // A needle that did not move is not a rigid tilt. Dial-only motion stays held.
+  if (needleStep != null && Math.abs(needleStep) < quietDeg) return false;
+  return true;
+}
+
 /** Mean edge magnitude on the printed tick ring (generic dial cue). */
 function scoreTickRingEnergy(edges, width, height, cx, cy, faceRadius) {
   if (!edges?.mag || faceRadius < 10) return 0;
@@ -1962,6 +1984,17 @@ export function createGaugeTracker() {
         const magnitude = Math.abs(step);
         const stepBins = wholeBins(step);
         const needleAgrees = agrees(estimate);
+        // Sub-bin tilt used to die in the quiet/veto path, so the lever's
+        // rotation never landed on the pose. A confident fraction of a bin commits.
+        if (match.ok && qualityOk && shouldCommitSubBinTilt({
+          magnitude,
+          stepBins,
+          confidence: match.confidence,
+          needleAgrees,
+          needleStep,
+        })) {
+          return commitTurn(estimate, 'commit', match, 0, narrowOk);
+        }
         if (trusted != null && wholeBins(wrapDelta(trusted, estimate)) === 0) {
           rememberNeedle();
           rotationCandidate = null;

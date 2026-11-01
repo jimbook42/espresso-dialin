@@ -25,7 +25,12 @@ export function rollingDisplayBar(samples, nowS, windowS = PRESSURE_DISPLAY_WIND
   );
   if (!inWindow.length) return null;
   const sum = inWindow.reduce((acc, s) => acc + s.bar, 0);
-  return sum / inWindow.length;
+  const mean = sum / inWindow.length;
+  // The one-second mean lags a lever ramp and holds the plateau after flow
+  // tails off. When the newest sample has already left that mean, show it.
+  const latest = inWindow[inWindow.length - 1];
+  if (latest && Math.abs(latest.bar - mean) > 0.2) return latest.bar;
+  return mean;
 }
 
 /**

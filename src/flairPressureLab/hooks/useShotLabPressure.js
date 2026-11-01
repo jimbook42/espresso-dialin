@@ -105,7 +105,7 @@ export function useShotLabPressure({
     setCalibrated(Boolean(storedCalibration));
     if (storedCalibration) {
       trackerRef.current = createCalibratedTracker(storedCalibration, { leapCap, legacyScale });
-      r7Ref.current = createShotLabR7Publisher(storedCalibration, { modelTiebreak });
+      r7Ref.current = createShotLabR7Publisher(storedCalibration, { modelTiebreak, legacyScale });
     } else {
       trackerRef.current = null;
       r7Ref.current = null;
@@ -419,7 +419,7 @@ export function useShotLabPressure({
   const acceptCalibration = useCallback(
     ({ calibration, tracker }) => {
       trackerRef.current = tracker ?? createCalibratedTracker(calibration, { leapCap, legacyScale });
-      r7Ref.current = createShotLabR7Publisher(calibration, { modelTiebreak });
+      r7Ref.current = createShotLabR7Publisher(calibration, { modelTiebreak, legacyScale });
       preShotDialSamplerRef.current.reset();
       preShotDialSamplerLockedRef.current = false;
       setPreShotDialStatus('checking');

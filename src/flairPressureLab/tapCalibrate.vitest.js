@@ -20,6 +20,7 @@ import {
   matchTipAngle,
   mapStoredTapPoint,
   parseTapCalQuery,
+  hubFollowsMove,
   readCalibratedFrame,
   replayMediaTimeSec,
   scaledTapTolerances,
@@ -103,10 +104,10 @@ describe('barFromTapAnchors', () => {
 });
 
 describe('publishTapBar', () => {
-  it('hides a 10 that was not climbed to', () => {
-    expect(publishTapBar({ bar: 10, needleDeg: 300, tenDeg: 303, previousBar: 0 })).toBeNull();
+  it('holds the last bar when a 10 was not climbed to', () => {
+    expect(publishTapBar({ bar: 10, needleDeg: 300, tenDeg: 303, previousBar: 0 })).toBe(0);
     expect(publishTapBar({ bar: 10, needleDeg: 300, tenDeg: 303, previousBar: null })).toBeNull();
-    expect(publishTapBar({ bar: 10, needleDeg: 220, tenDeg: 303, previousBar: 9 })).toBeNull();
+    expect(publishTapBar({ bar: 10, needleDeg: 220, tenDeg: 303, previousBar: 9 })).toBe(9);
   });
 
   it('keeps a 10 the needle reached continuously', () => {
@@ -124,6 +125,16 @@ describe('tickOrTapAngle', () => {
     expect(tickOrTapAngle(hub, tap, tapDeg + 3)).toBeCloseTo(tapDeg + 3, 5);
     expect(tickOrTapAngle(hub, tap, tapDeg + 10)).toBeCloseTo(tapDeg, 5);
     expect(TICK_SNAP_MAX_DEG).toBeLessThanOrEqual(8);
+  });
+});
+
+describe('hubFollowsMove', () => {
+  it('follows a lever shift of about 25 px and ignores jitter and a far leap', () => {
+    const prior = { x: 100, y: 200, std: 4 };
+    expect(hubFollowsMove(prior, { x: 125, y: 200, std: 4.2 })).toBe(true);
+    expect(hubFollowsMove(prior, { x: 104, y: 200, std: 3 })).toBe(false);
+    expect(hubFollowsMove(prior, { x: 190, y: 200, std: 2 })).toBe(false);
+    expect(hubFollowsMove(prior, { x: 125, y: 200, std: 6 })).toBe(false);
   });
 });
 
