@@ -4055,6 +4055,7 @@ export default function App() {
                     {s.scaleFlowCurve?.length > 0 && (
                       <ScaleFlowChart
                         flowCurve={s.scaleFlowCurve}
+                        flowTimeOffsetSec={Number(preSec) || 0}
                         averageFlowRateGs={s.scaleFlowRateGs}
                         compact
                         {...(s.labPressureCurve?.length > 0

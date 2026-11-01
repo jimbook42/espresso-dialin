@@ -72,4 +72,23 @@ describe('ScaleFlowChart history pressure overlay', () => {
     renderChart({ pressureSamples: PRESSURE, flairProfile: FLAIR });
     expect(container.querySelector('[data-testid="history-ideal-pressure"]')).not.toBeNull();
   });
+
+  it('plots extraction flow after preinfusion on the shot-start timeline, excluding countdown', () => {
+    const countdownSeconds = 3;
+    const shotStartSeconds = countdownSeconds;
+    const preinfusionEndSeconds = shotStartSeconds + 10;
+    const extractionTimeOffsetSec = preinfusionEndSeconds - shotStartSeconds;
+
+    // Both saved curves start at shotStartSeconds; only flow's extraction-relative
+    // timestamps need the elapsed preinfusion added back.
+    renderChart({ pressureSamples: PRESSURE, flowTimeOffsetSec: extractionTimeOffsetSec });
+
+    const flowPath = container.querySelector('[data-testid="history-flow"]')?.getAttribute('d');
+    const pressurePath = container
+      .querySelector('[data-testid="history-measured-pressure"]')
+      ?.getAttribute('d');
+
+    expect(flowPath).toMatch(/^M 196\.0 /);
+    expect(pressurePath).toMatch(/^M 22\.0 /);
+  });
 });

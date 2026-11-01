@@ -14,6 +14,7 @@ const PROFILE_AMBER = 'rgba(200, 138, 75, 0.35)';
 /**
  * @param {{
  *   flowCurve?: { tS: number, weightG: number }[],
+ *   flowTimeOffsetSec?: number,
  *   compact?: boolean,
  *   averageFlowRateGs?: number | null,
  *   pressureSamples?: import('../flairPressureLab/pressureDisplaySmoothing.js').LabPressureRawSample[] | null,
@@ -23,6 +24,7 @@ const PROFILE_AMBER = 'rgba(200, 138, 75, 0.35)';
  */
 export function ScaleFlowChart({
   flowCurve = [],
+  flowTimeOffsetSec = 0,
   compact = false,
   averageFlowRateGs = null,
   pressureSamples = null,
@@ -32,7 +34,10 @@ export function ScaleFlowChart({
   const labelId = useId();
   if (!flowCurve?.length) return null;
 
-  const flowSeries = flowRateSeriesFromWeightCurve(flowCurve);
+  const flowSeries = flowRateSeriesFromWeightCurve(flowCurve).map((point) => ({
+    ...point,
+    tS: point.tS + flowTimeOffsetSec,
+  }));
   if (!flowSeries.length) return null;
 
   const pressurePoints = pressureSamples?.length
@@ -154,7 +159,14 @@ export function ScaleFlowChart({
             data-testid="history-ideal-pressure"
           />
         )}
-        <path d={flowPath} fill="none" stroke={AMBER} strokeWidth="2" strokeLinejoin="round" />
+        <path
+          d={flowPath}
+          fill="none"
+          stroke={AMBER}
+          strokeWidth="2"
+          strokeLinejoin="round"
+          data-testid="history-flow"
+        />
         {pressurePath && (
           <path
             d={pressurePath}
