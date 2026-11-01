@@ -13,7 +13,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { wrap360 } from '../../src/flairPressureLab/gaugeConfig.js';
 import {
-  barFromTapAnchors,
   calibrateFromTaps,
   createCalibratedTracker,
   mapStoredTapPoint,
@@ -103,9 +102,6 @@ export function restOffsetDeg(rows, holdClip) {
 export function truthBarForLabel(row, offsetDeg) {
   if (REST_PHASES.has(row.phase)) return 0;
   const zero = wrap360(row.labelZero + offsetDeg);
-  if (row.labelFive != null && row.labelTen != null) {
-    return barFromTapAnchors(row.labelNeedle, zero, row.labelFive, row.labelTen);
-  }
   return truthBar(row.labelNeedle, zero, row.labelTen);
 }
 
@@ -364,15 +360,15 @@ async function scoreClip(clipId, labels, cv, ort, session) {
       r5Conf: r5ForGate.r5Conf,
       r5Angle: r5ForGate.r5Angle,
     });
-    const published = read.bar;
-    if (published != null) displaySamples.push({ tS: timeS, bar: published, confident: true });
+    const published = gated.bar;
+    if (published != null && !gated.uncertain) displaySamples.push({ tS: timeS, bar: published, confident: true });
     const display = published == null ? null : rollingDisplayBar(displaySamples, timeS);
     ms.push(performance.now() - t0);
     frames.push({
       timeS,
       bar: published,
-      tracking: read.lost ? 'LOST' : (read.ok ? 'TRACKING' : 'UNCERTAIN'),
-      reason: 'tap',
+      tracking: published == null ? 'LOST' : 'TRACKING',
+      reason: gated.reason,
       falseTen: published != null && published >= 9.95,
     });
     snaps.push({
@@ -380,7 +376,7 @@ async function scoreClip(clipId, labels, cv, ort, session) {
       published,
       display,
       gateBar: gated.bar,
-      reason: 'tap',
+      reason: gated.reason,
       hub: read?.hub ? { x: read.hub.x, y: read.hub.y } : null,
       r5Bar: r5ForGate.r5Bar,
       r5Angle: r5ForGate.r5Angle,
@@ -568,11 +564,12 @@ function render(rows) {
   return lines;
 }
 
+const HAND_DIR = path.join(CLIPS_DIR, 'live-accuracy-evidence', 'livecheck', 'hand');
 const HAND_CLIPS = [
   {
     id: '20261024_124006',
-    file: '/workspace/dialin-promo/_work/rec/20261024_124006.mjpeg',
-    hand: '/workspace/pl-state/nr/cal3/hand-20261024_124006.json',
+    file: path.join(CLIPS_DIR, '20261024_124006.mp4'),
+    hand: path.join(HAND_DIR, 'hand-20261024_124006.json'),
     taps: {
       centre: { x: 290.5, y: 396.3 },
       five: { x: 248.2, y: 365.3 },
@@ -581,8 +578,8 @@ const HAND_CLIPS = [
   },
   {
     id: '20261025_130022',
-    file: '/workspace/dialin-promo/_work/rec/20261025_130022.mjpeg',
-    hand: '/workspace/pl-state/nr/exam1025/hand-bars-reference.json',
+    file: path.join(CLIPS_DIR, '20261025_130022.mp4'),
+    hand: path.join(HAND_DIR, 'hand-20261025_130022.json'),
     taps: {
       centre: { x: 481, y: 342.5 },
       five: { x: 522.8, y: 375.6 },
@@ -635,24 +632,34 @@ export async function scoreHandClip(spec) {
     };
   }
   const tracker = createCalibratedTracker(calibrated.calibration);
+  const publisher = createShotLabR7Publisher(calibrated.calibration);
+  publisher.beginShot(0);
   const frames = [];
   const samples = [];
   const ms = [];
   for await (const { timeS, image } of streamFrames(spec.file, 720, 720, 'crop=720:720:0:280,fps=8')) {
     const t0 = performance.now();
     const read = readCalibratedFrame(image, tracker);
+    const gated = publisher.stepFrame({ nowMs: timeS * 1000, read });
     ms.push(performance.now() - t0);
-    const bar = read.bar;
+    const bar = gated.bar;
     frames.push({
       timeS,
       bar,
-      tracking: read.lost ? 'LOST' : (read.ok ? 'TRACKING' : 'UNCERTAIN'),
+      raw: read.bar,
+      hub: read.hub ? { x: read.hub.x, y: read.hub.y } : null,
+      shift: read.shiftDeg,
+      tracking: bar == null ? 'LOST' : 'TRACKING',
       falseTen: bar != null && bar >= 9.95,
     });
-    if (bar != null) samples.push({ timeS, bar });
+    if (bar != null && !gated.uncertain) samples.push({ tS: timeS, bar });
   }
+  const shown = samples.map((sample) => ({
+    timeS: sample.tS,
+    bar: rollingDisplayBar(samples, sample.tS),
+  })).filter((sample) => sample.bar != null);
   const labelHits = hands.map((row) => {
-    const window = samples.filter((sample) => Math.abs(sample.timeS - row.timeS) <= 0.3);
+    const window = shown.filter((sample) => Math.abs(sample.timeS - row.timeS) <= 0.3);
     const published = window.length ? medianOf(window.map((sample) => sample.bar)) : null;
     return {
       id: row.frame,
@@ -693,21 +700,46 @@ export async function runLiveExam() {
   setOpenCvForTests(cv);
   const { ort, session } = await loadModel();
   const only = process.env.EXAM_CLIP || '';
+  const handIds = new Set(HAND_CLIPS.map((spec) => spec.id));
   const ids = only ? EXAM_IDS.filter((id) => id === only) : EXAM_IDS;
-  if (only && !ids.length) throw new Error(`EXAM_CLIP ${only} is not one of the 10 exam clips`);
+  if (only && !ids.length && !handIds.has(only)) {
+    throw new Error(`EXAM_CLIP ${only} is not an exam or hand clip`);
+  }
   const rows = [];
-  for (const id of ids) {
+  const runExam = process.env.EXAM_HAND !== '1' && !(only && handIds.has(only) && !ids.length);
+  if (runExam) for (const id of ids) {
     process.stderr.write(`clip ${id}\n`);
     const result = await scoreClip(id, labels, cv, ort, session);
     rows.push(clipSummary(result));
     process.stderr.write(`done ${id} cov=${rows.at(-1).coveragePct} med=${rows.at(-1).medianAbsBar} false10=${rows.at(-1).falseTen}\n`);
   }
-  if (!only) {
-    for (const spec of HAND_CLIPS) {
+  const handSpecs = HAND_CLIPS.filter((spec) => !only || spec.id === only);
+  if (!only || handSpecs.length) {
+    for (const spec of handSpecs) {
       process.stderr.write(`hand ${spec.id}\n`);
       const result = await scoreHandClip(spec);
       rows.push(clipSummary(result));
-      process.stderr.write(`done ${spec.id} cov=${rows.at(-1).coveragePct} med=${rows.at(-1).medianAbsBar} false10=${rows.at(-1).falseTen}\n`);
+      const scored = (result.labelHits || []).filter((hit) => hit.published != null && hit.truth != null);
+      const abs = scored.map((hit) => Math.abs(hit.published - hit.truth)).sort((a, b) => a - b);
+      const worst = scored.reduce((best, hit) => {
+        const err = hit.published - hit.truth;
+        return best == null || Math.abs(err) > Math.abs(best.err) ? { err, t: hit.t } : best;
+      }, null);
+      const within = abs.filter((err) => err <= 0.3 + 1e-9).length;
+      process.stderr.write(`done ${spec.id} cov=${rows.at(-1).coveragePct} med=${rows.at(-1).medianAbsBar} within=${within}/${scored.length} worst=${worst ? `${worst.err.toFixed(2)}@${worst.t}` : 'n/a'} false10=${rows.at(-1).falseTen}\n`);
+      for (const hit of scored) {
+        const frame = (result.frames || []).reduce((best, item) => {
+          if (item.bar == null) return best;
+          const dt = Math.abs(item.timeS - hit.t);
+          return !best || dt < best.dt ? { dt, item } : best;
+        }, null);
+        const hub = frame?.item?.hub;
+        process.stderr.write(`  t=${hit.t} hand=${hit.truth} app=${hit.published.toFixed(2)} raw=${frame?.item?.raw == null ? 'null' : frame.item.raw.toFixed(2)} err=${(hit.published - hit.truth).toFixed(2)} hub=${hub ? `${hub.x.toFixed(0)},${hub.y.toFixed(0)}` : 'n/a'} shift=${frame?.item?.shift ?? ''}\n`);
+      }
+      for (const hit of result.labelHits || []) {
+        if (hit.published != null) continue;
+        process.stderr.write(`  t=${hit.t} hand=${hit.truth} app=missing\n`);
+      }
     }
   }
   const allHits = rows.flatMap((row) => row.hits);
