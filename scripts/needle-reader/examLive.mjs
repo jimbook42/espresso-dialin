@@ -649,7 +649,7 @@ export async function scoreHandClip(spec) {
       tracking: read.lost ? 'LOST' : (read.ok ? 'TRACKING' : 'UNCERTAIN'),
       falseTen: bar != null && bar >= 9.95,
     });
-    if (bar != null) samples.push({ timeS, bar });
+    if (bar != null) samples.push({ timeS, bar, hub: read.hub });
   }
   const labelHits = hands.map((row) => {
     const window = samples.filter((sample) => Math.abs(sample.timeS - row.timeS) <= 0.3);
@@ -663,6 +663,7 @@ export async function scoreHandClip(spec) {
       display: published,
       reason: published == null ? 'no-frame' : 'tap',
       hubPx: null,
+      hub: window.length ? window[Math.floor(window.length / 2)].hub : null,
       r5Bar: null,
       classicalBar: published,
       r6Bar: null,
@@ -693,7 +694,8 @@ export async function runLiveExam() {
   setOpenCvForTests(cv);
   const { ort, session } = await loadModel();
   const only = process.env.EXAM_CLIP || '';
-  const ids = only ? EXAM_IDS.filter((id) => id === only) : EXAM_IDS;
+  const handsOnly = process.env.EXAM_HAND === '1';
+  const ids = handsOnly ? [] : (only ? EXAM_IDS.filter((id) => id === only) : EXAM_IDS);
   if (only && !ids.length) throw new Error(`EXAM_CLIP ${only} is not one of the 10 exam clips`);
   const rows = [];
   for (const id of ids) {
@@ -702,7 +704,7 @@ export async function runLiveExam() {
     rows.push(clipSummary(result));
     process.stderr.write(`done ${id} cov=${rows.at(-1).coveragePct} med=${rows.at(-1).medianAbsBar} false10=${rows.at(-1).falseTen}\n`);
   }
-  if (!only) {
+  if (!only || handsOnly) {
     for (const spec of HAND_CLIPS) {
       process.stderr.write(`hand ${spec.id}\n`);
       const result = await scoreHandClip(spec);

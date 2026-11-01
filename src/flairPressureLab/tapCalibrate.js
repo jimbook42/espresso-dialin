@@ -125,6 +125,8 @@ const LOST_BEZEL = 0.35;
 const LOST_RIM_STD = 10;
 const TRACK_NEAR_PX = 10;
 const TRACK_FAR_PX = 36;
+/** Lever tilt moves the hub about 25px. Inside the leap cap. */
+const TRACK_TILT_PX = 32;
 /** Farther than this, the rim search locks a different circle. Default on. */
 const TRACK_LEAP_PX = 48;
 
@@ -895,8 +897,10 @@ function fixedBands(image, cx, cy, radius, needleDeg) {
 
 function correlateShift(template, observed) {
   const bins = template.length;
+  const binDeg = 360 / bins;
   let best = -1;
   let bestShift = 0;
+  const corrs = new Float64Array(bins);
   let templateEnergy = 0;
   for (let i = 0; i < bins; i += 1) templateEnergy += template[i] * template[i];
   if (templateEnergy < 1e-4) return { corr: 0, shiftDeg: 0 };
@@ -909,12 +913,20 @@ function correlateShift(template, observed) {
       observedEnergy += value * value;
     }
     const corr = dot / Math.sqrt(templateEnergy * observedEnergy + 1e-6);
+    corrs[shift] = corr;
     if (corr > best) {
       best = corr;
       bestShift = shift;
     }
   }
-  return { corr: best, shiftDeg: bestShift * (360 / bins) };
+  const prev = corrs[(bestShift - 1 + bins) % bins];
+  const next = corrs[(bestShift + 1) % bins];
+  const denom = prev - 2 * best + next;
+  let frac = 0;
+  if (denom < -1e-6) frac = Math.max(-0.5, Math.min(0.5, (0.5 * (prev - next)) / denom));
+  let shiftDeg = (bestShift + frac) * binDeg;
+  if (shiftDeg > 180) shiftDeg -= 360;
+  return { corr: best, shiftDeg };
 }
 
 function packTemplate(bands) {
@@ -1119,6 +1131,7 @@ export function createCalibratedTracker(calibration, options = {}) {
     /** v4.13.21 kept the snap-band template, the linear span, and an unguarded 10. */
     legacyScale: options.legacyScale === true || calibration.legacyScale === true,
     lastGoodBar: null,
+    hubCandidate: null,
   };
 }
 
@@ -1136,6 +1149,13 @@ function trackPose(image, tracker) {
   const prior = tracker.pose;
   const here = rimMeasure(image, prior.x, prior.y);
   let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius);
+  const nearOff = found ? Math.hypot(found.x - prior.x, found.y - prior.y) : 0;
+  // The lever carries the gauge. A ~25px shift leaves the old centre round
+  // enough that the 10px window never looks. Search 32px, inside the leap cap.
+  if (!found || found.std > 4.2 || nearOff < 8) {
+    const mid = searchRim(image, prior, TRACK_TILT_PX, 4, prior.radius, 24, 2);
+    if (mid && (!found || mid.std + 0.12 < found.std)) found = mid;
+  }
   // A weak local rim means the gauge moved. Look further, cheaply, and only
   // accept a centre that is clearly rounder than staying put.
   if (!found || found.std > 5.4) {
@@ -1152,8 +1172,27 @@ function trackPose(image, tracker) {
     const checked = rimMeasure(image, found.x, found.y);
     if (checked) found = { ...found, std: checked.std, radius: checked.radius, score: Math.max(0, (12 - checked.std) / 12) };
   }
-  if (here && here.std <= LOST_RIM_STD && (!found || found.std > here.std - 0.8)) {
+  if (here && here.std <= LOST_RIM_STD && found) {
+    const moved = Math.hypot(found.x - prior.x, found.y - prior.y);
+    // Small centre noise stays put. A rounder rim a lever-shift away is the hub.
+    const stick = moved >= 12 ? 0.12 : 0.8;
+    if (found.std > here.std - stick) {
+      found = asPose(prior, here);
+    } else if (moved < 12) {
+      tracker.hubCandidate = null;
+    } else if (moved >= 12) {
+      const cand = tracker.hubCandidate;
+      if (!cand || Math.hypot(found.x - cand.x, found.y - cand.y) > 8) {
+        tracker.hubCandidate = { x: found.x, y: found.y };
+        found = asPose(prior, here);
+      } else {
+        tracker.hubCandidate = null;
+      }
+    }
+  } else if (here && here.std <= LOST_RIM_STD && !found) {
     found = asPose(prior, here);
+  } else if (found) {
+    tracker.hubCandidate = null;
   }
   if (found && found.std <= LOST_RIM_STD) {
     const fine = searchRim(image, found, 3, 1, prior.radius);
@@ -1254,11 +1293,15 @@ export function readCalibratedFrame(image, tracker) {
     ? (darkShift.corr < 0.45 || shiftDisagree <= 12)
     : (darkShift.corr >= 0.45 && shiftDisagree <= TICK_SNAP_MAX_DEG);
   const shiftOk = bands.redMass > 1.2 && redShift.corr >= 0.72 && shiftSmall && shiftAgrees;
-  // A placed 5 and 10 are the scale. The colour match was moving that 10 by
-  // about 10° and leaving it there, so the needle angle was right and the bar was low.
-  const shiftDeg = tracker.calibration.userPlaced === true && !tracker.legacyScale
-    ? 0
-    : (shiftOk ? redShift.shiftDeg : (tracker.pose.shiftDeg || 0));
+  // A placed 5 and 10 are the scale. A ~10° colour lock must not jump on.
+  // The lever tilts the dial a few degrees at a time, and that step is kept.
+  let shiftDeg = shiftOk ? redShift.shiftDeg : prevShift;
+  if (tracker.calibration.userPlaced === true && !tracker.legacyScale) {
+    const step = wrapDelta(prevShift, redShift.shiftDeg);
+    shiftDeg = shiftOk && Math.abs(step) <= 4 && Math.abs(redShift.shiftDeg) <= 24
+      ? redShift.shiftDeg
+      : prevShift;
+  }
   const match = redShift.corr;
   const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
   const lost = !bezelOk;

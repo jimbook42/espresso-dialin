@@ -43,12 +43,12 @@ import {
  * pattern, with the needle sector ignored, so a lever twist is not read as
  * pressure. Pressure uses needle angle minus that gauge rotation.
  *
- * Locked tracking follows the rim. Rotation is written in whole profile bins.
- * The first sighting of a step is stored and not applied. The next frame
- * commits when the needle agrees and the new step is the same bin or the same
- * whole-bin increment. A needle disagreement does not write rotation and does
- * not erase a stored bin. A weak dial match does not create a bin and does
- * not erase one. Pressure can hold while the centre keeps following.
+ * Locked tracking follows the rim. A rotation step is stored, then committed
+ * on the next frame when it repeats, including a step smaller than one profile
+ * bin. The needle can veto a spin it did not take. A same-direction tilt that
+ * is no larger than the needle swing still commits, so a lever tilt is not
+ * left behind while pressure climbs. A weak dial match does not create a step
+ * and does not erase one. Pressure can hold while the centre keeps following.
  *
  * Commits that would carry the pose more than one tick period from the last
  * strong identity anchor have to pass that anchor's margin, confidence, and
@@ -1878,7 +1878,13 @@ export function createGaugeTracker() {
       const needleStep = wrapDelta(maskNeedleDeg ?? needleDeg, needleDeg);
       const agrees = (estimateDeg) => {
         const proposed = wrapDelta(pose.rotationDeg, estimateDeg);
-        return Math.abs(wrapDelta(needleStep, proposed)) <= ROTATION_RIGID_DEG;
+        if (Math.abs(wrapDelta(needleStep, proposed)) <= ROTATION_RIGID_DEG) return true;
+        // Pressure moves the needle farther than the dial. A same-way rotation
+        // no larger than that swing is the lever tilt, so it still commits.
+        const needleMag = Math.abs(needleStep);
+        const proposedMag = Math.abs(proposed);
+        if (needleMag < ROTATION_QUIET_DEG) return false;
+        return needleStep * proposed > 0 && proposedMag <= needleMag;
       };
       const qualityOk = needleQuality != null && needleQuality >= NEEDLE_TRACK_QUALITY;
       const matchAt = (maxShiftDeg, previousDeg = pose.rotationDeg) => {
@@ -1979,7 +1985,7 @@ export function createGaugeTracker() {
             narrowOk,
           });
         }
-        if (match.ok && (magnitude < ROTATION_QUIET_DEG || (!outside && stepBins === 0 && rotationCandidate == null))) {
+        if (match.ok && magnitude < ROTATION_QUIET_DEG) {
           rotationCandidate = null;
           pendingStepBins = null;
           rememberNeedle();
