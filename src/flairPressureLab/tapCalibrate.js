@@ -1268,7 +1268,8 @@ export function readCalibratedFrame(image, tracker) {
   let pose = bezelOk ? found : tracker.pose;
   const registrationExpected = !tracker.legacyScale && tracker.registration.reference
     && Boolean(getOpenCvSync()?.calcOpticalFlowPyrLK);
-  const registered = bezelOk && registrationExpected
+  const previousRegistrationPose = tracker.registration.last;
+  let registered = bezelOk && registrationExpected
     ? registerDialFrame(image, tracker.calibration, pose, tracker.registration) : null;
   if (registered && pointDist(registered, tracker.pose) <= TRACK_LEAP_PX) {
     pose = { ...pose, ...registered };
@@ -1277,6 +1278,8 @@ export function readCalibratedFrame(image, tracker) {
     tracker.registration.misses += 1;
     bezelOk = false;
     pose = tracker.pose;
+    registered = null;
+    tracker.registration.last = previousRegistrationPose;
   }
   const matrix = registered?.matrix ?? tracker.pose.matrix ?? null;
   const scale = tracker.calibration.radius > 1 ? pose.radius / tracker.calibration.radius : 1;
@@ -1365,7 +1368,7 @@ export function readCalibratedFrame(image, tracker) {
     if (pending != null && Math.abs(wrapDelta(pending, shiftDeg)) <= 3) {
       seedDialRegistration(image, tracker.calibration, pose, tracker.registration, shiftDeg, needle.angleDeg);
     } else tracker.registration.pendingSeed = shiftDeg;
-  }
+  } else if (!tracker.registration.reference) tracker.registration.pendingSeed = null;
   const match = redShift.corr;
   const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
   const lost = !bezelOk;

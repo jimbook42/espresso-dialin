@@ -287,6 +287,18 @@ export function useShotLabPressure({
 
     let raf = 0;
     let last = 0;
+    let lastRead = null;
+    let presentedFrame = 0;
+    let consumedFrame = -1;
+    let lastMediaTime = -1;
+    let videoFrameCallback = 0;
+    const sourceVideo = videoRef.current;
+    const useVideoFrames = typeof sourceVideo?.requestVideoFrameCallback === 'function';
+    const observeVideoFrame = (_now, metadata) => {
+      presentedFrame = metadata.presentedFrames ?? presentedFrame + 1;
+      videoFrameCallback = sourceVideo.requestVideoFrameCallback(observeVideoFrame);
+    };
+    if (useVideoFrames) videoFrameCallback = sourceVideo.requestVideoFrameCallback(observeVideoFrame);
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const wallNow = performance.now();
@@ -294,13 +306,24 @@ export function useShotLabPressure({
       last = wallNow;
       try {
         const video = videoRef.current;
-        if (!video || video.readyState < 2) return;
         const capturedAtMs = Date.now();
-        const image = grabSourceImage(video);
-        if (!image) return;
-        lastFrameRef.current = image;
-        const read = readCalibratedFrame(image, trackerRef.current);
         const cal = trackerRef.current.calibration;
+        const newFrame = video?.readyState >= 2 && (useVideoFrames
+          ? presentedFrame > 0 && presentedFrame !== consumedFrame : video.currentTime !== lastMediaTime);
+        const image = newFrame ? grabSourceImage(video) : null;
+        let read;
+        if (image) {
+          consumedFrame = presentedFrame;
+          lastMediaTime = video.currentTime;
+          lastFrameRef.current = image;
+          read = readCalibratedFrame(image, trackerRef.current);
+          lastRead = read;
+        } else {
+          // Repeated/absent camera pixels are gaps, not fresh measurements.
+          read = { ...(lastRead ?? { hub: cal.hub, radius: cal.radius }),
+            ok: false, bar: null, rawBar: null, fresh: false, needleDeg: null,
+            lost: !video || video.readyState < 2 };
+        }
         observePreShotDialPose(read, cal);
         const nowMs = Date.now();
         if (cal?.hub && !shotStartHintDoneRef.current) {
@@ -314,7 +337,7 @@ export function useShotLabPressure({
           setDialRecalibrateHint(hint.showHint);
           if (hint.done) shotStartHintDoneRef.current = true;
         }
-        if (!r5InferBusyRef.current) {
+        if (image && !r5InferBusyRef.current) {
           r5InferBusyRef.current = true;
           const generation = r5GenerationRef.current;
           void r5SampleFromTapFrame(image, read, cal, capturedAtMs)
@@ -342,7 +365,7 @@ export function useShotLabPressure({
         const epoch = shotEpochRef.current;
         if (confident && rawBar != null && epoch) {
           sessionRef.current.pushRaw(rawBar, true, gated.measuredAtMs);
-          gaugeSnapshotRef.current = gaugeSnapshotJpegFromImageData(image);
+          if (image) gaugeSnapshotRef.current = gaugeSnapshotJpegFromImageData(image);
         }
         const all = sessionRef.current.getSamples();
         const tS = epoch ? (nowMs - epoch) / 1000 : timerSecondsRef.current;
@@ -361,6 +384,9 @@ export function useShotLabPressure({
           hubY: read.hub?.y ?? null,
           radius: read.radius ?? null,
           valid: confident && !read.lost,
+          fresh: gated.fresh === true,
+          held: gated.held === true,
+          reason: gated.reason,
         });
         if (shouldPublishCornerPreviewPose(nowMs, lastCornerPosePublishRef.current)) {
           lastCornerPosePublishRef.current = nowMs;
@@ -381,6 +407,7 @@ export function useShotLabPressure({
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
+      if (videoFrameCallback) sourceVideo.cancelVideoFrameCallback(videoFrameCallback);
       r5GenerationRef.current += 1;
     };
   }, [
@@ -428,6 +455,8 @@ export function useShotLabPressure({
 
   const acceptCalibration = useCallback(
     ({ calibration, tracker }) => {
+      r5GenerationRef.current += 1;
+      lastR5Ref.current = { r5Bar: null, r5Conf: null, r5Angle: null };
       trackerRef.current = tracker ?? createCalibratedTracker(calibration, { leapCap, legacyScale });
       r7Ref.current = createShotLabR7Publisher(calibration, { modelTiebreak, legacyScale });
       preShotDialSamplerRef.current.reset();

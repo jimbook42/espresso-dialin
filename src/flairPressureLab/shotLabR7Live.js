@@ -73,7 +73,8 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
       r5Conf,
     });
     if (!legacyScale) {
-      return { ...tapPublisher.step({ ...frame, nowMs }), classicalStep };
+      const observation = tapPublisher.step({ ...frame, nowMs });
+      return { ...observation, classicalStep };
     }
     const tapSure = !legacyScale && read.ok && read.bar != null && !read.lost;
     let classicalBar = classicalStep.published ? classicalStep.bar : null;
