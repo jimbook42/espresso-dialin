@@ -68,9 +68,16 @@ describe('ScaleFlowChart history pressure overlay', () => {
     expect(container.querySelector('[data-testid="history-ideal-pressure"]')).toBeNull();
   });
 
-  it('draws ideal profile when flairProfile and pressure data present', () => {
+  it('hides the ideal profile when measured pressure samples are present', () => {
     renderChart({ pressureSamples: PRESSURE, flairProfile: FLAIR });
+    expect(container.querySelector('[data-testid="history-ideal-pressure"]')).toBeNull();
+    expect(container.querySelector('[data-testid="history-measured-pressure"]')).not.toBeNull();
+  });
+
+  it('shows the ideal profile when no measured pressure samples are recorded', () => {
+    renderChart({ flairProfile: FLAIR });
     expect(container.querySelector('[data-testid="history-ideal-pressure"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="history-measured-pressure"]')).toBeNull();
   });
 
   it('plots extraction flow after preinfusion on the shot-start timeline, excluding countdown', () => {

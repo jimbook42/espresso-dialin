@@ -43,7 +43,9 @@ export function ScaleFlowChart({
   const pressurePoints = pressureSamples?.length
     ? pressureChartPointsForSavedCurve(pressureSamples)
     : [];
-  const showPressure = pressurePoints.length > 0;
+  const hasRecordedPressure = Boolean(pressureSamples?.length);
+  const showIdealPressure = Boolean(flairProfile) && !hasRecordedPressure;
+  const showPressure = pressurePoints.length > 0 || showIdealPressure;
 
   const w = compact ? 280 : 320;
   const h = compact ? (showPressure ? 88 : 72) : showPressure ? 112 : 96;
@@ -71,7 +73,7 @@ export function ScaleFlowChart({
   const yBar = (bar) => shotPressureChartY(bar, pressureYMax, padT, chartH);
 
   let idealPath = '';
-  if (showPressure && flairProfile) {
+  if (showPressure && showIdealPressure) {
     const ideal = idealPressureSeriesForShot(flairProfile, maxT);
     if (ideal.length) {
       idealPath = ideal
