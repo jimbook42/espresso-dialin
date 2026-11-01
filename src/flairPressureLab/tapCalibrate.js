@@ -24,6 +24,11 @@ import { barToDialAngle, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, DARK_
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { detectNeedleAngle, refineNeedleAngle } from './needleFromFrame.js';
 import { regularizeTapAnchors } from './anchorRegularize.js';
+import {
+  createDialRegistration, inverseDialAngle, rememberDialReference,
+  registerDialFrame, transformDialAngle,
+} from './dialRegistration.js';
+import { getOpenCvSync } from './opencvRuntime.js';
 
 /** Clockwise travel from the printed 5 to the printed 10. */
 export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
@@ -1106,7 +1111,7 @@ export function calibrateFromTaps(image, taps) {
   const templateBands = legacyScale && marks.bands
     ? packTemplate(marks.bands)
     : packTemplate(fixedBands(image, hub.x, hub.y, marks.colorRadius, zeroAngleDeg));
-  return {
+  const result = {
     ok: true,
     redo: null,
     reason: null,
@@ -1135,6 +1140,8 @@ export function calibrateFromTaps(image, taps) {
       legacyScale,
     },
   };
+  rememberDialReference(image, result.calibration);
+  return result;
 }
 
 export function createCalibratedTracker(calibration, options = {}) {
@@ -1147,7 +1154,9 @@ export function createCalibratedTracker(calibration, options = {}) {
       rotationDeg: calibration.rotationDeg,
       shiftDeg: 0,
     },
-    needleDeg: calibration.zeroAngleDeg,
+    // The calibration owns zero. A recording can begin with pressure already
+    // rising, so its first measurement must search the whole calibrated arc.
+    needleDeg: null,
     needleMisses: 0,
     score: 1,
     /** False restores the v4.13.17 search, which can leap onto another circle. */
@@ -1156,6 +1165,7 @@ export function createCalibratedTracker(calibration, options = {}) {
     legacyScale: options.legacyScale === true || calibration.legacyScale === true,
     lastGoodBar: null,
     pendingShift: null,
+    registration: createDialRegistration(calibration),
   };
 }
 
@@ -1171,12 +1181,16 @@ function asPose(prior, measured) {
 
 function trackPose(image, tracker) {
   const prior = tracker.pose;
-  const here = rimMeasure(image, prior.x, prior.y);
-  let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius);
+  // The measurement radius is distinct from the candidate-size check.
+  // rimMeasure reports 0.9 * the outer crossing radius. Its sampling prior
+  // is the outer radius, so do not feed the reported inner radius back as-is.
+  const measureRadius = tracker.calibration.radius / 0.9;
+  const here = rimMeasure(image, prior.x, prior.y, 36, 1, measureRadius);
+  let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius, 36, 1, false, measureRadius);
   // The near window is 10 px. The lever shifts the hub by ~25 px, and the old
   // centre can still look round, so the far search never started. Look that
   // far every frame and take a centre that is about as round.
-  const follow = searchRim(image, prior, HUB_FOLLOW_PX, 4, prior.radius, 24, 2);
+  const follow = searchRim(image, prior, HUB_FOLLOW_PX, 4, prior.radius, 24, 2, false, measureRadius);
   const herePose = here ? { x: prior.x, y: prior.y, std: here.std } : prior;
   if (follow && (
     hubFollowsMove(herePose, follow)
@@ -1187,17 +1201,17 @@ function trackPose(image, tracker) {
   }
   // A weak local rim means the gauge moved further. Look out to the leap cap.
   if (!found || found.std > 5.4) {
-    const far = searchRim(image, prior, TRACK_LEAP_PX, 6, prior.radius, 16, 2);
+    const far = searchRim(image, prior, TRACK_LEAP_PX, 6, prior.radius, 16, 2, false, measureRadius);
     if (far && (!found || far.std + 0.8 < found.std)) found = far;
   }
   // The wider search locked onto a different circle about 90 px away and
   // the rest of the shot published from there. v4.13.17 still runs it.
   if (tracker.leapCap === false && (!found || found.std > 5.4)) {
-    const wider = searchRim(image, prior, 96, 8, prior.radius, 16, 2);
+    const wider = searchRim(image, prior, 96, 8, prior.radius, 16, 2, false, measureRadius);
     if (wider && (!found || wider.std + 0.8 < (found?.std ?? 99))) found = wider;
   }
   if (found && found.std <= LOST_RIM_STD) {
-    const checked = rimMeasure(image, found.x, found.y);
+    const checked = rimMeasure(image, found.x, found.y, 36, 1, measureRadius);
     if (checked) found = { ...found, std: checked.std, radius: checked.radius, score: Math.max(0, (12 - checked.std) / 12) };
   }
   const followedMove = Boolean(found && hubFollowsMove(herePose, found));
@@ -1205,7 +1219,7 @@ function trackPose(image, tracker) {
     found = asPose(prior, here);
   }
   if (found && found.std <= LOST_RIM_STD) {
-    const fine = searchRim(image, found, 3, 1, prior.radius);
+    const fine = searchRim(image, found, 3, 1, prior.radius, 36, 1, false, measureRadius);
     if (fine && fine.std + 0.3 < found.std) found = fine;
     return found;
   }
@@ -1214,7 +1228,7 @@ function trackPose(image, tracker) {
     prior,
     TRACK_NEAR_PX,
     2,
-    radiusList(Math.max(48, prior.radius - 6), prior.radius + 6, 3),
+    radiusList(Math.max(12, prior.radius * 0.92), prior.radius * 1.08, Math.max(1, prior.radius / 30)),
   );
   found = near;
   if (!found || found.score < LOST_BEZEL) {
@@ -1223,7 +1237,7 @@ function trackPose(image, tracker) {
       prior,
       TRACK_FAR_PX,
       3,
-      radiusList(Math.max(48, prior.radius - 14), prior.radius + 14, 4),
+      radiusList(Math.max(12, prior.radius * 0.82), prior.radius * 1.18, Math.max(1, prior.radius / 24)),
     );
   }
   if (found && found.score >= LOST_BEZEL) {
@@ -1245,18 +1259,35 @@ function trackPose(image, tracker) {
  */
 export function readCalibratedFrame(image, tracker) {
   const found = trackPose(image, tracker);
-  const bezelOk = Boolean(
+  let bezelOk = Boolean(
     found && (found.std != null ? found.std <= LOST_RIM_STD : found.score >= LOST_BEZEL),
   );
-  const pose = bezelOk ? found : tracker.pose;
+  let pose = bezelOk ? found : tracker.pose;
+  const registrationExpected = !tracker.legacyScale && tracker.registration.reference
+    && Boolean(getOpenCvSync()?.calcOpticalFlowPyrLK);
+  const registered = bezelOk && registrationExpected
+    ? registerDialFrame(image, tracker.calibration, pose, tracker.registration) : null;
+  if (registered && pointDist(registered, tracker.pose) <= TRACK_LEAP_PX) {
+    pose = { ...pose, ...registered };
+  } else if (registrationExpected) {
+    // A round rim alone cannot certify that the printed face still matches.
+    tracker.registration.misses += 1;
+    bezelOk = false;
+    pose = tracker.pose;
+  }
+  const matrix = registered?.matrix ?? tracker.pose.matrix ?? null;
   const scale = tracker.calibration.radius > 1 ? pose.radius / tracker.calibration.radius : 1;
   const colorRadius = tracker.calibration.colorRadius * scale;
   const prevShift = tracker.pose.shiftDeg || 0;
-  const zeroPrior = wrap360(tracker.calibration.zeroAngleDeg + prevShift);
-  const tenPrior = wrap360(tracker.calibration.tenAngleDeg + prevShift);
+  const zeroPrior = matrix ? transformDialAngle(tracker.calibration.zeroAngleDeg, matrix)
+    : wrap360(tracker.calibration.zeroAngleDeg + prevShift);
+  const tenPrior = matrix ? transformDialAngle(tracker.calibration.tenAngleDeg, matrix)
+    : wrap360(tracker.calibration.tenAngleDeg + prevShift);
   let needle = { angleDeg: null, quality: 0, likeness: 0 };
   if (bezelOk) {
-    needle = readNeedleAt(image, pose.x, pose.y, pose.radius);
+    const hint = tracker.needleDeg == null ? null
+      : transformDialAngle(inverseDialAngle(tracker.needleDeg, tracker.pose.matrix), matrix);
+    needle = readNeedleAt(image, pose.x, pose.y, pose.radius, hint);
     const detectorOnArc = barFromRestSpan(needle.angleDeg, zeroPrior, tenPrior) != null
       && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY;
     if (detectorOnArc) {
@@ -1308,7 +1339,7 @@ export function readCalibratedFrame(image, tracker) {
   const shiftReach = tracker.legacyScale
     ? Math.abs(wrapDelta(redShift.shiftDeg, 0)) <= 14
     : stepFromPrev <= 18 && Math.abs(wrapDelta(redShift.shiftDeg, 0)) <= 36;
-  const shiftOk = bands.redMass > 1.2 && redShift.corr >= 0.72 && shiftReach && shiftAgrees;
+  const shiftOk = !registrationExpected && bands.redMass > 1.2 && redShift.corr >= 0.72 && shiftReach && shiftAgrees;
   let shiftDeg = prevShift;
   if (shiftOk && !tracker.legacyScale && largeJump) {
     // A one-frame 10° match used to stick for the whole shot. A real tilt repeats.
@@ -1323,6 +1354,7 @@ export function readCalibratedFrame(image, tracker) {
     tracker.pendingShift = null;
     shiftDeg = redShift.shiftDeg;
   }
+  if (registered) shiftDeg = registered.shiftDeg;
   const match = redShift.corr;
   const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
   const lost = !bezelOk;
@@ -1333,19 +1365,27 @@ export function readCalibratedFrame(image, tracker) {
       radius: pose.radius,
       rotationDeg: wrap360(tracker.calibration.rotationDeg + shiftDeg),
       shiftDeg,
+      matrix,
     };
     if (needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY) {
       tracker.needleDeg = needle.angleDeg;
     }
   }
   tracker.score = score;
-  const zero = wrap360(tracker.calibration.zeroAngleDeg + shiftDeg);
-  const ten = wrap360(tracker.calibration.tenAngleDeg + shiftDeg);
-  const five = wrap360(tracker.calibration.fiveAngleDeg + shiftDeg);
+  const zero = matrix ? transformDialAngle(tracker.calibration.zeroAngleDeg, matrix)
+    : wrap360(tracker.calibration.zeroAngleDeg + shiftDeg);
+  const ten = matrix ? transformDialAngle(tracker.calibration.tenAngleDeg, matrix)
+    : wrap360(tracker.calibration.tenAngleDeg + shiftDeg);
+  const five = matrix ? transformDialAngle(tracker.calibration.fiveAngleDeg, matrix)
+    : wrap360(tracker.calibration.fiveAngleDeg + shiftDeg);
+  const referenceAngle = inverseDialAngle(needle.angleDeg, matrix);
   const rawBar = !lost && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY
     ? (tracker.legacyScale
       ? barFromRestSpan(needle.angleDeg, zero, ten)
-      : barFromTapAnchors(needle.angleDeg, zero, five, ten))
+      : matrix
+        ? barFromTapAnchors(referenceAngle, tracker.calibration.zeroAngleDeg,
+          tracker.calibration.fiveAngleDeg, tracker.calibration.tenAngleDeg)
+        : barFromTapAnchors(needle.angleDeg, zero, five, ten))
     : null;
   const bar = tracker.legacyScale
     ? rawBar
@@ -1360,6 +1400,8 @@ export function readCalibratedFrame(image, tracker) {
     ok: bar != null,
     lost,
     bar,
+    rawBar,
+    fresh: bar != null && rawBar === bar,
     score,
     bezelScore: found?.score ?? 0,
     match,
@@ -1372,6 +1414,8 @@ export function readCalibratedFrame(image, tracker) {
     zeroDeg: zero,
     fiveDeg: five,
     tenDeg: ten,
+    registration: registered ? { inliers: registered.inliers, residual: registered.residual } : null,
+    poseMatrix: matrix,
   };
 }
 
