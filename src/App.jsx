@@ -4057,6 +4057,7 @@ export default function App() {
                         flowCurve={s.scaleFlowCurve}
                         flowTimeOffsetSec={Number(preSec) || 0}
                         averageFlowRateGs={s.scaleFlowRateGs}
+                        flairProfile={s.flairProfile ?? null}
                         compact
                         {...(s.labPressureCurve?.length > 0
                           ? {
@@ -4066,7 +4067,6 @@ export default function App() {
                                 confident: true,
                               })),
                               pressurePeakBar: s.labPressurePeakBar ?? null,
-                              flairProfile: s.flairProfile ?? null,
                             }
                           : {})}
                       />
