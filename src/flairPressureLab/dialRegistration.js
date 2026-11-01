@@ -26,7 +26,8 @@ function patch(image, pose) {
   const data = new Uint8Array(SIZE * SIZE);
   const scale = pose.radius / FACE_RADIUS;
   for (let y = 0; y < SIZE; y += 1) for (let x = 0; x < SIZE; x += 1) {
-    data[y * SIZE + x] = grayAt(image, pose.x + (x - CENTRE) * scale, pose.y + (y - CENTRE) * scale);
+    const dx = (x - CENTRE) * scale, dy = (y - CENTRE) * scale;
+    data[y * SIZE + x] = grayAt(image, pose.x + dx, pose.y + dy);
   }
   return data;
 }
@@ -70,6 +71,22 @@ export function rememberDialReference(image, cal) {
 
 export function createDialRegistration(cal) {
   return { reference: references.get(key(cal)) ?? null, matrix: null, misses: 0 };
+}
+
+/** Restore transient features after reload using an independently confirmed face pose.
+ * The supplied shift is from saved face-band templates, never the current needle.
+ */
+export function seedDialRegistration(image, cal, pose, state, shiftDeg, needleDeg) {
+  if (state.reference) return;
+  const data = patch(image, pose);
+  const points = corners(data, needleDeg ?? wrap360(cal.zeroAngleDeg + shiftDeg));
+  if (points.length < 10) return;
+  const angle = shiftDeg * Math.PI / 180;
+  const baseMatrix = [Math.cos(angle), -Math.sin(angle), Math.sin(angle), Math.cos(angle)];
+  // Compose the confirmed initial rotation algebraically instead of resampling
+  // the reference a second time and biasing its corner positions.
+  state.reference = { data, points, baseMatrix };
+  state.last = { x: pose.x, y: pose.y, matrix: [1, 0, 0, 1], scale: pose.radius / FACE_RADIUS };
 }
 
 /** Reference-image direction -> current-image direction. */
@@ -133,18 +150,21 @@ export function registerDialFrame(image, _cal, pose, state) {
     const norm = m[0] ** 2 + m[1] ** 2 + m[3] ** 2 + m[4] ** 2;
     const spread = Math.sqrt(Math.max(0, norm * norm - 4 * det * det));
     const minScale = Math.sqrt((norm - spread) / 2), maxScale = Math.sqrt((norm + spread) / 2);
-    const rotation = Math.atan2(m[3] - m[1], m[0] + m[4]) * 180 / Math.PI;
+    const base = ref.baseMatrix ?? [1, 0, 0, 1];
+    const localMatrix = [m[0], m[1], m[3], m[4]];
+    const matrix = [m[0] * base[0] + m[1] * base[2], m[0] * base[1] + m[1] * base[3],
+      m[3] * base[0] + m[4] * base[2], m[3] * base[1] + m[4] * base[3]];
+    const rotation = Math.atan2(matrix[2] - matrix[1], matrix[0] + matrix[3]) * 180 / Math.PI;
     const x = m[0] * CENTRE + m[1] * CENTRE + m[2];
     const y = m[3] * CENTRE + m[4] * CENTRE + m[5];
     if (count < 8 || count < a.length / 4 || sectors.size < 3 || residual / count > 1.5
       || det < 0.65 || det > 1.5 || minScale < 0.65 || maxScale > 1.5
       || maxScale / minScale > 1.8 || Math.abs(rotation) > 40 || Math.hypot(x - CENTRE, y - CENTRE) > 18) return null;
     const scale = pose.radius / FACE_RADIUS;
-    const matrix = [m[0], m[1], m[3], m[4]];
     state.matrix = matrix;
     state.misses = 0;
     const hub = { x: pose.x + (x - CENTRE) * scale, y: pose.y + (y - CENTRE) * scale };
-    state.last = { ...hub, matrix, scale };
+    state.last = { ...hub, matrix: localMatrix, scale };
     return { ...hub,
       radius: pose.radius * Math.sqrt(det), matrix, shiftDeg: wrap360(rotation),
       quality: count / ref.points.length, residual: Math.sqrt(residual / count), inliers: count };

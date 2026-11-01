@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { setOpenCvForTests } from './opencvRuntime.js';
 import {
   createDialRegistration, inverseDialAngle, rememberDialReference,
-  registerDialFrame, transformDialAngle,
+  registerDialFrame, seedDialRegistration, transformDialAngle,
 } from './dialRegistration.js';
 import { wrapDelta } from './gaugeConfig.js';
 
@@ -66,5 +66,18 @@ describe('calibration-anchored dial registration', () => {
     const result = registerDialFrame(texture(undefined, undefined, true), cal,
       { x: 128, y: 128, radius: 80 }, createDialRegistration(cal));
     expect(result).toBeNull();
+  });
+
+  it('can restore a transient reference from confirmed face rotation without changing zero', () => {
+    const cal = { ...calibration(), zeroAngleDeg: 141 };
+    const state = createDialRegistration(cal), before = JSON.stringify(cal);
+    expect(state.reference).toBeNull();
+    const r = 5 * Math.PI / 180, matrix = [Math.cos(r), -Math.sin(r), Math.sin(r), Math.cos(r)];
+    const image = texture(matrix, [4, 7]), pose = { x: 132, y: 135, radius: 80 };
+    seedDialRegistration(image, cal, pose, state, 5, 260);
+    const matched = registerDialFrame(image, cal, pose, state);
+    expect(matched).not.toBeNull();
+    expect(Math.abs(wrapDelta(matched.shiftDeg, 5))).toBeLessThan(0.5);
+    expect(JSON.stringify(cal)).toBe(before);
   });
 });

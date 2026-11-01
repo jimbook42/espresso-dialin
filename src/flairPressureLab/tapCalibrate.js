@@ -26,7 +26,7 @@ import { detectNeedleAngle, refineNeedleAngle } from './needleFromFrame.js';
 import { regularizeTapAnchors } from './anchorRegularize.js';
 import {
   createDialRegistration, inverseDialAngle, rememberDialReference,
-  registerDialFrame, transformDialAngle,
+  registerDialFrame, seedDialRegistration, transformDialAngle,
 } from './dialRegistration.js';
 import { getOpenCvSync } from './opencvRuntime.js';
 
@@ -602,6 +602,7 @@ function tipValley(image, cx, cy, deg, radius, offsetPx) {
   const ox = cx - sin * offsetPx;
   const oy = cy + cos * offsetPx;
   const { data, width, height } = image;
+  const lateralScale = clamp(radius / REFERENCE_GAUGE_RADIUS_PX, 0.35, 2.5);
   let acc = 0;
   let bins = 0;
   let widthSum = 0;
@@ -611,7 +612,7 @@ function tipValley(image, cx, cy, deg, radius, offsetPx) {
     const y = oy + r * sin;
     let ok = true;
     for (let s = 0; s < 17; s += 1) {
-      const off = s - 8;
+      const off = (s - 8) * lateralScale;
       const lum = lumaAt(data, width, height, Math.round(x - sin * off), Math.round(y + cos * off));
       if (lum == null) {
         ok = false;
@@ -682,23 +683,26 @@ export function captureTipTemplate(image, cx, cy, deg, radius) {
 
 function keepTip(row) {
   if (!row) return false;
+  // Finger placement can leave the pivot a little off the pointer's line.
+  // A larger lateral search needs a long, strongly matching ridge.
+  if (Math.abs(row.off) > 8) return row.bins >= 6 && row.corr >= 0.95 && row.raw >= 100;
   if (row.bins >= 6 && row.corr >= 0.92 && Math.abs(row.off) <= 8) return true;
   if (row.bins >= 5 && row.corr >= 0.86 && Math.abs(row.off) <= 6 && row.raw >= 80) return true;
   return row.bins >= 5 && row.corr >= 0.9 && Math.abs(row.off) <= 4;
 }
 
-function gatherTip(image, cx, cy, radius, template, angles, priorDeg, offStep) {
+function gatherTip(image, cx, cy, radius, template, angles, priorDeg, offStep, maxOffset = 8) {
   let byScore = null;
   let byCorr = null;
   for (let i = 0; i < angles.length; i += 1) {
     const deg = angles[i];
-    for (let off = -8; off <= 8; off += offStep) {
+    for (let off = -maxOffset; off <= maxOffset; off += offStep) {
       const measured = tipValley(image, cx, cy, deg, radius, off);
       if (measured.bins < 4) continue;
       const corr = Math.max(0, tipCorr(template));
       let raw = measured.acc + measured.bins * 4 - Math.abs(off) * 2.8;
       if (priorDeg != null && Math.abs(wrapDelta(deg, priorDeg)) <= 12) raw += 8;
-      const row = { deg, off, raw, bins: measured.bins, corr };
+      const row = { deg, off, raw, bins: measured.bins, corr, maxOffset };
       if (!byScore || raw > byScore.raw) byScore = row;
       if (corr >= 0.72 && (!byCorr || corr > byCorr.corr + 0.02 || (corr >= byCorr.corr && raw > byCorr.raw))) {
         byCorr = row;
@@ -725,8 +729,8 @@ function chooseTip(byScore, byCorr) {
   return null;
 }
 
-function scanTip(image, cx, cy, radius, template, angles, priorDeg) {
-  const found = gatherTip(image, cx, cy, radius, template, angles, priorDeg, 2);
+function scanTip(image, cx, cy, radius, template, angles, priorDeg, maxOffset) {
+  const found = gatherTip(image, cx, cy, radius, template, angles, priorDeg, 2, maxOffset);
   return chooseTip(found.byScore, found.byCorr);
 }
 
@@ -753,13 +757,13 @@ function refineTip(image, cx, cy, radius, template, rough) {
   for (let delta = -2; delta <= 2; delta += 0.5) {
     const deg = wrap360(rough.deg + delta);
     for (let off = rough.off - 2; off <= rough.off + 2; off += 2) {
-      if (Math.abs(off) > 8) continue;
+      if (Math.abs(off) > (rough.maxOffset ?? 8)) continue;
       const measured = tipValley(image, cx, cy, deg, radius, off);
       if (measured.bins < 4) continue;
       const corr = Math.max(0, tipCorr(template));
       if (corr + 0.08 < rough.corr) continue;
       const raw = measured.acc + measured.bins * 4 - Math.abs(off) * 2.8;
-      if (raw > best.raw) best = { deg, off, raw, bins: measured.bins, corr };
+      if (raw > best.raw) best = { deg, off, raw, bins: measured.bins, corr, maxOffset: rough.maxOffset };
     }
   }
   return best;
@@ -771,21 +775,21 @@ function refineTip(image, cx, cy, radius, template, rough) {
  * moving slowly. A miss widens the window, and a jump falls through to the
  * whole arc in the same frame. Nothing outside the arc is returned.
  */
-export function matchTipAngle(image, cx, cy, radius, template, zeroDeg, tenDeg, priorDeg = null, misses = 0) {
+export function matchTipAngle(image, cx, cy, radius, template, zeroDeg, tenDeg, priorDeg = null, misses = 0, { maxOffset = 8 } = {}) {
   if (!template || !(radius > 12) || zeroDeg == null || tenDeg == null) return null;
   const half = misses >= 2 ? 64 : (misses === 1 ? 36 : 18);
   let found = null;
   if (priorDeg != null) {
-    const near = scanTip(image, cx, cy, radius, template, anglesNear(priorDeg, half, zeroDeg, tenDeg), priorDeg);
+    const near = scanTip(image, cx, cy, radius, template, anglesNear(priorDeg, half, zeroDeg, tenDeg), priorDeg, maxOffset);
     if (near && Math.abs(wrapDelta(near.deg, priorDeg)) <= half - 4) found = near;
   }
-  if (!found) found = scanTip(image, cx, cy, radius, template, anglesOnArc(zeroDeg, tenDeg), priorDeg);
+  if (!found) found = scanTip(image, cx, cy, radius, template, anglesOnArc(zeroDeg, tenDeg), priorDeg, maxOffset);
   if (!found || barFromRestSpan(found.deg, zeroDeg, tenDeg) == null) {
-    // A fast rise blurs the tip below the strict gate. A short step forward
-    // from the last angle is the needle, not the pin.
-    const loose = gatherTip(image, cx, cy, radius, template, anglesOnArc(zeroDeg, tenDeg), priorDeg, 4);
+    // A short measured step can be a rise or a fall. Both still need pixels
+    // matching the needle template; pressure direction is not evidence.
+    const loose = gatherTip(image, cx, cy, radius, template, anglesOnArc(zeroDeg, tenDeg), priorDeg, 4, maxOffset);
     const row = loose.byCorr;
-    const step = row && priorDeg != null ? clockwiseDeg(priorDeg, row.deg) : 999;
+    const step = row && priorDeg != null ? Math.abs(wrapDelta(priorDeg, row.deg)) : 999;
     if (misses >= 1 && row && row.corr >= 0.85 && row.bins >= 4 && step >= 1.5 && step <= 18) {
       found = row;
     } else {
@@ -799,10 +803,9 @@ export function matchTipAngle(image, cx, cy, radius, template, zeroDeg, tenDeg, 
   if (jump > jumpLimit) return null;
   // A line that barely leaves the last angle is usually the tail or the pin.
   // The detector already had that neighbourhood and declined it. A step
-  // forward along the scale is the needle moving.
-  const forward = priorDeg != null && clockwiseDeg(priorDeg, refined.deg) >= 1.5
-    && clockwiseDeg(priorDeg, refined.deg) <= 18;
-  if (jump < 30 && refined.corr < 0.95 && refined.bins < 7 && !(forward && refined.corr >= 0.85 && refined.bins >= 5)) {
+  // in either direction must still have the same matching, continuous ridge.
+  const shortMove = priorDeg != null && jump >= 1.5 && jump <= 18;
+  if (jump < 30 && refined.corr < 0.95 && refined.bins < 7 && !(shortMove && refined.corr >= 0.85 && refined.bins >= 5)) {
     return null;
   }
   return {
@@ -1303,6 +1306,7 @@ export function readCalibratedFrame(image, tracker) {
         tenPrior,
         tracker.needleDeg,
         tracker.needleMisses || 0,
+        { maxOffset: Math.max(4, Math.min(20, Math.ceil(pose.radius * 0.09) * 2)) },
       );
       if (matched) {
         const gap = Math.abs(wrapDelta(matched.angleDeg, tracker.needleDeg));
@@ -1355,6 +1359,13 @@ export function readCalibratedFrame(image, tracker) {
     shiftDeg = redShift.shiftDeg;
   }
   if (registered) shiftDeg = registered.shiftDeg;
+  if (!tracker.legacyScale && !tracker.registration.reference && bezelOk
+    && shiftOk && redShift.corr >= 0.85 && darkShift.corr >= 0.65 && shiftDisagree <= 5) {
+    const pending = tracker.registration.pendingSeed;
+    if (pending != null && Math.abs(wrapDelta(pending, shiftDeg)) <= 3) {
+      seedDialRegistration(image, tracker.calibration, pose, tracker.registration, shiftDeg, needle.angleDeg);
+    } else tracker.registration.pendingSeed = shiftDeg;
+  }
   const match = redShift.corr;
   const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
   const lost = !bezelOk;

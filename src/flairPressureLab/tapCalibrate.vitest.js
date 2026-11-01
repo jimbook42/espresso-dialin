@@ -394,6 +394,25 @@ describe('snapHub', () => {
 });
 
 describe('matchTipAngle', () => {
+  it('reads a real ridge through bounded pivot-placement error on a falling needle', () => {
+    const size = 220, data = new Uint8ClampedArray(size * size * 4).fill(230);
+    const actualHub = { x: 112, y: 92 }, angle = 40 * Math.PI / 180;
+    for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) {
+      const dx = x - actualHub.x, dy = y - actualHub.y;
+      const along = dx * Math.cos(angle) + dy * Math.sin(angle);
+      const across = -dx * Math.sin(angle) + dy * Math.cos(angle);
+      if (along < 18 || along > 78 || Math.abs(across) > 1.8) continue;
+      const i = (y * size + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = 20;
+    }
+    const image = { width: size, height: size, data };
+    const template = captureTipTemplate(image, actualHub.x, actualHub.y, 40, 90);
+    const found = matchTipAngle(image, 100, 100, 90, template, 0, 170, 50, 1, { maxOffset: 18 });
+    expect(found).not.toBeNull();
+    expect(Math.abs(wrapDelta(found.angleDeg, 40))).toBeLessThan(3);
+    expect(found.corr).toBeGreaterThan(0.95);
+  });
+
   it('follows the tip template and leaves the tail and a tick alone', () => {
     const size = 240;
     const hub = { x: 120, y: 120 };
