@@ -79,6 +79,7 @@ export function useShotLabPressure({
   /** Metrics frozen when the shot timer stops (session may reset immediately after). */
   const stoppedShotMetricsRef = useRef(null);
   const r5InferBusyRef = useRef(false);
+  const r5GenerationRef = useRef(0);
   const lastR5Ref = useRef({ r5Bar: null, r5Conf: null, r5Angle: null });
   const timerSecondsRef = useRef(timerSeconds);
   timerSecondsRef.current = timerSeconds;
@@ -102,6 +103,8 @@ export function useShotLabPressure({
   const preShotDialSamplerLockedRef = useRef(false);
 
   useEffect(() => {
+    r5GenerationRef.current += 1;
+    lastR5Ref.current = { r5Bar: null, r5Conf: null, r5Angle: null };
     setCalibrated(Boolean(storedCalibration));
     if (storedCalibration) {
       trackerRef.current = createCalibratedTracker(storedCalibration, { leapCap, legacyScale });
@@ -157,6 +160,7 @@ export function useShotLabPressure({
   }, []);
 
   const resetShotSession = useCallback(() => {
+    r5GenerationRef.current += 1;
     sessionRef.current.reset();
     holdRef.current.reset();
     shotEpochRef.current = null;
@@ -203,6 +207,8 @@ export function useShotLabPressure({
 
   useEffect(() => {
     if (timerRunning) {
+      r5GenerationRef.current += 1;
+      lastR5Ref.current = { r5Bar: null, r5Conf: null, r5Angle: null };
       stoppedShotMetricsRef.current = null;
       const epoch = Date.now();
       sessionRef.current.begin(epoch);
@@ -220,6 +226,8 @@ export function useShotLabPressure({
       return;
     }
     if (weighingViewOpen) {
+      r5GenerationRef.current += 1;
+      lastR5Ref.current = { r5Bar: null, r5Conf: null, r5Angle: null };
       const epoch = Date.now();
       sessionRef.current.begin(epoch);
       shotEpochRef.current = epoch;
@@ -287,6 +295,7 @@ export function useShotLabPressure({
       try {
         const video = videoRef.current;
         if (!video || video.readyState < 2) return;
+        const capturedAtMs = Date.now();
         const image = grabSourceImage(video);
         if (!image) return;
         lastFrameRef.current = image;
@@ -307,9 +316,15 @@ export function useShotLabPressure({
         }
         if (!r5InferBusyRef.current) {
           r5InferBusyRef.current = true;
-          void r5SampleFromTapFrame(image, read)
+          const generation = r5GenerationRef.current;
+          void r5SampleFromTapFrame(image, read, cal, capturedAtMs)
             .then((r5) => {
-              lastR5Ref.current = r5;
+              if (generation === r5GenerationRef.current && trackerRef.current?.calibration === cal) {
+                lastR5Ref.current = r5;
+              }
+            })
+            .catch(() => {
+              if (generation === r5GenerationRef.current) lastR5Ref.current = {};
             })
             .finally(() => {
               r5InferBusyRef.current = false;
@@ -317,33 +332,25 @@ export function useShotLabPressure({
         }
         const r5 = lastR5Ref.current;
         const gated = r7Ref.current.stepFrame({
+          ...r5,
           nowMs,
+          capturedAtMs,
           read,
-          r5Bar: r5.r5Bar,
-          r5Conf: r5.r5Conf,
-          r5Angle: r5.r5Angle,
         });
         const rawBar = gated.bar;
-        const confident = rawBar != null && !gated.uncertain;
-        const held = holdRef.current.push({
-          bar: confident ? rawBar : null,
-          fresh: confident,
-          now: nowMs,
-        });
+        const confident = rawBar != null && gated.fresh === true;
         const epoch = shotEpochRef.current;
         if (confident && rawBar != null && epoch) {
-          sessionRef.current.pushRaw(rawBar, true);
+          sessionRef.current.pushRaw(rawBar, true, gated.measuredAtMs);
           gaugeSnapshotRef.current = gaugeSnapshotJpegFromImageData(image);
         }
         const all = sessionRef.current.getSamples();
         const tS = epoch ? (nowMs - epoch) / 1000 : timerSecondsRef.current;
         setSamples([...all]);
-        setHold({ held: held.held, gap: held.gap });
+        setHold({ held: gated.held, gap: rawBar == null });
         setReaderUncertain(gated.uncertain);
         setDisplayBar(
-          gated.uncertain
-            ? null
-            : rollingDisplayBar(all, tS) ?? (held.gap ? null : held.bar),
+          gated.held ? rawBar : confident ? rollingDisplayBar(all, tS) ?? rawBar : null,
         );
         setPeakBar(peakBarFromRaw(all));
         replayFrameObserverRef?.current?.({
@@ -372,7 +379,10 @@ export function useShotLabPressure({
       }
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      r5GenerationRef.current += 1;
+    };
   }, [
     enabled,
     displaySurfaceActive,

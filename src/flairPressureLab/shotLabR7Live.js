@@ -6,12 +6,13 @@ import {
 import { initialTemporalState, stepTemporalGate } from './temporalGate.js';
 import { gateConfigR7, loadR7Config } from './r7Config.js';
 import { publishTapBar } from './tapCalibrate.js';
+import { createTapReadingPublisher } from './tapReadingPublisher.js';
 
 export const SHOT_LAB_R7_FRAME_MS = PROCESS_INTERVAL_MS;
 
 /**
- * Live R7 publisher: tap-calibrated classical (R6-cleaned) + R5 sample + TemporalGate.
- * Reader numbers come from frozen r7_config.json only.
+ * Live tap observations with registered model recovery and explicit display holds.
+ * The legacy R6/TemporalGate path and shared rate limits use frozen r7_config.
  */
 export function createShotLabR7Publisher(tapCalibration, options = {}) {
   const bundle = loadR7Config();
@@ -20,6 +21,7 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
   const legacyScale = options.legacyScale === true || tapCalibration?.legacyScale === true;
   const { anchors } = regularizeReplayAnchors(tapCalibration, bundle.reader);
   const classical = createClassicalReaderR6(bundle.reader);
+  const tapPublisher = createTapReadingPublisher(gateCfg);
   let gateState = initialTemporalState();
   let shotT0 = 0;
   let lastOut = null;
@@ -29,11 +31,13 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
     gateState = initialTemporalState();
     shotT0 = 0;
     lastOut = null;
+    tapPublisher.reset();
   };
 
   const beginShot = (epochMs = Date.now()) => {
     reset();
     shotT0 = epochMs;
+    tapPublisher.beginShot(epochMs);
   };
 
   /**
@@ -45,7 +49,8 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
    *   r5Angle?: number | null,
    * }} frame
    */
-  const stepFrame = ({ nowMs = Date.now(), read, r5Bar = null, r5Conf = null, r5Angle = null }) => {
+  const stepFrame = (frame) => {
+    const { nowMs = Date.now(), read, r5Bar = null, r5Conf = null, r5Angle = null } = frame;
     if (!anchors) {
       return { bar: null, uncertain: true, reason: 'no-anchors', classicalStep: null };
     }
@@ -67,6 +72,9 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
       r5Bar,
       r5Conf,
     });
+    if (!legacyScale) {
+      return { ...tapPublisher.step({ ...frame, nowMs }), classicalStep };
+    }
     const tapSure = !legacyScale && read.ok && read.bar != null && !read.lost;
     let classicalBar = classicalStep.published ? classicalStep.bar : null;
     // The tap reader's bar is piecewise through the user's 5 and 10, and it
@@ -108,9 +116,14 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
     }
     if (bar != null) lastOut = bar;
     const uncertain = bar == null;
+    const held = bar != null && (bar !== gated.bar || gated.reason === 'hold'
+      || classicalStep.reason === 'uncertain-hold');
     return {
       bar,
       uncertain,
+      fresh: bar != null && !held,
+      held,
+      measuredAtMs: bar != null && !held ? nowMs : null,
       reason: bar != null && bar !== gated.bar ? 'hold-max' : gated.reason,
       classicalStep,
     };

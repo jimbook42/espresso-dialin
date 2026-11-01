@@ -48,7 +48,7 @@ function tapCalibrationUserPlaced(tapCalibration) {
 
 export function regularizeReplayAnchors(tapCalibration, config = DEFAULT_R6_CONFIG) {
   const anchors = tapCalibration?.anchors ?? tapCalibration;
-  if (!anchors?.zeroAngleDeg || anchors.tenAngleDeg == null) {
+  if (anchors?.zeroAngleDeg == null || anchors.tenAngleDeg == null) {
     return { anchors: null, stats: { rejected: false, blended: false } };
   }
   const hub = anchors.centre ?? tapCalibration?.centre;
