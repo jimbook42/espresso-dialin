@@ -78,6 +78,36 @@ describe('ScaleFlowChart history pressure overlay', () => {
     renderChart({ flairProfile: FLAIR });
     expect(container.querySelector('[data-testid="history-ideal-pressure"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="history-measured-pressure"]')).toBeNull();
+    expect(container.querySelector('[data-testid="history-pressure-axis"]')).not.toBeNull();
+  });
+
+  it('does not invent an ideal profile when the saved shot has no Flair profile', () => {
+    renderChart({});
+    expect(container.querySelector('[data-testid="history-ideal-pressure"]')).toBeNull();
+    expect(container.querySelector('[data-testid="history-pressure-axis"]')).toBeNull();
+  });
+
+  it('shows compact shot-start time, flow, and pressure axes with seconds and units', () => {
+    const longFlow = [
+      { tS: 0, weightG: 0 },
+      { tS: 10, weightG: 60 },
+      { tS: 20, weightG: 120 },
+      { tS: 30, weightG: 180 },
+    ];
+    const longPressure = [
+      { tS: 0, bar: 0, confident: true },
+      { tS: 15, bar: 5, confident: true },
+      { tS: 30, bar: 10, confident: true },
+    ];
+    renderChart({ flowCurve: longFlow, pressureSamples: longPressure });
+
+    expect([...container.querySelectorAll('[data-testid="history-time-tick"]')].map((tick) => tick.textContent))
+      .toEqual(['0s', '10s', '20s', '30s']);
+    expect([...container.querySelectorAll('[data-testid="history-flow-tick"]')].map((tick) => tick.textContent))
+      .toEqual(['0', '5', '10']);
+    expect([...container.querySelectorAll('[data-testid="history-pressure-tick"]')].map((tick) => tick.textContent))
+      .toEqual(['0', '5', '10']);
+    expect(container.querySelector('[data-testid="history-flow-axis-label"]')?.textContent).toBe('g/s');
   });
 
   it('plots extraction flow after preinfusion on the shot-start timeline, excluding countdown', () => {
@@ -95,7 +125,7 @@ describe('ScaleFlowChart history pressure overlay', () => {
       .querySelector('[data-testid="history-measured-pressure"]')
       ?.getAttribute('d');
 
-    expect(flowPath).toMatch(/^M 196\.0 /);
-    expect(pressurePath).toMatch(/^M 22\.0 /);
+    expect(flowPath).toMatch(/^M 195\.5 /);
+    expect(pressurePath).toMatch(/^M 32\.0 /);
   });
 });

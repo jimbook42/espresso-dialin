@@ -10,6 +10,7 @@ import {
 
 const AMBER = '#c88a4b';
 const PROFILE_AMBER = 'rgba(200, 138, 75, 0.35)';
+const AXIS = '#6b6457';
 
 /**
  * @param {{
@@ -48,11 +49,11 @@ export function ScaleFlowChart({
   const showPressure = pressurePoints.length > 0 || showIdealPressure;
 
   const w = compact ? 280 : 320;
-  const h = compact ? (showPressure ? 88 : 72) : showPressure ? 112 : 96;
-  const padL = showPressure ? 22 : 8;
-  const padR = showPressure ? 26 : 8;
-  const padT = compact ? 12 : 14;
-  const padB = compact ? 14 : 16;
+  const h = compact ? (showPressure ? 104 : 88) : showPressure ? 128 : 112;
+  const padL = compact ? 32 : 38;
+  const padR = showPressure ? (compact ? 30 : 36) : 8;
+  const padT = compact ? 14 : 16;
+  const padB = compact ? 22 : 24;
   const chartW = w - padL - padR;
   const chartH = h - padT - padB;
 
@@ -61,16 +62,30 @@ export function ScaleFlowChart({
     ...(showPressure ? pressurePoints.map((p) => p.tS) : []),
     1,
   );
+  const timeAxisMax = Math.max(10, Math.ceil(maxT / 10) * 10);
   const maxFlow = Math.max(...flowSeries.map((p) => p.flowGs), 0.5);
-  const x = (t) => padL + (t / maxT) * chartW;
-  const yFlow = (flow) => padT + chartH - (flow / maxFlow) * chartH;
+  const flowAxisMax = Math.max(5, Math.ceil(maxFlow / 5) * 5);
+  const x = (t) => padL + (t / timeAxisMax) * chartW;
+  const yFlow = (flow) => padT + chartH - (flow / flowAxisMax) * chartH;
 
   const flowPath = flowSeries
     .map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.tS).toFixed(1)} ${yFlow(p.flowGs).toFixed(1)}`)
     .join(' ');
 
-  const pressureYMax = showPressure ? historyPressureYMax(pressurePoints, flairProfile) : 1;
+  const pressureYMax = showPressure
+    ? Math.max(10, historyPressureYMax(pressurePoints, flairProfile))
+    : 1;
   const yBar = (bar) => shotPressureChartY(bar, pressureYMax, padT, chartH);
+  const flowTicks = Array.from(
+    { length: flowAxisMax / 5 + 1 },
+    (_, i) => i * 5,
+  );
+  const timeTicks = Array.from(
+    { length: timeAxisMax / 10 + 1 },
+    (_, i) => i * 10,
+  );
+  const axisBottom = padT + chartH;
+  const axisRight = padL + chartW;
 
   let idealPath = '';
   if (showPressure && showIdealPressure) {
@@ -127,29 +142,73 @@ export function ScaleFlowChart({
         aria-labelledby={labelId}
         data-pressure-overlay={showPressure ? 'true' : 'false'}
       >
+        <g data-testid="history-flow-axis" fill={AXIS} fontSize="8" fontFamily="system-ui, sans-serif">
+          <line x1={padL} y1={padT} x2={padL} y2={axisBottom} stroke={AXIS} strokeWidth="0.75" />
+          {flowTicks.map((tick) => {
+            const y = yFlow(tick);
+            return (
+              <g key={tick}>
+                <line x1={padL - 3} y1={y} x2={padL} y2={y} stroke={AXIS} strokeWidth="0.75" />
+                <text
+                  x={padL - 5}
+                  y={y + 2.5}
+                  textAnchor="end"
+                  data-testid="history-flow-tick"
+                >
+                  {tick}
+                </text>
+              </g>
+            );
+          })}
+          <text
+            x="8"
+            y={padT + chartH / 2}
+            textAnchor="middle"
+            transform={`rotate(-90 8 ${padT + chartH / 2})`}
+            data-testid="history-flow-axis-label"
+          >
+            g/s
+          </text>
+        </g>
+        <g data-testid="history-time-axis" fill={AXIS} fontSize="8" fontFamily="system-ui, sans-serif">
+          <line x1={padL} y1={axisBottom} x2={axisRight} y2={axisBottom} stroke={AXIS} strokeWidth="0.75" />
+          {timeTicks.map((tick) => {
+            const tickX = x(tick);
+            return (
+              <g key={tick}>
+                <line x1={tickX} y1={axisBottom} x2={tickX} y2={axisBottom + 3} stroke={AXIS} strokeWidth="0.75" />
+                <text
+                  x={tickX}
+                  y={axisBottom + 12}
+                  textAnchor="middle"
+                  data-testid="history-time-tick"
+                >
+                  {tick}s
+                </text>
+              </g>
+            );
+          })}
+        </g>
         {showPressure && (
-          <>
-            <text
-              x={padL - 4}
-              y={padT + 8}
-              fill="#6b6457"
-              fontSize="8"
-              textAnchor="end"
-              fontFamily="system-ui, sans-serif"
-            >
-              {pressureYMax.toFixed(0)}
-            </text>
-            <text
-              x={padL - 4}
-              y={padT + chartH}
-              fill="#6b6457"
-              fontSize="8"
-              textAnchor="end"
-              fontFamily="system-ui, sans-serif"
-            >
-              0
-            </text>
-          </>
+          <g data-testid="history-pressure-axis" fill={AXIS} fontSize="8" fontFamily="system-ui, sans-serif">
+            <line x1={axisRight} y1={padT} x2={axisRight} y2={axisBottom} stroke={AXIS} strokeWidth="0.75" />
+            {[0, 5, 10].map((tick) => {
+              const y = yBar(tick);
+              return (
+                <g key={tick}>
+                  <line x1={axisRight} y1={y} x2={axisRight + 3} y2={y} stroke={AXIS} strokeWidth="0.75" />
+                  <text
+                    x={axisRight + 5}
+                    y={y + 2.5}
+                    textAnchor="start"
+                    data-testid="history-pressure-tick"
+                  >
+                    {tick}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
         )}
         {idealPath && (
           <path
