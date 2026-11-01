@@ -226,6 +226,15 @@ export async function predictRegisteredNeedle(face) {
     face.rotationDeg,
   );
   const t1 = nowMs();
+  const prediction = await predictNeedleInput(data);
+  if (!prediction) return null;
+  return { ...prediction, prepMs: t1 - t0, ms: nowMs() - t0 };
+}
+
+/** Run the unchanged weights on a caller's geometrically registered CHW crop. */
+export async function predictNeedleInput(data) {
+  if (!isNeedleModelReady() || data?.length !== 3 * NEEDLE_INPUT_SIZE * NEEDLE_INPUT_SIZE) return null;
+  const t1 = nowMs();
   const ort = await import('onnxruntime-web/wasm');
   const tensor = new ort.Tensor('float32', data, [1, 3, NEEDLE_INPUT_SIZE, NEEDLE_INPUT_SIZE]);
   const output = await session.run({ [NEEDLE_MODEL_INPUT]: tensor });
@@ -233,8 +242,8 @@ export async function predictRegisteredNeedle(face) {
   const decoded = decodeNeedleOutput(output[NEEDLE_MODEL_OUTPUT]?.data);
   return {
     ...decoded,
-    prepMs: t1 - t0,
+    prepMs: 0,
     inferMs: t2 - t1,
-    ms: t2 - t0,
+    ms: t2 - t1,
   };
 }
