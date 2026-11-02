@@ -1,0 +1,2198 @@
+{
+  "candidate": "d758da2",
+  "before": {
+    "coveragePct": 79.62,
+    "streamCoveragePct": 77.45,
+    "medianAbsBar": 0.147,
+    "p90AbsBar": 0.629,
+    "wildPct": 5.88,
+    "labelN": 51,
+    "flipPct": 25,
+    "restAbsMax": 1.703,
+    "msFrame": 36
+  },
+  "after": {
+    "coveragePct": 87.5,
+    "streamCoveragePct": 62.84,
+    "medianAbsBar": 0.081,
+    "p90AbsBar": 0.362,
+    "wildPct": 2.38,
+    "labelN": 42,
+    "flipPct": 44,
+    "restAbsMax": 1.334,
+    "msFrame": 35.7
+  },
+  "frameTotals": {
+    "frames": 3961,
+    "fresh": 2346,
+    "held": 143,
+    "gaps": 1472,
+    "freshCoveragePct": 59.227467811158796,
+    "heldCoveragePct": 3.6101994445847008
+  },
+  "clips": [
+    {
+      "id": "20261015_225219",
+      "before": {
+        "id": "20261015_225219",
+        "calOk": true,
+        "calReason": null,
+        "frames": 100,
+        "coveragePct": 82,
+        "medianAbsBar": 0,
+        "p90AbsBar": 0,
+        "wildPct": 0,
+        "labelN": 1,
+        "flipPct": 100,
+        "restOffsetBar": 0,
+        "restLabelAbs": 0,
+        "falseTen": 0,
+        "jitterRms": 0,
+        "msFrame": 33.4,
+        "hubPx": 4.1,
+        "r5Median": 0,
+        "classicalMedian": 0.003,
+        "r6Median": 0,
+        "displayMedian": 0,
+        "hiddenGood": 0,
+        "reasons": {
+          "rest": 1
+        },
+        "streamReasons": {
+          "no-r2": 18,
+          "rest": 82
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 0
+      },
+      "after": {
+        "id": "20261015_225219",
+        "calOk": true,
+        "calReason": null,
+        "frames": 100,
+        "coveragePct": 100,
+        "medianAbsBar": 0.003202045940562586,
+        "p90AbsBar": 0.003,
+        "wildPct": 0,
+        "labelN": 1,
+        "flipPct": 100,
+        "restOffsetBar": -0.011,
+        "restLabelAbs": 0.003,
+        "falseTen": 0,
+        "jitterRms": 0.0093,
+        "msFrame": 35.7,
+        "hubPx": 4.1,
+        "r5Median": 0,
+        "classicalMedian": 0.003,
+        "r6Median": 0,
+        "displayMedian": 0.001,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 1
+        },
+        "streamReasons": {
+          "tap-fresh": 100
+        },
+        "n": 1,
+        "within03": 1,
+        "worst": {
+          "timeS": 6.264322,
+          "error": 0.003202045940562586
+        },
+        "freshFrames": 100,
+        "heldFrames": 0,
+        "gapFrames": 0,
+        "freshCoveragePct": 100,
+        "heldCoveragePct": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 1,
+          "within03": 1,
+          "medianAbsBar": 0.003202045940562586,
+          "worst": {
+            "timeS": 6.264322,
+            "error": 0.003202045940562586
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f029",
+            "phase": "dry_1",
+            "t": 6.264322,
+            "truth": 0,
+            "published": 0.003202045940562586,
+            "display": 0.0007714434198276062,
+            "reason": "tap-fresh",
+            "hubPx": 4.086286183900104,
+            "r5Bar": 0,
+            "classicalBar": 0.003202045940562586,
+            "r6Bar": 0,
+            "needleErr": 176.2149687331962
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 100
+        }
+      }
+    },
+    {
+      "id": "20261015_225307",
+      "before": {
+        "id": "20261015_225307",
+        "calOk": true,
+        "calReason": null,
+        "frames": 121,
+        "coveragePct": 72.73,
+        "medianAbsBar": null,
+        "p90AbsBar": null,
+        "wildPct": null,
+        "labelN": 0,
+        "flipPct": null,
+        "restOffsetBar": 0.374,
+        "restLabelAbs": null,
+        "falseTen": 0,
+        "jitterRms": 0.0519,
+        "msFrame": 32,
+        "hubPx": 2.2,
+        "r5Median": null,
+        "classicalMedian": 0.124,
+        "r6Median": 0,
+        "displayMedian": null,
+        "hiddenGood": 0,
+        "reasons": {
+          "no-r2": 1
+        },
+        "streamReasons": {
+          "classical-direct": 4,
+          "ok": 18,
+          "rest": 66,
+          "no-r2": 33
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 0
+      },
+      "after": {
+        "id": "20261015_225307",
+        "calOk": true,
+        "calReason": null,
+        "frames": 121,
+        "coveragePct": 90.08,
+        "medianAbsBar": 0.014200434038775004,
+        "p90AbsBar": 0.014,
+        "wildPct": 0,
+        "labelN": 1,
+        "flipPct": 100,
+        "restOffsetBar": 0.024,
+        "restLabelAbs": 0.014,
+        "falseTen": 0,
+        "jitterRms": 0.0756,
+        "msFrame": 41.7,
+        "hubPx": 1.1,
+        "r5Median": null,
+        "classicalMedian": 0.014,
+        "r6Median": 0,
+        "displayMedian": 0.03,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 1
+        },
+        "streamReasons": {
+          "tap-fresh": 105,
+          "pose-lost": 12,
+          "held:needle-missing": 4
+        },
+        "n": 1,
+        "within03": 1,
+        "worst": {
+          "timeS": 7.5813165,
+          "error": -0.014200434038775004
+        },
+        "freshFrames": 105,
+        "heldFrames": 4,
+        "gapFrames": 12,
+        "freshCoveragePct": 86.77685950413223,
+        "heldCoveragePct": 3.3057851239669422,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 1,
+          "within03": 1,
+          "medianAbsBar": 0.014200434038775004,
+          "worst": {
+            "timeS": 7.5813165,
+            "error": -0.014200434038775004
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f030",
+            "phase": "dry_1",
+            "t": 7.5813165,
+            "truth": 0,
+            "published": -0.014200434038775004,
+            "display": -0.030354585997028127,
+            "reason": "tap-fresh",
+            "hubPx": 1.1258150749220421,
+            "r5Bar": null,
+            "classicalBar": -0.014200434038775004,
+            "r6Bar": 0,
+            "needleErr": 178.65313692450763
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 105,
+          "pose-lost": 12,
+          "held:needle-missing": 4
+        }
+      }
+    },
+    {
+      "id": "20261017_084814",
+      "before": {
+        "id": "20261017_084814",
+        "calOk": true,
+        "calReason": null,
+        "frames": 380,
+        "coveragePct": 43.95,
+        "medianAbsBar": 0.757,
+        "p90AbsBar": 1.55,
+        "wildPct": 33.33,
+        "labelN": 3,
+        "flipPct": 0,
+        "restOffsetBar": 0,
+        "restLabelAbs": 0,
+        "falseTen": 0,
+        "jitterRms": 0.0688,
+        "msFrame": 36.3,
+        "hubPx": 3.2,
+        "r5Median": 0.614,
+        "classicalMedian": 1.49,
+        "r6Median": 1.577,
+        "displayMedian": 0.821,
+        "hiddenGood": 0,
+        "reasons": {
+          "rest": 1,
+          "classical-direct": 2,
+          "no-r2": 2
+        },
+        "streamReasons": {
+          "no-r2": 206,
+          "rest": 32,
+          "rate": 3,
+          "disagree": 4,
+          "ok": 2,
+          "classical-direct": 130,
+          "hold-max": 3
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 3
+      },
+      "after": {
+        "id": "20261017_084814",
+        "calOk": true,
+        "calReason": null,
+        "frames": 380,
+        "coveragePct": 91.58,
+        "medianAbsBar": 0.16930003410917127,
+        "p90AbsBar": 0.247,
+        "wildPct": 0,
+        "labelN": 5,
+        "flipPct": 40,
+        "restOffsetBar": 0.036,
+        "restLabelAbs": 0.002,
+        "falseTen": 0,
+        "jitterRms": 0.0935,
+        "msFrame": 40.5,
+        "hubPx": 4.1,
+        "r5Median": 5.163,
+        "classicalMedian": 0.169,
+        "r6Median": 0.075,
+        "displayMedian": 0.099,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 5
+        },
+        "streamReasons": {
+          "tap-fresh": 343,
+          "pose-lost": 32,
+          "held:needle-missing": 5
+        },
+        "n": 5,
+        "within03": 5,
+        "worst": {
+          "timeS": 22,
+          "error": -0.29307611658121235
+        },
+        "freshFrames": 343,
+        "heldFrames": 5,
+        "gapFrames": 32,
+        "freshCoveragePct": 90.26315789473684,
+        "heldCoveragePct": 1.3157894736842106,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 5,
+          "within03": 5,
+          "medianAbsBar": 0.16930003410917127,
+          "worst": {
+            "timeS": 22,
+            "error": -0.29307611658121235
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f001",
+            "phase": "rest",
+            "t": 1.8,
+            "truth": 0,
+            "published": 0.0022066627670905043,
+            "display": 0.007955145823867516,
+            "reason": "tap-fresh",
+            "hubPx": 4.089177529959353,
+            "r5Bar": 0,
+            "classicalBar": 0.0022066627670905043,
+            "r6Bar": 0,
+            "needleErr": 94.52249710752449
+          },
+          {
+            "id": "f002",
+            "phase": "preinfusion",
+            "t": 9.5,
+            "truth": 1.4108058823836578,
+            "published": 1.589551019172621,
+            "display": 1.509660424295743,
+            "reason": "tap-fresh",
+            "hubPx": 4.918438994728705,
+            "r5Bar": 0.13668105999488028,
+            "classicalBar": 1.589551019172621,
+            "r6Bar": 1.4854889427339777,
+            "needleErr": 110.39135991374968
+          },
+          {
+            "id": "f003",
+            "phase": "ramp",
+            "t": 18.5,
+            "truth": 5.162671695109537,
+            "published": 4.993371661000365,
+            "display": 4.993371661000365,
+            "reason": "tap-fresh",
+            "hubPx": 3.4201755808137495,
+            "r5Bar": 0,
+            "classicalBar": 4.993371661000365,
+            "r6Bar": 4.449475843652215,
+            "needleErr": 173.32740966776896
+          },
+          {
+            "id": "f004",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.612882354007921,
+            "published": 7.319806237426708,
+            "display": 7.319806237426708,
+            "reason": "tap-fresh",
+            "hubPx": 2.347488210113067,
+            "r5Bar": 0,
+            "classicalBar": 7.319806237426708,
+            "r6Bar": 7.028240487994567,
+            "needleErr": 143.0396652735203
+          },
+          {
+            "id": "f031",
+            "phase": "taper",
+            "t": 41.5,
+            "truth": 5.738081057539937,
+            "published": 5.745786219936587,
+            "display": 5.778597214902013,
+            "reason": "tap-fresh",
+            "hubPx": 4.6543697590630515,
+            "r5Bar": 0,
+            "classicalBar": 5.745786219936587,
+            "r6Bar": 5.6710268705731215,
+            "needleErr": 175.3702650893827
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 343,
+          "pose-lost": 32,
+          "held:needle-missing": 5
+        }
+      }
+    },
+    {
+      "id": "20261017_084919",
+      "before": {
+        "id": "20261017_084919",
+        "calOk": true,
+        "calReason": null,
+        "frames": 319,
+        "coveragePct": 79.62,
+        "medianAbsBar": 0.551,
+        "p90AbsBar": 0.998,
+        "wildPct": 33.33,
+        "labelN": 3,
+        "flipPct": 0,
+        "restOffsetBar": 0,
+        "restLabelAbs": 0,
+        "falseTen": 0,
+        "jitterRms": 0.106,
+        "msFrame": 39.4,
+        "hubPx": 5.4,
+        "r5Median": 0.247,
+        "classicalMedian": 0.551,
+        "r6Median": 0.124,
+        "displayMedian": 0.379,
+        "hiddenGood": 0,
+        "reasons": {
+          "rest": 1,
+          "classical-direct": 2
+        },
+        "streamReasons": {
+          "no-r2": 2,
+          "rest": 76,
+          "classical-direct": 169,
+          "rate": 3,
+          "disagree": 60,
+          "hold-max": 9
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 9
+      },
+      "after": {
+        "id": "20261017_084919",
+        "calOk": true,
+        "calReason": null,
+        "frames": 319,
+        "coveragePct": 95.3,
+        "medianAbsBar": 0.007359163178046348,
+        "p90AbsBar": 0.1,
+        "wildPct": 0,
+        "labelN": 3,
+        "flipPct": 0,
+        "restOffsetBar": 0.002,
+        "restLabelAbs": 0.007,
+        "falseTen": 0,
+        "jitterRms": 0.0799,
+        "msFrame": 43,
+        "hubPx": 5.6,
+        "r5Median": 0.171,
+        "classicalMedian": 0.007,
+        "r6Median": 0.027,
+        "displayMedian": 0.004,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 3
+        },
+        "streamReasons": {
+          "tap-fresh": 304,
+          "pose-lost": 15
+        },
+        "n": 3,
+        "within03": 3,
+        "worst": {
+          "timeS": 38.838322,
+          "error": 0.12310934798979623
+        },
+        "freshFrames": 304,
+        "heldFrames": 0,
+        "gapFrames": 15,
+        "freshCoveragePct": 95.29780564263324,
+        "heldCoveragePct": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 3,
+          "within03": 3,
+          "medianAbsBar": 0.007359163178046348,
+          "worst": {
+            "timeS": 38.838322,
+            "error": 0.12310934798979623
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f017",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.007359163178046348,
+            "display": 0.0022049061402484625,
+            "reason": "tap-fresh",
+            "hubPx": 4.214746969847458,
+            "r5Bar": 0.17108265140850631,
+            "classicalBar": 0.007359163178046348,
+            "r6Bar": 0,
+            "needleErr": 87.74260175553945
+          },
+          {
+            "id": "f018",
+            "phase": "used_2",
+            "t": 19.919161,
+            "truth": 2.1833648602400824,
+            "published": 2.179310695237266,
+            "display": 2.179310695237266,
+            "reason": "tap-fresh",
+            "hubPx": 5.61262955317011,
+            "r5Bar": 0,
+            "classicalBar": 2.179310695237266,
+            "r6Bar": 2.439266873135825,
+            "needleErr": 132.4316462151998
+          },
+          {
+            "id": "f019",
+            "phase": "used_3",
+            "t": 38.838322,
+            "truth": -0.02654949895968859,
+            "published": 0.09655984903010764,
+            "display": 0.19038050646891128,
+            "reason": "tap-fresh",
+            "hubPx": 6.009741272279137,
+            "r5Bar": 0.06439972708600508,
+            "classicalBar": 0.09655984903010764,
+            "r6Bar": 0,
+            "needleErr": 91.76170894328595
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 304,
+          "pose-lost": 15
+        }
+      }
+    },
+    {
+      "id": "20261017_134943",
+      "before": {
+        "id": "20261017_134943",
+        "calOk": true,
+        "calReason": null,
+        "frames": 472,
+        "coveragePct": 95.55,
+        "medianAbsBar": 0.429,
+        "p90AbsBar": 0.578,
+        "wildPct": 0,
+        "labelN": 5,
+        "flipPct": 20,
+        "restOffsetBar": 0,
+        "restLabelAbs": 0.114,
+        "falseTen": 0,
+        "jitterRms": 0.098,
+        "msFrame": 50.4,
+        "hubPx": 3,
+        "r5Median": 4.011,
+        "classicalMedian": 0.398,
+        "r6Median": 0.429,
+        "displayMedian": 0.481,
+        "hiddenGood": 0,
+        "reasons": {
+          "ok": 1,
+          "classical-direct": 4
+        },
+        "streamReasons": {
+          "no-r2": 6,
+          "rest": 45,
+          "ok": 87,
+          "classical-direct": 319,
+          "rate": 11,
+          "disagree": 4
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 0
+      },
+      "after": {
+        "id": "20261017_134943",
+        "calOk": true,
+        "calReason": null,
+        "frames": 472,
+        "coveragePct": 90.68,
+        "medianAbsBar": 0.14472907087902132,
+        "p90AbsBar": 0.506,
+        "wildPct": 0,
+        "labelN": 4,
+        "flipPct": 25,
+        "restOffsetBar": 0.024,
+        "restLabelAbs": 0.008,
+        "falseTen": 0,
+        "jitterRms": 0.0687,
+        "msFrame": 41.5,
+        "hubPx": 4.4,
+        "r5Median": 1.828,
+        "classicalMedian": 0.145,
+        "r6Median": 0.073,
+        "displayMedian": 0.132,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 4,
+          "pose-lost": 1
+        },
+        "streamReasons": {
+          "tap-fresh": 417,
+          "pose-lost": 44,
+          "held:needle-missing": 11
+        },
+        "n": 4,
+        "within03": 3,
+        "worst": {
+          "timeS": 25,
+          "error": 0.6505012702492152
+        },
+        "freshFrames": 417,
+        "heldFrames": 11,
+        "gapFrames": 44,
+        "freshCoveragePct": 88.34745762711864,
+        "heldCoveragePct": 2.330508474576271,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 4,
+          "within03": 3,
+          "medianAbsBar": 0.14472907087902132,
+          "worst": {
+            "timeS": 25,
+            "error": 0.6505012702492152
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f005",
+            "phase": "rest",
+            "t": 5.4,
+            "truth": 0,
+            "published": 0.007753193200970514,
+            "display": 0.011104947590735428,
+            "reason": "tap-fresh",
+            "hubPx": 4.039953270878751,
+            "r5Bar": 0.09647601079378695,
+            "classicalBar": 0.007753193200970514,
+            "r6Bar": 0,
+            "needleErr": 179.82819344844768
+          },
+          {
+            "id": "f006",
+            "phase": "preinfusion",
+            "t": 16.5,
+            "truth": 1.828450501741842,
+            "published": 1.9964271661554334,
+            "display": 2.0347616531519432,
+            "reason": "tap-fresh",
+            "hubPx": 4.385393492574442,
+            "r5Bar": 0,
+            "classicalBar": 1.9964271661554334,
+            "r6Bar": 1.994087895550819,
+            "needleErr": 143.42424584324687
+          },
+          {
+            "id": "f007",
+            "phase": "ramp",
+            "t": 25,
+            "truth": 6.283828678666444,
+            "published": 6.934329948915659,
+            "display": 6.934329948915659,
+            "reason": "tap-fresh",
+            "hubPx": 5.0047626164149035,
+            "r5Bar": null,
+            "classicalBar": 6.934329948915659,
+            "r6Bar": 6.257861869134194,
+            "needleErr": 74.455554369646
+          },
+          {
+            "id": "f008",
+            "phase": "peak",
+            "t": 29,
+            "truth": 7.3685056700973375,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 6.863204190334388,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "f032",
+            "phase": "taper",
+            "t": 48.5,
+            "truth": 6.192888013789439,
+            "published": 6.071406536444988,
+            "display": 6.25005856077026,
+            "reason": "tap-fresh",
+            "hubPx": 3.7497459445222967,
+            "r5Bar": 0,
+            "classicalBar": 6.071406536444988,
+            "r6Bar": 6.073612620683364,
+            "needleErr": 75.52483042340214
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 417,
+          "pose-lost": 44,
+          "held:needle-missing": 11
+        }
+      }
+    },
+    {
+      "id": "20261017_135116",
+      "before": {
+        "id": "20261017_135116",
+        "calOk": true,
+        "calReason": null,
+        "frames": 358,
+        "coveragePct": 90.5,
+        "medianAbsBar": 0.437,
+        "p90AbsBar": 0.465,
+        "wildPct": 0,
+        "labelN": 3,
+        "flipPct": 66.67,
+        "restOffsetBar": 0,
+        "restLabelAbs": 0,
+        "falseTen": 0,
+        "jitterRms": 0.1047,
+        "msFrame": 36.6,
+        "hubPx": 7.1,
+        "r5Median": 0.66,
+        "classicalMedian": 0.437,
+        "r6Median": 0.383,
+        "displayMedian": 0.437,
+        "hiddenGood": 0,
+        "reasons": {
+          "rest": 1,
+          "classical-direct": 1,
+          "ok": 1
+        },
+        "streamReasons": {
+          "no-r2": 6,
+          "rest": 51,
+          "ok": 98,
+          "classical-direct": 165,
+          "disagree": 19,
+          "rate": 9,
+          "hold-max": 10
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 10
+      },
+      "after": {
+        "id": "20261017_135116",
+        "calOk": true,
+        "calReason": null,
+        "frames": 358,
+        "coveragePct": 11.45,
+        "medianAbsBar": 0.0008918884866033983,
+        "p90AbsBar": 0.001,
+        "wildPct": 0,
+        "labelN": 1,
+        "flipPct": 100,
+        "restOffsetBar": -0.017,
+        "restLabelAbs": 0.001,
+        "falseTen": 0,
+        "jitterRms": 0.1413,
+        "msFrame": 27.1,
+        "hubPx": 36,
+        "r5Median": 0.781,
+        "classicalMedian": 0.001,
+        "r6Median": 0,
+        "displayMedian": 0.001,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 1,
+          "pose-lost": 2
+        },
+        "streamReasons": {
+          "tap-fresh": 41,
+          "pose-lost": 317
+        },
+        "n": 1,
+        "within03": 1,
+        "worst": {
+          "timeS": 1,
+          "error": -0.0008918884866033983
+        },
+        "freshFrames": 41,
+        "heldFrames": 0,
+        "gapFrames": 317,
+        "freshCoveragePct": 11.452513966480447,
+        "heldCoveragePct": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 1,
+          "within03": 1,
+          "medianAbsBar": 0.0008918884866033983,
+          "worst": {
+            "timeS": 1,
+            "error": -0.0008918884866033983
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f020",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": -0.0008918884866033983,
+            "display": 0.0006247924251097167,
+            "reason": "tap-fresh",
+            "hubPx": 3.7716846597539826,
+            "r5Bar": 0.7813456919015583,
+            "classicalBar": -0.0008918884866033983,
+            "r6Bar": 0,
+            "needleErr": 168.6976378244056
+          },
+          {
+            "id": "f021",
+            "phase": "used_2",
+            "t": 22.381789,
+            "truth": 3.6559762240705402,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 36.039126158642624,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "f022",
+            "phase": "used_3",
+            "t": 43.763578,
+            "truth": 0.47212770016260264,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 45.18752134655912,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 41,
+          "pose-lost": 317
+        }
+      }
+    },
+    {
+      "id": "20261018_094055",
+      "before": {
+        "id": "20261018_094055",
+        "calOk": true,
+        "calReason": null,
+        "frames": 435,
+        "coveragePct": 74.02,
+        "medianAbsBar": 0.6,
+        "p90AbsBar": 1.036,
+        "wildPct": 25,
+        "labelN": 4,
+        "flipPct": 25,
+        "restOffsetBar": 1.703,
+        "restLabelAbs": 0,
+        "falseTen": 0,
+        "jitterRms": 0.1067,
+        "msFrame": 35.6,
+        "hubPx": 3.2,
+        "r5Median": 5.309,
+        "classicalMedian": 0.904,
+        "r6Median": 1.434,
+        "displayMedian": 0.631,
+        "hiddenGood": 0,
+        "reasons": {
+          "ok": 1,
+          "disagree": 1,
+          "classical-direct": 3
+        },
+        "streamReasons": {
+          "classical-direct": 197,
+          "ok": 109,
+          "rate": 36,
+          "rest": 6,
+          "no-r2": 10,
+          "hold": 4,
+          "disagree": 67,
+          "hold-max": 6
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 10
+      },
+      "after": {
+        "id": "20261018_094055",
+        "calOk": true,
+        "calReason": null,
+        "frames": 435,
+        "coveragePct": 10.34,
+        "medianAbsBar": 1.2720193059880691,
+        "p90AbsBar": 1.272,
+        "wildPct": 100,
+        "labelN": 1,
+        "flipPct": 100,
+        "restOffsetBar": 1.334,
+        "restLabelAbs": 1.272,
+        "falseTen": 0,
+        "jitterRms": 0.0791,
+        "msFrame": 33,
+        "hubPx": 40.8,
+        "r5Median": 0,
+        "classicalMedian": 1.272,
+        "r6Median": 1.296,
+        "displayMedian": 1.272,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 1,
+          "pose-lost": 4
+        },
+        "streamReasons": {
+          "tap-fresh": 44,
+          "held:needle-missing": 1,
+          "pose-lost": 390
+        },
+        "n": 1,
+        "within03": 0,
+        "worst": {
+          "timeS": 2.7,
+          "error": 1.2720193059880691
+        },
+        "freshFrames": 44,
+        "heldFrames": 1,
+        "gapFrames": 390,
+        "freshCoveragePct": 10.114942528735632,
+        "heldCoveragePct": 0.22988505747126436,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 1,
+          "within03": 0,
+          "medianAbsBar": 1.2720193059880691,
+          "worst": {
+            "timeS": 2.7,
+            "error": 1.2720193059880691
+          },
+          "wildPct": 100
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f009",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": 1.2720193059880691,
+            "display": 1.2720193059880691,
+            "reason": "tap-fresh",
+            "hubPx": 8.020878625550738,
+            "r5Bar": 0,
+            "classicalBar": 1.2720193059880691,
+            "r6Bar": 1.2962076656110357,
+            "needleErr": 178.22142761610456
+          },
+          {
+            "id": "f010",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.3871933477541407,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 31.785911136405975,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "f011",
+            "phase": "ramp",
+            "t": 19,
+            "truth": 5.972936406294782,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 40.76787320679993,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "f012",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.190145427191927,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 45.38370462171087,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "f033",
+            "phase": "taper",
+            "t": 40,
+            "truth": 5.404496304798196,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 64.77304578856592,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 44,
+          "held:needle-missing": 1,
+          "pose-lost": 390
+        }
+      }
+    },
+    {
+      "id": "20261018_094151",
+      "before": {
+        "id": "20261018_094151",
+        "calOk": true,
+        "calReason": null,
+        "frames": 336,
+        "coveragePct": 85.71,
+        "medianAbsBar": 0.283,
+        "p90AbsBar": 0.512,
+        "wildPct": 0,
+        "labelN": 3,
+        "flipPct": 66.67,
+        "restOffsetBar": 0,
+        "restLabelAbs": 0,
+        "falseTen": 0,
+        "jitterRms": 0.1036,
+        "msFrame": 36,
+        "hubPx": 8.9,
+        "r5Median": 0.142,
+        "classicalMedian": 0.523,
+        "r6Median": 0.203,
+        "displayMedian": 0.385,
+        "hiddenGood": 0,
+        "reasons": {
+          "rest": 1,
+          "classical-direct": 1,
+          "ok": 1
+        },
+        "streamReasons": {
+          "no-r2": 30,
+          "rest": 54,
+          "ok": 137,
+          "classical-direct": 85,
+          "rate": 11,
+          "disagree": 7,
+          "hold-max": 12
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 12
+      },
+      "after": {
+        "id": "20261018_094151",
+        "calOk": true,
+        "calReason": null,
+        "frames": 336,
+        "coveragePct": 87.5,
+        "medianAbsBar": 0.01538298236825586,
+        "p90AbsBar": 0.129,
+        "wildPct": 0,
+        "labelN": 3,
+        "flipPct": 100,
+        "restOffsetBar": 0.012,
+        "restLabelAbs": 0.006,
+        "falseTen": 0,
+        "jitterRms": 0.0973,
+        "msFrame": 43.3,
+        "hubPx": 9.9,
+        "r5Median": 0.139,
+        "classicalMedian": 0.015,
+        "r6Median": 0.132,
+        "displayMedian": 0.015,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 3
+        },
+        "streamReasons": {
+          "tap-fresh": 280,
+          "pose-lost": 42,
+          "held:needle-missing": 14
+        },
+        "n": 3,
+        "within03": 3,
+        "worst": {
+          "timeS": 40.930878,
+          "error": 0.1572083164634288
+        },
+        "freshFrames": 280,
+        "heldFrames": 14,
+        "gapFrames": 42,
+        "freshCoveragePct": 83.33333333333333,
+        "heldCoveragePct": 4.166666666666667,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 3,
+          "within03": 3,
+          "medianAbsBar": 0.01538298236825586,
+          "worst": {
+            "timeS": 40.930878,
+            "error": 0.1572083164634288
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f023",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": -0.0055738720461870036,
+            "display": -0.002476620932143221,
+            "reason": "tap-fresh",
+            "hubPx": 8.887844324734218,
+            "r5Bar": 0,
+            "classicalBar": -0.0055738720461870036,
+            "r6Bar": 0,
+            "needleErr": 179.91579285760054
+          },
+          {
+            "id": "f024",
+            "phase": "used_2",
+            "t": 20.965439,
+            "truth": 4.285663805302804,
+            "published": 4.30104678767106,
+            "display": 4.30104678767106,
+            "reason": "tap-fresh",
+            "hubPx": 9.87619337708636,
+            "r5Bar": null,
+            "classicalBar": 4.30104678767106,
+            "r6Bar": 2.6743202933315193,
+            "needleErr": null
+          },
+          {
+            "id": "f025",
+            "phase": "used_3",
+            "t": 40.930878,
+            "truth": -0.13195469826958775,
+            "published": 0.025253618193841056,
+            "display": 0.20493209798558099,
+            "reason": "tap-fresh",
+            "hubPx": 10.819243942715369,
+            "r5Bar": 0.14572336730043156,
+            "classicalBar": 0.025253618193841056,
+            "r6Bar": 0,
+            "needleErr": 174.36503151705244
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 280,
+          "pose-lost": 42,
+          "held:needle-missing": 14
+        }
+      }
+    },
+    {
+      "id": "20261018_160844",
+      "before": {
+        "id": "20261018_160844",
+        "calOk": true,
+        "calReason": null,
+        "frames": 301,
+        "coveragePct": 59.47,
+        "medianAbsBar": 0.14,
+        "p90AbsBar": 0.323,
+        "wildPct": 0,
+        "labelN": 3,
+        "flipPct": 0,
+        "restOffsetBar": 0.316,
+        "restLabelAbs": 0,
+        "falseTen": 0,
+        "jitterRms": 0.0843,
+        "msFrame": 36.8,
+        "hubPx": 2.2,
+        "r5Median": 2.945,
+        "classicalMedian": 0.14,
+        "r6Median": 0.177,
+        "displayMedian": 0.208,
+        "hiddenGood": 0,
+        "reasons": {
+          "rest": 1,
+          "classical-direct": 2,
+          "no-r2": 1,
+          "disagree": 1
+        },
+        "streamReasons": {
+          "no-r2": 13,
+          "ok": 3,
+          "rest": 37,
+          "hold-max": 2,
+          "disagree": 96,
+          "classical-direct": 137,
+          "rate": 13
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 2
+      },
+      "after": {
+        "id": "20261018_160844",
+        "calOk": true,
+        "calReason": null,
+        "frames": 301,
+        "coveragePct": 91.69,
+        "medianAbsBar": 0.08709763790404379,
+        "p90AbsBar": 0.367,
+        "wildPct": 0,
+        "labelN": 5,
+        "flipPct": 40,
+        "restOffsetBar": -0.003,
+        "restLabelAbs": 0.008,
+        "falseTen": 0,
+        "jitterRms": 0.0925,
+        "msFrame": 53.2,
+        "hubPx": 10.5,
+        "r5Median": 5.005,
+        "classicalMedian": 0.08,
+        "r6Median": 0.142,
+        "displayMedian": 0.163,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 3,
+          "held:needle-missing": 2
+        },
+        "streamReasons": {
+          "tap-fresh": 235,
+          "pose-lost": 22,
+          "held:needle-missing": 41,
+          "needle-missing": 3
+        },
+        "n": 5,
+        "within03": 3,
+        "worst": {
+          "timeS": 18,
+          "error": -0.3685035092575264
+        },
+        "freshFrames": 235,
+        "heldFrames": 41,
+        "gapFrames": 25,
+        "freshCoveragePct": 78.07308970099668,
+        "heldCoveragePct": 13.621262458471762,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 3,
+          "within03": 3,
+          "medianAbsBar": 0.08036646863537733,
+          "worst": {
+            "timeS": 11,
+            "error": 0.08709763790404379
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 2,
+          "within03": 0,
+          "medianAbsBar": 0.36722665128935583,
+          "worst": {
+            "timeS": 18,
+            "error": -0.3685035092575264
+          },
+          "wildPct": 0
+        },
+        "labelHits": [
+          {
+            "id": "f013",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": -0.007936115449826878,
+            "display": -0.006372282131747649,
+            "reason": "tap-fresh",
+            "hubPx": 13.551655493129985,
+            "r5Bar": 0.26501340452405725,
+            "classicalBar": -0.007936115449826878,
+            "r6Bar": 0,
+            "needleErr": 88.7382126427799
+          },
+          {
+            "id": "f014",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.5164993423415594,
+            "published": 1.6035969802456032,
+            "display": 1.6099654403331651,
+            "reason": "tap-fresh",
+            "hubPx": 10.465578229953865,
+            "r5Bar": 0.5260396037871975,
+            "classicalBar": 1.6035969802456032,
+            "r6Bar": 1.6589645755362241,
+            "needleErr": 109.1277892839824
+          },
+          {
+            "id": "f015",
+            "phase": "ramp",
+            "t": 18,
+            "truth": 5.643064684147373,
+            "published": 5.274561174889847,
+            "display": 5.35185780685914,
+            "reason": "held:needle-missing",
+            "hubPx": 10.176170888811821,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": 5.304483405047524,
+            "needleErr": 170.4217440907105
+          },
+          {
+            "id": "f016",
+            "phase": "peak",
+            "t": 20,
+            "truth": 7.077326675644736,
+            "published": 7.443276468965921,
+            "display": 7.443276468965921,
+            "reason": "held:needle-missing",
+            "hubPx": 10.502963978150015,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": 7.4708594445611185,
+            "needleErr": 149.63401555400543
+          },
+          {
+            "id": "f034",
+            "phase": "taper",
+            "t": 32,
+            "truth": 5.010149100384057,
+            "published": 5.090515569019434,
+            "display": 5.172945191013097,
+            "reason": "tap-fresh",
+            "hubPx": 11.75934429735169,
+            "r5Bar": 0.005184292753822794,
+            "classicalBar": 5.090515569019434,
+            "r6Bar": 5.0791808694999485,
+            "needleErr": 176.1327606409091
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 235,
+          "pose-lost": 22,
+          "held:needle-missing": 41,
+          "needle-missing": 3
+        }
+      }
+    },
+    {
+      "id": "20261018_160931",
+      "before": {
+        "id": "20261018_160931",
+        "calOk": true,
+        "calReason": null,
+        "frames": 292,
+        "coveragePct": 81.16,
+        "medianAbsBar": 0.091,
+        "p90AbsBar": 0.295,
+        "wildPct": 0,
+        "labelN": 3,
+        "flipPct": 0,
+        "restOffsetBar": 0.178,
+        "restLabelAbs": 0,
+        "falseTen": 0,
+        "jitterRms": 0.0854,
+        "msFrame": 50,
+        "hubPx": 6.3,
+        "r5Median": 0.365,
+        "classicalMedian": 0.178,
+        "r6Median": 0.046,
+        "displayMedian": 0.102,
+        "hiddenGood": 0,
+        "reasons": {
+          "rest": 2,
+          "classical-direct": 1
+        },
+        "streamReasons": {
+          "classical-direct": 179,
+          "rest": 26,
+          "rate": 15,
+          "ok": 3,
+          "hold": 1,
+          "disagree": 37,
+          "hold-max": 28,
+          "no-r2": 3
+        },
+        "within03": null,
+        "worst": null,
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 29
+      },
+      "after": {
+        "id": "20261018_160931",
+        "calOk": true,
+        "calReason": null,
+        "frames": 292,
+        "coveragePct": 18.84,
+        "medianAbsBar": 0.04119844932452835,
+        "p90AbsBar": 0.05,
+        "wildPct": 0,
+        "labelN": 2,
+        "flipPct": 0,
+        "restOffsetBar": 0.043,
+        "restLabelAbs": 0.03,
+        "falseTen": 0,
+        "jitterRms": 0.1129,
+        "msFrame": 28.9,
+        "hubPx": 6.3,
+        "r5Median": 0.186,
+        "classicalMedian": 0.041,
+        "r6Median": 0.046,
+        "displayMedian": 0.04,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap-fresh": 2,
+          "pose-lost": 1
+        },
+        "streamReasons": {
+          "tap-fresh": 55,
+          "pose-lost": 237
+        },
+        "n": 2,
+        "within03": 2,
+        "worst": {
+          "timeS": 35.462078,
+          "error": -0.05261276299292395
+        },
+        "freshFrames": 55,
+        "heldFrames": 0,
+        "gapFrames": 237,
+        "freshCoveragePct": 18.835616438356166,
+        "heldCoveragePct": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 2,
+          "within03": 2,
+          "medianAbsBar": 0.04119844932452835,
+          "worst": {
+            "timeS": 35.462078,
+            "error": -0.05261276299292395
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "f026",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.02978413565613274,
+            "display": 0.060127626356213174,
+            "reason": "tap-fresh",
+            "hubPx": 5.564215043558175,
+            "r5Bar": 0.3675679268020929,
+            "classicalBar": 0.02978413565613274,
+            "r6Bar": 0,
+            "needleErr": 85.8663534201138
+          },
+          {
+            "id": "f027",
+            "phase": "used_2",
+            "t": 18.231039,
+            "truth": 3.7456816616659823,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 46.97551063504976,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "f028",
+            "phase": "used_3",
+            "t": 35.462078,
+            "truth": 0.09110455597538275,
+            "published": 0.0384917929824588,
+            "display": 0.07147071571639037,
+            "reason": "tap-fresh",
+            "hubPx": 6.297163690126017,
+            "r5Bar": 0.09615834541500168,
+            "classicalBar": 0.0384917929824588,
+            "r6Bar": 0,
+            "needleErr": 94.86110394003731
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 55,
+          "pose-lost": 237
+        }
+      }
+    },
+    {
+      "id": "20261024_124006",
+      "before": {
+        "id": "20261024_124006",
+        "calOk": true,
+        "calReason": null,
+        "frames": 447,
+        "coveragePct": 79.19,
+        "medianAbsBar": 0.155,
+        "p90AbsBar": 0.371,
+        "wildPct": 0,
+        "labelN": 11,
+        "flipPct": null,
+        "restOffsetBar": 0.167,
+        "restLabelAbs": null,
+        "falseTen": 0,
+        "jitterRms": 0.0855,
+        "msFrame": 24.5,
+        "hubPx": null,
+        "r5Median": null,
+        "classicalMedian": 0.155,
+        "r6Median": null,
+        "displayMedian": 0.155,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap": 11,
+          "no-frame": 1
+        },
+        "streamReasons": {
+          "withheld": 93,
+          "ok": 354
+        },
+        "within03": 8,
+        "worst": {
+          "timeS": 30.375,
+          "error": -0.41
+        },
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 0
+      },
+      "after": {
+        "id": "20261024_124006",
+        "calOk": true,
+        "calReason": null,
+        "frames": 447,
+        "coveragePct": 59.73,
+        "medianAbsBar": 0.08446131441843852,
+        "p90AbsBar": 0.231,
+        "wildPct": 0,
+        "labelN": 10,
+        "flipPct": null,
+        "restOffsetBar": -0.004,
+        "restLabelAbs": null,
+        "falseTen": 0,
+        "jitterRms": 0.0662,
+        "msFrame": 27.4,
+        "hubPx": null,
+        "r5Median": null,
+        "classicalMedian": 0.084,
+        "r6Median": null,
+        "displayMedian": 0.084,
+        "hiddenGood": 0,
+        "reasons": {
+          "no-frame": 2,
+          "tap": 10
+        },
+        "streamReasons": {
+          "ok": 267,
+          "withheld": 180
+        },
+        "n": 10,
+        "within03": 9,
+        "worst": {
+          "timeS": 29,
+          "error": 0.5415278125390324
+        },
+        "freshFrames": 250,
+        "heldFrames": 17,
+        "gapFrames": 180,
+        "freshCoveragePct": 55.92841163310962,
+        "heldCoveragePct": 3.8031319910514543,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 10,
+          "within03": 9,
+          "medianAbsBar": 0.08446131441843852,
+          "worst": {
+            "timeS": 29,
+            "error": 0.5415278125390324
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "0113",
+            "phase": "hand",
+            "t": 14,
+            "truth": 1.76,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 1.56,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0233",
+            "phase": "hand",
+            "t": 29,
+            "truth": 2.22,
+            "published": 2.7615278125390326,
+            "display": 2.7615278125390326,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 2.7615278125390326,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0244",
+            "phase": "hand",
+            "t": 30.375,
+            "truth": 5.17,
+            "published": 5.257452710801678,
+            "display": 5.257452710801678,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.257452710801678,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0256",
+            "phase": "hand",
+            "t": 31.875,
+            "truth": 6.41,
+            "published": 6.43041594311843,
+            "display": 6.43041594311843,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.43041594311843,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0268",
+            "phase": "hand",
+            "t": 33.375,
+            "truth": 7.29,
+            "published": 7.250361509405781,
+            "display": 7.250361509405781,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.250361509405781,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0279",
+            "phase": "hand",
+            "t": 34.75,
+            "truth": 7.68,
+            "published": 7.701155095251029,
+            "display": 7.701155095251029,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.701155095251029,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0303",
+            "phase": "hand",
+            "t": 37.75,
+            "truth": 7.61,
+            "published": 7.788952408980118,
+            "display": 7.788952408980118,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.788952408980118,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0335",
+            "phase": "hand",
+            "t": 41.75,
+            "truth": 7.35,
+            "published": 7.431469918035199,
+            "display": 7.431469918035199,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.431469918035199,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0367",
+            "phase": "hand",
+            "t": 45.75,
+            "truth": 6.58,
+            "published": 6.773340485463624,
+            "display": 6.773340485463624,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.773340485463624,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0399",
+            "phase": "hand",
+            "t": 49.75,
+            "truth": 5.87,
+            "published": 5.909936747616687,
+            "display": 5.909936747616687,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.909936747616687,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0443",
+            "phase": "hand",
+            "t": 55.25,
+            "truth": -0.17,
+            "published": 0.026944018948542127,
+            "display": 0.026944018948542127,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.026944018948542127,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 250,
+          "pose-lost": 180,
+          "held:needle-missing": 17
+        }
+      }
+    },
+    {
+      "id": "20261025_130022",
+      "before": {
+        "id": "20261025_130022",
+        "calOk": true,
+        "calReason": null,
+        "frames": 400,
+        "coveragePct": 80.5,
+        "medianAbsBar": 0.075,
+        "p90AbsBar": 0.245,
+        "wildPct": 0,
+        "labelN": 12,
+        "flipPct": null,
+        "restOffsetBar": 0.155,
+        "restLabelAbs": null,
+        "falseTen": 0,
+        "jitterRms": 0.115,
+        "msFrame": 24.7,
+        "hubPx": null,
+        "r5Median": null,
+        "classicalMedian": 0.075,
+        "r6Median": null,
+        "displayMedian": 0.075,
+        "hiddenGood": 0,
+        "reasons": {
+          "tap": 12,
+          "no-frame": 1
+        },
+        "streamReasons": {
+          "withheld": 78,
+          "ok": 322
+        },
+        "within03": 12,
+        "worst": {
+          "timeS": 10,
+          "error": 0.28
+        },
+        "freshFrames": null,
+        "heldFrames": null,
+        "knownHeldLowerBound": 0
+      },
+      "after": {
+        "id": "20261025_130022",
+        "calOk": true,
+        "calReason": null,
+        "frames": 400,
+        "coveragePct": 55.5,
+        "medianAbsBar": 0.08333908318604477,
+        "p90AbsBar": 0.243,
+        "wildPct": 0,
+        "labelN": 6,
+        "flipPct": null,
+        "restOffsetBar": 0.04,
+        "restLabelAbs": null,
+        "falseTen": 0,
+        "jitterRms": 0.0859,
+        "msFrame": 26.9,
+        "hubPx": null,
+        "r5Median": null,
+        "classicalMedian": 0.083,
+        "r6Median": null,
+        "displayMedian": 0.083,
+        "hiddenGood": 0,
+        "reasons": {
+          "no-frame": 7,
+          "tap": 6
+        },
+        "streamReasons": {
+          "ok": 222,
+          "withheld": 178
+        },
+        "n": 6,
+        "within03": 5,
+        "worst": {
+          "timeS": 49.375,
+          "error": 0.3259427869714775
+        },
+        "freshFrames": 172,
+        "heldFrames": 50,
+        "gapFrames": 178,
+        "freshCoveragePct": 43,
+        "heldCoveragePct": 12.5,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshLabelStats": {
+          "n": 6,
+          "within03": 5,
+          "medianAbsBar": 0.08333908318604477,
+          "worst": {
+            "timeS": 49.375,
+            "error": 0.3259427869714775
+          },
+          "wildPct": 0
+        },
+        "heldLabelStats": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "labelHits": [
+          {
+            "id": "0081",
+            "phase": "hand",
+            "t": 10,
+            "truth": 1.39,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0105",
+            "phase": "hand",
+            "t": 13,
+            "truth": 1.53,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0129",
+            "phase": "hand",
+            "t": 16,
+            "truth": 1.48,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0153",
+            "phase": "hand",
+            "t": 19,
+            "truth": 6.53,
+            "published": 6.507057575876281,
+            "display": 6.507057575876281,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.507057575876281,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 7.11,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0201",
+            "phase": "hand",
+            "t": 25,
+            "truth": 6.61,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0225",
+            "phase": "hand",
+            "t": 28,
+            "truth": 6.69,
+            "published": 6.833735742248371,
+            "display": 6.833735742248371,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.833735742248371,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0249",
+            "phase": "hand",
+            "t": 31,
+            "truth": 6.81,
+            "published": 6.82203980220426,
+            "display": 6.82203980220426,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.82203980220426,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0273",
+            "phase": "hand",
+            "t": 34,
+            "truth": 6.67,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0297",
+            "phase": "hand",
+            "t": 37,
+            "truth": 6.4,
+            "published": null,
+            "display": null,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0329",
+            "phase": "hand",
+            "t": 41,
+            "truth": 5.99,
+            "published": 5.987458573632549,
+            "display": 5.987458573632549,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.987458573632549,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0361",
+            "phase": "hand",
+            "t": 45,
+            "truth": 4.93,
+            "published": 4.770297251391192,
+            "display": 4.770297251391192,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 4.770297251391192,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0396",
+            "phase": "hand",
+            "t": 49.375,
+            "truth": -0.31,
+            "published": 0.0159427869714775,
+            "display": 0.0159427869714775,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.0159427869714775,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ],
+        "observationReasons": {
+          "tap-fresh": 172,
+          "pose-lost": 151,
+          "needle-missing": 27,
+          "held:needle-missing": 50
+        }
+      }
+    }
+  ]
+}
