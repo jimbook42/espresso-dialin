@@ -1279,7 +1279,8 @@ function trackPose(image, tracker) {
  * Follow the calibrated dial and read the needle against the rest→10 scale.
  * A weak bezel or colour match does not move the pose.
  */
-export function readCalibratedFrame(image, tracker) {
+export function readCalibratedFrame(image, tracker, diagnostics = null) {
+  if (diagnostics) diagnostics.source = 'missing';
   if (!tracker.legacyScale && tracker.lastRead
     && isRepeatedGaugeFrame(image, tracker.previousFrame, tracker.calibration)) {
     return { ...tracker.lastRead, ok: false, bar: null, rawBar: null,
@@ -1318,9 +1319,14 @@ export function readCalibratedFrame(image, tracker) {
     const hint = tracker.needleDeg == null ? null
       : transformDialAngle(inverseDialAngle(tracker.needleDeg, tracker.pose.matrix), matrix);
     needle = readNeedleAt(image, pose.x, pose.y, pose.radius, hint);
+    if (diagnostics) {
+      diagnostics.hintDeg = hint;
+      diagnostics.detector = { ...needle };
+    }
     const detectorOnArc = barFromRestSpan(needle.angleDeg, zeroPrior, tenPrior) != null
       && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY;
     if (detectorOnArc) {
+      if (diagnostics) diagnostics.source = 'detector';
       tracker.needleMisses = 0;
     } else if (tracker.calibration.needleTemplate) {
       const matched = matchTipAngle(
@@ -1335,7 +1341,9 @@ export function readCalibratedFrame(image, tracker) {
         tracker.needleMisses || 0,
         { maxOffset: Math.max(4, Math.min(20, Math.ceil(pose.radius * 0.09) * 2)) },
       );
+      if (diagnostics) diagnostics.template = matched;
       if (matched) {
+        if (diagnostics) diagnostics.source = 'template';
         const gap = Math.abs(wrapDelta(matched.angleDeg, tracker.needleDeg));
         const angleDeg = gap <= 4
           ? wrap360(tracker.needleDeg + wrapDelta(matched.angleDeg, tracker.needleDeg) * 0.7)
