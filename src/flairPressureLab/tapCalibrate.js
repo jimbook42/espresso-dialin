@@ -288,7 +288,7 @@ export function fiveCheckBar(fiveDeg, zeroDeg, tenDeg) {
 /**
  * Bar through the resting needle, the printed 5, and the printed 10.
  * The 5 and 10 angles are the taps (or a tick within a few degrees of them).
- * Just under rest is a small negative. Just past 10 is 10. The rest of the
+ * Just under rest is a small negative. Past 10 is unmeasured. The rest of the
  * circle is not a reading.
  */
 export function barFromTapAnchors(needleDeg, zeroDeg, fiveDeg, tenDeg) {
@@ -309,8 +309,19 @@ export function barFromTapAnchors(needleDeg, zeroDeg, fiveDeg, tenDeg) {
     if (delta <= fiveSpan) return (delta / fiveSpan) * 5;
     return 5 + ((delta - fiveSpan) / (span - fiveSpan)) * 5;
   }
-  if (delta <= span + edge) return 10;
   return null;
+}
+
+/** Two independently quantized endpoints each have a half-pixel diagonal error.
+ * Propagate their relative position error into both the pointer and tapped ray.
+ * This is a geometric bound, independent of any pressure scoring threshold.
+ */
+export function endpointIsResolved(needleDeg, tenDeg, pointerRadius, pinRadius) {
+  if (![needleDeg, tenDeg, pointerRadius, pinRadius].every(Number.isFinite)
+    || pointerRadius <= 0 || pinRadius <= 0) return false;
+  const uncertainty = (Math.atan2(Math.SQRT2, pointerRadius)
+    + Math.atan2(Math.SQRT2, pinRadius)) * 180 / Math.PI;
+  return wrapDelta(needleDeg, tenDeg) > uncertainty;
 }
 
 /**
@@ -1401,7 +1412,11 @@ export function readCalibratedFrame(image, tracker) {
   const five = matrix ? transformDialAngle(tracker.calibration.fiveAngleDeg, matrix)
     : wrap360(tracker.calibration.fiveAngleDeg + shiftDeg);
   const referenceAngle = inverseDialAngle(needle.angleDeg, matrix);
-  const rawBar = !lost && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY
+  const pinRadius = pointDist(tracker.calibration.hub, tracker.calibration.ten) * scale;
+  const endpointOk = tracker.legacyScale || endpointIsResolved(
+    needle.angleDeg, ten, pose.radius * OUTER_RADIUS_RATIO, pinRadius,
+  );
+  const rawBar = !lost && endpointOk && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY
     ? (tracker.legacyScale
       ? barFromRestSpan(needle.angleDeg, zero, ten)
       : matrix
