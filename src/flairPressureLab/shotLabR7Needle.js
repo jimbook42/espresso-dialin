@@ -17,9 +17,10 @@ export async function r5SampleFromTapFrame(image, read, calibration, capturedAtM
   const prediction = await predictNeedleInput(data);
   const mapped = tapNeedlePrediction(prediction, pose);
   if (!mapped || mapped.bar == null || !(prediction.confidence >= NEEDLE_CONFIDENCE_MIN)) return empty;
-  const tip = matchTipAngle(image, read.hub.x, read.hub.y, read.radius,
+  const tip = calibration.legacyScale ? matchTipAngle(image, read.hub.x, read.hub.y, read.radius,
     calibration.needleTemplate, read.zeroDeg, read.tenDeg, mapped.angleDeg, 0,
-    { maxOffset: Math.max(4, Math.min(20, Math.ceil(read.radius * 0.09) * 2)) });
+    { maxOffset: Math.max(4, Math.min(20, Math.ceil(read.radius * 0.09) * 2)) })
+    : read.pointerVerified ? { angleDeg: read.needleDeg } : null;
   const corroborated = tip != null && Math.abs(wrapDelta(tip.angleDeg, mapped.angleDeg)) <= 5;
   return { r5Bar: mapped.bar, r5Conf: prediction.confidence, r5Angle: mapped.angleDeg,
     r5Registered: true, r5Corroborated: corroborated, r5CapturedAtMs: capturedAtMs,

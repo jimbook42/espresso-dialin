@@ -1,4 +1,4 @@
-/** Experimental image-only shaft reader. Not imported by the application. */
+/** Image-only shaft reader shared by production and diagnostics. */
 import {pointerMerit} from './needleFromFrame.js';
 import {NEEDLE_LOST_QUALITY,NEEDLE_LIKENESS_GATE,TIP_INNER_RATIO,OUTER_RADIUS_RATIO,wrap360,wrapDelta} from './gaugeConfig.js';
 const SAMPLES=32;

@@ -1,54 +1,24 @@
-# Wrong-ray repair handover
+# Wrong-ray production integration handover — complete / stopped
 
-Branch fix/pressure-wrong-ray from main f3e3db1 /v4.13.26. Local dependency junction safely unlinked (target preserved); npm ci succeeded into this checkout.
+Branch fix/pressure-wrong-ray; final commit requested message fix(pressure): integrate pointer identity. Integration built on8ca8caa, from main f3e3db1 /v4.13.26. No main merge/push/deploy.
 
-## Step 1 complete
-- Optional third diagnostics argument to readCalibratedFrame records raw detector, hint, template result and selected source, without changing outputs.
-- scripts/pressure-diagnostics/wrongRayReplay.mjs replays real clips through unchanged calibration/registration/publisher; asserts saved baseline bar/fresh/held equivalence per frame.
-- Targeted: 41/41 pass. 094055 435 frames +130022 400 frames reproduce baseline exactly (835/835 verified).
-- 094055 @19: detector277.436°, quality.7302, bar.026808; @40 detector106.001°, peak0/margin0 but quality boosted to.18, publisher holds .056692 vs fresh candidate7.882643.
-- 130022 @25.25: detector279.392° off arc; template85.164°, corr.927 ->7.686812. @25 label uses this fresh-display window; truth6.61.
-- Logs ignored under out/wrong-ray-step1-*. No official exam run.
+## Completed
+- Shared pointerEvidence geometry now drives nonlegacy production measurement/recovery with rayAngleDeg. No unverified template fallback may override ambiguous direction. Calibration/legacy factory, taps/zero, registration, endpoint and pressure thresholds/frozen config unchanged.
+- Only verified on-domain/endpoint-safe rays update tracking hint; only valid pressure updates lastGoodBar. Duplicates explicitly clear pointerVerified. Uncertain candidates retain existing450ms hold/gap, held samples excluded from confident curve.
+- Same-captured-frame model corroboration uses read.pointerVerified and measured ray with unchanged5-degree agreement; no confidence/pose/timestamp threshold changes. Legacy path retained.
+- State regression added: verified candidate can update hint/pressure; duplicate and ambiguous candidates cannot. No existing test weakened.
 
-## Next / mandatory stop
-Step 2: independent bounded-offset pointer evidence and tests, standalone diagnostic replay all12 clips (own candidate tracking/publisher state; existing pose/calibration/map/endpoint unchanged). Verify baseline adapter before reporting new results. Update docs/pressure-wrong-ray-2026-11-02.md and this handover; commit/push validated step2, then STOP before production integration. Do not import new candidate reader in production. Any unexpected non-env test failure stops for reporting. The local stash f96c56e remains untouched. No main edits/merge/deploy.
+## Validation and final single live exam
+- Targeted54/54 pass. Full npm run test:vitest452 passed,2 known Python-dependent failures,1 skipped (455); files85 passed,3 failed,1 skipped (89). Only known temporalReplay box-only fixture suite error in addition to Python pair. Build passed including PWA generation; existing chunk warnings.
+- Exact unchanged requested live exam ran ONCE. Runtime hashes snapshot before run and verified after: out/wrong-ray-integration-source-hashes.json. No code change/tuning/rerun during/after run.
+- All3961 live frame bar/fresh/held outputs match corrected standalone replay within1e-9. Official summary counts/medians/high flags reconciled with observer output.
+- Live coverage94.445847% =83.236556fresh +11.209291held;5.554153%gaps. 3297fresh+444held+220gaps=3961. Median.112831743 bar;47/53 within.3;0%>1; worst+.904146 on094055@11s;0false10 (0fresh/0held).
+- 094055@19:5.654830 held/uncertain vs5.972936 (-.318106);@40:5.055815 fresh vs5.404496 (-.348682). 130022@25 unchanged fresh-display window6.651306 vs6.61 (+.041306).
+- Meets Isaac's revised acceptance:coverage>=90,median<=~.115 given0%>1,0false10. No sharp regression from diagnostic replay.
 
-## STOP — step 2 incomplete, targeted evidence failures
-- Validated/pushed HEAD remains968e8bf (step1); production selection is unchanged.
-- Untracked/uncommitted: src/flairPressureLab/pointerEvidence.js and pointerEvidence.vitest.js. Independent bounded-offset shaft scan, same line for both ends, existing coherent reach/taper scoring, alternate-axis margin; no production imports.
-- Targeted step2 run: 43 passed,2 FAILED /45 tests (2 files pass,1 fails). Existing37 calibration+4 endpoint tests pass. New pivot-error and blank-face tests pass.
-- New long thin pointer/broad short tail test: 4° error vs required<3°. New symmetric/equal-end shaft test incorrectly returns217° instead of null. These are real evidence/ambiguity failures, not environment exceptions; AGENTS and approved plan require STOP and report. Do not weaken tests or commit/integrate the candidate.
-- Candidate12-clip replay not run; full suite/build/official exam not run. Latest official metrics remain v4.13.26 baseline91.82% (80.03fresh/11.79held/8.18gaps), median.100191,45/54 within.3,5.56%>1,worst-5.946128,0false10.
-- The only fresh replay results in this task are baseline-equivalent step1 traces: 094055@19 .026808 fresh; @40 .056692 held (current raw candidate7.882643);130022@25 scoring window7.686812 from template at25.25. No new candidate pressure result can be claimed.
-
-## Resume exactly here, after direction to continue
-Inspect this handover, git status, pointerEvidence.js and its test; do not restart step1 or install again. Fix candidate tie/offset ambiguity without changing pressure thresholds or the pivot-orientation contract. The current coarse/refined search can favor an offset/off-axis discretization over the correct line and falsely distinguish equal ends. Re-run targeted suite only after correction, then build the standalone candidate mapping/publisher harness, validate its baseline adapter and replay all12 historical clips. Commit/push only validated completed step2; update docs/pressure-wrong-ray-2026-11-02.md and STOP before integration. No new official exam at pre-integration checkpoint. Stashf96c56e preserved; no changes to main, protected score/exam/fixtures/model, schema/data/auth/privacy or deployment.
-
-## Step2 correction attempt passed
-Single allowed correction: score the transverse ridge-centroid residual to stop off-axis/offset lines acquiring false taper. No test weakened. Targeted suite45/45 passes (all4 candidate tests, existing37 calibration+4 endpoint). Candidate remains standalone/unimported by production. Next: commit candidate and tests, run12 standalone historical clips with original map/endpoint/publisher and baseline adapter equivalence, then push/report/STOP before integration. No further tuning after clip results.
-
-## Step2 checkpoint COMPLETE — STOP before integration
-- Single authorized algorithm correction passed all45 targeted tests unchanged. Candidate core committed a41960b; no additional tuning after replay.
-- All12 clips replayed once through standalone candidate path. All3961/3961 production baseline bar/fresh/held outputs match saved observations; existing raw mapper/endpoint equivalence also asserted on nonduplicate frames. No official live exam.
-- Candidate diagnostics:95.80914% published,86.13986% fresh,9.66928% held,4.19086% gaps; median.192689;34/53 within.3;1.88679% >1; worst+1.060430 at094055/11s;0false10 (0fresh/0held). 3412+383+166=3961.
-- Requested:094055@19=5.360987 HELD/uncertain vs5.972936 (error-.611949);094055@40=4.781597 fresh vs5.404496 (error-.622899);130022@25 fresh-display window6.651306 vs6.61 (+.041306); actual25.25s candidate6.931470 fresh.
-- Acceptance NOT met: median/within.3 worse than production. Do not integrate. Other criteria coverage>=90,>1<3%,0false10 pass diagnostically only.
-- New standalone scripts pointerCandidateReplay.mjs (production helper functions/config; independent publisher state), runPointerCheckpoint.mjs (12clips), reportPointerCheckpoint.mjs (report only). No application imports of pointerEvidence. Sourcescore/exam/fixtures/frozen config unchanged. No calibration/pressure thresholds changed.
-- Full report docs/pressure-wrong-ray-2026-11-02.md, exact per-clip/hit data in -results.json. Full traces ignored out/wrong-ray-candidate-*.json; logs out/wrong-ray-checkpoint*.txt and wrong-ray-step2-attempt1.txt.
-- No full suite/build or phone/performance/model validation at this pre-integration checkpoint; those belong to a later approved integration phase. Candidate fit bias across the dataset remains unresolved (e.g.094151/160844), despite improved named misses. Further work needs direction; inspect geometric fit/calibration compatibility without weakening tests or changing zero globally.
-- Commit/push the completed harness/report, then STOP. No integration, main merge/deploy, retraining or further algorithm iteration authorized in this task. Original stash remains preserved.
-
-## Bias diagnosis / bounded correction in progress
-- Saved12clip replay shows opposite signed errors by setup, not a uniform pressure offset. Among3313 same-direction angle comparisons (<30° separation, no pressure-score filtering), Pearson correlation between candidate-minus-baseline angle and fitted offset/radius is -.912507. 160844 median angle delta -5.000°/bar-.603;160931 +5.124°/bar+.398.
-- Cause: experimental pressure adapter used shaft orientation as if it were a ray through the tapped hub. Kept angleDeg orientation API; added rayAngleDeg derived geometrically from fitted lateral offset and observed tip reach. Adapter now maps rayAngleDeg with unchanged calibration/endpoint/publisher. No pressure correction constant or threshold change.
-- Targeted47/47 pass (existing45 unchanged plus2 geometric regressions). Full real12clip rerun underway, fixed implementation/no tuning during replay. Prior candidate outputs preserved under ignored out/wrong-ray-before-bias, diagnosis out/wrong-ray-bias-diagnosis.json. No production integration or official exam.
-
-## Bias checkpoint COMPLETE — STOP
-- Correction commit296b201: preserve shaft angleDeg, expose rayAngleDeg projected from fitted offset/observed tip reach; experimental adapter uses that ray. No test weakening, calibration or threshold edits.
-- 47/47 targeted pass. All12 real clips reran once,3961/3961 baseline observations again reproduce exactly; raw mapping adapter assertions pass. Original pre-correction traces/results preserved under ignored out/wrong-ray-before-bias. No algorithm tuning during/after corrected replay.
-- Corrected diagnostics:94.445847% published (83.236556fresh/11.209291held/5.554153gaps); median.112831743;47/53 within.3;0%>1; worst+.904146 at094055/11s;0false10 (0fresh/0held). 3297+444+220=3961.
-- Original candidate median.192689/34-of53; corrected reduces median, improves all named misses, but median target<=.100191 remains FAILED. Other3 targets pass diagnostically. No integration recommended.
-- 094055@19:5.654830 held/uncertain vs5.972936 (-.318106);@40:5.055815 fresh vs5.404496 (-.348682). 130022@25 scored fresh-display window remains6.651306 vs6.61 (+.041306), actual25.25 sample6.759217 fresh.
-- Diagnostic bias cohort3313 same-ray pairs: Pearson-.912507; median absolute angle disagreement2.626°shaft→.705°projected ray. This is diagnostic baseline agreement, not new ground truth or pressure-score filtering. Sign varies perclip:160844 negative,160931 positive.
-- Full B/previous-candidate/corrected perclip report and exact hits: docs/pressure-wrong-ray-2026-11-02.md and -results.json. Bias analysis script diagnosePointerBias.mjs, replay/report scripts remain standalone. Production still unchanged except optional diagnostics fromstep1.
-- Full suite/build/live exam/phone/model feedback not run at this pre-integration checkpoint. Residual fit/endpoint/calibration mismatch needs separate diagnosis; do not alter zero or tune labels. Push completed correction/report and STOP as requested. No merge/deploy. Original stash retained.
+## Artifacts / risks / resume
+- docs/pressure-wrong-ray-2026-11-02.md: integration report, all12 baseline/replay/live tables and requested points. -results.json: exact per-clip/hit/fresh-held data, source hashes, replayAgreement. Reproducible report script scripts/pressure-diagnostics/reportPointerIntegration.mjs.
+- Original preintegration report/replay and old official outputs preserved ignored out/wrong-ray-before-production; prior bias diagnostics under out/wrong-ray-before-bias. Raw integration logs out/wrong-ray-integration-*.txt.
+- Risks: no new phone/hardware latency benchmark; multiple direction/offset search CPU cost unverified on phone. Unchanged exam's private model sampler is canonical/unregistered, so primarily tests pointer reading; actual asynchronous ONNX corroboration not newly browser-verified. Inherited calibration inconsistency remains094055 residual-error risk. Sparse labels do not establish every frame's true pressure.
+- Original abandoned step3 stash f96c56e321de594495d8a7ab2b6561effd6b83f1 remains preserved/unapplied.
+- STOP as requested. Branch ready for Isaac review of this experimental integration; do not merge/deploy or rerun/tune without new direction. Keep handover for review context. No retraining, schema/data/auth/privacy, dependency/version or protected exam/scoring/fixture changes.

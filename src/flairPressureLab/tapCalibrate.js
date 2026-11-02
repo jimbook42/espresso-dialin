@@ -23,6 +23,7 @@ import {
 import { barToDialAngle, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION } from './dialFaceTemplate.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { detectNeedleAngle, refineNeedleAngle } from './needleFromFrame.js';
+import { findPointerEvidence } from './pointerEvidence.js';
 import { regularizeTapAnchors } from './anchorRegularize.js';
 import {
   createDialRegistration, inverseDialAngle, rememberDialReference,
@@ -1284,7 +1285,7 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
   if (!tracker.legacyScale && tracker.lastRead
     && isRepeatedGaugeFrame(image, tracker.previousFrame, tracker.calibration)) {
     return { ...tracker.lastRead, ok: false, bar: null, rawBar: null,
-      fresh: false, needleDeg: null, duplicate: true };
+      fresh: false, needleDeg: null, pointerVerified: false, duplicate: true };
   }
   const found = trackPose(image, tracker);
   let bezelOk = Boolean(
@@ -1316,43 +1317,52 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
     : wrap360(tracker.calibration.tenAngleDeg + prevShift);
   let needle = { angleDeg: null, quality: 0, likeness: 0 };
   if (bezelOk) {
-    const hint = tracker.needleDeg == null ? null
-      : transformDialAngle(inverseDialAngle(tracker.needleDeg, tracker.pose.matrix), matrix);
-    needle = readNeedleAt(image, pose.x, pose.y, pose.radius, hint);
-    if (diagnostics) {
-      diagnostics.hintDeg = hint;
-      diagnostics.detector = { ...needle };
-    }
-    const detectorOnArc = barFromRestSpan(needle.angleDeg, zeroPrior, tenPrior) != null
-      && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY;
-    if (detectorOnArc) {
-      if (diagnostics) diagnostics.source = 'detector';
-      tracker.needleMisses = 0;
-    } else if (tracker.calibration.needleTemplate) {
-      const matched = matchTipAngle(
-        image,
-        pose.x,
-        pose.y,
-        pose.radius,
-        tracker.calibration.needleTemplate,
-        zeroPrior,
-        tenPrior,
-        tracker.needleDeg,
-        tracker.needleMisses || 0,
-        { maxOffset: Math.max(4, Math.min(20, Math.ceil(pose.radius * 0.09) * 2)) },
-      );
-      if (diagnostics) diagnostics.template = matched;
-      if (matched) {
-        if (diagnostics) diagnostics.source = 'template';
-        const gap = Math.abs(wrapDelta(matched.angleDeg, tracker.needleDeg));
-        const angleDeg = gap <= 4
-          ? wrap360(tracker.needleDeg + wrapDelta(matched.angleDeg, tracker.needleDeg) * 0.7)
-          : matched.angleDeg;
-        needle = { angleDeg, quality: matched.quality, likeness: matched.corr };
+    if (!tracker.legacyScale) {
+      // One shared geometric reader covers direct measurement and recovery.
+      // A template cannot bypass unresolved shaft direction.
+      const evidence = findPointerEvidence(image, { x: pose.x, y: pose.y }, pose.radius);
+      needle = { angleDeg: evidence.rayAngleDeg ?? null, quality: evidence.quality, likeness: evidence.quality };
+      tracker.needleMisses = needle.angleDeg == null ? Math.min(4, (tracker.needleMisses || 0) + 1) : 0;
+      if (diagnostics) { diagnostics.source = 'pointer'; diagnostics.pointer = evidence; }
+    } else {
+      const hint = tracker.needleDeg == null ? null
+        : transformDialAngle(inverseDialAngle(tracker.needleDeg, tracker.pose.matrix), matrix);
+      needle = readNeedleAt(image, pose.x, pose.y, pose.radius, hint);
+      if (diagnostics) {
+        diagnostics.hintDeg = hint;
+        diagnostics.detector = { ...needle };
+      }
+      const detectorOnArc = barFromRestSpan(needle.angleDeg, zeroPrior, tenPrior) != null
+        && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY;
+      if (detectorOnArc) {
+        if (diagnostics) diagnostics.source = 'detector';
         tracker.needleMisses = 0;
-      } else {
-        tracker.needleMisses = Math.min(4, (tracker.needleMisses || 0) + 1);
-        needle = { angleDeg: null, quality: 0, likeness: 0 };
+      } else if (tracker.calibration.needleTemplate) {
+        const matched = matchTipAngle(
+          image,
+          pose.x,
+          pose.y,
+          pose.radius,
+          tracker.calibration.needleTemplate,
+          zeroPrior,
+          tenPrior,
+          tracker.needleDeg,
+          tracker.needleMisses || 0,
+          { maxOffset: Math.max(4, Math.min(20, Math.ceil(pose.radius * 0.09) * 2)) },
+        );
+        if (diagnostics) diagnostics.template = matched;
+        if (matched) {
+          if (diagnostics) diagnostics.source = 'template';
+          const gap = Math.abs(wrapDelta(matched.angleDeg, tracker.needleDeg));
+          const angleDeg = gap <= 4
+            ? wrap360(tracker.needleDeg + wrapDelta(matched.angleDeg, tracker.needleDeg) * 0.7)
+            : matched.angleDeg;
+          needle = { angleDeg, quality: matched.quality, likeness: matched.corr };
+          tracker.needleMisses = 0;
+        } else {
+          tracker.needleMisses = Math.min(4, (tracker.needleMisses || 0) + 1);
+          needle = { angleDeg: null, quality: 0, likeness: 0 };
+        }
       }
     }
   }
@@ -1413,7 +1423,7 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
       shiftDeg,
       matrix,
     };
-    if (needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY) {
+    if (tracker.legacyScale && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY) {
       tracker.needleDeg = needle.angleDeg;
     }
   }
@@ -1437,6 +1447,8 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
           tracker.calibration.fiveAngleDeg, tracker.calibration.tenAngleDeg)
         : barFromTapAnchors(needle.angleDeg, zero, five, ten))
     : null;
+  // Rejecting identity, arc or endpoint evidence must not poison the next hint.
+  if (!tracker.legacyScale && rawBar != null) tracker.needleDeg = needle.angleDeg;
   const bar = tracker.legacyScale
     ? rawBar
     : publishTapBar({
@@ -1451,6 +1463,7 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
     lost,
     bar,
     rawBar,
+    pointerVerified: !tracker.legacyScale && rawBar != null,
     fresh: bar != null && rawBar === bar,
     score,
     bezelScore: found?.score ?? 0,

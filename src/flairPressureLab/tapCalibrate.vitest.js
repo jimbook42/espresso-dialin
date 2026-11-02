@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as pointerEvidence from './pointerEvidence.js';
 import {
   BAD_TAP_PX,
   FIVE_WARN_BAR,
@@ -579,6 +580,30 @@ describe('calibrateFromTaps gauge sizes', () => {
 });
 
 describe('userPlaced rim radius vs tap radius', () => {
+  it('updates hints only from verified rays and never recertifies duplicate or ambiguous pixels', () => {
+    const hub = { x: 200, y: 200 }, image = paintBandDial(400, hub, 88);
+    const taps = idealTapsAtRadius(50, hub);
+    const result = calibrateFromTaps(image, { centre: hub, five: taps.five, ten: taps.ten });
+    expect(result.ok).toBe(true);
+    const tracker = createCalibratedTracker(result.calibration);
+    const spy = vi.spyOn(pointerEvidence, 'findPointerEvidence');
+    try {
+      spy.mockReturnValue({ angleDeg: result.calibration.fiveAngleDeg, rayAngleDeg: result.calibration.fiveAngleDeg, quality: 0.8 });
+      const valid = readCalibratedFrame(image, tracker);
+      expect(valid.pointerVerified).toBe(true);
+      const hint = tracker.needleDeg, lastGood = tracker.lastGoodBar;
+      expect(hint).not.toBeNull();
+      expect(lastGood).not.toBeNull();
+      const repeated = readCalibratedFrame(image, tracker);
+      expect(repeated).toMatchObject({ duplicate: true, pointerVerified: false, fresh: false });
+      tracker.previousFrame = null;
+      spy.mockReturnValue({ angleDeg: null, rayAngleDeg: null, quality: 0, reason: 'ambiguous' });
+      const ambiguous = readCalibratedFrame(image, tracker);
+      expect(ambiguous).toMatchObject({ pointerVerified: false, bar: null, rawBar: null, fresh: false });
+      expect(tracker.needleDeg).toBe(hint);
+      expect(tracker.lastGoodBar).toBe(lastGood);
+    } finally { spy.mockRestore(); }
+  });
   it('stores the bezel radius when taps sit at ~0.55 rim and keeps rotation near 0', () => {
     const hub = { x: 200, y: 200 };
     const rimRadius = 88;
