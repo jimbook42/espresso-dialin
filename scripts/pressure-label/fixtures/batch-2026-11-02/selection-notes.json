@@ -1,0 +1,570 @@
+[
+ {
+  "clip": "20261018_094055",
+  "t": 10.875,
+  "phase": "preinfusion",
+  "why": "worst +0.90 bar @11s (burst)",
+  "group": "existing",
+  "id": "b001",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "20261018_094055",
+  "t": 11.0,
+  "phase": "preinfusion",
+  "why": "worst +0.90 bar @11s (burst)",
+  "group": "existing",
+  "id": "b002",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "20261018_094055",
+  "t": 11.125,
+  "phase": "preinfusion",
+  "why": "worst +0.90 bar @11s (burst)",
+  "group": "existing",
+  "id": "b003",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "20261018_094055",
+  "t": 19,
+  "phase": "ramp",
+  "why": "-0.32 held:needle-missing",
+  "group": "existing",
+  "id": "b004",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "20261018_094055",
+  "t": 22,
+  "phase": "peak",
+  "why": "gap: needle-missing",
+  "group": "existing",
+  "id": "b005",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "20261018_094055",
+  "t": 40,
+  "phase": "taper",
+  "why": "-0.35",
+  "group": "existing",
+  "id": "b006",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "20261018_094055",
+  "t": 2.7,
+  "phase": "rest",
+  "why": "rest, pose-lost",
+  "group": "existing",
+  "id": "b007",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "20261017_084814",
+  "t": 22,
+  "phase": "peak",
+  "why": "-0.36",
+  "group": "existing",
+  "id": "b008",
+  "source": "/workspace/flair-train/real/20261017_084814.mp4"
+ },
+ {
+  "clip": "20261018_160931",
+  "t": 18.231,
+  "phase": "used",
+  "why": "+0.31",
+  "group": "existing",
+  "id": "b009",
+  "source": "/workspace/flair-train/used/20261018_160931.mp4"
+ },
+ {
+  "clip": "20261025_130022",
+  "t": 49.375,
+  "phase": "return-rest",
+  "why": "+0.40",
+  "group": "existing",
+  "id": "b010",
+  "source": "/workspace/pl-state/nr/newshots/real/20261025_130022.mp4"
+ },
+ {
+  "clip": "20261018_160844",
+  "t": 2.7,
+  "phase": "rest",
+  "why": "rest, needle-missing (gap)",
+  "group": "existing",
+  "id": "b011",
+  "source": "/workspace/flair-train/real/20261018_160844.mp4"
+ },
+ {
+  "clip": "20261015_225307",
+  "t": 7.581,
+  "phase": "dry-rest",
+  "why": "dry rest, needle-missing (gap)",
+  "group": "existing",
+  "id": "b012",
+  "source": "/workspace/flair-train/dry/20261015_225307.mp4"
+ },
+ {
+  "clip": "20261017_134943",
+  "t": 48.5,
+  "phase": "taper",
+  "why": "held:needle-missing",
+  "group": "existing",
+  "id": "b013",
+  "source": "/workspace/flair-train/real/20261017_134943.mp4"
+ },
+ {
+  "clip": "20261024_124006",
+  "t": 33.375,
+  "phase": "peak",
+  "why": "no-frame gap",
+  "group": "existing",
+  "id": "b014",
+  "source": "/workspace/pl-state/nr/newshots/real/20261024_124006.mp4"
+ },
+ {
+  "clip": "20261025_130022",
+  "t": 37,
+  "phase": "plateau",
+  "why": "no-frame gap",
+  "group": "existing",
+  "id": "b015",
+  "source": "/workspace/pl-state/nr/newshots/real/20261025_130022.mp4"
+ },
+ {
+  "clip": "20261017_084814",
+  "t": 1.8,
+  "phase": "rest",
+  "why": "representative rest",
+  "group": "existing",
+  "id": "b016",
+  "source": "/workspace/flair-train/real/20261017_084814.mp4"
+ },
+ {
+  "clip": "20261018_160844",
+  "t": 8.75,
+  "phase": "onset",
+  "why": "onset burst (truth start ~? before 11s preinfusion)",
+  "group": "existing",
+  "id": "b017",
+  "source": "/workspace/flair-train/real/20261018_160844.mp4"
+ },
+ {
+  "clip": "20261018_160844",
+  "t": 8.875,
+  "phase": "onset",
+  "why": "onset burst (truth start ~? before 11s preinfusion)",
+  "group": "existing",
+  "id": "b018",
+  "source": "/workspace/flair-train/real/20261018_160844.mp4"
+ },
+ {
+  "clip": "20261018_160844",
+  "t": 9.0,
+  "phase": "onset",
+  "why": "onset burst (truth start ~? before 11s preinfusion)",
+  "group": "existing",
+  "id": "b019",
+  "source": "/workspace/flair-train/real/20261018_160844.mp4"
+ },
+ {
+  "clip": "20261024_124006",
+  "t": 30.375,
+  "phase": "rising",
+  "why": "representative fast rise",
+  "group": "existing",
+  "id": "b020",
+  "source": "/workspace/pl-state/nr/newshots/real/20261024_124006.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 0.233,
+  "phase": "rest",
+  "why": "app curve <0.15",
+  "group": "new",
+  "id": "b021",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 0.503,
+  "phase": "rest",
+  "why": "app curve <0.15, last before rise",
+  "group": "new",
+  "id": "b022",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 11.294,
+  "phase": "first-movement",
+  "why": "app curve first >0.3",
+  "group": "new",
+  "id": "b023",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 11.705,
+  "phase": "rising",
+  "why": "~35% of peak",
+  "group": "new",
+  "id": "b024",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 13.696,
+  "phase": "rising",
+  "why": "~75% of peak",
+  "group": "new",
+  "id": "b025",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 16.765,
+  "phase": "peak",
+  "why": "app peak 7.5",
+  "group": "new",
+  "id": "b026",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 36.361,
+  "phase": "falling",
+  "why": "~50% of peak after peak",
+  "group": "new",
+  "id": "b027",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 37.826,
+  "phase": "return-rest",
+  "why": "end-1s (no return seen)",
+  "group": "new",
+  "id": "b028",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+  "t": 1.0,
+  "phase": "rest",
+  "why": "hand-picked from noisy app curve: app 0",
+  "group": "new",
+  "id": "b029",
+  "source": "/workspace/newshots/lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f.mp4"
+ },
+ {
+  "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+  "t": 3.66,
+  "phase": "rest",
+  "why": "hand-picked from noisy app curve: app 0, last before rise",
+  "group": "new",
+  "id": "b030",
+  "source": "/workspace/newshots/lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f.mp4"
+ },
+ {
+  "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+  "t": 4.318,
+  "phase": "first-movement",
+  "why": "hand-picked from noisy app curve: app jumps to ~1.7",
+  "group": "new",
+  "id": "b031",
+  "source": "/workspace/newshots/lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f.mp4"
+ },
+ {
+  "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+  "t": 13.959,
+  "phase": "rising",
+  "why": "hand-picked from noisy app curve: app 5.0",
+  "group": "new",
+  "id": "b032",
+  "source": "/workspace/newshots/lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f.mp4"
+ },
+ {
+  "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+  "t": 14.494,
+  "phase": "rising",
+  "why": "hand-picked from noisy app curve: app 5.6",
+  "group": "new",
+  "id": "b033",
+  "source": "/workspace/newshots/lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f.mp4"
+ },
+ {
+  "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+  "t": 17.155,
+  "phase": "peak",
+  "why": "hand-picked from noisy app curve: app peak 7.0",
+  "group": "new",
+  "id": "b034",
+  "source": "/workspace/newshots/lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f.mp4"
+ },
+ {
+  "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+  "t": 33.042,
+  "phase": "falling",
+  "why": "hand-picked from noisy app curve: app 4.2 (curve gap to 35.7)",
+  "group": "new",
+  "id": "b035",
+  "source": "/workspace/newshots/lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f.mp4"
+ },
+ {
+  "clip": "20261018_094055",
+  "t": 11.125,
+  "phase": "preinfusion",
+  "why": "worst +0.90 bar @11s (burst)",
+  "group": "repeat",
+  "repeatOf": "b003",
+  "id": "b036",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+  "t": 37.0,
+  "phase": "return-rest",
+  "why": "hand-picked from noisy app curve: app ~0.1",
+  "group": "new",
+  "id": "b037",
+  "source": "/workspace/newshots/lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 0.577,
+  "phase": "rest",
+  "why": "app curve <0.15",
+  "group": "new",
+  "id": "b038",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 3.772,
+  "phase": "rest",
+  "why": "app curve <0.15, last before rise",
+  "group": "new",
+  "id": "b039",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 3.917,
+  "phase": "first-movement",
+  "why": "app curve first >0.3",
+  "group": "new",
+  "id": "b040",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 14.176,
+  "phase": "rising",
+  "why": "~35% of peak",
+  "group": "new",
+  "id": "b041",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 15.771,
+  "phase": "rising",
+  "why": "~75% of peak",
+  "group": "new",
+  "id": "b042",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 20.837,
+  "phase": "peak",
+  "why": "app peak 7.3",
+  "group": "new",
+  "id": "b043",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "20261018_094055",
+  "t": 22,
+  "phase": "peak",
+  "why": "gap: needle-missing",
+  "group": "repeat",
+  "repeatOf": "b005",
+  "id": "b044",
+  "source": "/workspace/flair-train/real/20261018_094055.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 32.691,
+  "phase": "falling",
+  "why": "~50% of peak after peak",
+  "group": "new",
+  "id": "b045",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 34.442,
+  "phase": "return-rest",
+  "why": "first <0.2 after fall",
+  "group": "new",
+  "id": "b046",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 1,
+  "phase": "used_1",
+  "why": "evenly spaced (no curve)",
+  "group": "new",
+  "id": "b047",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 5,
+  "phase": "used_2",
+  "why": "evenly spaced (no curve)",
+  "group": "new",
+  "id": "b048",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 9,
+  "phase": "used_3",
+  "why": "evenly spaced (no curve)",
+  "group": "new",
+  "id": "b049",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 13.696,
+  "phase": "rising",
+  "why": "~75% of peak",
+  "group": "repeat",
+  "repeatOf": "b025",
+  "id": "b050",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 0.577,
+  "phase": "rest",
+  "why": "app curve <0.15",
+  "group": "repeat",
+  "repeatOf": "b038",
+  "id": "b051",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 13,
+  "phase": "used_4",
+  "why": "evenly spaced (no curve)",
+  "group": "new",
+  "id": "b052",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 18,
+  "phase": "used_5",
+  "why": "evenly spaced (no curve)",
+  "group": "new",
+  "id": "b053",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 20.837,
+  "phase": "peak",
+  "why": "app peak 7.3",
+  "group": "repeat",
+  "repeatOf": "b043",
+  "id": "b054",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+  "t": 36.361,
+  "phase": "falling",
+  "why": "~50% of peak after peak",
+  "group": "repeat",
+  "repeatOf": "b027",
+  "id": "b055",
+  "source": "/workspace/newshots/lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 23,
+  "phase": "used_6",
+  "why": "evenly spaced (no curve)",
+  "group": "new",
+  "id": "b056",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 28,
+  "phase": "used_7",
+  "why": "evenly spaced (no curve)",
+  "group": "new",
+  "id": "b057",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ },
+ {
+  "clip": "20261018_160844",
+  "t": 2.7,
+  "phase": "rest",
+  "why": "rest, needle-missing (gap)",
+  "group": "repeat",
+  "repeatOf": "b011",
+  "id": "b058",
+  "source": "/workspace/flair-train/real/20261018_160844.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 34.5,
+  "phase": "used_8",
+  "why": "evenly spaced (no curve)",
+  "group": "new",
+  "id": "b059",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ },
+ {
+  "clip": "lab-replay-f62a5256",
+  "t": 15.771,
+  "phase": "rising",
+  "why": "~75% of peak",
+  "group": "repeat",
+  "repeatOf": "b042",
+  "id": "b060",
+  "source": "/workspace/newshots/lab-replay-f62a5256.mp4"
+ },
+ {
+  "clip": "20261017_084814",
+  "t": 22,
+  "phase": "peak",
+  "why": "-0.36",
+  "group": "repeat",
+  "repeatOf": "b008",
+  "id": "b061",
+  "source": "/workspace/flair-train/real/20261017_084814.mp4"
+ },
+ {
+  "clip": "20261024_124140",
+  "t": 13,
+  "phase": "used_4",
+  "why": "evenly spaced (no curve)",
+  "group": "repeat",
+  "repeatOf": "b052",
+  "id": "b062",
+  "source": "/workspace/pl-state/nr/newshots/used/20261024_124140.mp4"
+ }
+]

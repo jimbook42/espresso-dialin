@@ -1,0 +1,3104 @@
+{
+  "frames": {
+    "b004": {
+      "clip": "20261018_094055",
+      "t": 19,
+      "phase": "ramp",
+      "hub": [
+        480,
+        528
+      ],
+      "tip": [
+        355,
+        308
+      ],
+      "ten": [
+        564,
+        397
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:58:05.359Z",
+      "orig": {
+        "hub": [
+          475,
+          784
+        ],
+        "tip": [
+          511.4,
+          848
+        ],
+        "zero": [
+          517.2,
+          745.6
+        ],
+        "five": [
+          523.3,
+          819.5
+        ],
+        "ten": [
+          450.5,
+          822.1
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px",
+      "zero": [
+        335,
+        660
+      ],
+      "five": [
+        314,
+        406
+      ]
+    },
+    "b003": {
+      "clip": "20261018_094055",
+      "t": 11.125,
+      "phase": "preinfusion",
+      "hub": [
+        519,
+        400
+      ],
+      "tip": [
+        330,
+        449
+      ],
+      "zero": [
+        407,
+        526
+      ],
+      "five": [
+        381,
+        300
+      ],
+      "ten": [
+        601,
+        285
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:53:09.504Z",
+      "orig": {
+        "hub": [
+          483.1,
+          775
+        ],
+        "tip": [
+          544.9,
+          759
+        ],
+        "zero": [
+          519.7,
+          733.8
+        ],
+        "five": [
+          528.2,
+          807.7
+        ],
+        "ten": [
+          456.3,
+          812.6
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b002": {
+      "clip": "20261018_094055",
+      "t": 11,
+      "phase": "preinfusion",
+      "hub": [
+        475,
+        426
+      ],
+      "tip": [
+        313,
+        470
+      ],
+      "zero": [
+        372,
+        531
+      ],
+      "five": [
+        355,
+        337
+      ],
+      "ten": [
+        538,
+        336
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:52:52.770Z",
+      "orig": {
+        "hub": [
+          482.5,
+          777.4
+        ],
+        "tip": [
+          544.9,
+          760.4
+        ],
+        "zero": [
+          522.2,
+          736.9
+        ],
+        "five": [
+          528.7,
+          811.7
+        ],
+        "ten": [
+          458.2,
+          812.1
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b001": {
+      "clip": "20261018_094055",
+      "t": 10.875,
+      "phase": "preinfusion",
+      "hub": [
+        409,
+        428
+      ],
+      "tip": [
+        205,
+        480
+      ],
+      "zero": [
+        277,
+        550
+      ],
+      "five": [
+        259,
+        318
+      ],
+      "ten": [
+        485,
+        304
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:52:42.403Z",
+      "orig": {
+        "hub": [
+          482.3,
+          775.4
+        ],
+        "tip": [
+          544.8,
+          759.5
+        ],
+        "zero": [
+          522.7,
+          738
+        ],
+        "five": [
+          528.3,
+          809.2
+        ],
+        "ten": [
+          459,
+          813.5
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b019": {
+      "clip": "20261018_160844",
+      "t": 9,
+      "phase": "onset",
+      "hub": [
+        430,
+        435
+      ],
+      "tip": [
+        228,
+        457
+      ],
+      "zero": [
+        295,
+        532
+      ],
+      "five": [
+        313,
+        320
+      ],
+      "ten": [
+        529,
+        327
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:00:53.279Z",
+      "orig": {
+        "hub": [
+          642.8,
+          184.2
+        ],
+        "tip": [
+          635.3,
+          115
+        ],
+        "zero": [
+          609.6,
+          138
+        ],
+        "five": [
+          682.1,
+          144.1
+        ],
+        "ten": [
+          679.8,
+          218
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b018": {
+      "clip": "20261018_160844",
+      "t": 8.875,
+      "phase": "onset",
+      "hub": [
+        431,
+        440
+      ],
+      "tip": [
+        231,
+        467
+      ],
+      "zero": [
+        295,
+        541
+      ],
+      "five": [
+        311,
+        331
+      ],
+      "ten": [
+        520,
+        338
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:00:44.682Z",
+      "orig": {
+        "hub": [
+          644.2,
+          186.3
+        ],
+        "tip": [
+          634.6,
+          115.6
+        ],
+        "zero": [
+          608.5,
+          138.2
+        ],
+        "five": [
+          682.7,
+          143.9
+        ],
+        "ten": [
+          680.2,
+          217.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b017": {
+      "clip": "20261018_160844",
+      "t": 8.75,
+      "phase": "onset",
+      "hub": [
+        435,
+        438
+      ],
+      "tip": [
+        223,
+        454
+      ],
+      "zero": [
+        296,
+        537
+      ],
+      "five": [
+        315,
+        320
+      ],
+      "ten": [
+        536,
+        326
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:00:38.784Z",
+      "orig": {
+        "hub": [
+          641.7,
+          185.9
+        ],
+        "tip": [
+          636.3,
+          113.8
+        ],
+        "zero": [
+          608.1,
+          138.6
+        ],
+        "five": [
+          681.9,
+          145.1
+        ],
+        "ten": [
+          679.8,
+          220.2
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b016": {
+      "clip": "20261017_084814",
+      "t": 1.8,
+      "phase": "rest",
+      "hub": [
+        460,
+        445
+      ],
+      "tip": [
+        310,
+        542
+      ],
+      "zero": [
+        345,
+        540
+      ],
+      "five": [
+        349,
+        341
+      ],
+      "ten": [
+        546,
+        338
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:00:32.153Z",
+      "orig": {
+        "hub": [
+          628.9,
+          308.9
+        ],
+        "tip": [
+          595.6,
+          257.4
+        ],
+        "zero": [
+          596.3,
+          269.5
+        ],
+        "five": [
+          664.6,
+          270.8
+        ],
+        "ten": [
+          665.6,
+          338.5
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b015": {
+      "clip": "20261025_130022",
+      "t": 37,
+      "phase": "plateau",
+      "hub": [
+        462,
+        441
+      ],
+      "tip": [
+        379,
+        280
+      ],
+      "zero": [
+        351,
+        544
+      ],
+      "five": [
+        340,
+        349
+      ],
+      "ten": [
+        533,
+        328
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:00:25.424Z",
+      "orig": {
+        "hub": [
+          449,
+          642.1
+        ],
+        "tip": [
+          480.8,
+          703.6
+        ],
+        "zero": [
+          491.5,
+          602.7
+        ],
+        "five": [
+          495.7,
+          677.2
+        ],
+        "ten": [
+          421.9,
+          685.2
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b014": {
+      "clip": "20261024_124006",
+      "t": 33.375,
+      "phase": "peak",
+      "hub": [
+        429,
+        437
+      ],
+      "tip": [
+        373,
+        235
+      ],
+      "zero": [
+        300,
+        559
+      ],
+      "five": [
+        289,
+        334
+      ],
+      "ten": [
+        502,
+        311
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:00:15.083Z",
+      "orig": {
+        "tip": [
+          296.7,
+          598.3
+        ],
+        "zero": [
+          272.7,
+          704.8
+        ],
+        "five": [
+          269,
+          630.8
+        ],
+        "ten": [
+          339.1,
+          623.3
+        ],
+        "hub": [
+          315.1,
+          664.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b013": {
+      "clip": "20261017_134943",
+      "t": 48.5,
+      "phase": "taper",
+      "hub": [
+        453,
+        488
+      ],
+      "tip": [
+        352,
+        283
+      ],
+      "zero": [
+        314,
+        601
+      ],
+      "five": [
+        318,
+        375
+      ],
+      "ten": [
+        539,
+        368
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:59:48.989Z",
+      "orig": {
+        "hub": [
+          360.7,
+          690
+        ],
+        "tip": [
+          394.3,
+          758.3
+        ],
+        "zero": [
+          407,
+          652.3
+        ],
+        "five": [
+          405.7,
+          727.7
+        ],
+        "ten": [
+          332,
+          730
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b012": {
+      "clip": "20261015_225307",
+      "t": 7.581,
+      "phase": "dry-rest",
+      "hub": [
+        452,
+        438
+      ],
+      "tip": [
+        287,
+        554
+      ],
+      "zero": [
+        324,
+        540
+      ],
+      "five": [
+        331,
+        333
+      ],
+      "ten": [
+        538,
+        323
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:59:36.453Z",
+      "orig": {
+        "hub": [
+          1154.2,
+          1835.6
+        ],
+        "tip": [
+          1336.2,
+          1707.7
+        ],
+        "zero": [
+          1295.4,
+          1723.1
+        ],
+        "five": [
+          1287.7,
+          1951.5
+        ],
+        "ten": [
+          1059.3,
+          1962.5
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b011": {
+      "clip": "20261018_160844",
+      "t": 2.7,
+      "phase": "rest",
+      "hub": [
+        452,
+        450
+      ],
+      "tip": [
+        280,
+        547
+      ],
+      "zero": [
+        325,
+        544
+      ],
+      "five": [
+        343,
+        339
+      ],
+      "ten": [
+        540,
+        347
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:59:23.166Z",
+      "orig": {
+        "hub": [
+          628.7,
+          167.7
+        ],
+        "tip": [
+          595,
+          108.1
+        ],
+        "zero": [
+          596.1,
+          123.7
+        ],
+        "five": [
+          667.1,
+          129.9
+        ],
+        "ten": [
+          664.4,
+          198.2
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b010": {
+      "clip": "20261025_130022",
+      "t": 49.375,
+      "phase": "return-rest",
+      "hub": [
+        448,
+        447
+      ],
+      "tip": [
+        297,
+        555
+      ],
+      "zero": [
+        335,
+        556
+      ],
+      "five": [
+        329,
+        347
+      ],
+      "ten": [
+        528,
+        328
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:59:16.500Z",
+      "orig": {
+        "hub": [
+          479.3,
+          627.7
+        ],
+        "tip": [
+          530.7,
+          591
+        ],
+        "zero": [
+          517.8,
+          590.6
+        ],
+        "five": [
+          519.8,
+          661.7
+        ],
+        "ten": [
+          452.1,
+          668.1
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b009": {
+      "clip": "20261018_160931",
+      "t": 18.231,
+      "phase": "used",
+      "hub": [
+        420,
+        457
+      ],
+      "tip": [
+        255,
+        368
+      ],
+      "zero": [
+        285,
+        548
+      ],
+      "five": [
+        306,
+        356
+      ],
+      "ten": [
+        498,
+        369
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:59:10.762Z",
+      "orig": {
+        "hub": [
+          646,
+          252.3
+        ],
+        "tip": [
+          685.1,
+          179.9
+        ],
+        "zero": [
+          606.1,
+          193.1
+        ],
+        "five": [
+          690.3,
+          202.3
+        ],
+        "ten": [
+          684.6,
+          286.6
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b008": {
+      "clip": "20261017_084814",
+      "t": 22,
+      "phase": "peak",
+      "hub": [
+        462,
+        446
+      ],
+      "tip": [
+        458,
+        261
+      ],
+      "zero": [
+        342,
+        543
+      ],
+      "five": [
+        353,
+        342
+      ],
+      "ten": [
+        542,
+        342
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:59:04.520Z",
+      "orig": {
+        "hub": [
+          646.1,
+          330.5
+        ],
+        "tip": [
+          714.8,
+          329
+        ],
+        "zero": [
+          610.1,
+          285.9
+        ],
+        "five": [
+          684.7,
+          290
+        ],
+        "ten": [
+          684.7,
+          360.1
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b007": {
+      "clip": "20261018_094055",
+      "t": 2.7,
+      "phase": "rest",
+      "hub": [
+        515,
+        417
+      ],
+      "tip": [
+        361,
+        534
+      ],
+      "zero": [
+        390,
+        527
+      ],
+      "five": [
+        386,
+        309
+      ],
+      "ten": [
+        587,
+        306
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:58:56.017Z",
+      "orig": {
+        "tip": [
+          556,
+          737
+        ],
+        "zero": [
+          546.6,
+          739.3
+        ],
+        "hub": [
+          506.2,
+          774.8
+        ],
+        "five": [
+          547.9,
+          809.8
+        ],
+        "ten": [
+          482.9,
+          810.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b006": {
+      "clip": "20261018_094055",
+      "t": 40,
+      "phase": "taper",
+      "hub": [
+        481,
+        430
+      ],
+      "tip": [
+        361,
+        294
+      ],
+      "zero": [
+        374,
+        527
+      ],
+      "five": [
+        361,
+        343
+      ],
+      "ten": [
+        538,
+        334
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:58:20.789Z",
+      "orig": {
+        "hub": [
+          451.4,
+          793.3
+        ],
+        "tip": [
+          500.6,
+          849.1
+        ],
+        "zero": [
+          495.3,
+          753.5
+        ],
+        "five": [
+          500.6,
+          829
+        ],
+        "ten": [
+          428,
+          832.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b005": {
+      "clip": "20261018_094055",
+      "t": 22,
+      "phase": "peak",
+      "hub": [
+        476,
+        429
+      ],
+      "tip": [
+        436,
+        256
+      ],
+      "zero": [
+        369,
+        532
+      ],
+      "five": [
+        351,
+        332
+      ],
+      "ten": [
+        538,
+        330
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T06:58:11.941Z",
+      "orig": {
+        "hub": [
+          472.4,
+          787.9
+        ],
+        "tip": [
+          488.1,
+          855.9
+        ],
+        "zero": [
+          514.5,
+          747.4
+        ],
+        "five": [
+          521.5,
+          826
+        ],
+        "ten": [
+          448,
+          826.8
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b043": {
+      "clip": "lab-replay-f62a5256",
+      "t": 20.837,
+      "phase": "peak",
+      "hub": [
+        520,
+        457
+      ],
+      "tip": [
+        445,
+        246
+      ],
+      "zero": [
+        395,
+        573
+      ],
+      "five": [
+        383,
+        341
+      ],
+      "ten": [
+        587,
+        315
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:04:56.709Z",
+      "orig": {
+        "hub": [
+          308.9,
+          499.5
+        ],
+        "tip": [
+          332.2,
+          565.2
+        ],
+        "zero": [
+          347.8,
+          463.4
+        ],
+        "five": [
+          351.5,
+          535.6
+        ],
+        "ten": [
+          288.1,
+          543.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b042": {
+      "clip": "lab-replay-f62a5256",
+      "t": 15.771,
+      "phase": "rising",
+      "hub": [
+        456,
+        439
+      ],
+      "tip": [
+        332,
+        299
+      ],
+      "zero": [
+        349,
+        541
+      ],
+      "five": [
+        335,
+        347
+      ],
+      "ten": [
+        525,
+        321
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:04:41.891Z",
+      "orig": {
+        "hub": [
+          319.6,
+          503.4
+        ],
+        "tip": [
+          361.5,
+          550.7
+        ],
+        "zero": [
+          355.8,
+          468.9
+        ],
+        "five": [
+          360.5,
+          534.5
+        ],
+        "ten": [
+          296.3,
+          543.2
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b041": {
+      "clip": "lab-replay-f62a5256",
+      "t": 14.176,
+      "phase": "rising",
+      "hub": [
+        451,
+        442
+      ],
+      "tip": [
+        279,
+        404
+      ],
+      "zero": [
+        347,
+        556
+      ],
+      "five": [
+        330,
+        345
+      ],
+      "ten": [
+        519,
+        314
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:04:35.630Z",
+      "orig": {
+        "hub": [
+          326.3,
+          502.3
+        ],
+        "tip": [
+          382.9,
+          514.8
+        ],
+        "zero": [
+          360.5,
+          464.8
+        ],
+        "five": [
+          366.1,
+          534.2
+        ],
+        "ten": [
+          304,
+          544.4
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b040": {
+      "clip": "lab-replay-f62a5256",
+      "t": 3.917,
+      "phase": "first-movement",
+      "hub": [
+        459,
+        446
+      ],
+      "tip": [
+        302,
+        532
+      ],
+      "zero": [
+        349,
+        547
+      ],
+      "five": [
+        334,
+        342
+      ],
+      "ten": [
+        533,
+        319
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:04:30.499Z",
+      "orig": {
+        "hub": [
+          327.2,
+          495.5
+        ],
+        "tip": [
+          379,
+          467.1
+        ],
+        "zero": [
+          363.5,
+          462.2
+        ],
+        "five": [
+          368.5,
+          529.8
+        ],
+        "ten": [
+          302.8,
+          537.4
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b039": {
+      "clip": "lab-replay-f62a5256",
+      "t": 3.772,
+      "phase": "rest",
+      "hub": [
+        504,
+        455
+      ],
+      "tip": [
+        327,
+        556
+      ],
+      "zero": [
+        386,
+        576
+      ],
+      "five": [
+        371,
+        358
+      ],
+      "ten": [
+        586,
+        322
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:04:25.406Z",
+      "orig": {
+        "hub": [
+          327.5,
+          498.2
+        ],
+        "tip": [
+          380.6,
+          467.9
+        ],
+        "zero": [
+          362.9,
+          461.9
+        ],
+        "five": [
+          367.4,
+          527.3
+        ],
+        "ten": [
+          302.9,
+          538.1
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b038": {
+      "clip": "lab-replay-f62a5256",
+      "t": 0.577,
+      "phase": "rest",
+      "hub": [
+        445,
+        443
+      ],
+      "tip": [
+        307,
+        574
+      ],
+      "zero": [
+        338,
+        564
+      ],
+      "five": [
+        334,
+        342
+      ],
+      "ten": [
+        521,
+        302
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:04:20.189Z",
+      "orig": {
+        "hub": [
+          338.8,
+          495.4
+        ],
+        "tip": [
+          382.2,
+          454.2
+        ],
+        "zero": [
+          372.4,
+          457.3
+        ],
+        "five": [
+          373.7,
+          527.1
+        ],
+        "ten": [
+          314.9,
+          539.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b037": {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 37,
+      "phase": "return-rest",
+      "hub": [
+        443,
+        443
+      ],
+      "tip": [
+        295,
+        559
+      ],
+      "zero": [
+        341,
+        554
+      ],
+      "five": [
+        328,
+        334
+      ],
+      "ten": [
+        533,
+        307
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:04:14.371Z",
+      "orig": {
+        "hub": [
+          350.8,
+          515.8
+        ],
+        "tip": [
+          396.2,
+          480.3
+        ],
+        "zero": [
+          382.1,
+          481.8
+        ],
+        "five": [
+          386.1,
+          549.3
+        ],
+        "ten": [
+          323.2,
+          557.5
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b036": {
+      "clip": "20261018_094055",
+      "t": 11.125,
+      "phase": "preinfusion",
+      "hub": [
+        527,
+        398
+      ],
+      "tip": [
+        328,
+        449
+      ],
+      "zero": [
+        408,
+        520
+      ],
+      "five": [
+        381,
+        295
+      ],
+      "ten": [
+        592,
+        279
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:04:09.317Z",
+      "orig": {
+        "hub": [
+          480.5,
+          775.7
+        ],
+        "tip": [
+          545.5,
+          759
+        ],
+        "zero": [
+          519.4,
+          735.8
+        ],
+        "five": [
+          528.2,
+          809.3
+        ],
+        "ten": [
+          459.3,
+          814.5
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b035": {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 33.042,
+      "phase": "falling",
+      "hub": [
+        457,
+        442
+      ],
+      "tip": [
+        294,
+        371
+      ],
+      "zero": [
+        344,
+        543
+      ],
+      "five": [
+        348,
+        337
+      ],
+      "ten": [
+        535,
+        322
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:49.227Z",
+      "orig": {
+        "hub": [
+          299.6,
+          509
+        ],
+        "tip": [
+          358.8,
+          534.8
+        ],
+        "zero": [
+          340.7,
+          472.3
+        ],
+        "five": [
+          339.2,
+          547.2
+        ],
+        "ten": [
+          271.3,
+          552.6
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b034": {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 17.155,
+      "phase": "peak",
+      "hub": [
+        455,
+        443
+      ],
+      "tip": [
+        378,
+        269
+      ],
+      "zero": [
+        343,
+        555
+      ],
+      "five": [
+        335,
+        341
+      ],
+      "ten": [
+        529,
+        324
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:44.783Z",
+      "orig": {
+        "hub": [
+          318,
+          519
+        ],
+        "tip": [
+          344,
+          577.8
+        ],
+        "zero": [
+          355.8,
+          481.2
+        ],
+        "five": [
+          358.5,
+          553.5
+        ],
+        "ten": [
+          293,
+          559.2
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b033": {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 14.494,
+      "phase": "rising",
+      "hub": [
+        450,
+        438
+      ],
+      "tip": [
+        324,
+        279
+      ],
+      "zero": [
+        323,
+        559
+      ],
+      "five": [
+        324,
+        334
+      ],
+      "ten": [
+        525,
+        315
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:38.938Z",
+      "orig": {
+        "hub": [
+          320.7,
+          518.6
+        ],
+        "tip": [
+          361.6,
+          570.2
+        ],
+        "zero": [
+          361.9,
+          479.3
+        ],
+        "five": [
+          361.6,
+          552.3
+        ],
+        "ten": [
+          296.3,
+          558.5
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b032": {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 13.959,
+      "phase": "rising",
+      "hub": [
+        460,
+        444
+      ],
+      "tip": [
+        321,
+        325
+      ],
+      "zero": [
+        347,
+        551
+      ],
+      "five": [
+        346,
+        346
+      ],
+      "ten": [
+        537,
+        321
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:33.349Z",
+      "orig": {
+        "hub": [
+          322.7,
+          513.2
+        ],
+        "tip": [
+          370.2,
+          553.8
+        ],
+        "zero": [
+          361.3,
+          476.7
+        ],
+        "five": [
+          361.6,
+          546.6
+        ],
+        "ten": [
+          296.5,
+          555.2
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b031": {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 4.318,
+      "phase": "first-movement",
+      "hub": [
+        443,
+        445
+      ],
+      "tip": [
+        259,
+        479
+      ],
+      "zero": [
+        334,
+        556
+      ],
+      "five": [
+        326,
+        340
+      ],
+      "ten": [
+        523,
+        320
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:26.012Z",
+      "orig": {
+        "hub": [
+          328.9,
+          513.3
+        ],
+        "tip": [
+          388.2,
+          502.3
+        ],
+        "zero": [
+          364.1,
+          477.5
+        ],
+        "five": [
+          366.6,
+          547.1
+        ],
+        "ten": [
+          303.2,
+          553.6
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b030": {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 3.66,
+      "phase": "rest",
+      "hub": [
+        502,
+        457
+      ],
+      "tip": [
+        313,
+        511
+      ],
+      "zero": [
+        382,
+        570
+      ],
+      "five": [
+        376,
+        345
+      ],
+      "ten": [
+        591,
+        318
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:20.756Z",
+      "orig": {
+        "hub": [
+          330.2,
+          511.6
+        ],
+        "tip": [
+          386.5,
+          495.5
+        ],
+        "zero": [
+          366,
+          478
+        ],
+        "five": [
+          367.7,
+          545
+        ],
+        "ten": [
+          303.7,
+          553
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b029": {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 1,
+      "phase": "rest",
+      "hub": [
+        448,
+        442
+      ],
+      "tip": [
+        299,
+        566
+      ],
+      "zero": [
+        338,
+        553
+      ],
+      "five": [
+        324,
+        338
+      ],
+      "ten": [
+        528,
+        311
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:15.001Z",
+      "orig": {
+        "hub": [
+          340.3,
+          516.2
+        ],
+        "tip": [
+          387.3,
+          477.1
+        ],
+        "zero": [
+          375,
+          481.2
+        ],
+        "five": [
+          379.4,
+          549
+        ],
+        "ten": [
+          315.1,
+          557.5
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b028": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 37.826,
+      "phase": "return-rest",
+      "hub": [
+        456,
+        438
+      ],
+      "tip": [
+        321,
+        566
+      ],
+      "zero": [
+        356,
+        553
+      ],
+      "five": [
+        329,
+        341
+      ],
+      "ten": [
+        523,
+        308
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:09.998Z",
+      "orig": {
+        "hub": [
+          255.7,
+          477.6
+        ],
+        "tip": [
+          299.8,
+          435.8
+        ],
+        "zero": [
+          288.4,
+          440
+        ],
+        "five": [
+          297.2,
+          509.3
+        ],
+        "ten": [
+          233.8,
+          520.1
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b027": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 36.361,
+      "phase": "falling",
+      "hub": [
+        436,
+        467
+      ],
+      "tip": [
+        230,
+        410
+      ],
+      "zero": [
+        313,
+        596
+      ],
+      "five": [
+        295,
+        363
+      ],
+      "ten": [
+        510,
+        322
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:02:03.977Z",
+      "orig": {
+        "hub": [
+          211.7,
+          480.7
+        ],
+        "tip": [
+          278.3,
+          499.1
+        ],
+        "zero": [
+          251.5,
+          439
+        ],
+        "five": [
+          257.3,
+          514.3
+        ],
+        "ten": [
+          187.8,
+          527.6
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b026": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 16.765,
+      "phase": "peak",
+      "hub": [
+        446,
+        444
+      ],
+      "tip": [
+        364,
+        268
+      ],
+      "zero": [
+        337,
+        557
+      ],
+      "five": [
+        316,
+        351
+      ],
+      "ten": [
+        519,
+        311
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:01:58.178Z",
+      "orig": {
+        "hub": [
+          240.5,
+          491.2
+        ],
+        "tip": [
+          268.7,
+          551.6
+        ],
+        "zero": [
+          278,
+          452.4
+        ],
+        "five": [
+          285.2,
+          523.1
+        ],
+        "ten": [
+          215.5,
+          536.9
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b025": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 13.696,
+      "phase": "rising",
+      "hub": [
+        457,
+        440
+      ],
+      "tip": [
+        313,
+        304
+      ],
+      "zero": [
+        348,
+        553
+      ],
+      "five": [
+        332,
+        340
+      ],
+      "ten": [
+        525,
+        311
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:01:51.507Z",
+      "orig": {
+        "hub": [
+          243.3,
+          491.1
+        ],
+        "tip": [
+          292.2,
+          537.3
+        ],
+        "zero": [
+          280.3,
+          452.6
+        ],
+        "five": [
+          285.8,
+          525.1
+        ],
+        "ten": [
+          220.2,
+          534.9
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b024": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 11.705,
+      "phase": "rising",
+      "hub": [
+        454,
+        439
+      ],
+      "tip": [
+        271,
+        389
+      ],
+      "zero": [
+        346,
+        546
+      ],
+      "five": [
+        324,
+        341
+      ],
+      "ten": [
+        516,
+        311
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:01:46.616Z",
+      "orig": {
+        "hub": [
+          246.8,
+          489.8
+        ],
+        "tip": [
+          308,
+          506.6
+        ],
+        "zero": [
+          282.9,
+          454.1
+        ],
+        "five": [
+          290.3,
+          522.6
+        ],
+        "ten": [
+          226.1,
+          532.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b062": {
+      "clip": "20261024_124140",
+      "t": 13,
+      "phase": "used_4",
+      "hub": [
+        422,
+        430
+      ],
+      "tip": [
+        452,
+        220
+      ],
+      "zero": [
+        297,
+        556
+      ],
+      "five": [
+        273,
+        322
+      ],
+      "ten": [
+        501,
+        296
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:08:41.021Z",
+      "orig": {
+        "hub": [
+          366.4,
+          609.6
+        ],
+        "tip": [
+          356,
+          682.4
+        ],
+        "zero": [
+          409.7,
+          565.9
+        ],
+        "five": [
+          418,
+          647
+        ],
+        "ten": [
+          339,
+          656
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b061": {
+      "clip": "20261017_084814",
+      "t": 22,
+      "phase": "peak",
+      "hub": [
+        461,
+        446
+      ],
+      "tip": [
+        455,
+        260
+      ],
+      "zero": [
+        337,
+        549
+      ],
+      "five": [
+        350,
+        351
+      ],
+      "ten": [
+        548,
+        345
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:08:32.994Z",
+      "orig": {
+        "hub": [
+          646.1,
+          330.1
+        ],
+        "tip": [
+          715.1,
+          327.9
+        ],
+        "zero": [
+          607.9,
+          284.1
+        ],
+        "five": [
+          681.4,
+          288.9
+        ],
+        "ten": [
+          683.6,
+          362.4
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b060": {
+      "clip": "lab-replay-f62a5256",
+      "t": 15.771,
+      "phase": "rising",
+      "hub": [
+        462,
+        442
+      ],
+      "tip": [
+        344,
+        297
+      ],
+      "zero": [
+        343,
+        552
+      ],
+      "five": [
+        344,
+        347
+      ],
+      "ten": [
+        535,
+        324
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:08:24.198Z",
+      "orig": {
+        "hub": [
+          317.6,
+          502.4
+        ],
+        "tip": [
+          357.5,
+          551.3
+        ],
+        "zero": [
+          357.8,
+          465.2
+        ],
+        "five": [
+          357.5,
+          534.5
+        ],
+        "ten": [
+          293,
+          542.2
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b059": {
+      "clip": "20261024_124140",
+      "t": 34.5,
+      "phase": "used_8",
+      "hub": [
+        462,
+        438
+      ],
+      "tip": [
+        305,
+        524
+      ],
+      "zero": [
+        352,
+        547
+      ],
+      "five": [
+        329,
+        353
+      ],
+      "ten": [
+        535,
+        339
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:08:16.288Z",
+      "orig": {
+        "hub": [
+          361.1,
+          603
+        ],
+        "tip": [
+          425.9,
+          567.6
+        ],
+        "zero": [
+          406.5,
+          558.1
+        ],
+        "five": [
+          416,
+          638.1
+        ],
+        "ten": [
+          331,
+          643.8
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b058": {
+      "clip": "20261018_160844",
+      "t": 2.7,
+      "phase": "rest",
+      "hub": [
+        454,
+        447
+      ],
+      "tip": [
+        282,
+        547
+      ],
+      "zero": [
+        326,
+        542
+      ],
+      "five": [
+        340,
+        339
+      ],
+      "ten": [
+        546,
+        344
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:08:11.146Z",
+      "orig": {
+        "hub": [
+          629.7,
+          168.4
+        ],
+        "tip": [
+          595,
+          108.8
+        ],
+        "zero": [
+          596.8,
+          124
+        ],
+        "five": [
+          667.1,
+          128.9
+        ],
+        "ten": [
+          665.4,
+          200.3
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b057": {
+      "clip": "20261024_124140",
+      "t": 28,
+      "phase": "used_7",
+      "hub": [
+        467,
+        436
+      ],
+      "tip": [
+        320,
+        526
+      ],
+      "zero": [
+        360,
+        547
+      ],
+      "five": [
+        341,
+        357
+      ],
+      "ten": [
+        534,
+        337
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:07:59.454Z",
+      "orig": {
+        "tip": [
+          423.9,
+          578.8
+        ],
+        "zero": [
+          407.2,
+          570.1
+        ],
+        "five": [
+          415.1,
+          649.4
+        ],
+        "ten": [
+          334.5,
+          657.8
+        ],
+        "hub": [
+          362.5,
+          616.4
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b056": {
+      "clip": "20261024_124140",
+      "t": 23,
+      "phase": "used_6",
+      "hub": [
+        447,
+        484
+      ],
+      "tip": [
+        300,
+        617
+      ],
+      "zero": [
+        328,
+        619
+      ],
+      "five": [
+        313,
+        388
+      ],
+      "ten": [
+        528,
+        354
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:07:45.237Z",
+      "orig": {
+        "hub": [
+          394.6,
+          601.6
+        ],
+        "tip": [
+          442.3,
+          558.5
+        ],
+        "zero": [
+          433.3,
+          557.8
+        ],
+        "five": [
+          438.1,
+          632.8
+        ],
+        "ten": [
+          368.4,
+          643.8
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b055": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 36.361,
+      "phase": "falling",
+      "hub": [
+        442,
+        466
+      ],
+      "tip": [
+        239,
+        414
+      ],
+      "zero": [
+        320,
+        591
+      ],
+      "five": [
+        294,
+        360
+      ],
+      "ten": [
+        506,
+        341
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:07:29.180Z",
+      "orig": {
+        "tip": [
+          275.4,
+          497.8
+        ],
+        "zero": [
+          249.2,
+          440.6
+        ],
+        "five": [
+          257.6,
+          515.3
+        ],
+        "ten": [
+          189.1,
+          521.4
+        ],
+        "hub": [
+          209.8,
+          481
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b054": {
+      "clip": "lab-replay-f62a5256",
+      "t": 20.837,
+      "phase": "peak",
+      "hub": [
+        520,
+        459
+      ],
+      "tip": [
+        441,
+        260
+      ],
+      "zero": [
+        389,
+        577
+      ],
+      "five": [
+        383,
+        349
+      ],
+      "ten": [
+        593,
+        326
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:07:08.587Z",
+      "orig": {
+        "hub": [
+          308.9,
+          498.9
+        ],
+        "tip": [
+          333.5,
+          560.8
+        ],
+        "zero": [
+          349.7,
+          462.2
+        ],
+        "five": [
+          351.5,
+          533.1
+        ],
+        "ten": [
+          286.2,
+          540.3
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b053": {
+      "clip": "20261024_124140",
+      "t": 18,
+      "phase": "used_5",
+      "hub": [
+        474,
+        431
+      ],
+      "tip": [
+        412,
+        257
+      ],
+      "zero": [
+        367,
+        542
+      ],
+      "five": [
+        348,
+        350
+      ],
+      "ten": [
+        535,
+        335
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:06:56.421Z",
+      "orig": {
+        "hub": [
+          351.2,
+          605.8
+        ],
+        "tip": [
+          378,
+          680.8
+        ],
+        "zero": [
+          397.4,
+          557.9
+        ],
+        "five": [
+          405.5,
+          640.7
+        ],
+        "ten": [
+          324.9,
+          647.1
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b052": {
+      "clip": "20261024_124140",
+      "t": 13,
+      "phase": "used_4",
+      "hub": [
+        417,
+        429
+      ],
+      "tip": [
+        454,
+        228
+      ],
+      "zero": [
+        294,
+        556
+      ],
+      "five": [
+        270,
+        321
+      ],
+      "ten": [
+        497,
+        304
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:06:48.817Z",
+      "orig": {
+        "hub": [
+          368.1,
+          609.9
+        ],
+        "tip": [
+          355.3,
+          679.6
+        ],
+        "zero": [
+          410.7,
+          565.9
+        ],
+        "five": [
+          419.1,
+          647.4
+        ],
+        "ten": [
+          340.4,
+          653.3
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b051": {
+      "clip": "lab-replay-f62a5256",
+      "t": 0.577,
+      "phase": "rest",
+      "hub": [
+        447,
+        444
+      ],
+      "tip": [
+        304,
+        567
+      ],
+      "zero": [
+        344,
+        561
+      ],
+      "five": [
+        322,
+        349
+      ],
+      "ten": [
+        525,
+        318
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:06:37.036Z",
+      "orig": {
+        "hub": [
+          338.1,
+          495.1
+        ],
+        "tip": [
+          383.1,
+          456.4
+        ],
+        "zero": [
+          370.5,
+          458.3
+        ],
+        "five": [
+          377.4,
+          524.9
+        ],
+        "ten": [
+          313.6,
+          534.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b050": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 13.696,
+      "phase": "rising",
+      "hub": [
+        457,
+        445
+      ],
+      "tip": [
+        309,
+        329
+      ],
+      "zero": [
+        346,
+        547
+      ],
+      "five": [
+        324,
+        357
+      ],
+      "ten": [
+        517,
+        317
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:06:30.122Z",
+      "orig": {
+        "hub": [
+          243.3,
+          489.4
+        ],
+        "tip": [
+          293.6,
+          528.8
+        ],
+        "zero": [
+          281,
+          454.7
+        ],
+        "five": [
+          288.5,
+          519.3
+        ],
+        "ten": [
+          222.9,
+          532.9
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b049": {
+      "clip": "20261024_124140",
+      "t": 9,
+      "phase": "used_3",
+      "hub": [
+        467,
+        440
+      ],
+      "tip": [
+        293,
+        392
+      ],
+      "zero": [
+        358,
+        552
+      ],
+      "five": [
+        345,
+        358
+      ],
+      "ten": [
+        527,
+        331
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:06:23.142Z",
+      "orig": {
+        "hub": [
+          384.4,
+          604.1
+        ],
+        "tip": [
+          453.4,
+          623.1
+        ],
+        "zero": [
+          427.6,
+          559.6
+        ],
+        "five": [
+          432.8,
+          636.6
+        ],
+        "ten": [
+          360.6,
+          647.3
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b023": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 11.294,
+      "phase": "first-movement",
+      "hub": [
+        448,
+        445
+      ],
+      "tip": [
+        268,
+        444
+      ],
+      "zero": [
+        340,
+        556
+      ],
+      "five": [
+        319,
+        342
+      ],
+      "ten": [
+        512,
+        309
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:01:41.433Z",
+      "orig": {
+        "hub": [
+          248.8,
+          487.8
+        ],
+        "tip": [
+          308.2,
+          488.2
+        ],
+        "zero": [
+          284.5,
+          451.2
+        ],
+        "five": [
+          291.4,
+          521.8
+        ],
+        "ten": [
+          227.7,
+          532.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b022": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 0.503,
+      "phase": "rest",
+      "hub": [
+        434,
+        455
+      ],
+      "tip": [
+        293,
+        605
+      ],
+      "zero": [
+        329,
+        593
+      ],
+      "five": [
+        289,
+        355
+      ],
+      "ten": [
+        497,
+        308
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:01:37.008Z",
+      "orig": {
+        "hub": [
+          267.9,
+          474.8
+        ],
+        "tip": [
+          308.7,
+          431.3
+        ],
+        "zero": [
+          298.3,
+          434.7
+        ],
+        "five": [
+          309.9,
+          503.8
+        ],
+        "ten": [
+          249.6,
+          517.4
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b021": {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 0.233,
+      "phase": "rest",
+      "hub": [
+        429,
+        453
+      ],
+      "tip": [
+        281,
+        589
+      ],
+      "zero": [
+        321,
+        583
+      ],
+      "five": [
+        296,
+        352
+      ],
+      "ten": [
+        509,
+        322
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:01:32.044Z",
+      "orig": {
+        "hub": [
+          270.3,
+          490.3
+        ],
+        "tip": [
+          313.2,
+          450.9
+        ],
+        "zero": [
+          301.6,
+          452.6
+        ],
+        "five": [
+          308.9,
+          519.6
+        ],
+        "ten": [
+          247.1,
+          528.3
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b020": {
+      "clip": "20261024_124006",
+      "t": 30.375,
+      "phase": "rising",
+      "hub": [
+        465,
+        445
+      ],
+      "tip": [
+        320,
+        320
+      ],
+      "zero": [
+        359,
+        551
+      ],
+      "five": [
+        346,
+        353
+      ],
+      "ten": [
+        537,
+        333
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:01:26.304Z",
+      "orig": {
+        "hub": [
+          309.6,
+          669.1
+        ],
+        "tip": [
+          255.5,
+          622.5
+        ],
+        "zero": [
+          270,
+          708.7
+        ],
+        "five": [
+          265.2,
+          634.8
+        ],
+        "ten": [
+          336.5,
+          627.3
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b048": {
+      "clip": "20261024_124140",
+      "t": 5,
+      "phase": "used_2",
+      "hub": [
+        457,
+        441
+      ],
+      "tip": [
+        321,
+        561
+      ],
+      "zero": [
+        351,
+        557
+      ],
+      "five": [
+        335,
+        361
+      ],
+      "ten": [
+        532,
+        336
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:06:02.860Z",
+      "orig": {
+        "hub": [
+          431.2,
+          598.8
+        ],
+        "tip": [
+          478.9,
+          556.7
+        ],
+        "zero": [
+          468.4,
+          558.1
+        ],
+        "five": [
+          474,
+          626.9
+        ],
+        "ten": [
+          404.9,
+          635.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b047": {
+      "clip": "20261024_124140",
+      "t": 1,
+      "phase": "used_1",
+      "hub": [
+        453,
+        441
+      ],
+      "tip": [
+        300,
+        562
+      ],
+      "zero": [
+        328,
+        552
+      ],
+      "five": [
+        332,
+        348
+      ],
+      "ten": [
+        529,
+        334
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:05:57.493Z",
+      "orig": {
+        "hub": [
+          428.1,
+          609.2
+        ],
+        "tip": [
+          480.3,
+          568
+        ],
+        "zero": [
+          470.8,
+          571.4
+        ],
+        "five": [
+          469.4,
+          641
+        ],
+        "ten": [
+          402.2,
+          645.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b046": {
+      "clip": "lab-replay-f62a5256",
+      "t": 34.442,
+      "phase": "return-rest",
+      "hub": [
+        473,
+        427
+      ],
+      "tip": [
+        342,
+        548
+      ],
+      "zero": [
+        368,
+        544
+      ],
+      "five": [
+        350,
+        337
+      ],
+      "ten": [
+        539,
+        307
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:05:45.829Z",
+      "orig": {
+        "hub": [
+          330.5,
+          475.9
+        ],
+        "tip": [
+          374.3,
+          435.4
+        ],
+        "zero": [
+          365.6,
+          436.7
+        ],
+        "five": [
+          371.6,
+          506
+        ],
+        "ten": [
+          308.4,
+          516
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b045": {
+      "clip": "lab-replay-f62a5256",
+      "t": 32.691,
+      "phase": "falling",
+      "hub": [
+        462,
+        443
+      ],
+      "tip": [
+        303,
+        416
+      ],
+      "zero": [
+        354,
+        545
+      ],
+      "five": [
+        345,
+        341
+      ],
+      "ten": [
+        531,
+        324
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:05:24.981Z",
+      "orig": {
+        "hub": [
+          289.2,
+          489.2
+        ],
+        "tip": [
+          348.2,
+          499.2
+        ],
+        "zero": [
+          329.3,
+          451.4
+        ],
+        "five": [
+          332.6,
+          527.1
+        ],
+        "ten": [
+          263.6,
+          533.4
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    },
+    "b044": {
+      "clip": "20261018_094055",
+      "t": 22,
+      "phase": "peak",
+      "hub": [
+        471,
+        436
+      ],
+      "tip": [
+        441,
+        259
+      ],
+      "zero": [
+        370,
+        530
+      ],
+      "five": [
+        355,
+        347
+      ],
+      "ten": [
+        539,
+        338
+      ],
+      "unclear": false,
+      "updatedAt": "2026-11-02T07:05:18.566Z",
+      "orig": {
+        "hub": [
+          474.3,
+          785.1
+        ],
+        "tip": [
+          486.1,
+          854.7
+        ],
+        "zero": [
+          514.1,
+          748.1
+        ],
+        "five": [
+          520,
+          820.1
+        ],
+        "ten": [
+          447.6,
+          823.7
+        ]
+      },
+      "coord": "display=crop px; orig=upright source frame px"
+    }
+  }
+}
