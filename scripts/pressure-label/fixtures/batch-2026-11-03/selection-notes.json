@@ -1,0 +1,164 @@
+[
+ {
+  "clip": "a1efe497",
+  "t": 0.3,
+  "phase": "rest",
+  "why": "zero, before shot",
+  "group": "new-2026-11-03",
+  "id": "c001",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 0.6,
+  "phase": "rest",
+  "why": "zero, before shot",
+  "group": "new-2026-11-03",
+  "id": "c002",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 2.0,
+  "phase": "preinfusion",
+  "why": "start",
+  "group": "new-2026-11-03",
+  "id": "c003",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 3.0,
+  "phase": "preinfusion",
+  "why": "in 2.4-5.3 gap",
+  "group": "new-2026-11-03",
+  "id": "c004",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 4.2,
+  "phase": "preinfusion",
+  "why": "in 2.4-5.3 gap",
+  "group": "new-2026-11-03",
+  "id": "c005",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 5.3,
+  "phase": "preinfusion",
+  "why": "reader 2.21",
+  "group": "new-2026-11-03",
+  "id": "c006",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 5.7,
+  "phase": "preinfusion",
+  "why": "dip 0.12",
+  "group": "new-2026-11-03",
+  "id": "c007",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 6.2,
+  "phase": "preinfusion",
+  "why": "between",
+  "group": "new-2026-11-03",
+  "id": "c008",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 6.63,
+  "phase": "preinfusion",
+  "why": "reader 2.22",
+  "group": "new-2026-11-03",
+  "id": "c009",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 6.76,
+  "phase": "preinfusion",
+  "why": "dip 0.28",
+  "group": "new-2026-11-03",
+  "id": "c010",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 7.5,
+  "phase": "preinfusion",
+  "why": "dip 0.24",
+  "group": "new-2026-11-03",
+  "id": "c011",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 8.9,
+  "phase": "preinfusion",
+  "why": "reader 1.93",
+  "group": "new-2026-11-03",
+  "id": "c012",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 9.96,
+  "phase": "preinfusion",
+  "why": "dip 0.22",
+  "group": "new-2026-11-03",
+  "id": "c013",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 10.5,
+  "phase": "preinfusion",
+  "why": "dip 0.14, gap start",
+  "group": "new-2026-11-03",
+  "id": "c014",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 11.3,
+  "phase": "rise",
+  "why": "in 10.5-13.6 gap",
+  "group": "new-2026-11-03",
+  "id": "c015",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 12.1,
+  "phase": "rise",
+  "why": "in gap",
+  "group": "new-2026-11-03",
+  "id": "c016",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 12.9,
+  "phase": "rise",
+  "why": "in gap",
+  "group": "new-2026-11-03",
+  "id": "c017",
+  "source": "source/lab-replay-a1efe497.mp4"
+ },
+ {
+  "clip": "a1efe497",
+  "t": 13.57,
+  "phase": "rise",
+  "why": "reader 3.20",
+  "group": "new-2026-11-03",
+  "id": "c018",
+  "source": "source/lab-replay-a1efe497.mp4"
+ }
+]

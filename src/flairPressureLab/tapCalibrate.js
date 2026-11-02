@@ -15,6 +15,7 @@
 import {
   FLAIR_58_SCALE,
   NEEDLE_LOST_QUALITY,
+  NEEDLE_TRACK_QUALITY,
   OUTER_RADIUS_RATIO,
   TIP_INNER_RATIO,
   wrap360,
@@ -100,7 +101,7 @@ export function tapsGeometricallyConsistent(centre, five, ten, tolerances = null
   const radiusRatio = fiveR / Math.max(1, tenR);
   const sweep = clockwiseDeg(pointAngle(c, f), pointAngle(c, t));
   const sweepErr = Math.abs(wrapDelta(sweep, MARK_SWEEP_DEG));
-  if (sweepErr > 22) return false;
+  if (sweepErr > (tol.maxSweepErrorDeg ?? 22)) return false;
   if (markPx > tol.looseMarkPx) return false;
   if (centrePx > tol.looseCentrePx) return false;
   if (radiusRatio < 0.55 || radiusRatio > 1.45) return false;
@@ -1006,7 +1007,11 @@ export function calibrateFromTaps(image, taps) {
   };
   const snapAttempt = snapHub(image, centreTap, { windowPx: tol.hubWindowPx, estRadius });
   const snapHubPx = snapAttempt.ok ? pointDist(snapAttempt, centreTap) : Number.POSITIVE_INFINITY;
-  const geomOk = tapsGeometricallyConsistent(centreTap, fiveTap, tenTap, tol);
+  // A modest mark-ray error must not silently replace the user's pivot with
+  // a different circle. Keep the same distance/radius checks, allowing finger
+  // angular uncertainty before deciding that a tap misses the face entirely.
+  const geomOk = tapsGeometricallyConsistent(centreTap, fiveTap, tenTap,
+    { ...tol, maxSweepErrorDeg: 45 });
   let userPlaced = false;
   let hub;
   let hubPx;
@@ -1109,6 +1114,18 @@ export function calibrateFromTaps(image, taps) {
   let zeroAngleDeg = needleWeak
     ? wrap360(marks.tenDeg - REST_TO_TEN_DEG)
     : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
+  if (taps.legacyScale !== true && !needleWeak) {
+    // Calibration and live frames must agree on what a needle ray means.
+    // The legacy detector fits a line through the pivot; on a small dial a
+    // modest pivot error makes that line follow print or miss the shaft.
+    // The directed reader fits its lateral offset and projects the observed
+    // tip back through the user's pivot, exactly as the live path does.
+    const pointer = findPointerEvidence(image, hub, hub.radius);
+    if (pointer.rayAngleDeg != null && pointer.quality >= NEEDLE_TRACK_QUALITY
+      && Math.abs(wrapDelta(zeroAngleDeg, pointer.rayAngleDeg)) > TICK_SNAP_MAX_DEG) {
+      zeroAngleDeg = pointer.rayAngleDeg;
+    }
+  }
   let tenAngleDeg = marks.tenDeg;
   let fiveAngleDeg = marks.fiveDeg;
   const r6 = taps.r6Anchor ?? taps.r6;

@@ -3,6 +3,7 @@ import { saveLastLabShotReplay } from '../labShotReplayDb.js';
 import { SHOT_REPLAY_MAX_DURATION_S } from '../shotReplayRecorder.js';
 import { createShotReplayRecorder } from '../shotReplayRecorder.js';
 import { createShotReplaySampleLogger } from '../shotReplaySampleLogger.js';
+import { createLabReplayDiagnostics, commitReplayDiagnostics } from '../labReplayDiagnostics.js';
 
 /**
  * Records the last Lab pressure shot (MediaRecorder + throttled tracker samples).
@@ -19,6 +20,7 @@ export function useLabShotReplay({
 }) {
   const recorderRef = useRef(createShotReplayRecorder());
   const loggerRef = useRef(createShotReplaySampleLogger());
+  const diagnosticsRef = useRef(createLabReplayDiagnostics());
   const pendingRef = useRef(null);
   const recorderStartedRef = useRef(false);
   const wasTimerRunningRef = useRef(false);
@@ -26,6 +28,7 @@ export function useLabShotReplay({
   const discardPending = useCallback(() => {
     recorderRef.current.abort();
     loggerRef.current.reset();
+    diagnosticsRef.current.reset();
     pendingRef.current = null;
     recorderStartedRef.current = false;
   }, []);
@@ -47,6 +50,7 @@ export function useLabShotReplay({
     if (!enabled || !timerRunning) return;
     tryStartRecorder();
     loggerRef.current.push(frame);
+    diagnosticsRef.current.push(frame);
   }, [enabled, timerRunning, tryStartRecorder]);
 
   useEffect(() => {
@@ -65,6 +69,7 @@ export function useLabShotReplay({
     if (timerRunning) {
       if (!wasTimerRunningRef.current) {
         loggerRef.current.begin(Date.now());
+        diagnosticsRef.current.reset();
         pendingRef.current = null;
         recorderStartedRef.current = false;
         tryStartRecorder();
@@ -94,6 +99,7 @@ export function useLabShotReplay({
         videoH: captured.videoH,
         durationS: Math.min(captured.durationS, SHOT_REPLAY_MAX_DURATION_S),
         samples,
+        diagnostics: diagnosticsRef.current.snapshot(),
       };
     })();
 
@@ -115,6 +121,7 @@ export function useLabShotReplay({
         durationS: pending.durationS,
         samples: pending.samples,
       });
+      commitReplayDiagnostics(shotId, pending.diagnostics);
       pendingRef.current = null;
       onReplayStored?.();
     } catch {

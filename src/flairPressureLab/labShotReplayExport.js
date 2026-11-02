@@ -2,6 +2,7 @@
  * Download-only export of the last Lab replay video and that shot's saved curve.
  * Does not change stored shot or bean records.
  */
+import { replayDiagnosticsForShot } from './labReplayDiagnostics.js';
 
 /**
  * @param {object | null | undefined} shot
@@ -64,6 +65,9 @@ export function downloadBlobFile(filename, blob) {
 export function exportLabShotReplayDownloads({ shot, blob, mimeType }) {
   if (!shot?.id || !blob) return null;
   const documentJson = labPressureCurveExportDocument(shot);
+  documentJson.readerDiagnostics = replayDiagnosticsForShot(shot.id);
+  documentJson.readerDiagnosticsAvailability = documentJson.readerDiagnostics
+    ? 'current-session' : 'unavailable: replay predates capture or page was reloaded';
   if (documentJson.shotId !== String(shot.id)) return null;
   const names = labReplayExportFilenames(shot.id, mimeType || blob.type);
   downloadBlobFile(names.video, blob);

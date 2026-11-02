@@ -1,0 +1,1120 @@
+{
+ "frames": {
+  "c018": {
+   "clip": "a1efe497",
+   "t": 13.57,
+   "phase": "rise",
+   "hub": [
+    501,
+    472
+   ],
+   "tip": [
+    311,
+    419
+   ],
+   "zero": [
+    381,
+    579
+   ],
+   "five": [
+    375,
+    356
+   ],
+   "ten": [
+    579,
+    337
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:19:43.730Z",
+   "orig": {
+    "hub": [
+     269.9,
+     426.2
+    ],
+    "tip": [
+     330.5,
+     443.1
+    ],
+    "zero": [
+     308.2,
+     392.0
+    ],
+    "five": [
+     310.1,
+     463.2
+    ],
+    "ten": [
+     245.0,
+     469.2
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 143,
+    "y": 290,
+    "size": 287,
+    "scale": 3.1358885017421603,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c017": {
+   "clip": "a1efe497",
+   "t": 12.9,
+   "phase": "rise",
+   "hub": [
+    455,
+    437
+   ],
+   "tip": [
+    275,
+    452
+   ],
+   "zero": [
+    343,
+    534
+   ],
+   "five": [
+    338,
+    333
+   ],
+   "ten": [
+    530,
+    311
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:19:35.205Z",
+   "orig": {
+    "hub": [
+     270.4,
+     424.6
+    ],
+    "tip": [
+     332.6,
+     419.5
+    ],
+    "zero": [
+     309.1,
+     391.1
+    ],
+    "five": [
+     310.9,
+     460.6
+    ],
+    "ten": [
+     244.5,
+     468.2
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 117,
+    "y": 265,
+    "size": 311,
+    "scale": 2.8938906752411575,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c016": {
+   "clip": "a1efe497",
+   "t": 12.1,
+   "phase": "rise",
+   "hub": [
+    456,
+    435
+   ],
+   "tip": [
+    263,
+    453
+   ],
+   "zero": [
+    341,
+    530
+   ],
+   "five": [
+    331,
+    331
+   ],
+   "ten": [
+    527,
+    306
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:19:24.265Z",
+   "orig": {
+    "hub": [
+     269.1,
+     424.2
+    ],
+    "tip": [
+     334.5,
+     418.1
+    ],
+    "zero": [
+     308.1,
+     392.1
+    ],
+    "five": [
+     311.5,
+     459.5
+    ],
+    "ten": [
+     245.1,
+     468.0
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 119,
+    "y": 267,
+    "size": 305,
+    "scale": 2.9508196721311477,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c015": {
+   "clip": "a1efe497",
+   "t": 11.3,
+   "phase": "rise",
+   "hub": [
+    460,
+    436
+   ],
+   "tip": [
+    286,
+    452
+   ],
+   "zero": [
+    356,
+    527
+   ],
+   "five": [
+    346,
+    332
+   ],
+   "ten": [
+    536,
+    311
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:19:13.711Z",
+   "orig": {
+    "hub": [
+     270.6,
+     424.0
+    ],
+    "tip": [
+     331.5,
+     418.4
+    ],
+    "zero": [
+     307.0,
+     392.2
+    ],
+    "five": [
+     310.5,
+     460.4
+    ],
+    "ten": [
+     244.1,
+     467.8
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 117,
+    "y": 262,
+    "size": 315,
+    "scale": 2.857142857142857,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c014": {
+   "clip": "a1efe497",
+   "t": 10.5,
+   "phase": "preinfusion",
+   "hub": [
+    473,
+    437
+   ],
+   "tip": [
+    302,
+    474
+   ],
+   "zero": [
+    366,
+    533
+   ],
+   "five": [
+    358,
+    339
+   ],
+   "ten": [
+    543,
+    316
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:19:03.443Z",
+   "orig": {
+    "hub": [
+     269.5,
+     425.3
+    ],
+    "tip": [
+     330.3,
+     412.1
+    ],
+    "zero": [
+     307.5,
+     391.1
+    ],
+    "five": [
+     310.4,
+     460.1
+    ],
+    "ten": [
+     244.6,
+     468.3
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 118,
+    "y": 261,
+    "size": 320,
+    "scale": 2.8125,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c013": {
+   "clip": "a1efe497",
+   "t": 9.96,
+   "phase": "preinfusion",
+   "hub": [
+    438,
+    422
+   ],
+   "tip": [
+    246,
+    458
+   ],
+   "zero": [
+    337,
+    525
+   ],
+   "five": [
+    312,
+    310
+   ],
+   "ten": [
+    520,
+    284
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:18:52.035Z",
+   "orig": {
+    "hub": [
+     270.0,
+     425.2
+    ],
+    "tip": [
+     331.7,
+     413.6
+    ],
+    "zero": [
+     302.5,
+     392.1
+    ],
+    "five": [
+     310.5,
+     461.1
+    ],
+    "ten": [
+     243.7,
+     469.5
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 122,
+    "y": 272,
+    "size": 289,
+    "scale": 3.114186851211073,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c012": {
+   "clip": "a1efe497",
+   "t": 8.9,
+   "phase": "preinfusion",
+   "hub": [
+    459,
+    440
+   ],
+   "tip": [
+    283,
+    475
+   ],
+   "zero": [
+    352,
+    534
+   ],
+   "five": [
+    345,
+    336
+   ],
+   "ten": [
+    538,
+    316
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:18:38.505Z",
+   "orig": {
+    "hub": [
+     270.5,
+     425.1
+    ],
+    "tip": [
+     331.5,
+     413.0
+    ],
+    "zero": [
+     307.6,
+     392.5
+    ],
+    "five": [
+     310.1,
+     461.2
+    ],
+    "ten": [
+     243.1,
+     468.1
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 118,
+    "y": 266,
+    "size": 312,
+    "scale": 2.8846153846153846,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c011": {
+   "clip": "a1efe497",
+   "t": 7.5,
+   "phase": "preinfusion",
+   "hub": [
+    463,
+    434
+   ],
+   "tip": [
+    291,
+    465
+   ],
+   "zero": [
+    366,
+    537
+   ],
+   "five": [
+    353,
+    336
+   ],
+   "ten": [
+    539,
+    314
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:18:21.151Z",
+   "orig": {
+    "hub": [
+     270.6,
+     426.8
+    ],
+    "tip": [
+     330.8,
+     415.9
+    ],
+    "zero": [
+     304.5,
+     390.7
+    ],
+    "five": [
+     309.1,
+     461.0
+    ],
+    "ten": [
+     244.0,
+     468.8
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 118,
+    "y": 264,
+    "size": 315,
+    "scale": 2.857142857142857,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c010": {
+   "clip": "a1efe497",
+   "t": 6.76,
+   "phase": "preinfusion",
+   "hub": [
+    437,
+    423
+   ],
+   "tip": [
+    249,
+    455
+   ],
+   "zero": [
+    326,
+    537
+   ],
+   "five": [
+    316,
+    310
+   ],
+   "ten": [
+    518,
+    287
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:17:53.329Z",
+   "orig": {
+    "hub": [
+     271.8,
+     426.3
+    ],
+    "tip": [
+     332.0,
+     416.1
+    ],
+    "zero": [
+     307.4,
+     389.8
+    ],
+    "five": [
+     310.6,
+     462.5
+    ],
+    "ten": [
+     245.9,
+     469.8
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 124,
+    "y": 274,
+    "size": 288,
+    "scale": 3.125,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c009": {
+   "clip": "a1efe497",
+   "t": 6.63,
+   "phase": "preinfusion",
+   "hub": [
+    457,
+    439
+   ],
+   "tip": [
+    285,
+    473
+   ],
+   "zero": [
+    353,
+    540
+   ],
+   "five": [
+    345,
+    338
+   ],
+   "ten": [
+    532,
+    315
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:17:44.615Z",
+   "orig": {
+    "hub": [
+     271.2,
+     426.5
+    ],
+    "tip": [
+     330.9,
+     414.7
+    ],
+    "zero": [
+     307.3,
+     391.5
+    ],
+    "five": [
+     310.1,
+     461.5
+    ],
+    "ten": [
+     245.2,
+     469.5
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 118,
+    "y": 267,
+    "size": 312,
+    "scale": 2.8846153846153846,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c008": {
+   "clip": "a1efe497",
+   "t": 6.2,
+   "phase": "preinfusion",
+   "hub": [
+    459,
+    437
+   ],
+   "tip": [
+    282,
+    476
+   ],
+   "zero": [
+    360,
+    534
+   ],
+   "five": [
+    347,
+    338
+   ],
+   "ten": [
+    536,
+    319
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:17:32.204Z",
+   "orig": {
+    "hub": [
+     272.0,
+     426.6
+    ],
+    "tip": [
+     333.2,
+     413.2
+    ],
+    "zero": [
+     306.3,
+     393.1
+    ],
+    "five": [
+     310.7,
+     460.9
+    ],
+    "ten": [
+     245.4,
+     467.4
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 120,
+    "y": 267,
+    "size": 311,
+    "scale": 2.8938906752411575,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c007": {
+   "clip": "a1efe497",
+   "t": 5.7,
+   "phase": "preinfusion",
+   "hub": [
+    456,
+    439
+   ],
+   "tip": [
+    275,
+    480
+   ],
+   "zero": [
+    346,
+    543
+   ],
+   "five": [
+    334,
+    334
+   ],
+   "ten": [
+    531,
+    316
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:17:24.222Z",
+   "orig": {
+    "hub": [
+     271.1,
+     426.9
+    ],
+    "tip": [
+     332.5,
+     413.0
+    ],
+    "zero": [
+     308.4,
+     391.6
+    ],
+    "five": [
+     312.5,
+     462.5
+    ],
+    "ten": [
+     245.7,
+     468.6
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 121,
+    "y": 271,
+    "size": 305,
+    "scale": 2.9508196721311477,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c006": {
+   "clip": "a1efe497",
+   "t": 5.3,
+   "phase": "preinfusion",
+   "hub": [
+    453,
+    439
+   ],
+   "tip": [
+    279,
+    481
+   ],
+   "zero": [
+    345,
+    541
+   ],
+   "five": [
+    337,
+    330
+   ],
+   "ten": [
+    531,
+    313
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:17:15.524Z",
+   "orig": {
+    "hub": [
+     272.7,
+     426.4
+    ],
+    "tip": [
+     331.0,
+     412.3
+    ],
+    "zero": [
+     308.9,
+     392.1
+    ],
+    "five": [
+     311.6,
+     462.9
+    ],
+    "ten": [
+     246.5,
+     468.6
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 123,
+    "y": 272,
+    "size": 302,
+    "scale": 2.980132450331126,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c005": {
+   "clip": "a1efe497",
+   "t": 4.2,
+   "phase": "preinfusion",
+   "hub": [
+    457,
+    445
+   ],
+   "tip": [
+    290,
+    504
+   ],
+   "zero": [
+    354,
+    540
+   ],
+   "five": [
+    344,
+    342
+   ],
+   "ten": [
+    532,
+    321
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:17:04.858Z",
+   "orig": {
+    "hub": [
+     271.2,
+     424.4
+    ],
+    "tip": [
+     329.5,
+     403.8
+    ],
+    "zero": [
+     307.1,
+     391.3
+    ],
+    "five": [
+     310.6,
+     460.3
+    ],
+    "ten": [
+     245.0,
+     467.7
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 117,
+    "y": 266,
+    "size": 314,
+    "scale": 2.8662420382165603,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "c004": {
+   "clip": "a1efe497",
+   "t": 3,
+   "phase": "preinfusion",
+   "hub": [
+    451,
+    439
+   ],
+   "tip": [
+    278,
+    515
+   ],
+   "zero": [
+    345,
+    545
+   ],
+   "five": [
+    337,
+    334
+   ],
+   "ten": [
+    525,
+    307
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:16:09.564Z",
+   "orig": {
+    "hub": [
+     273.3,
+     426.4
+    ],
+    "tip": [
+     331.4,
+     400.9
+    ],
+    "zero": [
+     308.9,
+     390.8
+    ],
+    "five": [
+     311.6,
+     461.6
+    ],
+    "ten": [
+     248.5,
+     470.6
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 123,
+    "y": 272,
+    "size": 302,
+    "scale": 2.980132450331126,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c003": {
+   "clip": "a1efe497",
+   "t": 2,
+   "phase": "preinfusion",
+   "hub": [
+    451,
+    439
+   ],
+   "tip": [
+    290,
+    523
+   ],
+   "zero": [
+    346,
+    546
+   ],
+   "five": [
+    337,
+    333
+   ],
+   "ten": [
+    533,
+    310
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:15:33.934Z",
+   "orig": {
+    "hub": [
+     277.3,
+     430.3
+    ],
+    "tip": [
+     331.0,
+     402.3
+    ],
+    "zero": [
+     312.3,
+     394.7
+    ],
+    "five": [
+     315.3,
+     465.7
+    ],
+    "ten": [
+     250.0,
+     473.3
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 128,
+    "y": 277,
+    "size": 300,
+    "scale": 3.0,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c002": {
+   "clip": "a1efe497",
+   "t": 0.6,
+   "phase": "rest",
+   "hub": [
+    462,
+    442
+   ],
+   "tip": [
+    317,
+    572
+   ],
+   "zero": [
+    357,
+    559
+   ],
+   "five": [
+    347,
+    342
+   ],
+   "ten": [
+    532,
+    318
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:15:26.341Z",
+   "orig": {
+    "hub": [
+     282.7,
+     432.3
+    ],
+    "tip": [
+     331.0,
+     389.0
+    ],
+    "zero": [
+     317.7,
+     393.3
+    ],
+    "five": [
+     321.0,
+     465.7
+    ],
+    "ten": [
+     259.3,
+     473.7
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 137,
+    "y": 280,
+    "size": 300,
+    "scale": 3.0,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  },
+  "c001": {
+   "clip": "a1efe497",
+   "t": 0.3,
+   "phase": "rest",
+   "hub": [
+    437,
+    445
+   ],
+   "tip": [
+    290,
+    576
+   ],
+   "zero": [
+    313,
+    580
+   ],
+   "five": [
+    316,
+    338
+   ],
+   "ten": [
+    517,
+    310
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-02T20:15:13.307Z",
+   "orig": {
+    "hub": [
+     284.8,
+     428.3
+    ],
+    "tip": [
+     331.2,
+     386.9
+    ],
+    "zero": [
+     323.9,
+     385.7
+    ],
+    "five": [
+     323.0,
+     462.0
+    ],
+    "ten": [
+     259.5,
+     470.9
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 139,
+    "y": 285,
+    "size": 284,
+    "scale": 3.1690140845070425,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "hough"
+   }
+  }
+ }
+}

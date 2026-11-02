@@ -387,6 +387,13 @@ export function useShotLabPressure({
         setPeakBar(peakBarFromRaw(all));
         replayFrameObserverRef?.current?.({
           tS,
+          calibration: cal,
+          capturedAtSec: epoch ? (capturedAtMs - epoch) / 1000 : null,
+          measuredAtSec: epoch && gated.measuredAtMs != null ? (gated.measuredAtMs - epoch) / 1000 : null,
+          rawBar: read.rawBar,
+          zeroDeg: read.zeroDeg,
+          fiveDeg: read.fiveDeg,
+          tenDeg: read.tenDeg,
           bar: rawBar,
           needleDeg: read.needleDeg ?? r5.r5Angle ?? null,
           hubX: read.hub?.x ?? null,
