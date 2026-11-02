@@ -1,0 +1,1413 @@
+{
+  "status": "Stopped after diagnosis: proposed repair exceeds approximately two hours.",
+  "branch": "feat/pressure-accuracy-codex",
+  "startingHead": "da595fb",
+  "runtimeCandidate": "f266f217563dc50a68cafbdad8318327bc227be9",
+  "estimatedHours": [
+    3,
+    4
+  ],
+  "examThisPass": null,
+  "baselineLimit": "The initial baseline did not retain individual old-clip hits or exact fresh/held flags. Missing baseline fields remain null.",
+  "historySource": "docs/pressure-reacquisition-2026-11-02-results.json",
+  "overall": {
+    "baseline": {
+      "coveragePct": 79.62,
+      "streamCoveragePct": 77.45,
+      "medianAbsBar": 0.147,
+      "p90AbsBar": 0.629,
+      "wildPct": 5.88,
+      "labelN": 51,
+      "flipPct": 25,
+      "restAbsMax": 1.703,
+      "msFrame": 36
+    },
+    "pass1": {
+      "coveragePct": 87.5,
+      "streamCoveragePct": 62.84,
+      "medianAbsBar": 0.081,
+      "p90AbsBar": 0.362,
+      "wildPct": 2.38,
+      "labelN": 42,
+      "flipPct": 44,
+      "restAbsMax": 1.334,
+      "msFrame": 35.7,
+      "frames": 3961,
+      "fresh": 2346,
+      "held": 143,
+      "gaps": 1472,
+      "freshCoveragePct": 59.227467811158796,
+      "heldCoveragePct": 3.6101994445847008
+    },
+    "pass2": {
+      "coveragePct": 99.72,
+      "streamCoveragePct": 99.17,
+      "medianAbsBar": 0.097,
+      "p90AbsBar": 0.537,
+      "wildPct": 6.9,
+      "labelN": 58,
+      "flipPct": 36.36,
+      "restAbsMax": 0.218,
+      "msFrame": 41,
+      "frames": 3961,
+      "freshFrames": 3746,
+      "heldFrames": 182,
+      "gapFrames": 33,
+      "freshPct": 94.57207775814189,
+      "heldPct": 4.594799293107801,
+      "gapPct": 0.8331229487503156
+    },
+    "now": null
+  },
+  "clips": [
+    {
+      "id": "20261015_225219",
+      "baseline": {
+        "frames": 100,
+        "coveragePct": 82,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 18,
+        "medianAbsBar": 0,
+        "scored": 1,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 100,
+        "coveragePct": 100,
+        "freshFrames": 100,
+        "heldFrames": 0,
+        "gapFrames": 0,
+        "freshPct": 100,
+        "heldPct": 0,
+        "gapPct": 0,
+        "medianAbsBar": 0.003202045940562586,
+        "scored": 1,
+        "within03": 1,
+        "worst": {
+          "timeS": 6.264322,
+          "error": 0.003202045940562586
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 1,
+          "within03": 1,
+          "medianAbsBar": 0.003202045940562586,
+          "worst": {
+            "timeS": 6.264322,
+            "error": 0.003202045940562586
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 100,
+        "coveragePct": 100,
+        "freshFrames": 100,
+        "heldFrames": 0,
+        "gapFrames": 0,
+        "freshPct": 100,
+        "heldPct": 0,
+        "gapPct": 0,
+        "scored": 1,
+        "within03": 1,
+        "medianAbsBar": 0.002049668117932776,
+        "worst": {
+          "timeS": 6.264322,
+          "error": 0.002049668117932776
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.002049668117932776,
+          "worst": {
+            "timeS": 6.264322,
+            "error": 0.002049668117932776
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261015_225307",
+      "baseline": {
+        "frames": 121,
+        "coveragePct": 72.73,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 27.269999999999996,
+        "medianAbsBar": null,
+        "scored": 0,
+        "within03": null,
+        "worst": null,
+        "wildPct": null,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 121,
+        "coveragePct": 90.08,
+        "freshFrames": 105,
+        "heldFrames": 4,
+        "gapFrames": 12,
+        "freshPct": 86.77685950413223,
+        "heldPct": 3.3057851239669422,
+        "gapPct": 9.917355371900827,
+        "medianAbsBar": 0.014200434038775004,
+        "scored": 1,
+        "within03": 1,
+        "worst": {
+          "timeS": 7.5813165,
+          "error": -0.014200434038775004
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 1,
+          "within03": 1,
+          "medianAbsBar": 0.014200434038775004,
+          "worst": {
+            "timeS": 7.5813165,
+            "error": -0.014200434038775004
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 121,
+        "coveragePct": 99.17,
+        "freshFrames": 115,
+        "heldFrames": 5,
+        "gapFrames": 1,
+        "freshPct": 95.04132231404958,
+        "heldPct": 4.132231404958677,
+        "gapPct": 0.8264462809917356,
+        "scored": 1,
+        "within03": 1,
+        "medianAbsBar": 0.0277063359685012,
+        "worst": {
+          "timeS": 7.5813165,
+          "error": -0.0277063359685012
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.0277063359685012,
+          "worst": {
+            "timeS": 7.5813165,
+            "error": -0.0277063359685012
+          },
+          "wildPct": 0
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261017_084814",
+      "baseline": {
+        "frames": 380,
+        "coveragePct": 43.95,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 56.05,
+        "medianAbsBar": 0.757,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 33.33,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 380,
+        "coveragePct": 91.58,
+        "freshFrames": 343,
+        "heldFrames": 5,
+        "gapFrames": 32,
+        "freshPct": 90.26315789473684,
+        "heldPct": 1.3157894736842106,
+        "gapPct": 8.421052631578947,
+        "medianAbsBar": 0.16930003410917127,
+        "scored": 5,
+        "within03": 5,
+        "worst": {
+          "timeS": 22,
+          "error": -0.29307611658121235
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 5,
+          "within03": 5,
+          "medianAbsBar": 0.16930003410917127,
+          "worst": {
+            "timeS": 22,
+            "error": -0.29307611658121235
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 380,
+        "coveragePct": 100,
+        "freshFrames": 378,
+        "heldFrames": 2,
+        "gapFrames": 0,
+        "freshPct": 99.47368421052632,
+        "heldPct": 0.5263157894736842,
+        "gapPct": 0,
+        "scored": 5,
+        "within03": 4,
+        "medianAbsBar": 0.08891272730746991,
+        "worst": {
+          "timeS": 22,
+          "error": -0.30176204645641036
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 5,
+          "within03": 4,
+          "medianAbsBar": 0.08891272730746991,
+          "worst": {
+            "timeS": 22,
+            "error": -0.30176204645641036
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261017_084919",
+      "baseline": {
+        "frames": 319,
+        "coveragePct": 79.62,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 20.379999999999995,
+        "medianAbsBar": 0.551,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 33.33,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 319,
+        "coveragePct": 95.3,
+        "freshFrames": 304,
+        "heldFrames": 0,
+        "gapFrames": 15,
+        "freshPct": 95.29780564263324,
+        "heldPct": 0,
+        "gapPct": 4.702194357366771,
+        "medianAbsBar": 0.007359163178046348,
+        "scored": 3,
+        "within03": 3,
+        "worst": {
+          "timeS": 38.838322,
+          "error": 0.12310934798979623
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 3,
+          "within03": 3,
+          "medianAbsBar": 0.007359163178046348,
+          "worst": {
+            "timeS": 38.838322,
+            "error": 0.12310934798979623
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 319,
+        "coveragePct": 100,
+        "freshFrames": 318,
+        "heldFrames": 1,
+        "gapFrames": 0,
+        "freshPct": 99.68652037617555,
+        "heldPct": 0.31347962382445144,
+        "gapPct": 0,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.008612527085185314,
+        "worst": {
+          "timeS": 38.838322,
+          "error": 0.13583413697675822
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.008612527085185314,
+          "worst": {
+            "timeS": 38.838322,
+            "error": 0.13583413697675822
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261017_134943",
+      "baseline": {
+        "frames": 472,
+        "coveragePct": 95.55,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 4.450000000000003,
+        "medianAbsBar": 0.429,
+        "scored": 5,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 472,
+        "coveragePct": 90.68,
+        "freshFrames": 417,
+        "heldFrames": 11,
+        "gapFrames": 44,
+        "freshPct": 88.34745762711864,
+        "heldPct": 2.330508474576271,
+        "gapPct": 9.322033898305085,
+        "medianAbsBar": 0.14472907087902132,
+        "scored": 4,
+        "within03": 3,
+        "worst": {
+          "timeS": 25,
+          "error": 0.6505012702492152
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 4,
+          "within03": 3,
+          "medianAbsBar": 0.14472907087902132,
+          "worst": {
+            "timeS": 25,
+            "error": 0.6505012702492152
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 472,
+        "coveragePct": 100,
+        "freshFrames": 458,
+        "heldFrames": 14,
+        "gapFrames": 0,
+        "freshPct": 97.03389830508475,
+        "heldPct": 2.9661016949152543,
+        "gapPct": 0,
+        "scored": 5,
+        "within03": 4,
+        "medianAbsBar": 0.09837689452368714,
+        "worst": {
+          "timeS": 25,
+          "error": 0.6250010099269208
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 5,
+          "within03": 4,
+          "medianAbsBar": 0.09837689452368714,
+          "worst": {
+            "timeS": 25,
+            "error": 0.6250010099269208
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261017_135116",
+      "baseline": {
+        "frames": 358,
+        "coveragePct": 90.5,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 9.5,
+        "medianAbsBar": 0.437,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 358,
+        "coveragePct": 11.45,
+        "freshFrames": 41,
+        "heldFrames": 0,
+        "gapFrames": 317,
+        "freshPct": 11.452513966480447,
+        "heldPct": 0,
+        "gapPct": 88.54748603351955,
+        "medianAbsBar": 0.0008918884866033983,
+        "scored": 1,
+        "within03": 1,
+        "worst": {
+          "timeS": 1,
+          "error": -0.0008918884866033983
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 1,
+          "within03": 1,
+          "medianAbsBar": 0.0008918884866033983,
+          "worst": {
+            "timeS": 1,
+            "error": -0.0008918884866033983
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 358,
+        "coveragePct": 99.72,
+        "freshFrames": 354,
+        "heldFrames": 3,
+        "gapFrames": 1,
+        "freshPct": 98.88268156424581,
+        "heldPct": 0.8379888268156425,
+        "gapPct": 0.27932960893854747,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.014866221680082971,
+        "worst": {
+          "timeS": 22.381789,
+          "error": -0.031433209378374904
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.014866221680082971,
+          "worst": {
+            "timeS": 22.381789,
+            "error": -0.031433209378374904
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261018_094055",
+      "baseline": {
+        "frames": 435,
+        "coveragePct": 74.02,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 25.980000000000004,
+        "medianAbsBar": 0.6,
+        "scored": 4,
+        "within03": null,
+        "worst": null,
+        "wildPct": 25,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 435,
+        "coveragePct": 10.34,
+        "freshFrames": 44,
+        "heldFrames": 1,
+        "gapFrames": 390,
+        "freshPct": 10.114942528735632,
+        "heldPct": 0.22988505747126436,
+        "gapPct": 89.65517241379311,
+        "medianAbsBar": 1.2720193059880691,
+        "scored": 1,
+        "within03": 0,
+        "worst": {
+          "timeS": 2.7,
+          "error": 1.2720193059880691
+        },
+        "wildPct": 100,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 1,
+          "within03": 0,
+          "medianAbsBar": 1.2720193059880691,
+          "worst": {
+            "timeS": 2.7,
+            "error": 1.2720193059880691
+          },
+          "wildPct": 100
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 435,
+        "coveragePct": 99.31,
+        "freshFrames": 391,
+        "heldFrames": 41,
+        "gapFrames": 3,
+        "freshPct": 89.88505747126437,
+        "heldPct": 9.425287356321839,
+        "gapPct": 0.6896551724137931,
+        "scored": 4,
+        "within03": 0,
+        "medianAbsBar": 5.646966060830658,
+        "worst": {
+          "timeS": 22,
+          "error": -7.216192638805691
+        },
+        "wildPct": 75,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 0,
+          "medianAbsBar": 5.946128188202977,
+          "worst": {
+            "timeS": 22,
+            "error": -7.216192638805691
+          },
+          "wildPct": 66.66666666666667
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 0,
+          "medianAbsBar": 5.347803933458339,
+          "worst": {
+            "timeS": 40,
+            "error": -5.347803933458339
+          },
+          "wildPct": 100
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261018_094151",
+      "baseline": {
+        "frames": 336,
+        "coveragePct": 85.71,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 14.290000000000006,
+        "medianAbsBar": 0.283,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 336,
+        "coveragePct": 87.5,
+        "freshFrames": 280,
+        "heldFrames": 14,
+        "gapFrames": 42,
+        "freshPct": 83.33333333333333,
+        "heldPct": 4.166666666666667,
+        "gapPct": 12.5,
+        "medianAbsBar": 0.01538298236825586,
+        "scored": 3,
+        "within03": 3,
+        "worst": {
+          "timeS": 40.930878,
+          "error": 0.1572083164634288
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 3,
+          "within03": 3,
+          "medianAbsBar": 0.01538298236825586,
+          "worst": {
+            "timeS": 40.930878,
+            "error": 0.1572083164634288
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 336,
+        "coveragePct": 99.4,
+        "freshFrames": 325,
+        "heldFrames": 9,
+        "gapFrames": 2,
+        "freshPct": 96.72619047619048,
+        "heldPct": 2.6785714285714284,
+        "gapPct": 0.5952380952380952,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.15172837368477143,
+        "worst": {
+          "timeS": 40.930878,
+          "error": 0.18393616789650663
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.15172837368477143,
+          "worst": {
+            "timeS": 40.930878,
+            "error": 0.18393616789650663
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261018_160844",
+      "baseline": {
+        "frames": 301,
+        "coveragePct": 59.47,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 40.53,
+        "medianAbsBar": 0.14,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 301,
+        "coveragePct": 91.69,
+        "freshFrames": 235,
+        "heldFrames": 41,
+        "gapFrames": 25,
+        "freshPct": 78.07308970099668,
+        "heldPct": 13.621262458471762,
+        "gapPct": 8.305647840531561,
+        "medianAbsBar": 0.08709763790404379,
+        "scored": 5,
+        "within03": 3,
+        "worst": {
+          "timeS": 18,
+          "error": -0.3685035092575264
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 3,
+          "within03": 3,
+          "medianAbsBar": 0.08036646863537733,
+          "worst": {
+            "timeS": 11,
+            "error": 0.08709763790404379
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 2,
+          "within03": 0,
+          "medianAbsBar": 0.36722665128935583,
+          "worst": {
+            "timeS": 18,
+            "error": -0.3685035092575264
+          },
+          "wildPct": 0
+        }
+      },
+      "pass2": {
+        "frames": 301,
+        "coveragePct": 99,
+        "freshFrames": 273,
+        "heldFrames": 25,
+        "gapFrames": 3,
+        "freshPct": 90.69767441860465,
+        "heldPct": 8.305647840531561,
+        "gapPct": 0.9966777408637874,
+        "scored": 5,
+        "within03": 4,
+        "medianAbsBar": 0.057620357194997585,
+        "worst": {
+          "timeS": 20,
+          "error": 0.41575195003834686
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 5,
+          "within03": 4,
+          "medianAbsBar": 0.057620357194997585,
+          "worst": {
+            "timeS": 20,
+            "error": 0.41575195003834686
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261018_160931",
+      "baseline": {
+        "frames": 292,
+        "coveragePct": 81.16,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 18.840000000000003,
+        "medianAbsBar": 0.091,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 292,
+        "coveragePct": 18.84,
+        "freshFrames": 55,
+        "heldFrames": 0,
+        "gapFrames": 237,
+        "freshPct": 18.835616438356166,
+        "heldPct": 0,
+        "gapPct": 81.16438356164383,
+        "medianAbsBar": 0.04119844932452835,
+        "scored": 2,
+        "within03": 2,
+        "worst": {
+          "timeS": 35.462078,
+          "error": -0.05261276299292395
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 2,
+          "within03": 2,
+          "medianAbsBar": 0.04119844932452835,
+          "worst": {
+            "timeS": 35.462078,
+            "error": -0.05261276299292395
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 292,
+        "coveragePct": 100,
+        "freshFrames": 282,
+        "heldFrames": 10,
+        "gapFrames": 0,
+        "freshPct": 96.57534246575342,
+        "heldPct": 3.4246575342465753,
+        "gapPct": 0,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.03239580047708895,
+        "worst": {
+          "timeS": 18.231039,
+          "error": 0.27823717784473745
+        },
+        "wildPct": 0,
+        "falseTen": 10,
+        "freshFalseTen": 6,
+        "heldFalseTen": 4,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.03239580047708895,
+          "worst": {
+            "timeS": 18.231039,
+            "error": 0.27823717784473745
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261024_124006",
+      "baseline": {
+        "frames": 447,
+        "coveragePct": 79.19,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 20.810000000000002,
+        "medianAbsBar": 0.155,
+        "scored": 11,
+        "within03": 8,
+        "worst": {
+          "timeS": 30.375,
+          "error": -0.41
+        },
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 447,
+        "coveragePct": 59.73,
+        "freshFrames": 250,
+        "heldFrames": 17,
+        "gapFrames": 180,
+        "freshPct": 55.92841163310962,
+        "heldPct": 3.8031319910514543,
+        "gapPct": 40.26845637583892,
+        "medianAbsBar": 0.08446131441843852,
+        "scored": 10,
+        "within03": 9,
+        "worst": {
+          "timeS": 29,
+          "error": 0.5415278125390324
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 10,
+          "within03": 9,
+          "medianAbsBar": 0.08446131441843852,
+          "worst": {
+            "timeS": 29,
+            "error": 0.5415278125390324
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 447,
+        "coveragePct": 100,
+        "freshFrames": 434,
+        "heldFrames": 13,
+        "gapFrames": 0,
+        "freshPct": 97.0917225950783,
+        "heldPct": 2.9082774049217,
+        "gapPct": 0,
+        "scored": 12,
+        "within03": 12,
+        "medianAbsBar": 0.07857886908953837,
+        "worst": {
+          "timeS": 22,
+          "error": 0.2308470725117422
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 12,
+          "within03": 12,
+          "medianAbsBar": 0.07857886908953837,
+          "worst": {
+            "timeS": 22,
+            "error": 0.2308470725117422
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    },
+    {
+      "id": "20261025_130022",
+      "baseline": {
+        "frames": 400,
+        "coveragePct": 80.5,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 19.5,
+        "medianAbsBar": 0.075,
+        "scored": 12,
+        "within03": 12,
+        "worst": {
+          "timeS": 10,
+          "error": 0.28
+        },
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass1": {
+        "frames": 400,
+        "coveragePct": 55.5,
+        "freshFrames": 172,
+        "heldFrames": 50,
+        "gapFrames": 178,
+        "freshPct": 43,
+        "heldPct": 12.5,
+        "gapPct": 44.5,
+        "medianAbsBar": 0.08333908318604477,
+        "scored": 6,
+        "within03": 5,
+        "worst": {
+          "timeS": 49.375,
+          "error": 0.3259427869714775
+        },
+        "wildPct": 0,
+        "falseTen": 0,
+        "freshAccuracy": {
+          "n": 6,
+          "within03": 5,
+          "medianAbsBar": 0.08333908318604477,
+          "worst": {
+            "timeS": 49.375,
+            "error": 0.3259427869714775
+          },
+          "wildPct": 0
+        },
+        "heldAccuracy": {
+          "n": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "pass2": {
+        "frames": 400,
+        "coveragePct": 94.25,
+        "freshFrames": 318,
+        "heldFrames": 59,
+        "gapFrames": 23,
+        "freshPct": 79.5,
+        "heldPct": 14.75,
+        "gapPct": 5.75,
+        "scored": 13,
+        "within03": 10,
+        "medianAbsBar": 0.12759475341202364,
+        "worst": {
+          "timeS": 25,
+          "error": 1.0768118712664672
+        },
+        "wildPct": 7.6923076923076925,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 13,
+          "within03": 10,
+          "medianAbsBar": 0.12759475341202364,
+          "worst": {
+            "timeS": 25,
+            "error": 1.0768118712664672
+          },
+          "wildPct": 7.6923076923076925
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "worst": null,
+          "wildPct": null
+        }
+      },
+      "now": null,
+      "nowStatus": "Not run: diagnosis-only stop; runtime unchanged from pass 2."
+    }
+  ],
+  "patterns": [
+    {
+      "id": "20261015_225219",
+      "zeroDeg": 321.31842796432966,
+      "zeroToFiveDeg": 93.01639083671131,
+      "fiveToTenDeg": 89.75999999999993,
+      "zeroToTenDeg": 182.77639083671124,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261015_225307",
+      "zeroDeg": 325.44902874336316,
+      "zeroToFiveDeg": 82.10567261218,
+      "fiveToTenDeg": 89.75999999999993,
+      "zeroToTenDeg": 171.86567261217994,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261017_084814",
+      "zeroDeg": 236.4171197744489,
+      "zeroToFiveDeg": 85.4089187810385,
+      "fiveToTenDeg": 89.75999999999999,
+      "zeroToTenDeg": 175.16891878103849,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261017_084919",
+      "zeroDeg": 232.98957339641487,
+      "zeroToFiveDeg": 94.87328305975029,
+      "fiveToTenDeg": 89.75999999999999,
+      "zeroToTenDeg": 184.63328305975028,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261017_134943",
+      "zeroDeg": 322.07461560160436,
+      "zeroToFiveDeg": 87.70819369860612,
+      "fiveToTenDeg": 89.75999999999999,
+      "zeroToTenDeg": 177.46819369860611,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261017_135116",
+      "zeroDeg": 326.8362564407359,
+      "zeroToFiveDeg": 90.08759966882894,
+      "fiveToTenDeg": 89.76000000000005,
+      "zeroToTenDeg": 179.847599668829,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261018_094055",
+      "zeroDeg": 278.74667352464155,
+      "zeroToFiveDeg": 137.6656586201767,
+      "fiveToTenDeg": 89.75999999999988,
+      "zeroToTenDeg": 227.4256586201766,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261018_094151",
+      "zeroDeg": 316.89797910004086,
+      "zeroToFiveDeg": 96.86424501142704,
+      "fiveToTenDeg": 89.76000000000005,
+      "zeroToTenDeg": 186.6242450114271,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261018_160844",
+      "zeroDeg": 238.12051465778845,
+      "zeroToFiveDeg": 93.99046000521253,
+      "fiveToTenDeg": 89.75999999999993,
+      "zeroToTenDeg": 183.75046000521243,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261018_160931",
+      "zeroDeg": 230.68452516359307,
+      "zeroToFiveDeg": 84.02959793965317,
+      "fiveToTenDeg": 89.76000000000005,
+      "zeroToTenDeg": 173.7895979396532,
+      "rawClampedTenTimesS": [
+        10.125,
+        10.25,
+        10.875,
+        11.125
+      ],
+      "flaggedFrames": [
+        {
+          "timeS": 10.125,
+          "bar": 10,
+          "fresh": true,
+          "held": false,
+          "needleDeg": 50.99734737608247,
+          "tenDeg": 45.62078275397971,
+          "rawBar": 10
+        },
+        {
+          "timeS": 10.25,
+          "bar": 10,
+          "fresh": true,
+          "held": false,
+          "needleDeg": 51.30350493404069,
+          "tenDeg": 45.400261374906336,
+          "rawBar": 10
+        },
+        {
+          "timeS": 10.5,
+          "bar": 9.956890412599876,
+          "fresh": true,
+          "held": false,
+          "needleDeg": 44.76214242341831,
+          "tenDeg": 45.5416165051891,
+          "rawBar": 9.956890412599876
+        },
+        {
+          "timeS": 10.625,
+          "bar": 9.956890412599876,
+          "fresh": false,
+          "held": true,
+          "needleDeg": 56.884490874372034,
+          "tenDeg": 45.54400262135209,
+          "rawBar": null
+        },
+        {
+          "timeS": 10.75,
+          "bar": 9.956890412599876,
+          "fresh": false,
+          "held": true,
+          "needleDeg": 57.202189085107875,
+          "tenDeg": 45.339699419678425,
+          "rawBar": null
+        },
+        {
+          "timeS": 10.875,
+          "bar": 10,
+          "fresh": true,
+          "held": false,
+          "needleDeg": 47.12496652091454,
+          "tenDeg": 45.56316482712759,
+          "rawBar": 10
+        },
+        {
+          "timeS": 11,
+          "bar": 10,
+          "fresh": false,
+          "held": true,
+          "needleDeg": 57.477445633351806,
+          "tenDeg": 45.264031488807404,
+          "rawBar": null
+        },
+        {
+          "timeS": 11.125,
+          "bar": 10,
+          "fresh": true,
+          "held": false,
+          "needleDeg": 51.48805029431105,
+          "tenDeg": 45.309732286353096,
+          "rawBar": 10
+        },
+        {
+          "timeS": 11.375,
+          "bar": 9.95616485304543,
+          "fresh": true,
+          "held": false,
+          "needleDeg": 44.65913964102714,
+          "tenDeg": 45.45378432206729,
+          "rawBar": 9.95616485304543
+        },
+        {
+          "timeS": 11.5,
+          "bar": 9.95616485304543,
+          "fresh": false,
+          "held": true,
+          "needleDeg": null,
+          "tenDeg": 45.62782407882588,
+          "rawBar": null
+        }
+      ]
+    },
+    {
+      "id": "20261024_124006",
+      "zeroDeg": 140.7535433202462,
+      "zeroToFiveDeg": 75.48267398325493,
+      "fiveToTenDeg": 86.97781315666043,
+      "zeroToTenDeg": 162.46048713991536,
+      "rawClampedTenTimesS": [],
+      "flaggedFrames": []
+    },
+    {
+      "id": "20261025_130022",
+      "zeroDeg": 318.0279929896266,
+      "zeroToFiveDeg": 80.34651350659163,
+      "fiveToTenDeg": 86.87176877810532,
+      "zeroToTenDeg": 167.21828228469695,
+      "rawClampedTenTimesS": [
+        4.75,
+        6.5
+      ],
+      "flaggedFrames": []
+    }
+  ]
+}
