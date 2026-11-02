@@ -113,16 +113,25 @@ export function registerDialFrame(image, _cal, pose, state) {
     const source = own(cv.matFromArray(ref.points.length, 1, cv.CV_32FC2, ref.points.flatMap(p => [p.x, p.y])));
     const seed = state.last ? ref.points.flatMap(p => {
       const dx = p.x - CENTRE, dy = p.y - CENTRE, last = state.last;
-      return [CENTRE + (last.x - pose.x + last.scale * (last.matrix[0] * dx + last.matrix[1] * dy)) * FACE_RADIUS / pose.radius,
-        CENTRE + (last.y - pose.y + last.scale * (last.matrix[2] * dx + last.matrix[3] * dy)) * FACE_RADIUS / pose.radius];
+      // After loss, the old translation is no longer a useful prediction.
+      // Use the current rim as a search seed; only matching face pixels can
+      // certify the recovered hub and transform through the original taps.
+      const anchorX = state.misses > 0 ? pose.x : last.x;
+      const anchorY = state.misses > 0 ? pose.y : last.y;
+      return [CENTRE + (anchorX - pose.x + last.scale * (last.matrix[0] * dx + last.matrix[1] * dy)) * FACE_RADIUS / pose.radius,
+        CENTRE + (anchorY - pose.y + last.scale * (last.matrix[2] * dx + last.matrix[3] * dy)) * FACE_RADIUS / pose.radius];
     }) : null;
     const target = own(seed ? cv.matFromArray(ref.points.length, 1, cv.CV_32FC2, seed) : new cv.Mat());
     const status = own(new cv.Mat()), error = own(new cv.Mat());
     cv.calcOpticalFlowPyrLK(previous, current, source, target, status, error, new cv.Size(19, 19), 3,
       new cv.TermCriteria(cv.TermCriteria_COUNT | cv.TermCriteria_EPS, 30, 0.01),
       seed ? cv.OPTFLOW_USE_INITIAL_FLOW : 0);
-    const back = own(new cv.Mat()), backStatus = own(new cv.Mat()), backError = own(new cv.Mat());
-    cv.calcOpticalFlowPyrLK(current, previous, target, back, backStatus, backError, new cv.Size(19, 19), 3);
+    // Reverse tracking has a known starting estimate too. An unseeded reverse
+    // search can converge on another glyph even when forward tracking is right.
+    // LK must still refine the estimate from pixels and pass the same 1 px check.
+    const back = own(source.clone()), backStatus = own(new cv.Mat()), backError = own(new cv.Mat());
+    cv.calcOpticalFlowPyrLK(current, previous, target, back, backStatus, backError, new cv.Size(19, 19), 3,
+      new cv.TermCriteria(cv.TermCriteria_COUNT | cv.TermCriteria_EPS, 30, 0.01), cv.OPTFLOW_USE_INITIAL_FLOW);
     const a = [], b = [];
     for (let i = 0; i < ref.points.length; i += 1) {
       const p = ref.points[i], x = target.data32F[2 * i], y = target.data32F[2 * i + 1];

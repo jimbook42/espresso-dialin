@@ -68,6 +68,41 @@ describe('calibration-anchored dial registration', () => {
     expect(result).toBeNull();
   });
 
+  it('recovers the tapped pivot after loss and a translation instead of staying at the last accepted position', () => {
+    const cal = calibration(), before = JSON.stringify(cal);
+    rememberDialReference(texture(), cal);
+    const state = createDialRegistration(cal);
+    expect(registerDialFrame(texture(), cal, { x: 128, y: 128, radius: 80 }, state)).not.toBeNull();
+    expect(registerDialFrame(texture(undefined, undefined, true), cal,
+      { x: 128, y: 128, radius: 80 }, state)).toBeNull();
+    // The caller records a lost frame without accepting a new pose.
+    state.misses += 1;
+    const matrix = [0.98, -0.09, 0.1, 1.01];
+    const recovered = registerDialFrame(texture(matrix, [32, -10]), cal,
+      { x: 158, y: 119, radius: 81 }, state);
+    expect(recovered).not.toBeNull();
+    expect(recovered.x).toBeCloseTo(160, 0);
+    expect(recovered.y).toBeCloseTo(118, 0);
+    for (const angle of [cal.zeroAngleDeg, cal.fiveAngleDeg, cal.tenAngleDeg]) {
+      expect(Math.abs(wrapDelta(transformDialAngle(angle, recovered.matrix), transformDialAngle(angle, matrix)))).toBeLessThan(1);
+    }
+    expect(state.misses).toBe(0);
+    expect(JSON.stringify(cal)).toBe(before);
+  });
+
+  it('does not turn a new rim candidate into a lock when the printed face stays occluded', () => {
+    const cal = calibration();
+    rememberDialReference(texture(), cal);
+    const state = createDialRegistration(cal);
+    expect(registerDialFrame(texture(), cal, { x: 128, y: 128, radius: 80 }, state)).not.toBeNull();
+    const accepted = structuredClone(state.last);
+    state.misses = 5;
+    expect(registerDialFrame(texture(undefined, undefined, true), cal,
+      { x: 160, y: 118, radius: 81 }, state)).toBeNull();
+    expect(state.last).toEqual(accepted);
+    expect(state.misses).toBe(5);
+  });
+
   it('can restore a transient reference from confirmed face rotation without changing zero', () => {
     const cal = { ...calibration(), zeroAngleDeg: 141 };
     const state = createDialRegistration(cal), before = JSON.stringify(cal);
