@@ -1,0 +1,2910 @@
+{
+  "candidate": "f7914e5",
+  "base": "da595fb",
+  "endpointCherryPick": "4a91b1d",
+  "guardFixCommit": "f7914e5",
+  "excludedZeroCommit": "c79cf09",
+  "singleExam": true,
+  "targets": {
+    "zeroFalseTen": true,
+    "wildUnder3": false,
+    "medianAtMostPoint1": false,
+    "coverageAtLeast90": true
+  },
+  "allTargetsMet": false,
+  "overall": {
+    "frames": 3961,
+    "freshFrames": 3170,
+    "heldFrames": 467,
+    "gapFrames": 324,
+    "falseTen": 0,
+    "freshFalseTen": 0,
+    "heldFalseTen": 0,
+    "scored": 54,
+    "within03": 45,
+    "medianAbsBar": 0.10019122776905132,
+    "wildPct": 5.555555555555555,
+    "worst": {
+      "timeS": 19,
+      "error": -5.946128188202977
+    },
+    "coveragePct": 91.82024741226962,
+    "freshPct": 80.03029537995455,
+    "heldPct": 11.789952032315073,
+    "gapPct": 8.179752587730372,
+    "freshAccuracy": {
+      "scored": 50,
+      "within03": 42,
+      "medianAbsBar": 0.10641278569688106,
+      "wildPct": 4,
+      "worst": {
+        "timeS": 19,
+        "error": -5.946128188202977
+      }
+    },
+    "heldAccuracy": {
+      "scored": 4,
+      "within03": 3,
+      "medianAbsBar": 0.009642566882605504,
+      "wildPct": 25,
+      "worst": {
+        "timeS": 40,
+        "error": -5.347803933458339
+      }
+    }
+  },
+  "officialOverall": {
+    "coveragePct": 93.1,
+    "streamCoveragePct": 91.82,
+    "medianAbsBar": 0.1,
+    "p90AbsBar": 0.475,
+    "wildPct": 5.56,
+    "labelN": 54,
+    "flipPct": 37.93,
+    "restAbsMax": 0.083,
+    "msFrame": 43.8
+  },
+  "clips": [
+    {
+      "id": "20261015_225219",
+      "baseline": {
+        "frames": 100,
+        "coveragePct": 82,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 18,
+        "medianAbsBar": 0,
+        "scored": 1,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 100,
+        "coveragePct": 0,
+        "freshFrames": 0,
+        "heldFrames": 0,
+        "gapFrames": 100,
+        "freshPct": 0,
+        "heldPct": 0,
+        "gapPct": 100,
+        "scored": 0,
+        "within03": 0,
+        "medianAbsBar": null,
+        "wildPct": null,
+        "worst": null,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f029",
+            "phase": "dry_1",
+            "t": 6.264322,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 4.092361728340047,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 176.1017292417879
+          }
+        ]
+      },
+      "now": {
+        "frames": 100,
+        "coveragePct": 81,
+        "freshFrames": 64,
+        "heldFrames": 17,
+        "gapFrames": 19,
+        "freshPct": 64,
+        "heldPct": 17,
+        "gapPct": 19,
+        "scored": 1,
+        "within03": 1,
+        "medianAbsBar": 0.002049668117932776,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 6.264322,
+          "error": 0.002049668117932776
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.002049668117932776,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 6.264322,
+            "error": 0.002049668117932776
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f029",
+            "phase": "dry_1",
+            "t": 6.264322,
+            "truth": 0,
+            "published": 0.002049668117932776,
+            "display": 0.001672856035217053,
+            "reason": "tap-fresh",
+            "hubPx": 4.092361728340047,
+            "r5Bar": 0,
+            "classicalBar": 0.002049668117932776,
+            "r6Bar": 0,
+            "needleErr": 176.1017292417879
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261015_225307",
+      "baseline": {
+        "frames": 121,
+        "coveragePct": 72.73,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 27.269999999999996,
+        "medianAbsBar": null,
+        "scored": 0,
+        "within03": null,
+        "worst": null,
+        "wildPct": null,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 121,
+        "coveragePct": 99.17,
+        "freshFrames": 115,
+        "heldFrames": 5,
+        "gapFrames": 1,
+        "freshPct": 95.04132231404958,
+        "heldPct": 4.132231404958677,
+        "gapPct": 0.8264462809917356,
+        "scored": 1,
+        "within03": 1,
+        "medianAbsBar": 0.0277063359685012,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 7.5813165,
+          "error": -0.0277063359685012
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.0277063359685012,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 7.5813165,
+            "error": -0.0277063359685012
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f030",
+            "phase": "dry_1",
+            "t": 7.5813165,
+            "truth": 0,
+            "published": -0.0277063359685012,
+            "display": -0.017302222517596465,
+            "reason": "held:needle-missing",
+            "hubPx": 0.978339916197424,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 178.71047650664684
+          }
+        ]
+      },
+      "now": {
+        "frames": 121,
+        "coveragePct": 73.55,
+        "freshFrames": 64,
+        "heldFrames": 25,
+        "gapFrames": 32,
+        "freshPct": 52.892561983471076,
+        "heldPct": 20.66115702479339,
+        "gapPct": 26.446280991735538,
+        "scored": 0,
+        "within03": 0,
+        "medianAbsBar": null,
+        "wildPct": null,
+        "worst": null,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f030",
+            "phase": "dry_1",
+            "t": 7.5813165,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 0.978339916197424,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 178.71047650664684
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261017_084814",
+      "baseline": {
+        "frames": 380,
+        "coveragePct": 43.95,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 56.05,
+        "medianAbsBar": 0.757,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 33.33,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 380,
+        "coveragePct": 100,
+        "freshFrames": 378,
+        "heldFrames": 2,
+        "gapFrames": 0,
+        "freshPct": 99.47368421052632,
+        "heldPct": 0.5263157894736842,
+        "gapPct": 0,
+        "scored": 5,
+        "within03": 4,
+        "medianAbsBar": 0.08891272730746991,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22,
+          "error": -0.30176204645641036
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 5,
+          "within03": 4,
+          "medianAbsBar": 0.08891272730746991,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22,
+            "error": -0.30176204645641036
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f001",
+            "phase": "rest",
+            "t": 1.8,
+            "truth": 0,
+            "published": -0.0002942848912047238,
+            "display": 0.0007557031007845499,
+            "reason": "tap-fresh",
+            "hubPx": 4.068719803310934,
+            "r5Bar": 0,
+            "classicalBar": -0.0002942848912047238,
+            "r6Bar": 0,
+            "needleErr": 95.56083087583681
+          },
+          {
+            "id": "f002",
+            "phase": "preinfusion",
+            "t": 9.5,
+            "truth": 1.4108058823836578,
+            "published": 1.597800182393436,
+            "display": 1.5279042896893724,
+            "reason": "tap-fresh",
+            "hubPx": 4.764007319820251,
+            "r5Bar": 0.22156412742959547,
+            "classicalBar": 1.597800182393436,
+            "r6Bar": 1.4924358463977287,
+            "needleErr": 108.86753908716167
+          },
+          {
+            "id": "f003",
+            "phase": "ramp",
+            "t": 18.5,
+            "truth": 5.162671695109537,
+            "published": 5.073758967802067,
+            "display": 5.073758967802067,
+            "reason": "tap-fresh",
+            "hubPx": 3.5198094548752166,
+            "r5Bar": 0.0016147647939365882,
+            "classicalBar": 5.073758967802067,
+            "r6Bar": 4.479649200790483,
+            "needleErr": 172.75017860649132
+          },
+          {
+            "id": "f004",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.612882354007921,
+            "published": 7.31112030755151,
+            "display": 7.31112030755151,
+            "reason": "tap-fresh",
+            "hubPx": 2.508667042255806,
+            "r5Bar": 0,
+            "classicalBar": 7.31112030755151,
+            "r6Bar": 7.026450236157734,
+            "needleErr": 143.12384412953497
+          },
+          {
+            "id": "f031",
+            "phase": "taper",
+            "t": 41.5,
+            "truth": 5.738081057539937,
+            "published": 5.7384417675700945,
+            "display": 5.806220277394669,
+            "reason": "tap-fresh",
+            "hubPx": 4.744958889606798,
+            "r5Bar": 0,
+            "classicalBar": 5.7384417675700945,
+            "r6Bar": 5.677068332779902,
+            "needleErr": 175.3554994530631
+          }
+        ]
+      },
+      "now": {
+        "frames": 380,
+        "coveragePct": 96.58,
+        "freshFrames": 353,
+        "heldFrames": 14,
+        "gapFrames": 13,
+        "freshPct": 92.89473684210526,
+        "heldPct": 3.6842105263157894,
+        "gapPct": 3.4210526315789473,
+        "scored": 4,
+        "within03": 3,
+        "medianAbsBar": 0.13795351365862407,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22,
+          "error": -0.30176204645641036
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 4,
+          "within03": 3,
+          "medianAbsBar": 0.13795351365862407,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22,
+            "error": -0.30176204645641036
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f001",
+            "phase": "rest",
+            "t": 1.8,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 4.068719803310934,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 95.56083087583681
+          },
+          {
+            "id": "f002",
+            "phase": "preinfusion",
+            "t": 9.5,
+            "truth": 1.4108058823836578,
+            "published": 1.597800182393436,
+            "display": 1.5279042896893724,
+            "reason": "tap-fresh",
+            "hubPx": 4.764007319820251,
+            "r5Bar": 0.22156412742959547,
+            "classicalBar": 1.597800182393436,
+            "r6Bar": 1.4924358463977287,
+            "needleErr": 108.86753908716167
+          },
+          {
+            "id": "f003",
+            "phase": "ramp",
+            "t": 18.5,
+            "truth": 5.162671695109537,
+            "published": 5.073758967802067,
+            "display": 5.073758967802067,
+            "reason": "tap-fresh",
+            "hubPx": 3.5198094548752166,
+            "r5Bar": 0.0016147647939365882,
+            "classicalBar": 5.073758967802067,
+            "r6Bar": 4.479649200790483,
+            "needleErr": 172.75017860649132
+          },
+          {
+            "id": "f004",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.612882354007921,
+            "published": 7.31112030755151,
+            "display": 7.31112030755151,
+            "reason": "tap-fresh",
+            "hubPx": 2.508667042255806,
+            "r5Bar": 0,
+            "classicalBar": 7.31112030755151,
+            "r6Bar": 7.026450236157734,
+            "needleErr": 143.12384412953497
+          },
+          {
+            "id": "f031",
+            "phase": "taper",
+            "t": 41.5,
+            "truth": 5.738081057539937,
+            "published": 5.7384417675700945,
+            "display": 5.806220277394669,
+            "reason": "tap-fresh",
+            "hubPx": 4.744958889606798,
+            "r5Bar": 0,
+            "classicalBar": 5.7384417675700945,
+            "r6Bar": 5.677068332779902,
+            "needleErr": 175.3554994530631
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261017_084919",
+      "baseline": {
+        "frames": 319,
+        "coveragePct": 79.62,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 20.379999999999995,
+        "medianAbsBar": 0.551,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 33.33,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 319,
+        "coveragePct": 67.4,
+        "freshFrames": 203,
+        "heldFrames": 12,
+        "gapFrames": 104,
+        "freshPct": 63.63636363636363,
+        "heldPct": 3.761755485893417,
+        "gapPct": 32.60188087774295,
+        "scored": 1,
+        "within03": 1,
+        "medianAbsBar": 0.0004929845498859997,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 19.919161,
+          "error": -0.0004929845498859997
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.0004929845498859997,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 19.919161,
+            "error": -0.0004929845498859997
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f017",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 4.213837150870301,
+            "r5Bar": 0.16791436475956087,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 87.79947883746132
+          },
+          {
+            "id": "f018",
+            "phase": "used_2",
+            "t": 19.919161,
+            "truth": 2.1833648602400824,
+            "published": 2.1828718756901964,
+            "display": 2.1828718756901964,
+            "reason": "tap-fresh",
+            "hubPx": 5.392602728742932,
+            "r5Bar": 0,
+            "classicalBar": 2.1828718756901964,
+            "r6Bar": 2.4303620109582993,
+            "needleErr": 132.03912295493757
+          },
+          {
+            "id": "f019",
+            "phase": "used_3",
+            "t": 38.838322,
+            "truth": -0.02654949895968859,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 5.942366571885467,
+            "r5Bar": 0.04456781774468808,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 92.11773137978128
+          }
+        ]
+      },
+      "now": {
+        "frames": 319,
+        "coveragePct": 93.1,
+        "freshFrames": 273,
+        "heldFrames": 24,
+        "gapFrames": 22,
+        "freshPct": 85.57993730407523,
+        "heldPct": 7.523510971786834,
+        "gapPct": 6.896551724137931,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.008612527085185314,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 38.838322,
+          "error": 0.13583413697675822
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.008612527085185314,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 38.838322,
+            "error": 0.13583413697675822
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f017",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.008612527085185314,
+            "display": 0.0088225883717564,
+            "reason": "tap-fresh",
+            "hubPx": 4.213837150870301,
+            "r5Bar": 0.16791436475956087,
+            "classicalBar": 0.008612527085185314,
+            "r6Bar": 0,
+            "needleErr": 87.79947883746132
+          },
+          {
+            "id": "f018",
+            "phase": "used_2",
+            "t": 19.919161,
+            "truth": 2.1833648602400824,
+            "published": 2.1828718756901964,
+            "display": 2.1828718756901964,
+            "reason": "tap-fresh",
+            "hubPx": 5.392602728742932,
+            "r5Bar": 0,
+            "classicalBar": 2.1828718756901964,
+            "r6Bar": 2.4303620109582993,
+            "needleErr": 132.03912295493757
+          },
+          {
+            "id": "f019",
+            "phase": "used_3",
+            "t": 38.838322,
+            "truth": -0.02654949895968859,
+            "published": 0.10928463801706963,
+            "display": 0.15327821482761783,
+            "reason": "tap-fresh",
+            "hubPx": 5.942366571885467,
+            "r5Bar": 0.04456781774468808,
+            "classicalBar": 0.10928463801706963,
+            "r6Bar": 0,
+            "needleErr": 92.11773137978128
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261017_134943",
+      "baseline": {
+        "frames": 472,
+        "coveragePct": 95.55,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 4.450000000000003,
+        "medianAbsBar": 0.429,
+        "scored": 5,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 472,
+        "coveragePct": 100,
+        "freshFrames": 456,
+        "heldFrames": 16,
+        "gapFrames": 0,
+        "freshPct": 96.61016949152543,
+        "heldPct": 3.389830508474576,
+        "gapPct": 0,
+        "scored": 5,
+        "within03": 4,
+        "medianAbsBar": 0.09837689452368714,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 25,
+          "error": 0.6250010099269208
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 5,
+          "within03": 4,
+          "medianAbsBar": 0.09837689452368714,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 25,
+            "error": 0.6250010099269208
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f005",
+            "phase": "rest",
+            "t": 5.4,
+            "truth": 0,
+            "published": -0.003191801483637814,
+            "display": 0.0030525411141089694,
+            "reason": "tap-fresh",
+            "hubPx": 4.023799360759803,
+            "r5Bar": 0.09744022031074115,
+            "classicalBar": -0.003191801483637814,
+            "r6Bar": 0,
+            "needleErr": 179.81088395919932
+          },
+          {
+            "id": "f006",
+            "phase": "preinfusion",
+            "t": 16.5,
+            "truth": 1.828450501741842,
+            "published": 1.8845156338036837,
+            "display": 1.9487749069119624,
+            "reason": "tap-fresh",
+            "hubPx": 4.100491314667571,
+            "r5Bar": 0,
+            "classicalBar": 1.8845156338036837,
+            "r6Bar": 1.9166381088510756,
+            "needleErr": 143.82569441269487
+          },
+          {
+            "id": "f007",
+            "phase": "ramp",
+            "t": 25,
+            "truth": 6.283828678666444,
+            "published": 6.908829688593364,
+            "display": 6.908829688593364,
+            "reason": "tap-fresh",
+            "hubPx": 4.867222888262304,
+            "r5Bar": null,
+            "classicalBar": 6.908829688593364,
+            "r6Bar": 6.435610292419878,
+            "needleErr": 72.81841864823167
+          },
+          {
+            "id": "f008",
+            "phase": "peak",
+            "t": 29,
+            "truth": 7.3685056700973375,
+            "published": 7.094032618036913,
+            "display": 7.094032618036913,
+            "reason": "tap-fresh",
+            "hubPx": 5.109528526125073,
+            "r5Bar": 0,
+            "classicalBar": 7.094032618036913,
+            "r6Bar": 6.828961260827022,
+            "needleErr": 60.45674213072823
+          },
+          {
+            "id": "f032",
+            "phase": "taper",
+            "t": 48.5,
+            "truth": 6.192888013789439,
+            "published": 6.094511119265752,
+            "display": 6.218066562385783,
+            "reason": "tap-fresh",
+            "hubPx": 3.6694442594297834,
+            "r5Bar": 0,
+            "classicalBar": 6.094511119265752,
+            "r6Bar": 6.060794272812049,
+            "needleErr": 75.24134405866499
+          }
+        ]
+      },
+      "now": {
+        "frames": 472,
+        "coveragePct": 95.13,
+        "freshFrames": 404,
+        "heldFrames": 45,
+        "gapFrames": 23,
+        "freshPct": 85.59322033898304,
+        "heldPct": 9.533898305084746,
+        "gapPct": 4.872881355932203,
+        "scored": 5,
+        "within03": 4,
+        "medianAbsBar": 0.09837689452368714,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 25,
+          "error": 0.6250010099269208
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 4,
+          "within03": 3,
+          "medianAbsBar": 0.18642497329205598,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 25,
+            "error": 0.6250010099269208
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.008900328559508706,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 5.4,
+            "error": 0.008900328559508706
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f005",
+            "phase": "rest",
+            "t": 5.4,
+            "truth": 0,
+            "published": 0.008900328559508706,
+            "display": 0.010198216741586094,
+            "reason": "held:needle-missing",
+            "hubPx": 4.023799360759803,
+            "r5Bar": 0.09744022031074115,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 179.81088395919932
+          },
+          {
+            "id": "f006",
+            "phase": "preinfusion",
+            "t": 16.5,
+            "truth": 1.828450501741842,
+            "published": 1.8845156338036837,
+            "display": 1.9487749069119624,
+            "reason": "tap-fresh",
+            "hubPx": 4.100491314667571,
+            "r5Bar": 0,
+            "classicalBar": 1.8845156338036837,
+            "r6Bar": 1.9166381088510756,
+            "needleErr": 143.82569441269487
+          },
+          {
+            "id": "f007",
+            "phase": "ramp",
+            "t": 25,
+            "truth": 6.283828678666444,
+            "published": 6.908829688593364,
+            "display": 6.908829688593364,
+            "reason": "tap-fresh",
+            "hubPx": 4.867222888262304,
+            "r5Bar": null,
+            "classicalBar": 6.908829688593364,
+            "r6Bar": 6.435610292419878,
+            "needleErr": 72.81841864823167
+          },
+          {
+            "id": "f008",
+            "phase": "peak",
+            "t": 29,
+            "truth": 7.3685056700973375,
+            "published": 7.094032618036913,
+            "display": 7.094032618036913,
+            "reason": "tap-fresh",
+            "hubPx": 5.109528526125073,
+            "r5Bar": 0,
+            "classicalBar": 7.094032618036913,
+            "r6Bar": 6.828961260827022,
+            "needleErr": 60.45674213072823
+          },
+          {
+            "id": "f032",
+            "phase": "taper",
+            "t": 48.5,
+            "truth": 6.192888013789439,
+            "published": 6.094511119265752,
+            "display": 6.218066562385783,
+            "reason": "tap-fresh",
+            "hubPx": 3.6694442594297834,
+            "r5Bar": 0,
+            "classicalBar": 6.094511119265752,
+            "r6Bar": 6.060794272812049,
+            "needleErr": 75.24134405866499
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261017_135116",
+      "baseline": {
+        "frames": 358,
+        "coveragePct": 90.5,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 9.5,
+        "medianAbsBar": 0.437,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 358,
+        "coveragePct": 93.3,
+        "freshFrames": 313,
+        "heldFrames": 21,
+        "gapFrames": 24,
+        "freshPct": 87.43016759776536,
+        "heldPct": 5.865921787709497,
+        "gapPct": 6.70391061452514,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.010424627579004198,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22.381789,
+          "error": -0.031433209378374904
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 2,
+          "within03": 2,
+          "medianAbsBar": 0.02092891847868955,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22.381789,
+            "error": -0.031433209378374904
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.0023220477054340487,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 1,
+            "error": 0.0023220477054340487
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f020",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.0023220477054340487,
+            "display": -0.0019395744175808639,
+            "reason": "held:needle-missing",
+            "hubPx": 3.7825475183856643,
+            "r5Bar": 0.7399405474400468,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 169.44094297777866
+          },
+          {
+            "id": "f021",
+            "phase": "used_2",
+            "t": 22.381789,
+            "truth": 3.6559762240705402,
+            "published": 3.6245430146921653,
+            "display": 3.6245430146921653,
+            "reason": "tap-fresh",
+            "hubPx": 4.541702488994737,
+            "r5Bar": 0,
+            "classicalBar": 3.6245430146921653,
+            "r6Bar": 3.613187202275492,
+            "needleErr": 107.28158475844447
+          },
+          {
+            "id": "f022",
+            "phase": "used_3",
+            "t": 43.763578,
+            "truth": 0.47212770016260264,
+            "published": 0.48255232774160683,
+            "display": 0.6091278337683799,
+            "reason": "tap-fresh",
+            "hubPx": 5.81863563338478,
+            "r5Bar": 0,
+            "classicalBar": 0.48255232774160683,
+            "r6Bar": 0.5603302953132923,
+            "needleErr": 167.94584684274486
+          }
+        ]
+      },
+      "now": {
+        "frames": 358,
+        "coveragePct": 91.9,
+        "freshFrames": 307,
+        "heldFrames": 22,
+        "gapFrames": 29,
+        "freshPct": 85.75418994413408,
+        "heldPct": 6.145251396648045,
+        "gapPct": 8.100558659217876,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.010424627579004198,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22.381789,
+          "error": -0.031433209378374904
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 2,
+          "within03": 2,
+          "medianAbsBar": 0.02092891847868955,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22.381789,
+            "error": -0.031433209378374904
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.0023220477054340487,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 1,
+            "error": 0.0023220477054340487
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f020",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.0023220477054340487,
+            "display": 0.0018837386116650878,
+            "reason": "held:needle-missing",
+            "hubPx": 3.7825475183856643,
+            "r5Bar": 0.7399405474400468,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 169.44094297777866
+          },
+          {
+            "id": "f021",
+            "phase": "used_2",
+            "t": 22.381789,
+            "truth": 3.6559762240705402,
+            "published": 3.6245430146921653,
+            "display": 3.6245430146921653,
+            "reason": "tap-fresh",
+            "hubPx": 4.541702488994737,
+            "r5Bar": 0,
+            "classicalBar": 3.6245430146921653,
+            "r6Bar": 3.613187202275492,
+            "needleErr": 107.28158475844447
+          },
+          {
+            "id": "f022",
+            "phase": "used_3",
+            "t": 43.763578,
+            "truth": 0.47212770016260264,
+            "published": 0.48255232774160683,
+            "display": 0.6091278337683799,
+            "reason": "tap-fresh",
+            "hubPx": 5.81863563338478,
+            "r5Bar": 0,
+            "classicalBar": 0.48255232774160683,
+            "r6Bar": 0.5603302953132923,
+            "needleErr": 167.94584684274486
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261018_094055",
+      "baseline": {
+        "frames": 435,
+        "coveragePct": 74.02,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 25.980000000000004,
+        "medianAbsBar": 0.6,
+        "scored": 4,
+        "within03": null,
+        "worst": null,
+        "wildPct": 25,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 435,
+        "coveragePct": 45.29,
+        "freshFrames": 115,
+        "heldFrames": 82,
+        "gapFrames": 238,
+        "freshPct": 26.436781609195403,
+        "heldPct": 18.850574712643677,
+        "gapPct": 54.71264367816092,
+        "scored": 3,
+        "within03": 1,
+        "medianAbsBar": 0.9152183739689652,
+        "wildPct": 33.333333333333336,
+        "worst": {
+          "timeS": 40,
+          "error": 2.4781464163160223
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 2,
+          "within03": 0,
+          "medianAbsBar": 1.6966823951424939,
+          "wildPct": 50,
+          "worst": {
+            "timeS": 40,
+            "error": 2.4781464163160223
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.21649792462855988,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22,
+            "error": 0.21649792462855988
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f009",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 7.894938308894046,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "f010",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.3871933477541407,
+            "published": 2.302411721723106,
+            "display": 2.3151606711323955,
+            "reason": "tap-fresh",
+            "hubPx": 7.845305526241643,
+            "r5Bar": 0,
+            "classicalBar": 2.302411721723106,
+            "r6Bar": 2.844179744445093,
+            "needleErr": 153.9763178811546
+          },
+          {
+            "id": "f011",
+            "phase": "ramp",
+            "t": 19,
+            "truth": 5.972936406294782,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 9.203688296382703,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 81.18054160360845
+          },
+          {
+            "id": "f012",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.190145427191927,
+            "published": 7.406643351820487,
+            "display": 7.466295943760576,
+            "reason": "held:needle-missing",
+            "hubPx": 10.66876936454171,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": 7.900655634650874,
+            "needleErr": 62.49159673393484
+          },
+          {
+            "id": "f033",
+            "phase": "taper",
+            "t": 40,
+            "truth": 5.404496304798196,
+            "published": 7.882642721114219,
+            "display": 7.882642721114219,
+            "reason": "tap-fresh",
+            "hubPx": 10.273747403802508,
+            "r5Bar": 0.07511565353648204,
+            "classicalBar": 7.882642721114219,
+            "r6Bar": 8.154660343198294,
+            "needleErr": 95.3678766875235
+          }
+        ]
+      },
+      "now": {
+        "frames": 435,
+        "coveragePct": 95.17,
+        "freshFrames": 288,
+        "heldFrames": 126,
+        "gapFrames": 21,
+        "freshPct": 66.20689655172414,
+        "heldPct": 28.96551724137931,
+        "gapPct": 4.827586206896552,
+        "scored": 3,
+        "within03": 0,
+        "medianAbsBar": 5.347803933458339,
+        "wildPct": 66.66666666666667,
+        "worst": {
+          "timeS": 19,
+          "error": -5.946128188202977
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 2,
+          "within03": 0,
+          "medianAbsBar": 3.430673281085971,
+          "wildPct": 50,
+          "worst": {
+            "timeS": 19,
+            "error": -5.946128188202977
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 0,
+          "medianAbsBar": 5.347803933458339,
+          "wildPct": 100,
+          "worst": {
+            "timeS": 40,
+            "error": -5.347803933458339
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f009",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 7.894938308894046,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": 1.5547370267815743,
+            "needleErr": null
+          },
+          {
+            "id": "f010",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.3871933477541407,
+            "published": 2.302411721723106,
+            "display": 2.3151606711323955,
+            "reason": "tap-fresh",
+            "hubPx": 7.845305526241643,
+            "r5Bar": 0,
+            "classicalBar": 2.302411721723106,
+            "r6Bar": 2.8441522415237603,
+            "needleErr": 153.9763178811546
+          },
+          {
+            "id": "f011",
+            "phase": "ramp",
+            "t": 19,
+            "truth": 5.972936406294782,
+            "published": 0.026808218091805204,
+            "display": 0.027802019994949616,
+            "reason": "tap-fresh",
+            "hubPx": 9.203688296382703,
+            "r5Bar": 0,
+            "classicalBar": 0.026808218091805204,
+            "r6Bar": 0,
+            "needleErr": 81.18054160360845
+          },
+          {
+            "id": "f012",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.190145427191927,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 10.66876936454171,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 62.49159673393484
+          },
+          {
+            "id": "f033",
+            "phase": "taper",
+            "t": 40,
+            "truth": 5.404496304798196,
+            "published": 0.05669237133985777,
+            "display": 0.024754110648302397,
+            "reason": "held:rate-unconfirmed",
+            "hubPx": 10.273747403802508,
+            "r5Bar": 0.07511565353648204,
+            "classicalBar": 7.882642721114219,
+            "r6Bar": null,
+            "needleErr": 95.3678766875235
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261018_094151",
+      "baseline": {
+        "frames": 336,
+        "coveragePct": 85.71,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 14.290000000000006,
+        "medianAbsBar": 0.283,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 336,
+        "coveragePct": 64.29,
+        "freshFrames": 187,
+        "heldFrames": 29,
+        "gapFrames": 120,
+        "freshPct": 55.654761904761905,
+        "heldPct": 8.630952380952381,
+        "gapPct": 35.714285714285715,
+        "scored": 1,
+        "within03": 1,
+        "medianAbsBar": 0.15172837368477143,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 20.965439,
+          "error": -0.15172837368477143
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.15172837368477143,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 20.965439,
+            "error": -0.15172837368477143
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f023",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 8.91184333169912,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 179.64161319771353
+          },
+          {
+            "id": "f024",
+            "phase": "used_2",
+            "t": 20.965439,
+            "truth": 4.285663805302804,
+            "published": 4.133935431618033,
+            "display": 4.133935431618033,
+            "reason": "tap-fresh",
+            "hubPx": 9.344097455889324,
+            "r5Bar": 0.11738692546710963,
+            "classicalBar": 4.133935431618033,
+            "r6Bar": 3.4866609066425296,
+            "needleErr": 116.143573553912
+          },
+          {
+            "id": "f025",
+            "phase": "used_3",
+            "t": 40.930878,
+            "truth": -0.13195469826958775,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 10.475217912600574,
+            "r5Bar": 0.16389296227694933,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 174.038850948034
+          }
+        ]
+      },
+      "now": {
+        "frames": 336,
+        "coveragePct": 78.57,
+        "freshFrames": 226,
+        "heldFrames": 38,
+        "gapFrames": 72,
+        "freshPct": 67.26190476190476,
+        "heldPct": 11.30952380952381,
+        "gapPct": 21.428571428571427,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.15172837368477143,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 40.930878,
+          "error": 0.18393616789650663
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 2,
+          "within03": 2,
+          "medianAbsBar": 0.16783227079063903,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 40.930878,
+            "error": 0.18393616789650663
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.010384805205702305,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 1,
+            "error": 0.010384805205702305
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f023",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.010384805205702305,
+            "display": 0.012882524648365265,
+            "reason": "held:needle-missing",
+            "hubPx": 8.91184333169912,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 179.64161319771353
+          },
+          {
+            "id": "f024",
+            "phase": "used_2",
+            "t": 20.965439,
+            "truth": 4.285663805302804,
+            "published": 4.133935431618033,
+            "display": 4.133935431618033,
+            "reason": "tap-fresh",
+            "hubPx": 9.344097455889324,
+            "r5Bar": 0.11738692546710963,
+            "classicalBar": 4.133935431618033,
+            "r6Bar": 3.409477868231056,
+            "needleErr": 116.143573553912
+          },
+          {
+            "id": "f025",
+            "phase": "used_3",
+            "t": 40.930878,
+            "truth": -0.13195469826958775,
+            "published": 0.05198146962691889,
+            "display": 0.05198146962691889,
+            "reason": "tap-fresh",
+            "hubPx": 10.475217912600574,
+            "r5Bar": 0.16389296227694933,
+            "classicalBar": 0.05198146962691889,
+            "r6Bar": 0,
+            "needleErr": 174.038850948034
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261018_160844",
+      "baseline": {
+        "frames": 301,
+        "coveragePct": 59.47,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 40.53,
+        "medianAbsBar": 0.14,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 301,
+        "coveragePct": 79.73,
+        "freshFrames": 212,
+        "heldFrames": 28,
+        "gapFrames": 61,
+        "freshPct": 70.43189368770764,
+        "heldPct": 9.30232558139535,
+        "gapPct": 20.26578073089701,
+        "scored": 4,
+        "within03": 3,
+        "medianAbsBar": 0.1147470938141566,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 20,
+          "error": 0.41575195003834686
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 4,
+          "within03": 3,
+          "medianAbsBar": 0.1147470938141566,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 20,
+            "error": 0.41575195003834686
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f013",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 13.55496851115087,
+            "r5Bar": 0.23138380342744946,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 89.3419312416662
+          },
+          {
+            "id": "f014",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.5164993423415594,
+            "published": 1.574119699536557,
+            "display": 1.5906830247033485,
+            "reason": "tap-fresh",
+            "hubPx": 10.334585462746634,
+            "r5Bar": 0.5008433302709158,
+            "classicalBar": 1.574119699536557,
+            "r6Bar": 1.640283531413833,
+            "needleErr": 109.58011278614669
+          },
+          {
+            "id": "f015",
+            "phase": "ramp",
+            "t": 18,
+            "truth": 5.643064684147373,
+            "published": 5.471190853714058,
+            "display": 5.471190853714058,
+            "reason": "tap-fresh",
+            "hubPx": 10.160036523232897,
+            "r5Bar": 0,
+            "classicalBar": 5.471190853714058,
+            "r6Bar": 5.108279020198058,
+            "needleErr": 168.99668644124802
+          },
+          {
+            "id": "f016",
+            "phase": "peak",
+            "t": 20,
+            "truth": 7.077326675644736,
+            "published": 7.493078625683083,
+            "display": 7.493078625683083,
+            "reason": "tap-fresh",
+            "hubPx": 10.38917012477482,
+            "r5Bar": 0,
+            "classicalBar": 7.493078625683083,
+            "r6Bar": 6.8456162093174555,
+            "needleErr": 149.49852000525317
+          },
+          {
+            "id": "f034",
+            "phase": "taper",
+            "t": 32,
+            "truth": 5.010149100384057,
+            "published": 4.998225357280316,
+            "display": 5.089054788939559,
+            "reason": "tap-fresh",
+            "hubPx": 11.586248138615646,
+            "r5Bar": 0.011584928013242023,
+            "classicalBar": 4.998225357280316,
+            "r6Bar": 4.9277810627420005,
+            "needleErr": 176.01785643673202
+          }
+        ]
+      },
+      "now": {
+        "frames": 301,
+        "coveragePct": 90.03,
+        "freshFrames": 229,
+        "heldFrames": 42,
+        "gapFrames": 30,
+        "freshPct": 76.0797342192691,
+        "heldPct": 13.953488372093023,
+        "gapPct": 9.966777408637874,
+        "scored": 4,
+        "within03": 3,
+        "medianAbsBar": 0.1147470938141566,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 20,
+          "error": 0.41575195003834686
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 4,
+          "within03": 3,
+          "medianAbsBar": 0.1147470938141566,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 20,
+            "error": 0.41575195003834686
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f013",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 13.55496851115087,
+            "r5Bar": 0.23138380342744946,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 89.3419312416662
+          },
+          {
+            "id": "f014",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.5164993423415594,
+            "published": 1.574119699536557,
+            "display": 1.5906830247033485,
+            "reason": "tap-fresh",
+            "hubPx": 10.334585462746634,
+            "r5Bar": 0.5008433302709158,
+            "classicalBar": 1.574119699536557,
+            "r6Bar": 1.6402835250338597,
+            "needleErr": 109.58011278614669
+          },
+          {
+            "id": "f015",
+            "phase": "ramp",
+            "t": 18,
+            "truth": 5.643064684147373,
+            "published": 5.471190853714058,
+            "display": 5.471190853714058,
+            "reason": "tap-fresh",
+            "hubPx": 10.160036523232897,
+            "r5Bar": 0,
+            "classicalBar": 5.471190853714058,
+            "r6Bar": 5.108279020198058,
+            "needleErr": 168.99668644124802
+          },
+          {
+            "id": "f016",
+            "phase": "peak",
+            "t": 20,
+            "truth": 7.077326675644736,
+            "published": 7.493078625683083,
+            "display": 7.493078625683083,
+            "reason": "tap-fresh",
+            "hubPx": 10.38917012477482,
+            "r5Bar": 0,
+            "classicalBar": 7.493078625683083,
+            "r6Bar": 6.8456162093174555,
+            "needleErr": 149.49852000525317
+          },
+          {
+            "id": "f034",
+            "phase": "taper",
+            "t": 32,
+            "truth": 5.010149100384057,
+            "published": 4.998225357280316,
+            "display": 5.089054788939559,
+            "reason": "tap-fresh",
+            "hubPx": 11.586248138615646,
+            "r5Bar": 0.011584928013242023,
+            "classicalBar": 4.998225357280316,
+            "r6Bar": 4.9277810627420005,
+            "needleErr": 176.01785643673202
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261018_160931",
+      "baseline": {
+        "frames": 292,
+        "coveragePct": 81.16,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 18.840000000000003,
+        "medianAbsBar": 0.091,
+        "scored": 3,
+        "within03": null,
+        "worst": null,
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 292,
+        "coveragePct": 96.92,
+        "freshFrames": 274,
+        "heldFrames": 9,
+        "gapFrames": 9,
+        "freshPct": 93.83561643835617,
+        "heldPct": 3.0821917808219177,
+        "gapPct": 3.0821917808219177,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.03239580047708895,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 18.231039,
+          "error": 0.27823717784473745
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.03239580047708895,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 18.231039,
+            "error": 0.27823717784473745
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f026",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.03142781352587234,
+            "display": 0.07163489114638247,
+            "reason": "tap-fresh",
+            "hubPx": 5.603907549985152,
+            "r5Bar": 0.3674666233779544,
+            "classicalBar": 0.03142781352587234,
+            "r6Bar": 0,
+            "needleErr": 85.86817201918393
+          },
+          {
+            "id": "f027",
+            "phase": "used_2",
+            "t": 18.231039,
+            "truth": 3.7456816616659823,
+            "published": 4.02391883951072,
+            "display": 4.02391883951072,
+            "reason": "tap-fresh",
+            "hubPx": 7.58491388387363,
+            "r5Bar": 0,
+            "classicalBar": 4.02391883951072,
+            "r6Bar": 4.320731599400914,
+            "needleErr": 160.07210229901256
+          },
+          {
+            "id": "f028",
+            "phase": "used_3",
+            "t": 35.462078,
+            "truth": 0.09110455597538275,
+            "published": 0.0587087554982938,
+            "display": 0.06802705464429763,
+            "reason": "tap-fresh",
+            "hubPx": 6.104479969913623,
+            "r5Bar": 0.07833685199887905,
+            "classicalBar": 0.0587087554982938,
+            "r6Bar": 0,
+            "needleErr": 95.18103538984354
+          }
+        ]
+      },
+      "now": {
+        "frames": 292,
+        "coveragePct": 96.92,
+        "freshFrames": 267,
+        "heldFrames": 16,
+        "gapFrames": 9,
+        "freshPct": 91.43835616438356,
+        "heldPct": 5.47945205479452,
+        "gapPct": 3.0821917808219177,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.03239580047708895,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 18.231039,
+          "error": 0.27823717784473745
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.03239580047708895,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 18.231039,
+            "error": 0.27823717784473745
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f026",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.03142781352587234,
+            "display": 0.07163489114638247,
+            "reason": "tap-fresh",
+            "hubPx": 5.603907549985152,
+            "r5Bar": 0.3674666233779544,
+            "classicalBar": 0.03142781352587234,
+            "r6Bar": 0,
+            "needleErr": 85.86817201918393
+          },
+          {
+            "id": "f027",
+            "phase": "used_2",
+            "t": 18.231039,
+            "truth": 3.7456816616659823,
+            "published": 4.02391883951072,
+            "display": 4.02391883951072,
+            "reason": "tap-fresh",
+            "hubPx": 7.58491388387363,
+            "r5Bar": 0,
+            "classicalBar": 4.02391883951072,
+            "r6Bar": 4.320731599400914,
+            "needleErr": 160.07210229901256
+          },
+          {
+            "id": "f028",
+            "phase": "used_3",
+            "t": 35.462078,
+            "truth": 0.09110455597538275,
+            "published": 0.0587087554982938,
+            "display": 0.06802705464429763,
+            "reason": "tap-fresh",
+            "hubPx": 6.104479969913623,
+            "r5Bar": 0.07833685199887905,
+            "classicalBar": 0.0587087554982938,
+            "r6Bar": 0,
+            "needleErr": 95.18103538984354
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261024_124006",
+      "baseline": {
+        "frames": 447,
+        "coveragePct": 79.19,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 20.810000000000002,
+        "medianAbsBar": 0.155,
+        "scored": 11,
+        "within03": 8,
+        "worst": {
+          "timeS": 30.375,
+          "error": -0.41
+        },
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 447,
+        "coveragePct": 100,
+        "freshFrames": 434,
+        "heldFrames": 13,
+        "gapFrames": 0,
+        "freshPct": 97.0917225950783,
+        "heldPct": 2.9082774049217,
+        "gapPct": 0,
+        "scored": 12,
+        "within03": 12,
+        "medianAbsBar": 0.07857886908953837,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22,
+          "error": 0.2308470725117422
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 12,
+          "within03": 12,
+          "medianAbsBar": 0.07857886908953837,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22,
+            "error": 0.2308470725117422
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "0113",
+            "phase": "hand",
+            "t": 14,
+            "truth": 1.76,
+            "published": 1.6983604133968542,
+            "display": 1.6983604133968542,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.6983604133968542,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 1.56,
+            "published": 1.7908470725117422,
+            "display": 1.7908470725117422,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.7908470725117422,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0233",
+            "phase": "hand",
+            "t": 29,
+            "truth": 2.22,
+            "published": 2.106261078590707,
+            "display": 2.106261078590707,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 2.106261078590707,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0244",
+            "phase": "hand",
+            "t": 30.375,
+            "truth": 5.17,
+            "published": 5.231833724044513,
+            "display": 5.231833724044513,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.231833724044513,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0256",
+            "phase": "hand",
+            "t": 31.875,
+            "truth": 6.41,
+            "published": 6.307994438985585,
+            "display": 6.307994438985585,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.307994438985585,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0268",
+            "phase": "hand",
+            "t": 33.375,
+            "truth": 7.29,
+            "published": 7.240522382510923,
+            "display": 7.240522382510923,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.240522382510923,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0279",
+            "phase": "hand",
+            "t": 34.75,
+            "truth": 7.68,
+            "published": 7.702986750176133,
+            "display": 7.702986750176133,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.702986750176133,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0303",
+            "phase": "hand",
+            "t": 37.75,
+            "truth": 7.61,
+            "published": 7.705324014134564,
+            "display": 7.705324014134564,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.705324014134564,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0335",
+            "phase": "hand",
+            "t": 41.75,
+            "truth": 7.35,
+            "published": 7.409993209197402,
+            "display": 7.409993209197402,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.409993209197402,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0367",
+            "phase": "hand",
+            "t": 45.75,
+            "truth": 6.58,
+            "published": 6.749459768411603,
+            "display": 6.749459768411603,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.749459768411603,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0399",
+            "phase": "hand",
+            "t": 49.75,
+            "truth": 5.87,
+            "published": 5.856647101058846,
+            "display": 5.856647101058846,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.856647101058846,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0443",
+            "phase": "hand",
+            "t": 55.25,
+            "truth": -0.17,
+            "published": 0.03712066137819629,
+            "display": 0.03712066137819629,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.03712066137819629,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ]
+      },
+      "now": {
+        "frames": 447,
+        "coveragePct": 93.96,
+        "freshFrames": 387,
+        "heldFrames": 33,
+        "gapFrames": 27,
+        "freshPct": 86.57718120805369,
+        "heldPct": 7.382550335570469,
+        "gapPct": 6.040268456375839,
+        "scored": 12,
+        "within03": 12,
+        "medianAbsBar": 0.07857886908953837,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22,
+          "error": 0.2308470725117422
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 12,
+          "within03": 12,
+          "medianAbsBar": 0.07857886908953837,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22,
+            "error": 0.2308470725117422
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "0113",
+            "phase": "hand",
+            "t": 14,
+            "truth": 1.76,
+            "published": 1.6983604133968542,
+            "display": 1.6983604133968542,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.6983604133968542,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 1.56,
+            "published": 1.7908470725117422,
+            "display": 1.7908470725117422,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.7908470725117422,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0233",
+            "phase": "hand",
+            "t": 29,
+            "truth": 2.22,
+            "published": 2.106261078590707,
+            "display": 2.106261078590707,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 2.106261078590707,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0244",
+            "phase": "hand",
+            "t": 30.375,
+            "truth": 5.17,
+            "published": 5.231833724044513,
+            "display": 5.231833724044513,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.231833724044513,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0256",
+            "phase": "hand",
+            "t": 31.875,
+            "truth": 6.41,
+            "published": 6.307994438985585,
+            "display": 6.307994438985585,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.307994438985585,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0268",
+            "phase": "hand",
+            "t": 33.375,
+            "truth": 7.29,
+            "published": 7.240522382510923,
+            "display": 7.240522382510923,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.240522382510923,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0279",
+            "phase": "hand",
+            "t": 34.75,
+            "truth": 7.68,
+            "published": 7.702986750176133,
+            "display": 7.702986750176133,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.702986750176133,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0303",
+            "phase": "hand",
+            "t": 37.75,
+            "truth": 7.61,
+            "published": 7.705324014134564,
+            "display": 7.705324014134564,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.705324014134564,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0335",
+            "phase": "hand",
+            "t": 41.75,
+            "truth": 7.35,
+            "published": 7.409993209197402,
+            "display": 7.409993209197402,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.409993209197402,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0367",
+            "phase": "hand",
+            "t": 45.75,
+            "truth": 6.58,
+            "published": 6.749459768411603,
+            "display": 6.749459768411603,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.749459768411603,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0399",
+            "phase": "hand",
+            "t": 49.75,
+            "truth": 5.87,
+            "published": 5.856647101058846,
+            "display": 5.856647101058846,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.856647101058846,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0443",
+            "phase": "hand",
+            "t": 55.25,
+            "truth": -0.17,
+            "published": 0.03712066137819629,
+            "display": 0.03712066137819629,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.03712066137819629,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "20261025_130022",
+      "baseline": {
+        "frames": 400,
+        "coveragePct": 80.5,
+        "freshFrames": null,
+        "heldFrames": null,
+        "freshPct": null,
+        "heldPct": null,
+        "gapPct": 19.5,
+        "medianAbsBar": 0.075,
+        "scored": 12,
+        "within03": 12,
+        "worst": {
+          "timeS": 10,
+          "error": 0.28
+        },
+        "wildPct": 0,
+        "falseTen": 0
+      },
+      "pass2": {
+        "frames": 400,
+        "coveragePct": 94.25,
+        "freshFrames": 318,
+        "heldFrames": 59,
+        "gapFrames": 23,
+        "freshPct": 79.5,
+        "heldPct": 14.75,
+        "gapPct": 5.75,
+        "scored": 13,
+        "within03": 10,
+        "medianAbsBar": 0.12759475341202364,
+        "wildPct": 7.6923076923076925,
+        "worst": {
+          "timeS": 25,
+          "error": 1.0768118712664672
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 13,
+          "within03": 10,
+          "medianAbsBar": 0.12759475341202364,
+          "wildPct": 7.6923076923076925,
+          "worst": {
+            "timeS": 25,
+            "error": 1.0768118712664672
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "0081",
+            "phase": "hand",
+            "t": 10,
+            "truth": 1.39,
+            "published": 1.5847151031555782,
+            "display": 1.5847151031555782,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5847151031555782,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0105",
+            "phase": "hand",
+            "t": 13,
+            "truth": 1.53,
+            "published": 1.5811779486626822,
+            "display": 1.5811779486626822,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5811779486626822,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0129",
+            "phase": "hand",
+            "t": 16,
+            "truth": 1.48,
+            "published": 1.5963828204295936,
+            "display": 1.5963828204295936,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5963828204295936,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0153",
+            "phase": "hand",
+            "t": 19,
+            "truth": 6.53,
+            "published": 6.419179989620654,
+            "display": 6.419179989620654,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.419179989620654,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 7.11,
+            "published": 7.069513658012991,
+            "display": 7.069513658012991,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.069513658012991,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0201",
+            "phase": "hand",
+            "t": 25,
+            "truth": 6.61,
+            "published": 7.6868118712664675,
+            "display": 7.6868118712664675,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.6868118712664675,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0225",
+            "phase": "hand",
+            "t": 28,
+            "truth": 6.69,
+            "published": 6.817594753412024,
+            "display": 6.817594753412024,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.817594753412024,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0249",
+            "phase": "hand",
+            "t": 31,
+            "truth": 6.81,
+            "published": 6.818627527967193,
+            "display": 6.818627527967193,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.818627527967193,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0273",
+            "phase": "hand",
+            "t": 34,
+            "truth": 6.67,
+            "published": 6.170228838376455,
+            "display": 6.170228838376455,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.170228838376455,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0297",
+            "phase": "hand",
+            "t": 37,
+            "truth": 6.4,
+            "published": 6.629326023105049,
+            "display": 6.629326023105049,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.629326023105049,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0329",
+            "phase": "hand",
+            "t": 41,
+            "truth": 5.99,
+            "published": 5.940296077366322,
+            "display": 5.940296077366322,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.940296077366322,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0361",
+            "phase": "hand",
+            "t": 45,
+            "truth": 4.93,
+            "published": 4.764552312047393,
+            "display": 4.764552312047393,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 4.764552312047393,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0396",
+            "phase": "hand",
+            "t": 49.375,
+            "truth": -0.31,
+            "published": 0.0434555008153315,
+            "display": 0.0434555008153315,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.0434555008153315,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ]
+      },
+      "now": {
+        "frames": 400,
+        "coveragePct": 93.25,
+        "freshFrames": 308,
+        "heldFrames": 65,
+        "gapFrames": 27,
+        "freshPct": 77,
+        "heldPct": 16.25,
+        "gapPct": 6.75,
+        "scored": 13,
+        "within03": 10,
+        "medianAbsBar": 0.12759475341202364,
+        "wildPct": 7.6923076923076925,
+        "worst": {
+          "timeS": 25,
+          "error": 1.0768118712664672
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 13,
+          "within03": 10,
+          "medianAbsBar": 0.12759475341202364,
+          "wildPct": 7.6923076923076925,
+          "worst": {
+            "timeS": 25,
+            "error": 1.0768118712664672
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "0081",
+            "phase": "hand",
+            "t": 10,
+            "truth": 1.39,
+            "published": 1.5847151031555782,
+            "display": 1.5847151031555782,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5847151031555782,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0105",
+            "phase": "hand",
+            "t": 13,
+            "truth": 1.53,
+            "published": 1.5811779486626822,
+            "display": 1.5811779486626822,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5811779486626822,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0129",
+            "phase": "hand",
+            "t": 16,
+            "truth": 1.48,
+            "published": 1.5963828204295936,
+            "display": 1.5963828204295936,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5963828204295936,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0153",
+            "phase": "hand",
+            "t": 19,
+            "truth": 6.53,
+            "published": 6.419179989620654,
+            "display": 6.419179989620654,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.419179989620654,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 7.11,
+            "published": 7.069513658012991,
+            "display": 7.069513658012991,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.069513658012991,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0201",
+            "phase": "hand",
+            "t": 25,
+            "truth": 6.61,
+            "published": 7.6868118712664675,
+            "display": 7.6868118712664675,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.6868118712664675,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0225",
+            "phase": "hand",
+            "t": 28,
+            "truth": 6.69,
+            "published": 6.817594753412024,
+            "display": 6.817594753412024,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.817594753412024,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0249",
+            "phase": "hand",
+            "t": 31,
+            "truth": 6.81,
+            "published": 6.818627527967193,
+            "display": 6.818627527967193,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.818627527967193,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0273",
+            "phase": "hand",
+            "t": 34,
+            "truth": 6.67,
+            "published": 6.170228838376455,
+            "display": 6.170228838376455,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.170228838376455,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0297",
+            "phase": "hand",
+            "t": 37,
+            "truth": 6.4,
+            "published": 6.629326023105049,
+            "display": 6.629326023105049,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.629326023105049,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0329",
+            "phase": "hand",
+            "t": 41,
+            "truth": 5.99,
+            "published": 5.940296077366322,
+            "display": 5.940296077366322,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.940296077366322,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0361",
+            "phase": "hand",
+            "t": 45,
+            "truth": 4.93,
+            "published": 4.764552312047393,
+            "display": 4.764552312047393,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 4.764552312047393,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0396",
+            "phase": "hand",
+            "t": 49.375,
+            "truth": -0.31,
+            "published": 0.0434555008153315,
+            "display": 0.0434555008153315,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.0434555008153315,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ]
+      }
+    }
+  ],
+  "baselineLimit": "The initial baseline did not retain individual old-clip hits or exact fresh/held flags. Missing baseline fields remain null."
+}

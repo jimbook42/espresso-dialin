@@ -1,13 +1,10 @@
-# Endpoint guard wide-arc repair handover
+# Wide-arc endpoint repair handover — complete
 
-Branch feat/pressure-accuracy-p2-endpoint. Prior evaluated endpoint-only HEAD: 5f8bdd2. Latest main fetched; 5628c33 remains ancestor.
+Branch feat/pressure-accuracy-p2-endpoint. Candidate f7914e5 based on beb8473; main 5628c33 fetched and remains ancestor.
 
-## Completed fix
-- endpointIsResolved now takes calibrated zero and ten. It first verifies the candidate angle lies on the directed zero-to-ten arc, then uses absolute angular distance to ten against pixel-derived uncertainty. This handles near-zero rays on >180° arcs while still rejecting points past ten and ambiguous readings at ten.
-- Added regression on saved 225219 geometry: zero321.254°, ten144.025°, nearzero321.741°; the arc is >180°, valid ray is resolved. Keeps 160931 endpoint overshoot/uncertainty test.
-- Targeted endpoint + tap calibration tests: 41/41 pass.
-- Full Vitest: 445 passed, 2 documented Python-dependent failures, 1 skipped /448 tests; files84 passed, 3 failed, 1 skipped /88. TemporalReplay missing box-only raw-frames fixture. Production build passed.
-
-## Remaining
-- Run the unchanged live exam once on this code. Preserve the prior 5f8bdd2 exam outputs first, then report baseline / beb8473 / now per-clip coverage fresh/held/gaps, median, within .3, worst, >1%, false10. Focus 225219 and ensure false-ten stays zero. Do not rerun.
-- Commit the new runtime/test fix before the final exam (targeted and full tests/build validated), then record final exam and push. No merge/deploy. No other runtime changes after exam starts.
+- Repair: endpoint guard uses candidate progress on the directed calibrated zero-to-ten arc before applying pixel-derived endpoint uncertainty. Regression protects 225219's >180° near-zero ray while checking 160931 near/past ten.
+- Targeted tests: 41/41 pass. Full Vitest: 445 passed, 2 documented Python-only failures, 1 skipped /448; known box-only temporal fixture also fails. Build passed.
+- Unchanged live exam ran once on f7914e5. Results: 91.82025% published, 80.03030% fresh, 11.78995% held, 8.17975% gaps; 0 false-ten, median .100191 bar, 45/54 within .3, 5.55556% >1, worst -5.946128 at 094055/19s. Targets not all met.
+- Full baseline/previous beb8473/now report: docs/pressure-p2-endpoint-wide-arc-2026-11-02.md and -results.json.
+- Exam outputs preserved: scripts/needle-reader/out/p2-endpoint-before-widearc. Logs wide-arc-*.txt. No protected exam/scoring/threshold/fixtures/config/model edits. No merge/deploy.
+- No more exam run or runtime edits in this task. Commit/push completed fix and report, then stop.
