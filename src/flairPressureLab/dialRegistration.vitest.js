@@ -6,6 +6,7 @@ import {
   registerDialFrame, seedDialRegistration, transformDialAngle,
 } from './dialRegistration.js';
 import { wrapDelta } from './gaugeConfig.js';
+import { barFromTapAnchors } from './tapCalibrate.js';
 
 beforeAll(async () => {
   let cv = createRequire(import.meta.url)('@techstark/opencv-js');
@@ -36,6 +37,29 @@ const calibration = () => ({ hub: { x: 128, y: 128 }, radius: 80,
   zeroAngleDeg: 140, fiveAngleDeg: 220, tenAngleDeg: 310 });
 
 describe('calibration-anchored dial registration', () => {
+  it('preserves 0/5/10 and both piecewise segments through affine tilt across angle wrap', () => {
+    const matrix = [0.92, -0.18, 0.3, 1.05];
+    for (const rotation of [0, 90, 180, 270]) {
+      const zero = (280 + rotation) % 360;
+      const five = (zero + 74) % 360, ten = (zero + 162) % 360;
+      for (const [progress, expected] of [[0, 0], [37, 2.5], [74, 5], [118, 7.5], [162, 10]]) {
+        const measured = transformDialAngle((zero + progress) % 360, matrix);
+        expect(barFromTapAnchors(inverseDialAngle(measured, matrix), zero, five, ten))
+          .toBeCloseTo(expected, 8);
+      }
+      // The opposite end of this needle is outside the clockwise scale.
+      expect(barFromTapAnchors((zero + 180) % 360, zero, five, ten)).toBeNull();
+    }
+  });
+
+  it('keeps the segment above five independent of zero after inverse registration', () => {
+    const matrix = [1.03, 0.12, -0.08, 0.94];
+    const reference = inverseDialAngle(transformDialAngle(80, matrix), matrix);
+    for (const zero of [260, 280, 310]) {
+      expect(barFromTapAnchors(reference, zero, 40, 130)).toBeCloseTo(5 + 40 / 90 * 5, 8);
+    }
+  });
+
   it('maps every tap ray through an affine tilt and back, including wraparound', () => {
     const matrix = [0.92, -0.18, 0.3, 1.05];
     for (const angle of [0, 5, 140, 220, 310, 359]) {
