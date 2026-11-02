@@ -19,3 +19,11 @@ Branch feat/pressure-accuracy-codex; started 5f4a973. Main fetched/merged: alrea
 - Existing fixed profile transfers zero without resting frames, but perspective/profile mismatch remains a risk; final accuracy unmeasured.
 - Step 1 causes many correct gaps when the detector still chooses an off-arc ray. Registration works; do not loosen it.
 - No full suite/build/new exam yet. No targets claimed met. No retraining, scoring/fixture/config changes, main merge/deploy or version bump.
+
+## Step 2 completed
+- Nonlegacy barFromTapAnchors returns null beyond ten; legacy rest-span mapping unchanged.
+- endpointIsResolved propagates half-pixel diagonal endpoint quantization (relative sqrt(2) px) into pointer and tapped-ray angles using actual lever arms. No pressure cutoff/cap introduced. Raw readings whose interval crosses ten are withheld before publication.
+- Targeted tests: 45/45 pass across 3 files. Tests cover out-of-domain, wraparound, pixel resolution scaling and historical 160931 near-endpoint ray.
+- 160931 reader-only historical replay: 292/292 registered; 254 fresh, 37 missing bars, ZERO >=9.95 readings. Entire 10.125–11.375 s ambiguous interval withheld. These are reader diagnostics, not final publisher/exam scores.
+- Steps 1–2 do NOT establish all targets; step 1 still has missing/wrong readings and full-set accuracy is unmeasured. Continue step 3.
+- Next: strengthen geometric pointer/recovery evidence and check 130022 25.25 s. Full suite/build/final exam still unused. Preserve prior observed exam directory before final run.
