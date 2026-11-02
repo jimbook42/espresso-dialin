@@ -6,6 +6,10 @@ const references = new Map();
 const SIZE = 128;
 const CENTRE = SIZE / 2;
 const FACE_RADIUS = 48;
+// A 19 px window at level 2 already spans 76 px of this 96 px face.
+// That mixes printed corners with moving bezel/background pixels. Rim search
+// supplies coarse translation; one octave keeps LK local to the printed face.
+const FLOW_PYRAMID_LEVEL = 1;
 
 function key(cal) {
   return [cal.hub.x, cal.hub.y, cal.radius, cal.zeroAngleDeg, cal.fiveAngleDeg, cal.tenAngleDeg].join('/');
@@ -123,14 +127,14 @@ export function registerDialFrame(image, _cal, pose, state) {
     }) : null;
     const target = own(seed ? cv.matFromArray(ref.points.length, 1, cv.CV_32FC2, seed) : new cv.Mat());
     const status = own(new cv.Mat()), error = own(new cv.Mat());
-    cv.calcOpticalFlowPyrLK(previous, current, source, target, status, error, new cv.Size(19, 19), 3,
+    cv.calcOpticalFlowPyrLK(previous, current, source, target, status, error, new cv.Size(19, 19), FLOW_PYRAMID_LEVEL,
       new cv.TermCriteria(cv.TermCriteria_COUNT | cv.TermCriteria_EPS, 30, 0.01),
       seed ? cv.OPTFLOW_USE_INITIAL_FLOW : 0);
     // Reverse tracking has a known starting estimate too. An unseeded reverse
     // search can converge on another glyph even when forward tracking is right.
     // LK must still refine the estimate from pixels and pass the same 1 px check.
     const back = own(source.clone()), backStatus = own(new cv.Mat()), backError = own(new cv.Mat());
-    cv.calcOpticalFlowPyrLK(current, previous, target, back, backStatus, backError, new cv.Size(19, 19), 3,
+    cv.calcOpticalFlowPyrLK(current, previous, target, back, backStatus, backError, new cv.Size(19, 19), FLOW_PYRAMID_LEVEL,
       new cv.TermCriteria(cv.TermCriteria_COUNT | cv.TermCriteria_EPS, 30, 0.01), cv.OPTFLOW_USE_INITIAL_FLOW);
     const a = [], b = [];
     for (let i = 0; i < ref.points.length; i += 1) {

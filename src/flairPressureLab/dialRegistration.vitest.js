@@ -14,7 +14,7 @@ beforeAll(async () => {
 });
 
 // An asymmetric textured annulus for geometry tests, without pressure labels.
-function texture(transform = [1, 0, 0, 1], translation = [0, 0], blank = false) {
+function texture(transform = [1, 0, 0, 1], translation = [0, 0], blank = false, background = 205) {
   const size = 256, data = new Uint8ClampedArray(size * size * 4);
   const det = transform[0] * transform[3] - transform[1] * transform[2];
   for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) {
@@ -22,7 +22,7 @@ function texture(transform = [1, 0, 0, 1], translation = [0, 0], blank = false) 
     const u = (transform[3] * dx - transform[1] * dy) / det;
     const v = (-transform[2] * dx + transform[0] * dy) / det;
     const r = Math.hypot(u, v), angle = Math.atan2(v, u);
-    let lum = 205;
+    let lum = r > 100 ? background : 205;
     if (!blank && r > 37 && r < 72) {
       lum = 150 + 45 * Math.sin(u / 5.3) * Math.cos(v / 4.1) + 35 * Math.sin(angle * 7 + r / 4);
     }
@@ -101,6 +101,19 @@ describe('calibration-anchored dial registration', () => {
       { x: 160, y: 118, radius: 81 }, state)).toBeNull();
     expect(state.last).toEqual(accepted);
     expect(state.misses).toBe(5);
+  });
+
+  it('tracks printed features when the surround changes independently of the face', () => {
+    const cal = calibration();
+    rememberDialReference(texture(), cal);
+    const matrix = [0.99, -0.08, 0.09, 1.02];
+    const moved = registerDialFrame(texture(matrix, [20, -5], false, 35), cal,
+      { x: 146, y: 125, radius: 82 }, createDialRegistration(cal));
+    expect(moved).not.toBeNull();
+    expect(moved.x).toBeCloseTo(148, 0);
+    expect(moved.y).toBeCloseTo(123, 0);
+    expect(Math.abs(wrapDelta(transformDialAngle(cal.zeroAngleDeg, moved.matrix),
+      transformDialAngle(cal.zeroAngleDeg, matrix)))).toBeLessThan(1);
   });
 
   it('can restore a transient reference from confirmed face rotation without changing zero', () => {
