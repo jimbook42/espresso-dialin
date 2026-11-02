@@ -2,13 +2,19 @@
  * Labels provide only the initial hub/5/10 taps and independent scoring truth.
  * No subsequent label is supplied to the reader. */
 import {createRequire} from 'node:module';
-import {readFileSync,writeFileSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {probe,decodeStill} from '../../needle-reader/examLive.mjs';
 import {setOpenCvForTests} from '../../../src/flairPressureLab/opencvRuntime.js';
 import {calibrateFromTaps,createCalibratedTracker,readCalibratedFrame,barFromTapAnchors,pointAngle} from '../../../src/flairPressureLab/tapCalibrate.js';
 import {createShotLabR7Publisher} from '../../../src/flairPressureLab/shotLabR7Live.js';
 import {quantile} from '../../needle-reader/metrics.mjs';
+const outputArg=process.argv.indexOf('--output-dir');
+if(outputArg>=0&&!process.argv[outputArg+1])throw new Error('--output-dir requires a directory');
+const outputDir=outputArg>=0?path.resolve(process.argv[outputArg+1])
+ :fileURLToPath(new URL('../../needle-reader/out/',import.meta.url));
+mkdirSync(outputDir,{recursive:true});
 const require=createRequire(import.meta.url);
 let cv=require('@techstark/opencv-js');
 if(typeof cv?.then==='function')cv=await cv;
@@ -65,4 +71,4 @@ console.log(spec.name,JSON.stringify(summary));
 console.table(rows.map(r=>({id:r.id,t:r.t,truth:r.truth?.toFixed(3),raw:r.read.rawBar?.toFixed(3),bar:r.output.bar?.toFixed(3),reason:r.pointer?.reason,lost:r.read.lost,hub:JSON.stringify(r.read.hub)})));
 return result;
 });
-writeFileSync(new URL('../../needle-reader/out/low-pressure-'+(process.argv[2]||'latest')+'.json',import.meta.url),JSON.stringify(results));
+writeFileSync(path.join(outputDir,'low-pressure-'+(process.argv[2]||'latest')+'.json'),JSON.stringify(results));

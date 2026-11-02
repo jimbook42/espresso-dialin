@@ -1,5 +1,24 @@
 # Low-pressure reading investigation — 2026-11-03
 
+## Repair 1 — current branch state
+
+Isaac approved restoring `tapCalibrate.js` exactly to main (`724f089`): the 22° geometry tolerance and original rest-angle logic are back. The calibration changes and their claimed improvements in the historical investigation below are no longer present. Export diagnostics, their capture hooks, JSON fields and all three export tests remain unchanged from `01c2713`. They remain an in-memory, current-session export with no saved-shot or database changes.
+
+The replay script now creates its output directory recursively. Its default remains the ignored `scripts/needle-reader/out/`; `--output-dir <directory>` allows isolated callers. `lowPressureBatch.vitest.js` creates a new nested output directory under the OS temporary directory, verifies actual main behavior on accurate/perturbed taps, and removes its temporary artifacts. It does not write into the checkout. Main's perturbed false-rest readings are documented by assertions, not represented as corrected readings.
+
+Validation for Repair 1:
+
+- `npm run test:vitest`: 472 passed, 2 known Python-dependent failures, 1 skipped; the known `/workspace/.../raw-frames.json` suite also cannot collect on this PC. No other failures. The real-video fresh-directory regression and all three export tests passed.
+- `npm run build`: passed.
+- Single full exam: exactly 94.98% stream coverage, 0.098 bar median, 0.400 bar worst error, 0% over 1 bar and zero false 10s. All ten clips and both hand-label streams completed. Command: `node --import ./scripts/needle-reader/out/exam-observer.mjs scripts/needle-reader/exam.mjs --live`.
+- November 2: all six additional clips rerun; combined exam/batch comparison has 6,045 identical output frames (bar, displayed bar, fresh/held status, reason and measurement time). Displayed median unchanged at 0.086547 bar (0.087 rounded).
+- November 3: all 13 fixed calibration cases rerun; all 1,612 output frames match the original main baseline. Accurate-tap median remains 0.196202 bar, with zero false rest readings and all five named gap frames fresh. Perturbed cases now match the historical **Before** column below, including main's known errors.
+- Checks: `tapCalibrate.js` has no diff against `origin/main`; export diagnostics, hooks and their tests have no diff against `01c2713`. Fixtures and tracked input files were not written by the regression. Physical camera/download testing was not repeated in this repair.
+
+Files changed by this repair: `src/flairPressureLab/tapCalibrate.js`, `src/flairPressureLab/lowPressureBatch.vitest.js`, `scripts/pressure-label/analysis/replay-low-pressure.mjs`, and this report. No fixture, exam, scoring, frozen configuration, or saved-shot files changed. No merge or deployment.
+
+## Historical investigation at `01c2713` — geometry changes reverted by Repair 1
+
 Base: `origin/main` at `724f08924c4a8e2a097bf3c2f4ed87ef7b4ae19c`, v4.13.29. Branch: `fix/low-pressure`. No version bump, merge, deployment, dependencies, schema, saved-shot, settings, or database changes. The November 3 fixtures are imported byte-for-byte from `origin/data/labels-2026-11-03`; the pre-existing untracked November 2 fixtures are untouched.
 
 ## Outcome and limits
