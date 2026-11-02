@@ -1,0 +1,3355 @@
+{
+  "candidate": "a41960b",
+  "kind": "PRE-INTEGRATION DIAGNOSTIC; not live exam",
+  "productionBase": "f3e3db1",
+  "baselineVerifiedFrames": 3961,
+  "targets": {
+    "coverage": true,
+    "median": false,
+    "wild": true,
+    "falseTen": true
+  },
+  "overall": {
+    "frames": 3961,
+    "freshFrames": 3412,
+    "heldFrames": 383,
+    "gapFrames": 166,
+    "falseTen": 0,
+    "freshFalseTen": 0,
+    "heldFalseTen": 0,
+    "coveragePct": 95.8091391062863,
+    "freshPct": 86.1398636707902,
+    "heldPct": 9.669275435496086,
+    "gapPct": 4.190860893713709,
+    "scored": 53,
+    "within03": 34,
+    "medianAbsBar": 0.19268907208514774,
+    "wildPct": 1.8867924528301887,
+    "worst": {
+      "timeS": 11,
+      "error": 1.0604302987565648
+    }
+  },
+  "clips": [
+    {
+      "id": "20261015_225219",
+      "baseline": {
+        "frames": 100,
+        "coveragePct": 81,
+        "freshFrames": 64,
+        "heldFrames": 17,
+        "gapFrames": 19,
+        "freshPct": 64,
+        "heldPct": 17,
+        "gapPct": 19,
+        "scored": 1,
+        "within03": 1,
+        "medianAbsBar": 0.002049668117932776,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 6.264322,
+          "error": 0.002049668117932776
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.002049668117932776,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 6.264322,
+            "error": 0.002049668117932776
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f029",
+            "phase": "dry_1",
+            "t": 6.264322,
+            "truth": 0,
+            "published": 0.002049668117932776,
+            "display": 0.001672856035217053,
+            "reason": "tap-fresh",
+            "hubPx": 4.092361728340047,
+            "r5Bar": 0,
+            "classicalBar": 0.002049668117932776,
+            "r6Bar": 0,
+            "needleErr": 176.1017292417879
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 100,
+        "freshFrames": 96,
+        "heldFrames": 4,
+        "gapFrames": 0,
+        "coveragePct": 100,
+        "freshPct": 96,
+        "heldPct": 4,
+        "gapPct": 0,
+        "scored": 1,
+        "within03": 1,
+        "medianAbsBar": 0.14265947779497748,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 6.264322,
+          "error": 0.14265947779497748
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f029",
+            "phase": "dry_1",
+            "t": 6.264322,
+            "truth": 0,
+            "published": 0.14265947779497748,
+            "display": 0.001672856035217053,
+            "reason": "tap-fresh",
+            "hubPx": 4.092361728340047,
+            "r5Bar": 0,
+            "classicalBar": 0.002049668117932776,
+            "r6Bar": 0,
+            "needleErr": 176.1017292417879
+          }
+        ]
+      },
+      "checkpoints": []
+    },
+    {
+      "id": "20261015_225307",
+      "baseline": {
+        "frames": 121,
+        "coveragePct": 73.55,
+        "freshFrames": 64,
+        "heldFrames": 25,
+        "gapFrames": 32,
+        "freshPct": 52.892561983471076,
+        "heldPct": 20.66115702479339,
+        "gapPct": 26.446280991735538,
+        "scored": 0,
+        "within03": 0,
+        "medianAbsBar": null,
+        "wildPct": null,
+        "worst": null,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f030",
+            "phase": "dry_1",
+            "t": 7.5813165,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 0.978339916197424,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 178.71047650664684
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 121,
+        "freshFrames": 52,
+        "heldFrames": 37,
+        "gapFrames": 32,
+        "coveragePct": 73.55371900826447,
+        "freshPct": 42.97520661157025,
+        "heldPct": 30.578512396694215,
+        "gapPct": 26.446280991735538,
+        "scored": 0,
+        "within03": 0,
+        "medianAbsBar": null,
+        "wildPct": null,
+        "worst": null,
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f030",
+            "phase": "dry_1",
+            "t": 7.5813165,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 0.978339916197424,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 178.71047650664684
+          }
+        ]
+      },
+      "checkpoints": []
+    },
+    {
+      "id": "20261017_084814",
+      "baseline": {
+        "frames": 380,
+        "coveragePct": 96.58,
+        "freshFrames": 353,
+        "heldFrames": 14,
+        "gapFrames": 13,
+        "freshPct": 92.89473684210526,
+        "heldPct": 3.6842105263157894,
+        "gapPct": 3.4210526315789473,
+        "scored": 4,
+        "within03": 3,
+        "medianAbsBar": 0.13795351365862407,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22,
+          "error": -0.30176204645641036
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 4,
+          "within03": 3,
+          "medianAbsBar": 0.13795351365862407,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22,
+            "error": -0.30176204645641036
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f001",
+            "phase": "rest",
+            "t": 1.8,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 4.068719803310934,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 95.56083087583681
+          },
+          {
+            "id": "f002",
+            "phase": "preinfusion",
+            "t": 9.5,
+            "truth": 1.4108058823836578,
+            "published": 1.597800182393436,
+            "display": 1.5279042896893724,
+            "reason": "tap-fresh",
+            "hubPx": 4.764007319820251,
+            "r5Bar": 0.22156412742959547,
+            "classicalBar": 1.597800182393436,
+            "r6Bar": 1.4924358463977287,
+            "needleErr": 108.86753908716167
+          },
+          {
+            "id": "f003",
+            "phase": "ramp",
+            "t": 18.5,
+            "truth": 5.162671695109537,
+            "published": 5.073758967802067,
+            "display": 5.073758967802067,
+            "reason": "tap-fresh",
+            "hubPx": 3.5198094548752166,
+            "r5Bar": 0.0016147647939365882,
+            "classicalBar": 5.073758967802067,
+            "r6Bar": 4.479649200790483,
+            "needleErr": 172.75017860649132
+          },
+          {
+            "id": "f004",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.612882354007921,
+            "published": 7.31112030755151,
+            "display": 7.31112030755151,
+            "reason": "tap-fresh",
+            "hubPx": 2.508667042255806,
+            "r5Bar": 0,
+            "classicalBar": 7.31112030755151,
+            "r6Bar": 7.026450236157734,
+            "needleErr": 143.12384412953497
+          },
+          {
+            "id": "f031",
+            "phase": "taper",
+            "t": 41.5,
+            "truth": 5.738081057539937,
+            "published": 5.7384417675700945,
+            "display": 5.806220277394669,
+            "reason": "tap-fresh",
+            "hubPx": 4.744958889606798,
+            "r5Bar": 0,
+            "classicalBar": 5.7384417675700945,
+            "r6Bar": 5.677068332779902,
+            "needleErr": 175.3554994530631
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 380,
+        "freshFrames": 355,
+        "heldFrames": 14,
+        "gapFrames": 11,
+        "coveragePct": 97.10526315789474,
+        "freshPct": 93.42105263157895,
+        "heldPct": 3.6842105263157894,
+        "gapPct": 2.8947368421052633,
+        "scored": 5,
+        "within03": 3,
+        "medianAbsBar": 0.15379283786849474,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22,
+          "error": -0.4510685759545856
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f001",
+            "phase": "rest",
+            "t": 1.8,
+            "truth": 0,
+            "published": 0.03503845367758516,
+            "display": null,
+            "reason": "tap-fresh",
+            "hubPx": 4.068719803310934,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 95.56083087583681
+          },
+          {
+            "id": "f002",
+            "phase": "preinfusion",
+            "t": 9.5,
+            "truth": 1.4108058823836578,
+            "published": 1.4412034211147344,
+            "display": 1.5279042896893724,
+            "reason": "tap-fresh",
+            "hubPx": 4.764007319820251,
+            "r5Bar": 0.22156412742959547,
+            "classicalBar": 1.597800182393436,
+            "r6Bar": 1.4924358463977287,
+            "needleErr": 108.86753908716167
+          },
+          {
+            "id": "f003",
+            "phase": "ramp",
+            "t": 18.5,
+            "truth": 5.162671695109537,
+            "published": 4.718074110415997,
+            "display": 5.073758967802067,
+            "reason": "tap-fresh",
+            "hubPx": 3.5198094548752166,
+            "r5Bar": 0.0016147647939365882,
+            "classicalBar": 5.073758967802067,
+            "r6Bar": 4.479649200790483,
+            "needleErr": 172.75017860649132
+          },
+          {
+            "id": "f004",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.612882354007921,
+            "published": 7.161813778053335,
+            "display": 7.31112030755151,
+            "reason": "tap-fresh",
+            "hubPx": 2.508667042255806,
+            "r5Bar": 0,
+            "classicalBar": 7.31112030755151,
+            "r6Bar": 7.026450236157734,
+            "needleErr": 143.12384412953497
+          },
+          {
+            "id": "f031",
+            "phase": "taper",
+            "t": 41.5,
+            "truth": 5.738081057539937,
+            "published": 5.584288219671442,
+            "display": 5.806220277394669,
+            "reason": "tap-fresh",
+            "hubPx": 4.744958889606798,
+            "r5Bar": 0,
+            "classicalBar": 5.7384417675700945,
+            "r6Bar": 5.677068332779902,
+            "needleErr": 175.3554994530631
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 5.819014795748802,
+          "candidate": {
+            "bar": 5.8415422813237745,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 4.834541752432122,
+              "needleDeg": 336,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 5.76116234479365,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 336,
+          "decision": "shaft",
+          "rawBar": 5.8415422813237745
+        },
+        {
+          "timeS": 25,
+          "baseline": 7.048809150669199,
+          "candidate": {
+            "bar": 6.938996965344178,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.818377648254201,
+              "needleDeg": 356,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.890347623024371,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 356,
+          "decision": "shaft",
+          "rawBar": 6.938996965344178
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 7.1151971350336085,
+          "candidate": {
+            "bar": 6.773624578428803,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.796154827718545,
+              "needleDeg": 353,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.717199196216267,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 353,
+          "decision": "shaft",
+          "rawBar": 6.773624578428803
+        },
+        {
+          "timeS": 40,
+          "baseline": 6.016845013815898,
+          "candidate": {
+            "bar": 5.8091742217556535,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 40000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 5.754448960150402,
+              "needleDeg": 336,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 5.734176196722679,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 336,
+          "decision": "shaft",
+          "rawBar": 5.8091742217556535
+        }
+      ]
+    },
+    {
+      "id": "20261017_084919",
+      "baseline": {
+        "frames": 319,
+        "coveragePct": 93.1,
+        "freshFrames": 273,
+        "heldFrames": 24,
+        "gapFrames": 22,
+        "freshPct": 85.57993730407523,
+        "heldPct": 7.523510971786834,
+        "gapPct": 6.896551724137931,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.008612527085185314,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 38.838322,
+          "error": 0.13583413697675822
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.008612527085185314,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 38.838322,
+            "error": 0.13583413697675822
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f017",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.008612527085185314,
+            "display": 0.0088225883717564,
+            "reason": "tap-fresh",
+            "hubPx": 4.213837150870301,
+            "r5Bar": 0.16791436475956087,
+            "classicalBar": 0.008612527085185314,
+            "r6Bar": 0,
+            "needleErr": 87.79947883746132
+          },
+          {
+            "id": "f018",
+            "phase": "used_2",
+            "t": 19.919161,
+            "truth": 2.1833648602400824,
+            "published": 2.1828718756901964,
+            "display": 2.1828718756901964,
+            "reason": "tap-fresh",
+            "hubPx": 5.392602728742932,
+            "r5Bar": 0,
+            "classicalBar": 2.1828718756901964,
+            "r6Bar": 2.4303620109582993,
+            "needleErr": 132.03912295493757
+          },
+          {
+            "id": "f019",
+            "phase": "used_3",
+            "t": 38.838322,
+            "truth": -0.02654949895968859,
+            "published": 0.10928463801706963,
+            "display": 0.15327821482761783,
+            "reason": "tap-fresh",
+            "hubPx": 5.942366571885467,
+            "r5Bar": 0.04456781774468808,
+            "classicalBar": 0.10928463801706963,
+            "r6Bar": 0,
+            "needleErr": 92.11773137978128
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 319,
+        "freshFrames": 306,
+        "heldFrames": 13,
+        "gapFrames": 0,
+        "coveragePct": 100,
+        "freshPct": 95.92476489028213,
+        "heldPct": 4.075235109717869,
+        "gapPct": 0,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.15712354524095362,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 38.838322,
+          "error": 0.2398456222267369
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f017",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.15712354524095362,
+            "display": 0.0088225883717564,
+            "reason": "tap-fresh",
+            "hubPx": 4.213837150870301,
+            "r5Bar": 0.16791436475956087,
+            "classicalBar": 0.008612527085185314,
+            "r6Bar": 0,
+            "needleErr": 87.79947883746132
+          },
+          {
+            "id": "f018",
+            "phase": "used_2",
+            "t": 19.919161,
+            "truth": 2.1833648602400824,
+            "published": 2.089092811627022,
+            "display": 2.1828718756901964,
+            "reason": "tap-fresh",
+            "hubPx": 5.392602728742932,
+            "r5Bar": 0,
+            "classicalBar": 2.1828718756901964,
+            "r6Bar": 2.4303620109582993,
+            "needleErr": 132.03912295493757
+          },
+          {
+            "id": "f019",
+            "phase": "used_3",
+            "t": 38.838322,
+            "truth": -0.02654949895968859,
+            "published": 0.2132961232670483,
+            "display": 0.15327821482761783,
+            "reason": "tap-fresh",
+            "hubPx": 5.942366571885467,
+            "r5Bar": 0.04456781774468808,
+            "classicalBar": 0.10928463801706963,
+            "r6Bar": 0,
+            "needleErr": 92.11773137978128
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 2.593850274823086,
+          "candidate": {
+            "bar": 2.4976533041999622,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 2.6347004682086768,
+              "needleDeg": 280,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 2.606206509534087,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 280,
+          "decision": "shaft",
+          "rawBar": 2.4976533041999622
+        },
+        {
+          "timeS": 25,
+          "baseline": 0.8166308376388229,
+          "candidate": {
+            "bar": 0.9121608695396024,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 1.245626084915021,
+              "needleDeg": 250,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 0.9500773177547585,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 250,
+          "decision": "shaft",
+          "rawBar": 0.9121608695396024
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 0.7210335937681044,
+          "candidate": {
+            "bar": 0.8250206714762811,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 1.0890659647620922,
+              "needleDeg": 248,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 0.8536794781209656,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 248,
+          "decision": "shaft",
+          "rawBar": 0.8250206714762811
+        }
+      ]
+    },
+    {
+      "id": "20261017_134943",
+      "baseline": {
+        "frames": 472,
+        "coveragePct": 95.13,
+        "freshFrames": 404,
+        "heldFrames": 45,
+        "gapFrames": 23,
+        "freshPct": 85.59322033898304,
+        "heldPct": 9.533898305084746,
+        "gapPct": 4.872881355932203,
+        "scored": 5,
+        "within03": 4,
+        "medianAbsBar": 0.09837689452368714,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 25,
+          "error": 0.6250010099269208
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 4,
+          "within03": 3,
+          "medianAbsBar": 0.18642497329205598,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 25,
+            "error": 0.6250010099269208
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.008900328559508706,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 5.4,
+            "error": 0.008900328559508706
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f005",
+            "phase": "rest",
+            "t": 5.4,
+            "truth": 0,
+            "published": 0.008900328559508706,
+            "display": 0.010198216741586094,
+            "reason": "held:needle-missing",
+            "hubPx": 4.023799360759803,
+            "r5Bar": 0.09744022031074115,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 179.81088395919932
+          },
+          {
+            "id": "f006",
+            "phase": "preinfusion",
+            "t": 16.5,
+            "truth": 1.828450501741842,
+            "published": 1.8845156338036837,
+            "display": 1.9487749069119624,
+            "reason": "tap-fresh",
+            "hubPx": 4.100491314667571,
+            "r5Bar": 0,
+            "classicalBar": 1.8845156338036837,
+            "r6Bar": 1.9166381088510756,
+            "needleErr": 143.82569441269487
+          },
+          {
+            "id": "f007",
+            "phase": "ramp",
+            "t": 25,
+            "truth": 6.283828678666444,
+            "published": 6.908829688593364,
+            "display": 6.908829688593364,
+            "reason": "tap-fresh",
+            "hubPx": 4.867222888262304,
+            "r5Bar": null,
+            "classicalBar": 6.908829688593364,
+            "r6Bar": 6.435610292419878,
+            "needleErr": 72.81841864823167
+          },
+          {
+            "id": "f008",
+            "phase": "peak",
+            "t": 29,
+            "truth": 7.3685056700973375,
+            "published": 7.094032618036913,
+            "display": 7.094032618036913,
+            "reason": "tap-fresh",
+            "hubPx": 5.109528526125073,
+            "r5Bar": 0,
+            "classicalBar": 7.094032618036913,
+            "r6Bar": 6.828961260827022,
+            "needleErr": 60.45674213072823
+          },
+          {
+            "id": "f032",
+            "phase": "taper",
+            "t": 48.5,
+            "truth": 6.192888013789439,
+            "published": 6.094511119265752,
+            "display": 6.218066562385783,
+            "reason": "tap-fresh",
+            "hubPx": 3.6694442594297834,
+            "r5Bar": 0,
+            "classicalBar": 6.094511119265752,
+            "r6Bar": 6.060794272812049,
+            "needleErr": 75.24134405866499
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 472,
+        "freshFrames": 435,
+        "heldFrames": 37,
+        "gapFrames": 0,
+        "coveragePct": 100,
+        "freshPct": 92.16101694915254,
+        "heldPct": 7.838983050847458,
+        "gapPct": 0,
+        "scored": 5,
+        "within03": 3,
+        "medianAbsBar": 0.27952154661399414,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 48.5,
+          "error": -0.3850141887169043
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f005",
+            "phase": "rest",
+            "t": 5.4,
+            "truth": 0,
+            "published": 0.27952154661399414,
+            "display": 0.010198216741586094,
+            "reason": "tap-fresh",
+            "hubPx": 4.023799360759803,
+            "r5Bar": 0.09744022031074115,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 179.81088395919932
+          },
+          {
+            "id": "f006",
+            "phase": "preinfusion",
+            "t": 16.5,
+            "truth": 1.828450501741842,
+            "published": 2.019440376476968,
+            "display": 1.9487749069119624,
+            "reason": "tap-fresh",
+            "hubPx": 4.100491314667571,
+            "r5Bar": 0,
+            "classicalBar": 1.8845156338036837,
+            "r6Bar": 1.9166381088510756,
+            "needleErr": 143.82569441269487
+          },
+          {
+            "id": "f007",
+            "phase": "ramp",
+            "t": 25,
+            "truth": 6.283828678666444,
+            "published": 6.329168849852871,
+            "display": 6.908829688593364,
+            "reason": "tap-fresh",
+            "hubPx": 4.867222888262304,
+            "r5Bar": null,
+            "classicalBar": 6.908829688593364,
+            "r6Bar": 6.435610292419878,
+            "needleErr": 72.81841864823167
+          },
+          {
+            "id": "f008",
+            "phase": "peak",
+            "t": 29,
+            "truth": 7.3685056700973375,
+            "published": 6.986591151575415,
+            "display": 7.094032618036913,
+            "reason": "tap-fresh",
+            "hubPx": 5.109528526125073,
+            "r5Bar": 0,
+            "classicalBar": 7.094032618036913,
+            "r6Bar": 6.828961260827022,
+            "needleErr": 60.45674213072823
+          },
+          {
+            "id": "f032",
+            "phase": "taper",
+            "t": 48.5,
+            "truth": 6.192888013789439,
+            "published": 5.807873825072535,
+            "display": 6.218066562385783,
+            "reason": "held:needle-missing",
+            "hubPx": 3.6694442594297834,
+            "r5Bar": 0,
+            "classicalBar": 6.094511119265752,
+            "r6Bar": 6.060794272812049,
+            "needleErr": 75.24134405866499
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 1.9089476098261051,
+          "candidate": {
+            "bar": 1.8939417331545836,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 1.9638543435574527,
+              "needleDeg": 354,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 1.8753335803696116,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 354,
+          "decision": "shaft",
+          "rawBar": 1.8939417331545836
+        },
+        {
+          "timeS": 25,
+          "baseline": 6.908829688593364,
+          "candidate": {
+            "bar": 6.329168849852871,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.07274990051926,
+              "needleDeg": 72,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.246452480751205,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 72,
+          "decision": "shaft",
+          "rawBar": 6.329168849852871
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 6.914754839399101,
+          "candidate": {
+            "bar": 6.391908836113,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.178548158416287,
+              "needleDeg": 73,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.297048264495839,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 73,
+          "decision": "shaft",
+          "rawBar": 6.391908836113
+        },
+        {
+          "timeS": 40,
+          "baseline": 7.281349848447082,
+          "candidate": {
+            "bar": 6.878501444819454,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 40000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.9105009864044264,
+              "needleDeg": 82,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.796174122419263,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 82,
+          "decision": "shaft",
+          "rawBar": 6.878501444819454
+        }
+      ]
+    },
+    {
+      "id": "20261017_135116",
+      "baseline": {
+        "frames": 358,
+        "coveragePct": 91.9,
+        "freshFrames": 307,
+        "heldFrames": 22,
+        "gapFrames": 29,
+        "freshPct": 85.75418994413408,
+        "heldPct": 6.145251396648045,
+        "gapPct": 8.100558659217876,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.010424627579004198,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22.381789,
+          "error": -0.031433209378374904
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 2,
+          "within03": 2,
+          "medianAbsBar": 0.02092891847868955,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22.381789,
+            "error": -0.031433209378374904
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.0023220477054340487,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 1,
+            "error": 0.0023220477054340487
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f020",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.0023220477054340487,
+            "display": 0.0018837386116650878,
+            "reason": "held:needle-missing",
+            "hubPx": 3.7825475183856643,
+            "r5Bar": 0.7399405474400468,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 169.44094297777866
+          },
+          {
+            "id": "f021",
+            "phase": "used_2",
+            "t": 22.381789,
+            "truth": 3.6559762240705402,
+            "published": 3.6245430146921653,
+            "display": 3.6245430146921653,
+            "reason": "tap-fresh",
+            "hubPx": 4.541702488994737,
+            "r5Bar": 0,
+            "classicalBar": 3.6245430146921653,
+            "r6Bar": 3.613187202275492,
+            "needleErr": 107.28158475844447
+          },
+          {
+            "id": "f022",
+            "phase": "used_3",
+            "t": 43.763578,
+            "truth": 0.47212770016260264,
+            "published": 0.48255232774160683,
+            "display": 0.6091278337683799,
+            "reason": "tap-fresh",
+            "hubPx": 5.81863563338478,
+            "r5Bar": 0,
+            "classicalBar": 0.48255232774160683,
+            "r6Bar": 0.5603302953132923,
+            "needleErr": 167.94584684274486
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 358,
+        "freshFrames": 325,
+        "heldFrames": 28,
+        "gapFrames": 5,
+        "coveragePct": 98.60335195530726,
+        "freshPct": 90.78212290502793,
+        "heldPct": 7.82122905027933,
+        "gapPct": 1.3966480446927374,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.14635844485892713,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22.381789,
+          "error": -0.21081204334440784
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f020",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.11806971717196928,
+            "display": 0.0018837386116650878,
+            "reason": "tap-fresh",
+            "hubPx": 3.7825475183856643,
+            "r5Bar": 0.7399405474400468,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 169.44094297777866
+          },
+          {
+            "id": "f021",
+            "phase": "used_2",
+            "t": 22.381789,
+            "truth": 3.6559762240705402,
+            "published": 3.4451641807261324,
+            "display": 3.6245430146921653,
+            "reason": "tap-fresh",
+            "hubPx": 4.541702488994737,
+            "r5Bar": 0,
+            "classicalBar": 3.6245430146921653,
+            "r6Bar": 3.613187202275492,
+            "needleErr": 107.28158475844447
+          },
+          {
+            "id": "f022",
+            "phase": "used_3",
+            "t": 43.763578,
+            "truth": 0.47212770016260264,
+            "published": 0.3257692553036755,
+            "display": 0.6091278337683799,
+            "reason": "tap-fresh",
+            "hubPx": 5.81863563338478,
+            "r5Bar": 0,
+            "classicalBar": 0.48255232774160683,
+            "r6Bar": 0.5603302953132923,
+            "needleErr": 167.94584684274486
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 0.8070362349666205,
+          "candidate": {
+            "bar": 0.7836449828299303,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 3.2143474871019735,
+              "needleDeg": 341,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 0.8037227190395262,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 341,
+          "decision": "shaft",
+          "rawBar": 0.7836449828299303
+        },
+        {
+          "timeS": 25,
+          "baseline": 0.04071520753143168,
+          "candidate": {
+            "bar": 0.049135020310607166,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 0,
+              "needleDeg": 328,
+              "published": true,
+              "reason": "rest",
+              "rawBar": 0,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 328,
+          "decision": "shaft",
+          "rawBar": 0.049135020310607166
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 0.0004021208822148532,
+          "candidate": {
+            "bar": 0.03826032319471948,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 0,
+              "needleDeg": 328,
+              "published": true,
+              "reason": "rest",
+              "rawBar": 0,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 328,
+          "decision": "shaft",
+          "rawBar": 0.03826032319471948
+        },
+        {
+          "timeS": 40,
+          "baseline": 0.030110313165952963,
+          "candidate": {
+            "bar": 0.015930985359256224,
+            "fresh": false,
+            "held": true,
+            "uncertain": true,
+            "measuredAtMs": null,
+            "reason": "held:needle-missing",
+            "classicalStep": {
+              "bar": 0,
+              "needleDeg": 325,
+              "published": true,
+              "reason": "uncertain-hold",
+              "rawBar": null,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 324,
+          "decision": "shaft",
+          "rawBar": null
+        }
+      ]
+    },
+    {
+      "id": "20261018_094055",
+      "baseline": {
+        "frames": 435,
+        "coveragePct": 95.17,
+        "freshFrames": 288,
+        "heldFrames": 126,
+        "gapFrames": 21,
+        "freshPct": 66.20689655172414,
+        "heldPct": 28.96551724137931,
+        "gapPct": 4.827586206896552,
+        "scored": 3,
+        "within03": 0,
+        "medianAbsBar": 5.347803933458339,
+        "wildPct": 66.66666666666667,
+        "worst": {
+          "timeS": 19,
+          "error": -5.946128188202977
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 2,
+          "within03": 0,
+          "medianAbsBar": 3.430673281085971,
+          "wildPct": 50,
+          "worst": {
+            "timeS": 19,
+            "error": -5.946128188202977
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 0,
+          "medianAbsBar": 5.347803933458339,
+          "wildPct": 100,
+          "worst": {
+            "timeS": 40,
+            "error": -5.347803933458339
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f009",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 7.894938308894046,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": 1.5547370267815743,
+            "needleErr": null
+          },
+          {
+            "id": "f010",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.3871933477541407,
+            "published": 2.302411721723106,
+            "display": 2.3151606711323955,
+            "reason": "tap-fresh",
+            "hubPx": 7.845305526241643,
+            "r5Bar": 0,
+            "classicalBar": 2.302411721723106,
+            "r6Bar": 2.8441522415237603,
+            "needleErr": 153.9763178811546
+          },
+          {
+            "id": "f011",
+            "phase": "ramp",
+            "t": 19,
+            "truth": 5.972936406294782,
+            "published": 0.026808218091805204,
+            "display": 0.027802019994949616,
+            "reason": "tap-fresh",
+            "hubPx": 9.203688296382703,
+            "r5Bar": 0,
+            "classicalBar": 0.026808218091805204,
+            "r6Bar": 0,
+            "needleErr": 81.18054160360845
+          },
+          {
+            "id": "f012",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.190145427191927,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 10.66876936454171,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 62.49159673393484
+          },
+          {
+            "id": "f033",
+            "phase": "taper",
+            "t": 40,
+            "truth": 5.404496304798196,
+            "published": 0.05669237133985777,
+            "display": 0.024754110648302397,
+            "reason": "held:rate-unconfirmed",
+            "hubPx": 10.273747403802508,
+            "r5Bar": 0.07511565353648204,
+            "classicalBar": 7.882642721114219,
+            "r6Bar": null,
+            "needleErr": 95.3678766875235
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 435,
+        "freshFrames": 374,
+        "heldFrames": 49,
+        "gapFrames": 12,
+        "coveragePct": 97.24137931034483,
+        "freshPct": 85.97701149425288,
+        "heldPct": 11.264367816091953,
+        "gapPct": 2.7586206896551726,
+        "scored": 3,
+        "within03": 0,
+        "medianAbsBar": 0.6228994749578796,
+        "wildPct": 33.333333333333336,
+        "worst": {
+          "timeS": 11,
+          "error": 1.0604302987565648
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f009",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "pose-lost",
+            "hubPx": 7.894938308894046,
+            "r5Bar": null,
+            "classicalBar": null,
+            "r6Bar": 1.5547370267815743,
+            "needleErr": null
+          },
+          {
+            "id": "f010",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.3871933477541407,
+            "published": 2.4476236465107055,
+            "display": 2.3151606711323955,
+            "reason": "tap-fresh",
+            "hubPx": 7.845305526241643,
+            "r5Bar": 0,
+            "classicalBar": 2.302411721723106,
+            "r6Bar": 2.8441522415237603,
+            "needleErr": 153.9763178811546
+          },
+          {
+            "id": "f011",
+            "phase": "ramp",
+            "t": 19,
+            "truth": 5.972936406294782,
+            "published": 5.360987059356033,
+            "display": 0.027802019994949616,
+            "reason": "held:needle-missing",
+            "hubPx": 9.203688296382703,
+            "r5Bar": 0,
+            "classicalBar": 0.026808218091805204,
+            "r6Bar": 0,
+            "needleErr": 81.18054160360845
+          },
+          {
+            "id": "f012",
+            "phase": "peak",
+            "t": 22,
+            "truth": 7.190145427191927,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 10.66876936454171,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 62.49159673393484
+          },
+          {
+            "id": "f033",
+            "phase": "taper",
+            "t": 40,
+            "truth": 5.404496304798196,
+            "published": 4.781596829840317,
+            "display": 0.024754110648302397,
+            "reason": "tap-fresh",
+            "hubPx": 10.273747403802508,
+            "r5Bar": 0.07511565353648204,
+            "classicalBar": 7.882642721114219,
+            "r6Bar": null,
+            "needleErr": 95.3678766875235
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 0.026808218091805204,
+          "candidate": {
+            "bar": 5.360987059356033,
+            "fresh": false,
+            "held": true,
+            "uncertain": true,
+            "measuredAtMs": null,
+            "reason": "held:needle-missing",
+            "classicalStep": {
+              "bar": 6.338197259282309,
+              "needleDeg": 61,
+              "published": true,
+              "reason": "uncertain-hold",
+              "rawBar": null,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": null,
+          "decision": "ambiguous",
+          "rawBar": null
+        },
+        {
+          "timeS": 25,
+          "baseline": 0.01436882597360857,
+          "candidate": {
+            "bar": 6.307657160271065,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 7.0170797871287744,
+              "needleDeg": 78,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 7.049925697070196,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 78,
+          "decision": "shaft",
+          "rawBar": 6.307657160271065
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 0.041061189003635916,
+          "candidate": {
+            "bar": 6.572022219221619,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 7.076556637847017,
+              "needleDeg": 83,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 7.24497449933203,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 83,
+          "decision": "shaft",
+          "rawBar": 6.572022219221619
+        },
+        {
+          "timeS": 40,
+          "baseline": 0.05669237133985777,
+          "candidate": {
+            "bar": 4.781596829840317,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 40000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 5.939366362430618,
+              "needleDeg": 49,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 5.803833794847561,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 49,
+          "decision": "shaft",
+          "rawBar": 4.781596829840317
+        }
+      ]
+    },
+    {
+      "id": "20261018_094151",
+      "baseline": {
+        "frames": 336,
+        "coveragePct": 78.57,
+        "freshFrames": 226,
+        "heldFrames": 38,
+        "gapFrames": 72,
+        "freshPct": 67.26190476190476,
+        "heldPct": 11.30952380952381,
+        "gapPct": 21.428571428571427,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.15172837368477143,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 40.930878,
+          "error": 0.18393616789650663
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 2,
+          "within03": 2,
+          "medianAbsBar": 0.16783227079063903,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 40.930878,
+            "error": 0.18393616789650663
+          }
+        },
+        "heldAccuracy": {
+          "scored": 1,
+          "within03": 1,
+          "medianAbsBar": 0.010384805205702305,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 1,
+            "error": 0.010384805205702305
+          }
+        },
+        "labelHits": [
+          {
+            "id": "f023",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.010384805205702305,
+            "display": 0.012882524648365265,
+            "reason": "held:needle-missing",
+            "hubPx": 8.91184333169912,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 179.64161319771353
+          },
+          {
+            "id": "f024",
+            "phase": "used_2",
+            "t": 20.965439,
+            "truth": 4.285663805302804,
+            "published": 4.133935431618033,
+            "display": 4.133935431618033,
+            "reason": "tap-fresh",
+            "hubPx": 9.344097455889324,
+            "r5Bar": 0.11738692546710963,
+            "classicalBar": 4.133935431618033,
+            "r6Bar": 3.409477868231056,
+            "needleErr": 116.143573553912
+          },
+          {
+            "id": "f025",
+            "phase": "used_3",
+            "t": 40.930878,
+            "truth": -0.13195469826958775,
+            "published": 0.05198146962691889,
+            "display": 0.05198146962691889,
+            "reason": "tap-fresh",
+            "hubPx": 10.475217912600574,
+            "r5Bar": 0.16389296227694933,
+            "classicalBar": 0.05198146962691889,
+            "r6Bar": 0,
+            "needleErr": 174.038850948034
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 336,
+        "freshFrames": 330,
+        "heldFrames": 4,
+        "gapFrames": 2,
+        "coveragePct": 99.4047619047619,
+        "freshPct": 98.21428571428571,
+        "heldPct": 1.1904761904761905,
+        "gapPct": 0.5952380952380952,
+        "scored": 3,
+        "within03": 1,
+        "medianAbsBar": 0.4553407115677759,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 40.930878,
+          "error": 0.564862329942322
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f023",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.25126531340065594,
+            "display": 0.012882524648365265,
+            "reason": "tap-fresh",
+            "hubPx": 8.91184333169912,
+            "r5Bar": 0,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 179.64161319771353
+          },
+          {
+            "id": "f024",
+            "phase": "used_2",
+            "t": 20.965439,
+            "truth": 4.285663805302804,
+            "published": 3.8303230937350286,
+            "display": 4.133935431618033,
+            "reason": "tap-fresh",
+            "hubPx": 9.344097455889324,
+            "r5Bar": 0.11738692546710963,
+            "classicalBar": 4.133935431618033,
+            "r6Bar": 3.409477868231056,
+            "needleErr": 116.143573553912
+          },
+          {
+            "id": "f025",
+            "phase": "used_3",
+            "t": 40.930878,
+            "truth": -0.13195469826958775,
+            "published": 0.4329076316727342,
+            "display": 0.05198146962691889,
+            "reason": "tap-fresh",
+            "hubPx": 10.475217912600574,
+            "r5Bar": 0.16389296227694933,
+            "classicalBar": 0.05198146962691889,
+            "r6Bar": 0,
+            "needleErr": 174.038850948034
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": null,
+          "candidate": {
+            "bar": 0.13646448732438887,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 0,
+              "needleDeg": 319,
+              "published": true,
+              "reason": "rest",
+              "rawBar": 0,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 319,
+          "decision": "shaft",
+          "rawBar": 0.13646448732438887
+        },
+        {
+          "timeS": 25,
+          "baseline": null,
+          "candidate": {
+            "bar": 0.20696224988796366,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 0.188579200744893,
+              "needleDeg": 319,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 0.21721703258698272,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 319,
+          "decision": "shaft",
+          "rawBar": 0.20696224988796366
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 0.007881728163077044,
+          "candidate": {
+            "bar": 0.2310864441546405,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 0.21017107849783587,
+              "needleDeg": 320,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 0.24361828511221376,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 320,
+          "decision": "shaft",
+          "rawBar": 0.2310864441546405
+        },
+        {
+          "timeS": 40,
+          "baseline": 0.4317453870207538,
+          "candidate": {
+            "bar": 0.5151880209990901,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 40000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 0.7964012992327281,
+              "needleDeg": 327,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 0.5557240903009754,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 327,
+          "decision": "shaft",
+          "rawBar": 0.5151880209990901
+        }
+      ]
+    },
+    {
+      "id": "20261018_160844",
+      "baseline": {
+        "frames": 301,
+        "coveragePct": 90.03,
+        "freshFrames": 229,
+        "heldFrames": 42,
+        "gapFrames": 30,
+        "freshPct": 76.0797342192691,
+        "heldPct": 13.953488372093023,
+        "gapPct": 9.966777408637874,
+        "scored": 4,
+        "within03": 3,
+        "medianAbsBar": 0.1147470938141566,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 20,
+          "error": 0.41575195003834686
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 4,
+          "within03": 3,
+          "medianAbsBar": 0.1147470938141566,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 20,
+            "error": 0.41575195003834686
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f013",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 13.55496851115087,
+            "r5Bar": 0.23138380342744946,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 89.3419312416662
+          },
+          {
+            "id": "f014",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.5164993423415594,
+            "published": 1.574119699536557,
+            "display": 1.5906830247033485,
+            "reason": "tap-fresh",
+            "hubPx": 10.334585462746634,
+            "r5Bar": 0.5008433302709158,
+            "classicalBar": 1.574119699536557,
+            "r6Bar": 1.6402835250338597,
+            "needleErr": 109.58011278614669
+          },
+          {
+            "id": "f015",
+            "phase": "ramp",
+            "t": 18,
+            "truth": 5.643064684147373,
+            "published": 5.471190853714058,
+            "display": 5.471190853714058,
+            "reason": "tap-fresh",
+            "hubPx": 10.160036523232897,
+            "r5Bar": 0,
+            "classicalBar": 5.471190853714058,
+            "r6Bar": 5.108279020198058,
+            "needleErr": 168.99668644124802
+          },
+          {
+            "id": "f016",
+            "phase": "peak",
+            "t": 20,
+            "truth": 7.077326675644736,
+            "published": 7.493078625683083,
+            "display": 7.493078625683083,
+            "reason": "tap-fresh",
+            "hubPx": 10.38917012477482,
+            "r5Bar": 0,
+            "classicalBar": 7.493078625683083,
+            "r6Bar": 6.8456162093174555,
+            "needleErr": 149.49852000525317
+          },
+          {
+            "id": "f034",
+            "phase": "taper",
+            "t": 32,
+            "truth": 5.010149100384057,
+            "published": 4.998225357280316,
+            "display": 5.089054788939559,
+            "reason": "tap-fresh",
+            "hubPx": 11.586248138615646,
+            "r5Bar": 0.011584928013242023,
+            "classicalBar": 4.998225357280316,
+            "r6Bar": 4.9277810627420005,
+            "needleErr": 176.01785643673202
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 301,
+        "freshFrames": 247,
+        "heldFrames": 34,
+        "gapFrames": 20,
+        "coveragePct": 93.35548172757476,
+        "freshPct": 82.05980066445183,
+        "heldPct": 11.295681063122924,
+        "gapPct": 6.644518272425249,
+        "scored": 4,
+        "within03": 0,
+        "medianAbsBar": 0.6027721026259827,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 32,
+          "error": -0.6371363207414591
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f013",
+            "phase": "rest",
+            "t": 2.7,
+            "truth": 0,
+            "published": null,
+            "display": null,
+            "reason": "needle-missing",
+            "hubPx": 13.55496851115087,
+            "r5Bar": 0.23138380342744946,
+            "classicalBar": null,
+            "r6Bar": null,
+            "needleErr": 89.3419312416662
+          },
+          {
+            "id": "f014",
+            "phase": "preinfusion",
+            "t": 11,
+            "truth": 1.5164993423415594,
+            "published": 1.192714319572398,
+            "display": 1.5906830247033485,
+            "reason": "tap-fresh",
+            "hubPx": 10.334585462746634,
+            "r5Bar": 0.5008433302709158,
+            "classicalBar": 1.574119699536557,
+            "r6Bar": 1.6402835250338597,
+            "needleErr": 109.58011278614669
+          },
+          {
+            "id": "f015",
+            "phase": "ramp",
+            "t": 18,
+            "truth": 5.643064684147373,
+            "published": 5.054977556941379,
+            "display": 5.471190853714058,
+            "reason": "tap-fresh",
+            "hubPx": 10.160036523232897,
+            "r5Bar": 0,
+            "classicalBar": 5.471190853714058,
+            "r6Bar": 5.108279020198058,
+            "needleErr": 168.99668644124802
+          },
+          {
+            "id": "f016",
+            "phase": "peak",
+            "t": 20,
+            "truth": 7.077326675644736,
+            "published": 6.459869597598765,
+            "display": 7.493078625683083,
+            "reason": "tap-fresh",
+            "hubPx": 10.38917012477482,
+            "r5Bar": 0,
+            "classicalBar": 7.493078625683083,
+            "r6Bar": 6.8456162093174555,
+            "needleErr": 149.49852000525317
+          },
+          {
+            "id": "f034",
+            "phase": "taper",
+            "t": 32,
+            "truth": 5.010149100384057,
+            "published": 4.373012779642598,
+            "display": 5.089054788939559,
+            "reason": "tap-fresh",
+            "hubPx": 11.586248138615646,
+            "r5Bar": 0.011584928013242023,
+            "classicalBar": 4.998225357280316,
+            "r6Bar": 4.9277810627420005,
+            "needleErr": 176.01785643673202
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 6.365462143290289,
+          "candidate": {
+            "bar": 5.673767840297262,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 5.608055525212797,
+              "needleDeg": 344,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 5.737172499408276,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 344,
+          "decision": "shaft",
+          "rawBar": 5.673767840297262
+        },
+        {
+          "timeS": 25,
+          "baseline": 7.089888433541639,
+          "candidate": {
+            "bar": 6.391590119396685,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.3074585449795695,
+              "needleDeg": 357,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.440364957179101,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 357,
+          "decision": "shaft",
+          "rawBar": 6.391590119396685
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 6.614893043926668,
+          "candidate": {
+            "bar": 5.993068736797428,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.257121085343235,
+              "needleDeg": 350,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.070370286482568,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 350,
+          "decision": "shaft",
+          "rawBar": 5.993068736797428
+        }
+      ]
+    },
+    {
+      "id": "20261018_160931",
+      "baseline": {
+        "frames": 292,
+        "coveragePct": 96.92,
+        "freshFrames": 267,
+        "heldFrames": 16,
+        "gapFrames": 9,
+        "freshPct": 91.43835616438356,
+        "heldPct": 5.47945205479452,
+        "gapPct": 3.0821917808219177,
+        "scored": 3,
+        "within03": 3,
+        "medianAbsBar": 0.03239580047708895,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 18.231039,
+          "error": 0.27823717784473745
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 3,
+          "within03": 3,
+          "medianAbsBar": 0.03239580047708895,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 18.231039,
+            "error": 0.27823717784473745
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "f026",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.03142781352587234,
+            "display": 0.07163489114638247,
+            "reason": "tap-fresh",
+            "hubPx": 5.603907549985152,
+            "r5Bar": 0.3674666233779544,
+            "classicalBar": 0.03142781352587234,
+            "r6Bar": 0,
+            "needleErr": 85.86817201918393
+          },
+          {
+            "id": "f027",
+            "phase": "used_2",
+            "t": 18.231039,
+            "truth": 3.7456816616659823,
+            "published": 4.02391883951072,
+            "display": 4.02391883951072,
+            "reason": "tap-fresh",
+            "hubPx": 7.58491388387363,
+            "r5Bar": 0,
+            "classicalBar": 4.02391883951072,
+            "r6Bar": 4.320731599400914,
+            "needleErr": 160.07210229901256
+          },
+          {
+            "id": "f028",
+            "phase": "used_3",
+            "t": 35.462078,
+            "truth": 0.09110455597538275,
+            "published": 0.0587087554982938,
+            "display": 0.06802705464429763,
+            "reason": "tap-fresh",
+            "hubPx": 6.104479969913623,
+            "r5Bar": 0.07833685199887905,
+            "classicalBar": 0.0587087554982938,
+            "r6Bar": 0,
+            "needleErr": 95.18103538984354
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 292,
+        "freshFrames": 243,
+        "heldFrames": 26,
+        "gapFrames": 23,
+        "coveragePct": 92.12328767123287,
+        "freshPct": 83.21917808219177,
+        "heldPct": 8.904109589041095,
+        "gapPct": 7.876712328767123,
+        "scored": 3,
+        "within03": 0,
+        "medianAbsBar": 0.39828387205121407,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 35.462078,
+          "error": 0.4133940539615096
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "f026",
+            "phase": "used_1",
+            "t": 1,
+            "truth": 0,
+            "published": 0.3186541825080681,
+            "display": 0.07163489114638247,
+            "reason": "tap-fresh",
+            "hubPx": 5.603907549985152,
+            "r5Bar": 0.3674666233779544,
+            "classicalBar": 0.03142781352587234,
+            "r6Bar": 0,
+            "needleErr": 85.86817201918393
+          },
+          {
+            "id": "f027",
+            "phase": "used_2",
+            "t": 18.231039,
+            "truth": 3.7456816616659823,
+            "published": 4.143965533717196,
+            "display": 4.02391883951072,
+            "reason": "tap-fresh",
+            "hubPx": 7.58491388387363,
+            "r5Bar": 0,
+            "classicalBar": 4.02391883951072,
+            "r6Bar": 4.320731599400914,
+            "needleErr": 160.07210229901256
+          },
+          {
+            "id": "f028",
+            "phase": "used_3",
+            "t": 35.462078,
+            "truth": 0.09110455597538275,
+            "published": 0.5044986099368923,
+            "display": 0.06802705464429763,
+            "reason": "tap-fresh",
+            "hubPx": 6.104479969913623,
+            "r5Bar": 0.07833685199887905,
+            "classicalBar": 0.0587087554982938,
+            "r6Bar": 0,
+            "needleErr": 95.18103538984354
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 2.2277976833476543,
+          "candidate": {
+            "bar": 2.5907079803896065,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 3.05029154872595,
+              "needleDeg": 276,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 2.5438297689552285,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 276,
+          "decision": "shaft",
+          "rawBar": 2.5907079803896065
+        },
+        {
+          "timeS": 25,
+          "baseline": 2.5237315973069006,
+          "candidate": {
+            "bar": 2.8936826120736536,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 2.9305049388687334,
+              "needleDeg": 281,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 2.8537836298207635,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 281,
+          "decision": "shaft",
+          "rawBar": 2.8936826120736536
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 2.3472883509951528,
+          "candidate": {
+            "bar": 2.641804908185545,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 2.759994294776589,
+              "needleDeg": 277,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 2.60465121201956,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 277,
+          "decision": "shaft",
+          "rawBar": 2.641804908185545
+        }
+      ]
+    },
+    {
+      "id": "20261024_124006",
+      "baseline": {
+        "frames": 447,
+        "coveragePct": 93.96,
+        "freshFrames": 387,
+        "heldFrames": 33,
+        "gapFrames": 27,
+        "freshPct": 86.57718120805369,
+        "heldPct": 7.382550335570469,
+        "gapPct": 6.040268456375839,
+        "scored": 12,
+        "within03": 12,
+        "medianAbsBar": 0.07857886908953837,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22,
+          "error": 0.2308470725117422
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 12,
+          "within03": 12,
+          "medianAbsBar": 0.07857886908953837,
+          "wildPct": 0,
+          "worst": {
+            "timeS": 22,
+            "error": 0.2308470725117422
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "0113",
+            "phase": "hand",
+            "t": 14,
+            "truth": 1.76,
+            "published": 1.6983604133968542,
+            "display": 1.6983604133968542,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.6983604133968542,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 1.56,
+            "published": 1.7908470725117422,
+            "display": 1.7908470725117422,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.7908470725117422,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0233",
+            "phase": "hand",
+            "t": 29,
+            "truth": 2.22,
+            "published": 2.106261078590707,
+            "display": 2.106261078590707,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 2.106261078590707,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0244",
+            "phase": "hand",
+            "t": 30.375,
+            "truth": 5.17,
+            "published": 5.231833724044513,
+            "display": 5.231833724044513,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.231833724044513,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0256",
+            "phase": "hand",
+            "t": 31.875,
+            "truth": 6.41,
+            "published": 6.307994438985585,
+            "display": 6.307994438985585,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.307994438985585,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0268",
+            "phase": "hand",
+            "t": 33.375,
+            "truth": 7.29,
+            "published": 7.240522382510923,
+            "display": 7.240522382510923,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.240522382510923,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0279",
+            "phase": "hand",
+            "t": 34.75,
+            "truth": 7.68,
+            "published": 7.702986750176133,
+            "display": 7.702986750176133,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.702986750176133,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0303",
+            "phase": "hand",
+            "t": 37.75,
+            "truth": 7.61,
+            "published": 7.705324014134564,
+            "display": 7.705324014134564,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.705324014134564,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0335",
+            "phase": "hand",
+            "t": 41.75,
+            "truth": 7.35,
+            "published": 7.409993209197402,
+            "display": 7.409993209197402,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.409993209197402,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0367",
+            "phase": "hand",
+            "t": 45.75,
+            "truth": 6.58,
+            "published": 6.749459768411603,
+            "display": 6.749459768411603,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.749459768411603,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0399",
+            "phase": "hand",
+            "t": 49.75,
+            "truth": 5.87,
+            "published": 5.856647101058846,
+            "display": 5.856647101058846,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.856647101058846,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0443",
+            "phase": "hand",
+            "t": 55.25,
+            "truth": -0.17,
+            "published": 0.03712066137819629,
+            "display": 0.03712066137819629,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.03712066137819629,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 447,
+        "freshFrames": 334,
+        "heldFrames": 73,
+        "gapFrames": 40,
+        "coveragePct": 91.05145413870247,
+        "freshPct": 74.72035794183445,
+        "heldPct": 16.33109619686801,
+        "gapPct": 8.94854586129754,
+        "scored": 11,
+        "within03": 11,
+        "medianAbsBar": 0.11283174331206691,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 22,
+          "error": 0.22345208458147137
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "0113",
+            "phase": "hand",
+            "t": 14,
+            "truth": 1.76,
+            "published": 1.7133766539668056,
+            "display": 1.6983604133968542,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.6983604133968542,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 1.56,
+            "published": 1.7834520845814714,
+            "display": 1.7908470725117422,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.7908470725117422,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0233",
+            "phase": "hand",
+            "t": 29,
+            "truth": 2.22,
+            "published": 2.1071682566879333,
+            "display": 2.106261078590707,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 2.106261078590707,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0244",
+            "phase": "hand",
+            "t": 30.375,
+            "truth": 5.17,
+            "published": 5.232057658510189,
+            "display": 5.231833724044513,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.231833724044513,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0256",
+            "phase": "hand",
+            "t": 31.875,
+            "truth": 6.41,
+            "published": 6.279298445627619,
+            "display": 6.307994438985585,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.307994438985585,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0268",
+            "phase": "hand",
+            "t": 33.375,
+            "truth": 7.29,
+            "published": null,
+            "display": 7.240522382510923,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.240522382510923,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0279",
+            "phase": "hand",
+            "t": 34.75,
+            "truth": 7.68,
+            "published": 7.751463250879885,
+            "display": 7.702986750176133,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.702986750176133,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0303",
+            "phase": "hand",
+            "t": 37.75,
+            "truth": 7.61,
+            "published": 7.603520527632702,
+            "display": 7.705324014134564,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.705324014134564,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0335",
+            "phase": "hand",
+            "t": 41.75,
+            "truth": 7.35,
+            "published": 7.432441423662313,
+            "display": 7.409993209197402,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.409993209197402,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0367",
+            "phase": "hand",
+            "t": 45.75,
+            "truth": 6.58,
+            "published": 6.756761457405846,
+            "display": 6.749459768411603,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.749459768411603,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0399",
+            "phase": "hand",
+            "t": 49.75,
+            "truth": 5.87,
+            "published": 5.667778805516879,
+            "display": 5.856647101058846,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.856647101058846,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0443",
+            "phase": "hand",
+            "t": 55.25,
+            "truth": -0.17,
+            "published": 0.052660692259119964,
+            "display": 0.03712066137819629,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.03712066137819629,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 1.7951919781506045,
+          "candidate": {
+            "bar": 1.7988494180355943,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 1.6668523938330957,
+              "needleDeg": 168,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 1.6864736608869981,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 168,
+          "decision": "shaft",
+          "rawBar": 1.7988494180355943
+        },
+        {
+          "timeS": 25,
+          "baseline": 1.8920326937113177,
+          "candidate": {
+            "bar": 1.858960493550951,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 1.7705976502979581,
+              "needleDeg": 169,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 1.7442110355082996,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 169,
+          "decision": "shaft",
+          "rawBar": 1.858960493550951
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 1.8480588950276329,
+          "candidate": {
+            "bar": 1.8255357597221389,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 1.746081921855141,
+              "needleDeg": 169,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 1.7212055060844431,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 169,
+          "decision": "shaft",
+          "rawBar": 1.8255357597221389
+        },
+        {
+          "timeS": 40,
+          "baseline": 7.433789633164407,
+          "candidate": {
+            "bar": 7.427571286088163,
+            "fresh": false,
+            "held": true,
+            "uncertain": true,
+            "measuredAtMs": null,
+            "reason": "held:needle-missing",
+            "classicalStep": {
+              "bar": 7.20478107247564,
+              "needleDeg": 258,
+              "published": true,
+              "reason": "uncertain-hold",
+              "rawBar": null,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": null,
+          "decision": "ambiguous",
+          "rawBar": null
+        }
+      ]
+    },
+    {
+      "id": "20261025_130022",
+      "baseline": {
+        "frames": 400,
+        "coveragePct": 93.25,
+        "freshFrames": 308,
+        "heldFrames": 65,
+        "gapFrames": 27,
+        "freshPct": 77,
+        "heldPct": 16.25,
+        "gapPct": 6.75,
+        "scored": 13,
+        "within03": 10,
+        "medianAbsBar": 0.12759475341202364,
+        "wildPct": 7.6923076923076925,
+        "worst": {
+          "timeS": 25,
+          "error": 1.0768118712664672
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "freshAccuracy": {
+          "scored": 13,
+          "within03": 10,
+          "medianAbsBar": 0.12759475341202364,
+          "wildPct": 7.6923076923076925,
+          "worst": {
+            "timeS": 25,
+            "error": 1.0768118712664672
+          }
+        },
+        "heldAccuracy": {
+          "scored": 0,
+          "within03": 0,
+          "medianAbsBar": null,
+          "wildPct": null,
+          "worst": null
+        },
+        "labelHits": [
+          {
+            "id": "0081",
+            "phase": "hand",
+            "t": 10,
+            "truth": 1.39,
+            "published": 1.5847151031555782,
+            "display": 1.5847151031555782,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5847151031555782,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0105",
+            "phase": "hand",
+            "t": 13,
+            "truth": 1.53,
+            "published": 1.5811779486626822,
+            "display": 1.5811779486626822,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5811779486626822,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0129",
+            "phase": "hand",
+            "t": 16,
+            "truth": 1.48,
+            "published": 1.5963828204295936,
+            "display": 1.5963828204295936,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5963828204295936,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0153",
+            "phase": "hand",
+            "t": 19,
+            "truth": 6.53,
+            "published": 6.419179989620654,
+            "display": 6.419179989620654,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.419179989620654,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 7.11,
+            "published": 7.069513658012991,
+            "display": 7.069513658012991,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.069513658012991,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0201",
+            "phase": "hand",
+            "t": 25,
+            "truth": 6.61,
+            "published": 7.6868118712664675,
+            "display": 7.6868118712664675,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.6868118712664675,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0225",
+            "phase": "hand",
+            "t": 28,
+            "truth": 6.69,
+            "published": 6.817594753412024,
+            "display": 6.817594753412024,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.817594753412024,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0249",
+            "phase": "hand",
+            "t": 31,
+            "truth": 6.81,
+            "published": 6.818627527967193,
+            "display": 6.818627527967193,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.818627527967193,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0273",
+            "phase": "hand",
+            "t": 34,
+            "truth": 6.67,
+            "published": 6.170228838376455,
+            "display": 6.170228838376455,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.170228838376455,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0297",
+            "phase": "hand",
+            "t": 37,
+            "truth": 6.4,
+            "published": 6.629326023105049,
+            "display": 6.629326023105049,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.629326023105049,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0329",
+            "phase": "hand",
+            "t": 41,
+            "truth": 5.99,
+            "published": 5.940296077366322,
+            "display": 5.940296077366322,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.940296077366322,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0361",
+            "phase": "hand",
+            "t": 45,
+            "truth": 4.93,
+            "published": 4.764552312047393,
+            "display": 4.764552312047393,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 4.764552312047393,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0396",
+            "phase": "hand",
+            "t": 49.375,
+            "truth": -0.31,
+            "published": 0.0434555008153315,
+            "display": 0.0434555008153315,
+            "reason": "tap",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.0434555008153315,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ]
+      },
+      "diagnostic": {
+        "frames": 400,
+        "freshFrames": 315,
+        "heldFrames": 64,
+        "gapFrames": 21,
+        "coveragePct": 94.75,
+        "freshPct": 78.75,
+        "heldPct": 16,
+        "gapPct": 5.25,
+        "scored": 12,
+        "within03": 9,
+        "medianAbsBar": 0.07524159576774458,
+        "wildPct": 0,
+        "worst": {
+          "timeS": 49.375,
+          "error": 0.49443341015870235
+        },
+        "falseTen": 0,
+        "freshFalseTen": 0,
+        "heldFalseTen": 0,
+        "labelHits": [
+          {
+            "id": "0081",
+            "phase": "hand",
+            "t": 10,
+            "truth": 1.39,
+            "published": 1.7479690982545957,
+            "display": 1.5847151031555782,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5847151031555782,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0105",
+            "phase": "hand",
+            "t": 13,
+            "truth": 1.53,
+            "published": 1.7226890720851478,
+            "display": 1.5811779486626822,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5811779486626822,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0129",
+            "phase": "hand",
+            "t": 16,
+            "truth": 1.48,
+            "published": 1.7818460703573327,
+            "display": 1.5963828204295936,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 1.5963828204295936,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0153",
+            "phase": "hand",
+            "t": 19,
+            "truth": 6.53,
+            "published": 6.455869438828286,
+            "display": 6.419179989620654,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.419179989620654,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0177",
+            "phase": "hand",
+            "t": 22,
+            "truth": 7.11,
+            "published": 7.094741413694396,
+            "display": 7.069513658012991,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.069513658012991,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0201",
+            "phase": "hand",
+            "t": 25,
+            "truth": 6.61,
+            "published": 6.651305536045395,
+            "display": 7.6868118712664675,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 7.6868118712664675,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0225",
+            "phase": "hand",
+            "t": 28,
+            "truth": 6.69,
+            "published": 6.863182246805269,
+            "display": 6.817594753412024,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.817594753412024,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0249",
+            "phase": "hand",
+            "t": 31,
+            "truth": 6.81,
+            "published": 6.886352630363774,
+            "display": 6.818627527967193,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.818627527967193,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0273",
+            "phase": "hand",
+            "t": 34,
+            "truth": 6.67,
+            "published": 6.620491893596818,
+            "display": 6.170228838376455,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.170228838376455,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0297",
+            "phase": "hand",
+            "t": 37,
+            "truth": 6.4,
+            "published": null,
+            "display": 6.629326023105049,
+            "reason": "no-frame",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 6.629326023105049,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0329",
+            "phase": "hand",
+            "t": 41,
+            "truth": 5.99,
+            "published": 5.975396215756838,
+            "display": 5.940296077366322,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 5.940296077366322,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0361",
+            "phase": "hand",
+            "t": 45,
+            "truth": 4.93,
+            "published": 4.943347405518285,
+            "display": 4.764552312047393,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 4.764552312047393,
+            "r6Bar": null,
+            "needleErr": null
+          },
+          {
+            "id": "0396",
+            "phase": "hand",
+            "t": 49.375,
+            "truth": -0.31,
+            "published": 0.18443341015870238,
+            "display": 0.0434555008153315,
+            "reason": "diagnostic-fresh-display",
+            "hubPx": null,
+            "r5Bar": null,
+            "classicalBar": 0.0434555008153315,
+            "r6Bar": null,
+            "needleErr": null
+          }
+        ]
+      },
+      "checkpoints": [
+        {
+          "timeS": 19,
+          "baseline": 6.457930304587847,
+          "candidate": {
+            "bar": 6.450269826843971,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 19000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.006150262565614,
+              "needleDeg": 64,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.263986248662316,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 64,
+          "decision": "shaft",
+          "rawBar": 6.450269826843971
+        },
+        {
+          "timeS": 25,
+          "baseline": 6.769574942489873,
+          "candidate": {
+            "bar": 6.932867116030955,
+            "fresh": false,
+            "held": true,
+            "uncertain": true,
+            "measuredAtMs": null,
+            "reason": "held:needle-missing",
+            "classicalStep": {
+              "bar": 6.7564783190797195,
+              "needleDeg": 72,
+              "published": true,
+              "reason": "uncertain-hold",
+              "rawBar": null,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": null,
+          "decision": "ambiguous",
+          "rawBar": null
+        },
+        {
+          "timeS": 25.25,
+          "baseline": 7.6868118712664675,
+          "candidate": {
+            "bar": 6.931470431688245,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 25250,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.68955506462894,
+              "needleDeg": 72,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 6.758733360101333,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 72,
+          "decision": "shaft",
+          "rawBar": 6.931470431688245
+        },
+        {
+          "timeS": 40,
+          "baseline": null,
+          "candidate": {
+            "bar": 6.153213338605553,
+            "fresh": true,
+            "held": false,
+            "uncertain": false,
+            "measuredAtMs": 40000,
+            "reason": "tap-fresh",
+            "classicalStep": {
+              "bar": 6.082500002483369,
+              "needleDeg": 59,
+              "published": true,
+              "reason": "tracking",
+              "rawBar": 5.962045087970534,
+              "spikeRejected": false
+            }
+          },
+          "angleDeg": 59,
+          "decision": "shaft",
+          "rawBar": 6.153213338605553
+        }
+      ]
+    }
+  ]
+}

@@ -26,3 +26,14 @@ Inspect this handover, git status, pointerEvidence.js and its test; do not resta
 
 ## Step2 correction attempt passed
 Single allowed correction: score the transverse ridge-centroid residual to stop off-axis/offset lines acquiring false taper. No test weakened. Targeted suite45/45 passes (all4 candidate tests, existing37 calibration+4 endpoint). Candidate remains standalone/unimported by production. Next: commit candidate and tests, run12 standalone historical clips with original map/endpoint/publisher and baseline adapter equivalence, then push/report/STOP before integration. No further tuning after clip results.
+
+## Step2 checkpoint COMPLETE — STOP before integration
+- Single authorized algorithm correction passed all45 targeted tests unchanged. Candidate core committed a41960b; no additional tuning after replay.
+- All12 clips replayed once through standalone candidate path. All3961/3961 production baseline bar/fresh/held outputs match saved observations; existing raw mapper/endpoint equivalence also asserted on nonduplicate frames. No official live exam.
+- Candidate diagnostics:95.80914% published,86.13986% fresh,9.66928% held,4.19086% gaps; median.192689;34/53 within.3;1.88679% >1; worst+1.060430 at094055/11s;0false10 (0fresh/0held). 3412+383+166=3961.
+- Requested:094055@19=5.360987 HELD/uncertain vs5.972936 (error-.611949);094055@40=4.781597 fresh vs5.404496 (error-.622899);130022@25 fresh-display window6.651306 vs6.61 (+.041306); actual25.25s candidate6.931470 fresh.
+- Acceptance NOT met: median/within.3 worse than production. Do not integrate. Other criteria coverage>=90,>1<3%,0false10 pass diagnostically only.
+- New standalone scripts pointerCandidateReplay.mjs (production helper functions/config; independent publisher state), runPointerCheckpoint.mjs (12clips), reportPointerCheckpoint.mjs (report only). No application imports of pointerEvidence. Sourcescore/exam/fixtures/frozen config unchanged. No calibration/pressure thresholds changed.
+- Full report docs/pressure-wrong-ray-2026-11-02.md, exact per-clip/hit data in -results.json. Full traces ignored out/wrong-ray-candidate-*.json; logs out/wrong-ray-checkpoint*.txt and wrong-ray-step2-attempt1.txt.
+- No full suite/build or phone/performance/model validation at this pre-integration checkpoint; those belong to a later approved integration phase. Candidate fit bias across the dataset remains unresolved (e.g.094151/160844), despite improved named misses. Further work needs direction; inspect geometric fit/calibration compatibility without weakening tests or changing zero globally.
+- Commit/push the completed harness/report, then STOP. No integration, main merge/deploy, retraining or further algorithm iteration authorized in this task. Original stash remains preserved.
