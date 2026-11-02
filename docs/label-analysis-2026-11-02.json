@@ -1,0 +1,6017 @@
+{
+  "reader": {
+    "version": "4.13.27",
+    "commit": "a860912",
+    "labelCommit": "41f685b6e34cfb366cef45dd7c1a5ce1ef096964"
+  },
+  "methodology": {
+    "coords": "labels-orig.json frames[id].orig; upright source px, no second rotation",
+    "sampling": "8 Hz chronological full-frame replay; nearest within 80 ms, actual deltas in rows",
+    "truth": "piecewise 0/5/10 through hand labels; zero=pin+leave-one-clip-out median signed rest shaft offset, unique frames only; phase does not override measured tip geometry",
+    "zeroDiagnostic": "replace only zero in label scale with reader zero at matched frame; error is signed bias. Subtracting this from published bar is diagnostic, not a rerun or a shippable improvement",
+    "tip": "last resolved shaft sample centre from pointerEvidence best candidate; source px includes endpoint extent error. Angular chord at labelled radius separately removes endpoint extent",
+    "repeats": "10 independent retaps of identical source frames; both upright source and display crop px; geometric bar difference without forcing rest to zero"
+  },
+  "baseline": {
+    "coveragePct": 94.75,
+    "streamCoveragePct": 94.45,
+    "medianAbsBar": 0.113,
+    "p90AbsBar": 0.3,
+    "wildPct": 0,
+    "labelN": 53,
+    "flipPct": 36.67,
+    "restAbsMax": 1.345,
+    "msFrame": 69,
+    "observedFrames": 3961,
+    "fresh": 3297,
+    "held": 444,
+    "gaps": 220,
+    "falseTen": 0,
+    "labelEvidence": {
+      "hits": [
+        {
+          "clip": "20261015_225219",
+          "t": 6.264322,
+          "truth": 0,
+          "published": 0.043477678246451316,
+          "error": 0.043477678246451316
+        },
+        {
+          "clip": "20261015_225307",
+          "t": 7.5813165,
+          "truth": 0,
+          "published": null,
+          "error": null
+        },
+        {
+          "clip": "20261017_084814",
+          "t": 1.8,
+          "truth": 0,
+          "published": 0.03503845367758516,
+          "error": 0.03503845367758516
+        },
+        {
+          "clip": "20261017_084814",
+          "t": 9.5,
+          "truth": 1.4108058823836578,
+          "published": 1.5486737435932516,
+          "error": 0.13786786120959382
+        },
+        {
+          "clip": "20261017_084814",
+          "t": 18.5,
+          "truth": 5.162671695109537,
+          "published": 4.972788539073209,
+          "error": -0.18988315603632788
+        },
+        {
+          "clip": "20261017_084814",
+          "t": 22,
+          "truth": 7.612882354007921,
+          "published": 7.252126215043228,
+          "error": -0.3607561389646925
+        },
+        {
+          "clip": "20261017_084814",
+          "t": 41.5,
+          "truth": 5.738081057539937,
+          "published": 5.700996272720747,
+          "error": -0.03708478481918931
+        },
+        {
+          "clip": "20261017_084919",
+          "t": 1,
+          "truth": 0,
+          "published": 0.05806171109874778,
+          "error": 0.05806171109874778
+        },
+        {
+          "clip": "20261017_084919",
+          "t": 19.919161,
+          "truth": 2.1833648602400824,
+          "published": 2.1741389428191518,
+          "error": -0.009225917420930596
+        },
+        {
+          "clip": "20261017_084919",
+          "t": 38.838322,
+          "truth": -0.02654949895968859,
+          "published": 0.12704440983094417,
+          "error": 0.15359390879063275
+        },
+        {
+          "clip": "20261017_134943",
+          "t": 5.4,
+          "truth": 0,
+          "published": 0.06533715231452428,
+          "error": 0.06533715231452428
+        },
+        {
+          "clip": "20261017_134943",
+          "t": 16.5,
+          "truth": 1.828450501741842,
+          "published": 1.9137711393094048,
+          "error": 0.08532063756756281
+        },
+        {
+          "clip": "20261017_134943",
+          "t": 25,
+          "truth": 6.283828678666444,
+          "published": 6.453723624021553,
+          "error": 0.16989494535510907
+        },
+        {
+          "clip": "20261017_134943",
+          "t": 29,
+          "truth": 7.3685056700973375,
+          "published": 7.094033738513256,
+          "error": -0.2744719315840811
+        },
+        {
+          "clip": "20261017_134943",
+          "t": 48.5,
+          "truth": 6.192888013789439,
+          "published": 6.025223263471974,
+          "error": -0.1676647503174653
+        },
+        {
+          "clip": "20261017_135116",
+          "t": 1,
+          "truth": 0,
+          "published": 0.01702273096231228,
+          "error": 0.01702273096231228
+        },
+        {
+          "clip": "20261017_135116",
+          "t": 22.381789,
+          "truth": 3.6559762240705402,
+          "published": 3.6123060891702954,
+          "error": -0.04367013490024485
+        },
+        {
+          "clip": "20261017_135116",
+          "t": 43.763578,
+          "truth": 0.47212770016260264,
+          "published": 0.4122043964340335,
+          "error": -0.05992330372856913
+        },
+        {
+          "clip": "20261018_094055",
+          "t": 2.7,
+          "truth": 0,
+          "published": null,
+          "error": null
+        },
+        {
+          "clip": "20261018_094055",
+          "t": 11,
+          "truth": 1.3871933477541407,
+          "published": 2.29133966506016,
+          "error": 0.9041463173060194
+        },
+        {
+          "clip": "20261018_094055",
+          "t": 19,
+          "truth": 5.972936406294782,
+          "published": 5.654830016349084,
+          "error": -0.3181063899456973
+        },
+        {
+          "clip": "20261018_094055",
+          "t": 22,
+          "truth": 7.190145427191927,
+          "published": null,
+          "error": null
+        },
+        {
+          "clip": "20261018_094055",
+          "t": 40,
+          "truth": 5.404496304798196,
+          "published": 5.055814685235514,
+          "error": -0.34868161956268207
+        },
+        {
+          "clip": "20261018_094151",
+          "t": 1,
+          "truth": 0,
+          "published": 0.02858984926814714,
+          "error": 0.02858984926814714
+        },
+        {
+          "clip": "20261018_094151",
+          "t": 20.965439,
+          "truth": 4.285663805302804,
+          "published": 4.085496037640279,
+          "error": -0.2001677676625251
+        },
+        {
+          "clip": "20261018_094151",
+          "t": 40.930878,
+          "truth": -0.13195469826958775,
+          "published": 0.13627759299118222,
+          "error": 0.26823229126077
+        },
+        {
+          "clip": "20261018_160844",
+          "t": 2.7,
+          "truth": 0,
+          "published": null,
+          "error": null
+        },
+        {
+          "clip": "20261018_160844",
+          "t": 11,
+          "truth": 1.5164993423415594,
+          "published": 1.4867347228440206,
+          "error": -0.029764619497538725
+        },
+        {
+          "clip": "20261018_160844",
+          "t": 18,
+          "truth": 5.643064684147373,
+          "published": 5.826670546355335,
+          "error": 0.18360586220796193
+        },
+        {
+          "clip": "20261018_160844",
+          "t": 20,
+          "truth": 7.077326675644736,
+          "published": 6.894450902377492,
+          "error": -0.18287577326724413
+        },
+        {
+          "clip": "20261018_160844",
+          "t": 32,
+          "truth": 5.010149100384057,
+          "published": 4.786356345941166,
+          "error": -0.22379275444289082
+        },
+        {
+          "clip": "20261018_160931",
+          "t": 1,
+          "truth": 0,
+          "published": 0.11220709775179294,
+          "error": 0.11220709775179294
+        },
+        {
+          "clip": "20261018_160931",
+          "t": 18.231039,
+          "truth": 3.7456816616659823,
+          "published": 4.052433057147519,
+          "error": 0.30675139548153707
+        },
+        {
+          "clip": "20261018_160931",
+          "t": 35.462078,
+          "truth": 0.09110455597538275,
+          "published": 0.18923755744174303,
+          "error": 0.09813300146636028
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 14,
+          "truth": 1.76,
+          "published": 1.7133766539668056,
+          "error": -0.0466233460331944
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 22,
+          "truth": 1.56,
+          "published": 1.7834520845814714,
+          "error": 0.22345208458147137
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 29,
+          "truth": 2.22,
+          "published": 2.1071682566879333,
+          "error": -0.11283174331206691
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 30.375,
+          "truth": 5.17,
+          "published": 5.232057658510189,
+          "error": 0.06205765851018885
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 31.875,
+          "truth": 6.41,
+          "published": 6.279298445627619,
+          "error": -0.13070155437238107
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 33.375,
+          "truth": 7.29,
+          "published": null,
+          "error": null
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 34.75,
+          "truth": 7.68,
+          "published": 7.711015837991738,
+          "error": 0.031015837991738238
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 37.75,
+          "truth": 7.61,
+          "published": 7.7733022445771995,
+          "error": 0.16330224457719922
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 41.75,
+          "truth": 7.35,
+          "published": 7.437500888218433,
+          "error": 0.08750088821843338
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 45.75,
+          "truth": 6.58,
+          "published": 6.763298017323407,
+          "error": 0.18329801732340734
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 49.75,
+          "truth": 5.87,
+          "published": 5.901917237604521,
+          "error": 0.03191723760452092
+        },
+        {
+          "clip": "20261024_124006",
+          "t": 55.25,
+          "truth": -0.17,
+          "published": 0.052660692259119964,
+          "error": 0.22266069225911997
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 10,
+          "truth": 1.39,
+          "published": 1.6251333387146625,
+          "error": 0.23513333871466258
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 13,
+          "truth": 1.53,
+          "published": 1.6151415663453657,
+          "error": 0.08514156634536563
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 16,
+          "truth": 1.48,
+          "published": 1.6507264208114654,
+          "error": 0.17072642081146538
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 19,
+          "truth": 6.53,
+          "published": 6.450269826843971,
+          "error": -0.0797301731560296
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 22,
+          "truth": 7.11,
+          "published": 7.078008594759914,
+          "error": -0.03199140524008648
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 25,
+          "truth": 6.61,
+          "published": 6.651305536045395,
+          "error": 0.04130553604539511
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 28,
+          "truth": 6.69,
+          "published": 6.891015377719035,
+          "error": 0.20101537771903466
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 31,
+          "truth": 6.81,
+          "published": 6.814700250376008,
+          "error": 0.004700250376008519
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 34,
+          "truth": 6.67,
+          "published": 6.556871966995843,
+          "error": -0.1131280330041573
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 37,
+          "truth": 6.4,
+          "published": null,
+          "error": null
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 41,
+          "truth": 5.99,
+          "published": 6.086206747564269,
+          "error": 0.09620674756426872
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 45,
+          "truth": 4.93,
+          "published": 4.862168500324829,
+          "error": -0.06783149967517055
+        },
+        {
+          "clip": "20261025_130022",
+          "t": 49.375,
+          "truth": -0.31,
+          "published": 0.08652135308087623,
+          "error": 0.3965213530808762
+        }
+      ],
+      "scored": 53,
+      "within03": 47,
+      "median": 0.11283174331206691,
+      "worst": {
+        "clip": "20261018_094055",
+        "t": 11,
+        "truth": 1.3871933477541407,
+        "published": 2.29133966506016,
+        "error": 0.9041463173060194
+      }
+    }
+  },
+  "summaryAll62": {
+    "n": 62,
+    "fresh": 46,
+    "held": 9,
+    "gaps": 7,
+    "coveragePct": 88.70967741935483,
+    "absoluteError": {
+      "n": 55,
+      "median": 0.11634924846681094,
+      "p90": 0.510124958401573,
+      "max": 0.8222561019301515
+    },
+    "within03": 45,
+    "heldAgeMs": {
+      "n": 9,
+      "median": 125,
+      "p90": 375,
+      "max": 375
+    },
+    "tipSampleErrorPx": {
+      "n": 54,
+      "median": 3.747368196058218,
+      "p90": 15.49550908983359,
+      "max": 135.79341375198027
+    },
+    "angularTipErrorPx": {
+      "n": 54,
+      "median": 2.7011989994076426,
+      "p90": 5.698582479332391,
+      "max": 142.51679461008138
+    },
+    "tipAbsBar": {
+      "n": 51,
+      "median": 0.09123567945096801,
+      "p90": 0.22299846498355247,
+      "max": 0.7659671900500661
+    },
+    "resolvedTipOffScale": [
+      "b005",
+      "b013",
+      "b044"
+    ],
+    "zeroAbsBiasBar": {
+      "n": 62,
+      "median": 0.06130751557838798,
+      "p90": 0.3803894433095513,
+      "max": 1.9616574769219253
+    },
+    "zeroDiagnosticAbsError": {
+      "n": 55,
+      "median": 0.14461182750947243,
+      "p90": 0.5007822319542079,
+      "max": 0.7368273269615084
+    },
+    "reasons": {
+      "tap-fresh": 46,
+      "held:needle-missing": 9,
+      "needle-missing": 6,
+      "pose-lost": 1
+    }
+  },
+  "summaryUnique52": {
+    "n": 52,
+    "fresh": 39,
+    "held": 8,
+    "gaps": 5,
+    "coveragePct": 90.38461538461539,
+    "absoluteError": {
+      "n": 47,
+      "median": 0.11389279170948097,
+      "p90": 0.4862274731322316,
+      "max": 0.8222561019301515
+    },
+    "within03": 39,
+    "heldAgeMs": {
+      "n": 8,
+      "median": 125,
+      "p90": 375,
+      "max": 375
+    },
+    "tipSampleErrorPx": {
+      "n": 45,
+      "median": 3.691080580528973,
+      "p90": 15.487280255249864,
+      "max": 135.79341375198027
+    },
+    "angularTipErrorPx": {
+      "n": 45,
+      "median": 2.3358775048722,
+      "p90": 5.378716849320082,
+      "max": 142.51679461008138
+    },
+    "tipAbsBar": {
+      "n": 43,
+      "median": 0.09123567945096801,
+      "p90": 0.225756168775931,
+      "max": 0.7659671900500661
+    },
+    "resolvedTipOffScale": [
+      "b005",
+      "b013"
+    ],
+    "zeroAbsBiasBar": {
+      "n": 52,
+      "median": 0.06687855969508169,
+      "p90": 0.3803894433095513,
+      "max": 1.9616574769219253
+    },
+    "zeroDiagnosticAbsError": {
+      "n": 47,
+      "median": 0.13655283976339305,
+      "p90": 0.47999898883398817,
+      "max": 0.7368273269615084
+    },
+    "reasons": {
+      "tap-fresh": 39,
+      "held:needle-missing": 8,
+      "needle-missing": 4,
+      "pose-lost": 1
+    }
+  },
+  "summaryExisting": {
+    "n": 20,
+    "fresh": 12,
+    "held": 4,
+    "gaps": 4,
+    "coveragePct": 80,
+    "absoluteError": {
+      "n": 16,
+      "median": 0.16543347671807807,
+      "p90": 0.7226481703773491,
+      "max": 0.8222561019301515
+    },
+    "within03": 9,
+    "heldAgeMs": {
+      "n": 4,
+      "median": 250,
+      "p90": 375,
+      "max": 375
+    },
+    "tipSampleErrorPx": {
+      "n": 16,
+      "median": 3.2883152114313425,
+      "p90": 72.63532462442332,
+      "max": 135.79341375198027
+    },
+    "angularTipErrorPx": {
+      "n": 16,
+      "median": 4.463857778957275,
+      "p90": 73.63140030992327,
+      "max": 142.51679461008138
+    },
+    "tipAbsBar": {
+      "n": 14,
+      "median": 0.07984492481743757,
+      "p90": 0.22775604128836793,
+      "max": 0.2421148953926806
+    },
+    "resolvedTipOffScale": [
+      "b005",
+      "b013"
+    ],
+    "zeroAbsBiasBar": {
+      "n": 20,
+      "median": 0.057801590611086,
+      "p90": 1.2702658809205587,
+      "max": 1.9616574769219253
+    },
+    "zeroDiagnosticAbsError": {
+      "n": 16,
+      "median": 0.27786144672714275,
+      "p90": 0.6246327139653463,
+      "max": 0.7368273269615084
+    },
+    "reasons": {
+      "tap-fresh": 12,
+      "held:needle-missing": 4,
+      "needle-missing": 3,
+      "pose-lost": 1
+    }
+  },
+  "summaryNew": {
+    "n": 32,
+    "fresh": 27,
+    "held": 4,
+    "gaps": 1,
+    "coveragePct": 96.875,
+    "absoluteError": {
+      "n": 31,
+      "median": 0.09369892836824933,
+      "p90": 0.18142789601116727,
+      "max": 0.3522943175846267
+    },
+    "within03": 30,
+    "heldAgeMs": {
+      "n": 4,
+      "median": 125,
+      "p90": 300.00000000000006,
+      "max": 375
+    },
+    "tipSampleErrorPx": {
+      "n": 29,
+      "median": 3.8425770800489856,
+      "p90": 13.615046175140387,
+      "max": 25.18094959630926
+    },
+    "angularTipErrorPx": {
+      "n": 29,
+      "median": 1.6696857041627908,
+      "p90": 3.886326861414712,
+      "max": 6.675370961172516
+    },
+    "tipAbsBar": {
+      "n": 29,
+      "median": 0.09123567945096801,
+      "p90": 0.2236878909316471,
+      "max": 0.7659671900500661
+    },
+    "resolvedTipOffScale": [],
+    "zeroAbsBiasBar": {
+      "n": 32,
+      "median": 0.07234594116521134,
+      "p90": 0.25454240888760177,
+      "max": 0.41040556855019117
+    },
+    "zeroDiagnosticAbsError": {
+      "n": 31,
+      "median": 0.09754993954367386,
+      "p90": 0.24725645781749106,
+      "max": 0.3522943175846267
+    },
+    "reasons": {
+      "tap-fresh": 27,
+      "held:needle-missing": 4,
+      "needle-missing": 1
+    }
+  },
+  "repeatNoise": {
+    "pairs": 10,
+    "hubSourcePx": {
+      "n": 10,
+      "median": 1.7131338250816448,
+      "p90": 2.761702649524328,
+      "max": 3.383784863137708
+    },
+    "tipSourcePx": {
+      "n": 10,
+      "median": 2.63157340136663,
+      "p90": 4.990677371074957,
+      "max": 8.614522621712712
+    },
+    "hubDisplayPx": {
+      "n": 10,
+      "median": 5.049509756796393,
+      "p90": 8.281822652816052,
+      "max": 8.602325267042627
+    },
+    "tipDisplayPx": {
+      "n": 10,
+      "median": 7.930992178549615,
+      "p90": 15.635995580939364,
+      "max": 25.317977802344327
+    },
+    "bar": {
+      "n": 10,
+      "median": 0.04971142667806516,
+      "p90": 0.167428488729614,
+      "max": 0.17536425406066436
+    }
+  },
+  "clipZero": [
+    {
+      "clip": "20261015_225307",
+      "calibrationZeroDeg": 325.4490287433632,
+      "locoRestOffsetDeg": 6.323111781042144,
+      "zeroMinusPinDeg": {
+        "n": 1,
+        "median": 4.0644698517812685,
+        "p90": 4.0644698517812685,
+        "max": 4.0644698517812685
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 1,
+        "median": -2.2586419292608753,
+        "p90": -2.2586419292608753,
+        "max": -2.2586419292608753
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 1,
+        "median": 0.15556848578693178,
+        "p90": 0.15556848578693178,
+        "max": 0.15556848578693178
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 1,
+        "median": 0.15556848578693178,
+        "p90": 0.15556848578693178,
+        "max": 0.15556848578693178
+      },
+      "restRows": [
+        "b012"
+      ]
+    },
+    {
+      "clip": "20261017_084814",
+      "calibrationZeroDeg": 236.4171197744489,
+      "locoRestOffsetDeg": 5.7602398136000375,
+      "zeroMinusPinDeg": {
+        "n": 2,
+        "median": 5.118778581372965,
+        "p90": 5.7715106639728795,
+        "max": 5.934693684622857
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 2,
+        "median": -0.6414612322270727,
+        "p90": 0.011270850372841368,
+        "max": 0.17445387102281984
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 2,
+        "median": -0.005618062717383566,
+        "p90": -0.0011236125434767128,
+        "max": 0
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 2,
+        "median": 0.005618062717383566,
+        "p90": 0.010112512891290419,
+        "max": 0.011236125434767132
+      },
+      "restRows": [
+        "b016"
+      ]
+    },
+    {
+      "clip": "20261017_134943",
+      "calibrationZeroDeg": 322.07461560160436,
+      "locoRestOffsetDeg": 5.999592580367562,
+      "zeroMinusPinDeg": {
+        "n": 1,
+        "median": 0.44792058433915827,
+        "p90": 0.44792058433915827,
+        "max": 0.44792058433915827
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 1,
+        "median": -5.5516719960284036,
+        "p90": -5.5516719960284036,
+        "max": -5.5516719960284036
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 1,
+        "median": 0,
+        "p90": 0,
+        "max": 0
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 1,
+        "median": 0,
+        "p90": 0,
+        "max": 0
+      },
+      "restRows": []
+    },
+    {
+      "clip": "20261018_094055",
+      "calibrationZeroDeg": 278.74667352464155,
+      "locoRestOffsetDeg": 6.323111781042144,
+      "zeroMinusPinDeg": {
+        "n": 7,
+        "median": -39.84751161271754,
+        "p90": -36.80515103183892,
+        "max": -35.06774655309573
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 7,
+        "median": -46.17062339375968,
+        "p90": -43.12826281288103,
+        "max": -41.390858334137874
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 7,
+        "median": 1.121259303695414,
+        "p90": 1.603425882843649,
+        "max": 1.9616574769219253
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 7,
+        "median": 1.121259303695414,
+        "p90": 1.603425882843649,
+        "max": 1.9616574769219253
+      },
+      "restRows": [
+        "b007"
+      ]
+    },
+    {
+      "clip": "20261018_160844",
+      "calibrationZeroDeg": 238.12051465778848,
+      "locoRestOffsetDeg": 5.7602398136000375,
+      "zeroMinusPinDeg": {
+        "n": 4,
+        "median": 4.2341793254717,
+        "p90": 4.713155227628102,
+        "max": 4.719882251104082
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 4,
+        "median": -1.526060488128394,
+        "p90": -1.0470845859719362,
+        "max": -1.0403575624959558
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 4,
+        "median": 0.07812361270867815,
+        "p90": 0.09001639702925368,
+        "max": 0.0905992675827747
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 4,
+        "median": 0.07812361270867815,
+        "p90": 0.09001639702925368,
+        "max": 0.0905992675827747
+      },
+      "restRows": [
+        "b011"
+      ]
+    },
+    {
+      "clip": "20261018_160931",
+      "calibrationZeroDeg": 230.6845251635931,
+      "locoRestOffsetDeg": 5.999592580367562,
+      "zeroMinusPinDeg": {
+        "n": 1,
+        "median": -3.987191008491777,
+        "p90": -3.987191008491777,
+        "max": -3.987191008491777
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 1,
+        "median": -9.986783588859339,
+        "p90": -9.986783588859339,
+        "max": -9.986783588859339
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 1,
+        "median": 0.11931048366862917,
+        "p90": 0.11931048366862917,
+        "max": 0.11931048366862917
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 1,
+        "median": 0.11931048366862917,
+        "p90": 0.11931048366862917,
+        "max": 0.11931048366862917
+      },
+      "restRows": []
+    },
+    {
+      "clip": "20261025_130022",
+      "calibrationZeroDeg": 318.0279929896267,
+      "locoRestOffsetDeg": 5.7602398136000375,
+      "zeroMinusPinDeg": {
+        "n": 2,
+        "median": 2.336009760944364,
+        "p90": 2.462146147827764,
+        "max": 2.4936802445486137
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 2,
+        "median": -3.4242300526556164,
+        "p90": -3.2980936657722624,
+        "max": -3.2665595690514238
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 2,
+        "median": 0.09685175822395392,
+        "p90": 0.17433316480311706,
+        "max": 0.19370351644790784
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 2,
+        "median": 0.09685175822395392,
+        "p90": 0.17433316480311706,
+        "max": 0.19370351644790784
+      },
+      "restRows": [
+        "b010"
+      ]
+    },
+    {
+      "clip": "20261024_124006",
+      "calibrationZeroDeg": 140.7535433202462,
+      "locoRestOffsetDeg": 5.999592580367562,
+      "zeroMinusPinDeg": {
+        "n": 2,
+        "median": 5.156260213288363,
+        "p90": 5.777843059344161,
+        "max": 5.933238770858111
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 2,
+        "median": -0.8433323670791992,
+        "p90": -0.22174952102340054,
+        "max": -0.06635380950945091
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 2,
+        "median": 0,
+        "p90": 0,
+        "max": 0
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 2,
+        "median": 0,
+        "p90": 0,
+        "max": 0
+      },
+      "restRows": []
+    },
+    {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "calibrationZeroDeg": 315.0194138332279,
+      "locoRestOffsetDeg": 6.067832530838928,
+      "zeroMinusPinDeg": {
+        "n": 8,
+        "median": 0.6441312726106503,
+        "p90": 5.434766461564868,
+        "max": 5.713627134956141
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 8,
+        "median": -5.4237012582282205,
+        "p90": -0.633066069274014,
+        "max": -0.3542053958829001
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 8,
+        "median": 0.06786271189819651,
+        "p90": 0.18073290052559768,
+        "max": 0.20328276852589622
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 8,
+        "median": 0.06786271189819651,
+        "p90": 0.18073290052559768,
+        "max": 0.20328276852589622
+      },
+      "restRows": [
+        "b021",
+        "b022",
+        "b028"
+      ]
+    },
+    {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "calibrationZeroDeg": 318.44762519061965,
+      "locoRestOffsetDeg": 5.7602398136000375,
+      "zeroMinusPinDeg": {
+        "n": 8,
+        "median": 3.3501120938693703,
+        "p90": 5.685159678715331,
+        "max": 7.133140078027964
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 8,
+        "median": -2.410127719730667,
+        "p90": -0.0750801348847066,
+        "max": 1.3729002644279262
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 8,
+        "median": 0.013714621251616377,
+        "p90": 0.13305788375039726,
+        "max": 0.1368425642215751
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 8,
+        "median": 0.046649415290650476,
+        "p90": 0.13305788375039726,
+        "max": 0.1368425642215751
+      },
+      "restRows": [
+        "b029",
+        "b030",
+        "b037"
+      ]
+    },
+    {
+      "clip": "lab-replay-f62a5256",
+      "calibrationZeroDeg": 314.82315490359906,
+      "locoRestOffsetDeg": 6.323111781042144,
+      "zeroMinusPinDeg": {
+        "n": 8,
+        "median": 0.21453800595617167,
+        "p90": 2.5297803108789134,
+        "max": 3.5312938812587618
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 8,
+        "median": -6.108573775086086,
+        "p90": -3.79333147016323,
+        "max": -2.791817899783382
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 8,
+        "median": 0.1668412515831774,
+        "p90": 0.3111928471677393,
+        "max": 0.41040556855019117
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 8,
+        "median": 0.1668412515831774,
+        "p90": 0.3111928471677393,
+        "max": 0.41040556855019117
+      },
+      "restRows": [
+        "b038",
+        "b039",
+        "b046"
+      ]
+    },
+    {
+      "clip": "20261024_124140",
+      "calibrationZeroDeg": 318.8214412235842,
+      "locoRestOffsetDeg": 6.323111781042144,
+      "zeroMinusPinDeg": {
+        "n": 8,
+        "median": 3.3675294012575137,
+        "p90": 6.045459533322628,
+        "max": 6.100364232833499
+      },
+      "zeroMinusCorrectedRestDeg": {
+        "n": 8,
+        "median": -2.95558237978463,
+        "p90": -0.2776522477195158,
+        "max": -0.22274754820864473
+      },
+      "signedZeroOnlyBiasBar": {
+        "n": 8,
+        "median": 0.03784312366449045,
+        "p90": 0.2638758730682656,
+        "max": 0.39280236929590134
+      },
+      "absoluteZeroOnlyBiasBar": {
+        "n": 8,
+        "median": 0.03784312366449045,
+        "p90": 0.2638758730682656,
+        "max": 0.39280236929590134
+      },
+      "restRows": [
+        "b047"
+      ]
+    }
+  ],
+  "streamSummaries": [
+    {
+      "clip": "20261015_225219",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 420.3,
+          "y": 622.3
+        },
+        "zeroAngleDeg": 321.31842796432966,
+        "fiveAngleDeg": 54.33481880104097,
+        "tenAngleDeg": 144.0948188010409
+      },
+      "frames": 100,
+      "fresh": 96,
+      "held": 4,
+      "gaps": 0,
+      "coveragePct": 100,
+      "heldAgeMedianMs": 187.5,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [],
+      "freshSecondDifferenceRms": 0.023039114113483486
+    },
+    {
+      "clip": "20261015_225307",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 384.7,
+          "y": 610.3
+        },
+        "zeroAngleDeg": 325.4490287433632,
+        "fiveAngleDeg": 47.55470135554316,
+        "tenAngleDeg": 137.3147013555431
+      },
+      "frames": 121,
+      "fresh": 56,
+      "held": 34,
+      "gaps": 31,
+      "coveragePct": 74.3801652892562,
+      "heldAgeMedianMs": 187.5,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 0.75,
+          "endS": 1.125,
+          "durationS": 0.5
+        },
+        {
+          "startS": 1.75,
+          "endS": 2.125,
+          "durationS": 0.5
+        },
+        {
+          "startS": 3.125,
+          "endS": 3.25,
+          "durationS": 0.25
+        },
+        {
+          "startS": 5.25,
+          "endS": 6.375,
+          "durationS": 1.25
+        },
+        {
+          "startS": 7,
+          "endS": 7.75,
+          "durationS": 0.875
+        },
+        {
+          "startS": 9.875,
+          "endS": 10.125,
+          "durationS": 0.375
+        },
+        {
+          "startS": 11.125,
+          "endS": 11.125,
+          "durationS": 0.125
+        }
+      ],
+      "freshSecondDifferenceRms": 0.043931087550394245
+    },
+    {
+      "clip": "20261017_084814",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 625,
+          "y": 306
+        },
+        "zeroAngleDeg": 236.4171197744489,
+        "fiveAngleDeg": 321.8260385554874,
+        "tenAngleDeg": 51.58603855548739
+      },
+      "frames": 380,
+      "fresh": 355,
+      "held": 14,
+      "gaps": 11,
+      "coveragePct": 97.10526315789474,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 4.125,
+          "endS": 4.875,
+          "durationS": 0.875
+        },
+        {
+          "startS": 47,
+          "endS": 47.375,
+          "durationS": 0.5
+        }
+      ],
+      "freshSecondDifferenceRms": 0.11484529481007533
+    },
+    {
+      "clip": "20261017_084919",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 635,
+          "y": 305
+        },
+        "zeroAngleDeg": 232.98957339641493,
+        "fiveAngleDeg": 327.8628564561652,
+        "tenAngleDeg": 57.62285645616515
+      },
+      "frames": 319,
+      "fresh": 289,
+      "held": 23,
+      "gaps": 7,
+      "coveragePct": 97.80564263322884,
+      "heldAgeMedianMs": 250,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 6.375,
+          "endS": 6.875,
+          "durationS": 0.625
+        },
+        {
+          "startS": 29,
+          "endS": 29.125,
+          "durationS": 0.25
+        }
+      ],
+      "freshSecondDifferenceRms": 0.09722674589870146
+    },
+    {
+      "clip": "20261017_134943",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 402,
+          "y": 676
+        },
+        "zeroAngleDeg": 322.07461560160436,
+        "fiveAngleDeg": 49.78280930021049,
+        "tenAngleDeg": 139.54280930021048
+      },
+      "frames": 472,
+      "fresh": 402,
+      "held": 53,
+      "gaps": 17,
+      "coveragePct": 96.39830508474576,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 11.5,
+          "endS": 11.5,
+          "durationS": 0.125
+        },
+        {
+          "startS": 55.25,
+          "endS": 55.25,
+          "durationS": 0.125
+        },
+        {
+          "startS": 55.875,
+          "endS": 55.875,
+          "durationS": 0.125
+        },
+        {
+          "startS": 57,
+          "endS": 58.625,
+          "durationS": 1.75
+        }
+      ],
+      "freshSecondDifferenceRms": 0.13347421602347545
+    },
+    {
+      "clip": "20261017_135116",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 521,
+          "y": 619
+        },
+        "zeroAngleDeg": 326.83625644073595,
+        "fiveAngleDeg": 56.92385610956484,
+        "tenAngleDeg": 146.68385610956489
+      },
+      "frames": 358,
+      "fresh": 312,
+      "held": 27,
+      "gaps": 19,
+      "coveragePct": 94.6927374301676,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 1.5,
+          "endS": 3,
+          "durationS": 1.625
+        },
+        {
+          "startS": 19.375,
+          "endS": 19.375,
+          "durationS": 0.125
+        },
+        {
+          "startS": 26,
+          "endS": 26.125,
+          "durationS": 0.25
+        },
+        {
+          "startS": 31.125,
+          "endS": 31.125,
+          "durationS": 0.125
+        },
+        {
+          "startS": 40.125,
+          "endS": 40.25,
+          "durationS": 0.25
+        }
+      ],
+      "freshSecondDifferenceRms": 0.2925544032306402
+    },
+    {
+      "clip": "20261018_094055",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 516,
+          "y": 776
+        },
+        "zeroAngleDeg": 278.74667352464155,
+        "fiveAngleDeg": 56.412332144818265,
+        "tenAngleDeg": 146.17233214481814
+      },
+      "frames": 435,
+      "fresh": 372,
+      "held": 53,
+      "gaps": 10,
+      "coveragePct": 97.70114942528735,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 2.625,
+          "endS": 2.75,
+          "durationS": 0.25
+        },
+        {
+          "startS": 22,
+          "endS": 22.125,
+          "durationS": 0.25
+        },
+        {
+          "startS": 31.875,
+          "endS": 32.125,
+          "durationS": 0.375
+        },
+        {
+          "startS": 36.5,
+          "endS": 36.625,
+          "durationS": 0.25
+        },
+        {
+          "startS": 45.75,
+          "endS": 45.75,
+          "durationS": 0.125
+        }
+      ],
+      "freshSecondDifferenceRms": 0.0965771173123959
+    },
+    {
+      "clip": "20261018_094151",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 509,
+          "y": 765
+        },
+        "zeroAngleDeg": 316.89797910004086,
+        "fiveAngleDeg": 53.7622241114679,
+        "tenAngleDeg": 143.52222411146795
+      },
+      "frames": 336,
+      "fresh": 285,
+      "held": 38,
+      "gaps": 13,
+      "coveragePct": 96.13095238095238,
+      "heldAgeMedianMs": 187.5,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 0,
+          "endS": 0,
+          "durationS": 0.125
+        },
+        {
+          "startS": 4.5,
+          "endS": 4.75,
+          "durationS": 0.375
+        },
+        {
+          "startS": 15.75,
+          "endS": 15.875,
+          "durationS": 0.25
+        },
+        {
+          "startS": 17.25,
+          "endS": 17.375,
+          "durationS": 0.25
+        },
+        {
+          "startS": 18.125,
+          "endS": 18.125,
+          "durationS": 0.125
+        },
+        {
+          "startS": 24.875,
+          "endS": 25.125,
+          "durationS": 0.375
+        },
+        {
+          "startS": 31.625,
+          "endS": 31.625,
+          "durationS": 0.125
+        }
+      ],
+      "freshSecondDifferenceRms": 0.16514948318320738
+    },
+    {
+      "clip": "20261018_160844",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 624,
+          "y": 160
+        },
+        "zeroAngleDeg": 238.12051465778848,
+        "fiveAngleDeg": 332.11097466300095,
+        "tenAngleDeg": 61.87097466300088
+      },
+      "frames": 301,
+      "fresh": 241,
+      "held": 28,
+      "gaps": 32,
+      "coveragePct": 89.3687707641196,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 0,
+          "endS": 0.5,
+          "durationS": 0.625
+        },
+        {
+          "startS": 1.25,
+          "endS": 2.875,
+          "durationS": 1.75
+        },
+        {
+          "startS": 4.25,
+          "endS": 4.25,
+          "durationS": 0.125
+        },
+        {
+          "startS": 4.875,
+          "endS": 5.625,
+          "durationS": 0.875
+        },
+        {
+          "startS": 37,
+          "endS": 37.5,
+          "durationS": 0.625
+        }
+      ],
+      "freshSecondDifferenceRms": 0.1609287178622517
+    },
+    {
+      "clip": "20261018_160931",
+      "calibrationSource": "existing exam sidecar taps",
+      "calibrationFrame": null,
+      "atSec": null,
+      "calibration": {
+        "hub": {
+          "x": 616,
+          "y": 180
+        },
+        "zeroAngleDeg": 230.6845251635931,
+        "fiveAngleDeg": 314.7141231032462,
+        "tenAngleDeg": 44.47412310324626
+      },
+      "frames": 292,
+      "fresh": 236,
+      "held": 29,
+      "gaps": 27,
+      "coveragePct": 90.75342465753425,
+      "heldAgeMedianMs": 250,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 8.375,
+          "endS": 8.5,
+          "durationS": 0.25
+        },
+        {
+          "startS": 10.625,
+          "endS": 11,
+          "durationS": 0.5
+        },
+        {
+          "startS": 11.625,
+          "endS": 11.75,
+          "durationS": 0.25
+        },
+        {
+          "startS": 12.875,
+          "endS": 13.625,
+          "durationS": 0.875
+        },
+        {
+          "startS": 14.625,
+          "endS": 15.5,
+          "durationS": 1
+        },
+        {
+          "startS": 16.125,
+          "endS": 16.5,
+          "durationS": 0.5
+        }
+      ],
+      "freshSecondDifferenceRms": 0.15103288146614638
+    },
+    {
+      "clip": "20261025_130022",
+      "calibrationSource": "exam hand taps translated from square crop (+280 y)",
+      "calibrationFrame": null,
+      "atSec": 1,
+      "calibration": {
+        "hub": {
+          "x": 481,
+          "y": 622.5
+        },
+        "zeroAngleDeg": 318.0279929896267,
+        "fiveAngleDeg": 38.37450649621826,
+        "tenAngleDeg": 125.24627527432352
+      },
+      "frames": 400,
+      "fresh": 313,
+      "held": 66,
+      "gaps": 21,
+      "coveragePct": 94.75,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 28.5,
+          "endS": 29.375,
+          "durationS": 1
+        },
+        {
+          "startS": 30.375,
+          "endS": 30.75,
+          "durationS": 0.5
+        },
+        {
+          "startS": 32.5,
+          "endS": 32.5,
+          "durationS": 0.125
+        },
+        {
+          "startS": 37.125,
+          "endS": 37.375,
+          "durationS": 0.375
+        },
+        {
+          "startS": 38.5,
+          "endS": 38.875,
+          "durationS": 0.5
+        },
+        {
+          "startS": 39.5,
+          "endS": 39.5,
+          "durationS": 0.125
+        }
+      ],
+      "freshSecondDifferenceRms": 0.11722054572977927
+    },
+    {
+      "clip": "20261024_124006",
+      "calibrationSource": "exam hand taps translated from square crop (+280 y)",
+      "calibrationFrame": null,
+      "atSec": 1,
+      "calibration": {
+        "hub": {
+          "x": 290.5,
+          "y": 676.3
+        },
+        "zeroAngleDeg": 140.7535433202462,
+        "fiveAngleDeg": 216.23621730350112,
+        "tenAngleDeg": 303.2140304601616
+      },
+      "frames": 447,
+      "fresh": 340,
+      "held": 75,
+      "gaps": 32,
+      "coveragePct": 92.84116331096197,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 5.125,
+          "endS": 5.125,
+          "durationS": 0.125
+        },
+        {
+          "startS": 6.25,
+          "endS": 6.875,
+          "durationS": 0.75
+        },
+        {
+          "startS": 33.5,
+          "endS": 33.625,
+          "durationS": 0.25
+        },
+        {
+          "startS": 35.5,
+          "endS": 35.5,
+          "durationS": 0.125
+        },
+        {
+          "startS": 51,
+          "endS": 52,
+          "durationS": 1.125
+        },
+        {
+          "startS": 52.75,
+          "endS": 53.125,
+          "durationS": 0.5
+        },
+        {
+          "startS": 54.25,
+          "endS": 55,
+          "durationS": 0.875
+        },
+        {
+          "startS": 55.625,
+          "endS": 55.75,
+          "durationS": 0.25
+        }
+      ],
+      "freshSecondDifferenceRms": 0.1263956599874732
+    },
+    {
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "calibrationSource": "first labelled rest hub/5/10; zero remains detected",
+      "calibrationFrame": "b021",
+      "atSec": 0.233,
+      "calibration": {
+        "hub": {
+          "x": 270.3,
+          "y": 490.3
+        },
+        "zeroAngleDeg": 315.0194138332279,
+        "fiveAngleDeg": 37.200946753113726,
+        "tenAngleDeg": 121.4051636659251
+      },
+      "frames": 311,
+      "fresh": 267,
+      "held": 30,
+      "gaps": 14,
+      "coveragePct": 95.49839228295819,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 15.5,
+          "endS": 17.125,
+          "durationS": 1.75
+        }
+      ],
+      "freshSecondDifferenceRms": 0.16688866251463322
+    },
+    {
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "calibrationSource": "first labelled rest hub/5/10; zero remains detected",
+      "calibrationFrame": "b029",
+      "atSec": 1,
+      "calibration": {
+        "hub": {
+          "x": 340.3,
+          "y": 516.2
+        },
+        "zeroAngleDeg": 318.44762519061965,
+        "fiveAngleDeg": 39.992435741727604,
+        "tenAngleDeg": 121.39026810418784
+      },
+      "frames": 319,
+      "fresh": 300,
+      "held": 15,
+      "gaps": 4,
+      "coveragePct": 98.74608150470219,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 0.5,
+          "endS": 0.75,
+          "durationS": 0.375
+        },
+        {
+          "startS": 35.5,
+          "endS": 35.5,
+          "durationS": 0.125
+        }
+      ],
+      "freshSecondDifferenceRms": 0.11796909434174456
+    },
+    {
+      "clip": "lab-replay-f62a5256",
+      "calibrationSource": "first labelled rest hub/5/10; zero remains detected",
+      "calibrationFrame": "b038",
+      "atSec": 0.577,
+      "calibration": {
+        "hub": {
+          "x": 338.8,
+          "y": 495.4
+        },
+        "zeroAngleDeg": 314.82315490359906,
+        "fiveAngleDeg": 42.24916520411881,
+        "tenAngleDeg": 118.34701176740464
+      },
+      "frames": 298,
+      "fresh": 279,
+      "held": 10,
+      "gaps": 9,
+      "coveragePct": 96.97986577181209,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 0,
+          "endS": 0,
+          "durationS": 0.125
+        },
+        {
+          "startS": 3.125,
+          "endS": 3.125,
+          "durationS": 0.125
+        },
+        {
+          "startS": 4.125,
+          "endS": 4.625,
+          "durationS": 0.625
+        },
+        {
+          "startS": 33.75,
+          "endS": 33.875,
+          "durationS": 0.25
+        }
+      ],
+      "freshSecondDifferenceRms": 0.12350253973030076
+    },
+    {
+      "clip": "20261024_124140",
+      "calibrationSource": "first labelled rest hub/5/10; zero remains detected",
+      "calibrationFrame": "b047",
+      "atSec": 1,
+      "calibration": {
+        "hub": {
+          "x": 428.1,
+          "y": 609.2
+        },
+        "zeroAngleDeg": 318.8214412235842,
+        "fiveAngleDeg": 37.5954002053777,
+        "tenAngleDeg": 125.35909412245098
+      },
+      "frames": 309,
+      "fresh": 263,
+      "held": 39,
+      "gaps": 7,
+      "coveragePct": 97.73462783171522,
+      "heldAgeMedianMs": 125,
+      "heldAgeMaxMs": 375,
+      "gapRuns": [
+        {
+          "startS": 5.375,
+          "endS": 5.375,
+          "durationS": 0.125
+        },
+        {
+          "startS": 14.875,
+          "endS": 15.25,
+          "durationS": 0.5
+        },
+        {
+          "startS": 20.125,
+          "endS": 20.125,
+          "durationS": 0.125
+        },
+        {
+          "startS": 21.625,
+          "endS": 21.625,
+          "durationS": 0.125
+        }
+      ],
+      "freshSecondDifferenceRms": 0.17281927430829377
+    }
+  ],
+  "repeatPairs": [
+    {
+      "first": "b003",
+      "repeat": "b036",
+      "clip": "20261018_094055",
+      "hubPx": 2.692582403567286,
+      "tipPx": 0.6000000000000227,
+      "needleAngleDeg": 0.10618737885056362,
+      "geometricBarDifference": 0.08957046685243109,
+      "pinBarDifference": 0.07225503091837093,
+      "hubDisplayAgreementPx": 8.246211251235321,
+      "tipDisplayAgreementPx": 2
+    },
+    {
+      "first": "b005",
+      "repeat": "b044",
+      "clip": "20261018_094055",
+      "hubPx": 3.383784863137708,
+      "tipPx": 2.332380757938085,
+      "needleAngleDeg": 3.378329938828756,
+      "geometricBarDifference": 0.13618983514202387,
+      "pinBarDifference": 0.13618983514202387,
+      "hubDisplayAgreementPx": 8.602325267042627,
+      "tipDisplayAgreementPx": 5.8309518948453
+    },
+    {
+      "first": "b025",
+      "repeat": "b050",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "hubPx": 1.7000000000000455,
+      "tipPx": 8.614522621712712,
+      "needleAngleDeg": 5.302137482324952,
+      "geometricBarDifference": 0.01687999289393627,
+      "pinBarDifference": 0.01687999289393627,
+      "hubDisplayAgreementPx": 5,
+      "tipDisplayAgreementPx": 25.317977802344327
+    },
+    {
+      "first": "b038",
+      "repeat": "b051",
+      "clip": "lab-replay-f62a5256",
+      "hubPx": 0.7615773105863625,
+      "tipPx": 2.376972864800945,
+      "needleAngleDeg": 2.814843514965105,
+      "geometricBarDifference": 0.17536425406066436,
+      "pinBarDifference": 0.18314420482942922,
+      "hubDisplayAgreementPx": 2.23606797749979,
+      "tipDisplayAgreementPx": 7.615773105863909
+    },
+    {
+      "first": "b043",
+      "repeat": "b054",
+      "clip": "lab-replay-f62a5256",
+      "hubPx": 0.6000000000000227,
+      "tipPx": 4.588027898781875,
+      "needleAngleDeg": 2.1469642609001767,
+      "geometricBarDifference": 0.16654673702616396,
+      "pinBarDifference": 0.16654673702616396,
+      "hubDisplayAgreementPx": 2,
+      "tipDisplayAgreementPx": 14.560219778561038
+    },
+    {
+      "first": "b027",
+      "repeat": "b055",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "hubPx": 1.9235384061671137,
+      "tipPx": 3.1780497164141766,
+      "needleAngleDeg": 1.0796305487043583,
+      "geometricBarDifference": 0.0480310767348362,
+      "pinBarDifference": 0.042800384712958106,
+      "hubDisplayAgreementPx": 6.0827625302982185,
+      "tipDisplayAgreementPx": 9.848857801796104
+    },
+    {
+      "first": "b011",
+      "repeat": "b058",
+      "clip": "20261018_160844",
+      "hubPx": 1.22065556157338,
+      "tipPx": 0.7000000000000028,
+      "needleAngleDeg": 0.7232046899880515,
+      "geometricBarDifference": 0.04622694760812454,
+      "pinBarDifference": 0.03420739891950797,
+      "hubDisplayAgreementPx": 3.6055512754639896,
+      "tipDisplayAgreementPx": 2
+    },
+    {
+      "first": "b042",
+      "repeat": "b060",
+      "clip": "lab-replay-f62a5256",
+      "hubPx": 2.23606797749979,
+      "tipPx": 4.0447496832313234,
+      "needleAngleDeg": 2.322892379594805,
+      "geometricBarDifference": 0.04710675067371195,
+      "pinBarDifference": 0.04710675067371195,
+      "hubDisplayAgreementPx": 6.708203932499369,
+      "tipDisplayAgreementPx": 12.165525060596437
+    },
+    {
+      "first": "b008",
+      "repeat": "b061",
+      "clip": "20261017_084814",
+      "hubPx": 0.39999999999997726,
+      "tipPx": 1.1401754250991778,
+      "needleAngleDeg": 0.5754024731432992,
+      "geometricBarDifference": 0.05139177662129413,
+      "pinBarDifference": 0.051391776621290575,
+      "hubDisplayAgreementPx": 1,
+      "tipDisplayAgreementPx": 3.1622776601683795
+    },
+    {
+      "first": "b052",
+      "repeat": "b062",
+      "clip": "20261024_124140",
+      "hubPx": 1.726267650163244,
+      "tipPx": 2.8861739379323157,
+      "needleAngleDeg": 2.275986078303049,
+      "geometricBarDifference": 0.041343456007959745,
+      "pinBarDifference": 0.041343456007959745,
+      "hubDisplayAgreementPx": 5.099019513592785,
+      "tipDisplayAgreementPx": 8.246211251235321
+    }
+  ],
+  "rows": [
+    {
+      "id": "b001",
+      "clip": "20261018_094055",
+      "t": 10.875,
+      "phase": "preinfusion",
+      "group": "existing",
+      "why": "worst +0.90 bar @11s (burst)",
+      "repeatOf": null,
+      "matchedTimeS": 10.875,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 2.3471566866904805,
+      "labelBar": 1.524900584760329,
+      "error": 0.8222561019301515,
+      "phaseAssumedZeroBar": 1.524900584760329,
+      "labelGeometricBar": 1.524900584760329,
+      "labelPinBar": 1.8026953855598273,
+      "staleMs": null,
+      "lastFreshS": 10.875,
+      "labelAngles": {
+        "tip": 345.7267313424091,
+        "zero": 317.2082547694593,
+        "five": 36.30779871180255,
+        "ten": 121.44781074091105
+      },
+      "labelZeroCorrectedDeg": 323.5313665505014,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 276.4755388081937,
+      "zeroVsPinDeg": -40.732715961265626,
+      "readerFiveDeg": 54.02491527406369,
+      "readerTenDeg": 144.42588478712412,
+      "zeroVsRestCorrectedDeg": -47.05582774230771,
+      "zeroOnlyBiasBar": 1.364604820124798,
+      "zeroDiagnosticCorrectedBar": 0.9825518665656825,
+      "hubPx": 9.502660418941227,
+      "readerHub": {
+        "x": 491.7196355829563,
+        "y": 776.653403575077
+      },
+      "readerTipSample": {
+        "x": 541.9798033202624,
+        "y": 759.9996818131717
+      },
+      "labelTip": {
+        "x": 544.8,
+        "y": 759.5
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.8641213708251803,
+      "angularTipErrorPx": 4.568166316095067,
+      "needleAngleErrorDeg": -4.059362014237877,
+      "tipGeometryBar": 1.5114212143080112,
+      "tipGeometryErrorBar": -0.01347937045231773,
+      "rawBar": 2.3471566866904805,
+      "readerNeedleDeg": 341.6673693281713,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5591743114150092,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.260869565217391
+    },
+    {
+      "id": "b002",
+      "clip": "20261018_094055",
+      "t": 11,
+      "phase": "preinfusion",
+      "group": "existing",
+      "why": "worst +0.90 bar @11s (burst)",
+      "repeatOf": null,
+      "matchedTimeS": 11,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 2.29133966506016,
+      "labelBar": 1.5828706512669704,
+      "error": 0.7084690137931897,
+      "phaseAssumedZeroBar": 1.5828706512669704,
+      "labelGeometricBar": 1.5828706512669704,
+      "labelPinBar": 1.8458478610105948,
+      "staleMs": null,
+      "lastFreshS": 11,
+      "labelAngles": {
+        "tip": 344.76042124218446,
+        "zero": 314.4284899822363,
+        "five": 36.5910882673993,
+        "ten": 125.00310041105115
+      },
+      "labelZeroCorrectedDeg": 320.75160176327836,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 276.4650692979019,
+      "zeroVsPinDeg": -37.96342068433438,
+      "readerFiveDeg": 54.29199547080407,
+      "readerTenDeg": 144.80133459917045,
+      "zeroVsRestCorrectedDeg": -44.28653246537647,
+      "zeroOnlyBiasBar": 1.2597837765645319,
+      "zeroDiagnosticCorrectedBar": 1.0315558884956282,
+      "hubPx": 8.980586886678896,
+      "readerHub": {
+        "x": 491.43559263159625,
+        "y": 776.5021552743643
+      },
+      "readerTipSample": {
+        "x": 541.4189429727625,
+        "y": 758.9680521938067
+      },
+      "labelTip": {
+        "x": 544.9,
+        "y": 760.4
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.7640712727765244,
+      "angularTipErrorPx": 4.617117461216758,
+      "needleAngleErrorDeg": -4.0912342973567775,
+      "tipGeometryBar": 1.442312848492867,
+      "tipGeometryErrorBar": -0.14055780277410346,
+      "rawBar": 2.29133966506016,
+      "readerNeedleDeg": 340.66918694482774,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.49692848308900983,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.5936599423631126
+    },
+    {
+      "id": "b003",
+      "clip": "20261018_094055",
+      "t": 11.125,
+      "phase": "preinfusion",
+      "group": "existing",
+      "why": "worst +0.90 bar @11s (burst)",
+      "repeatOf": null,
+      "matchedTimeS": 11.125,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 2.3235462031610887,
+      "labelBar": 1.7656262742208337,
+      "error": 0.557919928940255,
+      "phaseAssumedZeroBar": 1.7656262742208337,
+      "labelGeometricBar": 1.7656262742208337,
+      "labelPinBar": 2.0081474465343963,
+      "staleMs": null,
+      "lastFreshS": 11.125,
+      "labelAngles": {
+        "tip": 345.4848515949663,
+        "zero": 311.61627116966895,
+        "five": 35.94419361317972,
+        "ten": 125.47997813422586
+      },
+      "labelZeroCorrectedDeg": 317.9393829507111,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 276.5485246165732,
+      "zeroVsPinDeg": -35.06774655309573,
+      "readerFiveDeg": 54.59624298963246,
+      "readerTenDeg": 144.70579377904045,
+      "zeroVsRestCorrectedDeg": -41.390858334137874,
+      "zeroOnlyBiasBar": 1.121259303695414,
+      "zeroDiagnosticCorrectedBar": 1.2022868994656748,
+      "hubPx": 8.11750785591561,
+      "readerHub": {
+        "x": 491.1518877866454,
+        "y": 776.0300664357812
+      },
+      "readerTipSample": {
+        "x": 541.612601516917,
+        "y": 759.1702670566692
+      },
+      "labelTip": {
+        "x": 544.9,
+        "y": 759
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.2918049239228626,
+      "angularTipErrorPx": 4.4115044450856695,
+      "needleAngleErrorDeg": -3.960219082032154,
+      "tipGeometryBar": 1.725691729876121,
+      "tipGeometryErrorBar": -0.039934544344712775,
+      "rawBar": 2.3235462031610887,
+      "readerNeedleDeg": 341.5246325129342,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6324411039260072,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.061224489795918
+    },
+    {
+      "id": "b004",
+      "clip": "20261018_094055",
+      "t": 19,
+      "phase": "ramp",
+      "group": "existing",
+      "why": "-0.32 held:needle-missing",
+      "repeatOf": null,
+      "matchedTimeS": 19,
+      "timeDeltaMs": 0,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 5.654830016349084,
+      "labelBar": 6.391657343310593,
+      "error": -0.7368273269615084,
+      "phaseAssumedZeroBar": 6.391657343310593,
+      "labelGeometricBar": 6.391657343310593,
+      "labelPinBar": 6.391657343310593,
+      "staleMs": 125,
+      "lastFreshS": 18.875,
+      "labelAngles": {
+        "tip": 60.370945592807175,
+        "zero": 317.69929105744524,
+        "five": 36.31550133284384,
+        "ten": 122.7428261897594
+      },
+      "labelZeroCorrectedDeg": 324.0224028384873,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 276.69146816771104,
+      "zeroVsPinDeg": -41.0078228897342,
+      "readerFiveDeg": 54.72084439827876,
+      "readerTenDeg": 145.1046416858906,
+      "zeroVsRestCorrectedDeg": -47.33093467077629,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 5.654830016349084,
+      "hubPx": 10.296052177549136,
+      "readerHub": {
+        "x": 485.1922792638987,
+        "y": 785.4581268290225
+      },
+      "readerTipSample": null,
+      "labelTip": {
+        "x": 511.4,
+        "y": 848
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": null,
+      "angularTipErrorPx": null,
+      "needleAngleErrorDeg": null,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": null,
+      "pointerReason": "ambiguous",
+      "pointerQuality": 0,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.435114503816794
+    },
+    {
+      "id": "b005",
+      "clip": "20261018_094055",
+      "t": 22,
+      "phase": "peak",
+      "group": "existing",
+      "why": "gap: needle-missing",
+      "repeatOf": null,
+      "matchedTimeS": 22,
+      "timeDeltaMs": 0,
+      "state": "gap",
+      "reason": "needle-missing",
+      "readerBar": null,
+      "labelBar": 7.324713252220899,
+      "error": null,
+      "phaseAssumedZeroBar": 7.324713252220899,
+      "labelGeometricBar": 7.324713252220899,
+      "labelPinBar": 7.324713252220899,
+      "staleMs": null,
+      "lastFreshS": 21.5,
+      "labelAngles": {
+        "tip": 76.9992296500024,
+        "zero": 316.10970682910613,
+        "five": 37.810297503573736,
+        "ten": 122.09796633539588
+      },
+      "labelZeroCorrectedDeg": 322.4328186101483,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 277.20446931085735,
+      "zeroVsPinDeg": -38.90523751824878,
+      "readerFiveDeg": 54.80601679026552,
+      "readerTenDeg": 146.0526627100943,
+      "zeroVsRestCorrectedDeg": -45.228349299290926,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": null,
+      "hubPx": 10.280167361741272,
+      "readerHub": {
+        "x": 482.6262859645439,
+        "y": 788.951150016307
+      },
+      "readerTipSample": {
+        "x": 488.4352235336547,
+        "y": 726.0676907672575
+      },
+      "labelTip": {
+        "x": 488.1,
+        "y": 855.9
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 129.83274200109912,
+      "angularTipErrorPx": 137.805872260445,
+      "needleAngleErrorDeg": -161.72143936482365,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": 275.27779028517875,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.26136641932455756,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.542372881355932
+    },
+    {
+      "id": "b006",
+      "clip": "20261018_094055",
+      "t": 40,
+      "phase": "taper",
+      "group": "existing",
+      "why": "-0.35",
+      "repeatOf": null,
+      "matchedTimeS": 40,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 5.055814685235514,
+      "labelBar": 5.741740738411048,
+      "error": -0.6859260531755336,
+      "phaseAssumedZeroBar": 5.741740738411048,
+      "labelGeometricBar": 5.741740738411048,
+      "labelPinBar": 5.741740738411048,
+      "staleMs": null,
+      "lastFreshS": 40,
+      "labelAngles": {
+        "tip": 48.5457294746131,
+        "zero": 317.7393357219186,
+        "five": 35.96500499952697,
+        "ten": 120.77040817878651
+      },
+      "labelZeroCorrectedDeg": 324.0624475029608,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 276.54920050830054,
+      "zeroVsPinDeg": -41.19013521361808,
+      "readerFiveDeg": 54.864269557361126,
+      "readerTenDeg": 144.76179958252732,
+      "zeroVsRestCorrectedDeg": -47.51324699466028,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 5.055814685235514,
+      "hubPx": 11.886198771934689,
+      "readerHub": {
+        "x": 463.26057888043647,
+        "y": 792.5200064956132
+      },
+      "readerTipSample": {
+        "x": 500.96813121029163,
+        "y": 848.0916081031581
+      },
+      "labelTip": {
+        "x": 500.6,
+        "y": 849
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 0.9801512262088551,
+      "angularTipErrorPx": 9.456928359401518,
+      "needleAngleErrorDeg": 7.295810553638603,
+      "tipGeometryBar": 5.701630223207226,
+      "tipGeometryErrorBar": -0.04011051520382214,
+      "rawBar": 5.055814685235514,
+      "readerNeedleDeg": 55.84154002825164,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.20825908697325715,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.4390243902439024
+    },
+    {
+      "id": "b007",
+      "clip": "20261018_094055",
+      "t": 2.7,
+      "phase": "rest",
+      "group": "existing",
+      "why": "rest, pose-lost",
+      "repeatOf": null,
+      "matchedTimeS": 2.75,
+      "timeDeltaMs": 49.99999999999982,
+      "state": "gap",
+      "reason": "pose-lost",
+      "readerBar": null,
+      "labelBar": -0.14780051030232058,
+      "error": null,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": -0.14780051030232058,
+      "labelPinBar": 0.2525015812692192,
+      "staleMs": null,
+      "lastFreshS": 2.5,
+      "labelAngles": {
+        "tip": 322.80018788418175,
+        "zero": 318.6938109993382,
+        "five": 40.0076955342887,
+        "ten": 122.98458159304431
+      },
+      "labelZeroCorrectedDeg": 325.01692278038036,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 278.8462993866207,
+      "zeroVsPinDeg": -39.84751161271754,
+      "readerFiveDeg": 56.4705539815497,
+      "readerTenDeg": 146.2806127978174,
+      "zeroVsRestCorrectedDeg": -46.17062339375968,
+      "zeroOnlyBiasBar": 1.9616574769219253,
+      "zeroDiagnosticCorrectedBar": null,
+      "hubPx": 9.766526883311785,
+      "readerHub": {
+        "x": 515.8949143347629,
+        "y": 775.9805436900259
+      },
+      "readerTipSample": null,
+      "labelTip": {
+        "x": 556,
+        "y": 737
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": null,
+      "angularTipErrorPx": null,
+      "needleAngleErrorDeg": null,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": null,
+      "pointerReason": null,
+      "pointerQuality": null,
+      "poseLost": true,
+      "duplicate": false,
+      "displayScale": 3.0927835051546393
+    },
+    {
+      "id": "b008",
+      "clip": "20261017_084814",
+      "t": 22,
+      "phase": "peak",
+      "group": "existing",
+      "why": "-0.36",
+      "repeatOf": null,
+      "matchedTimeS": 22,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 7.252126215043228,
+      "labelBar": 7.690558717636778,
+      "error": -0.4384325025935496,
+      "phaseAssumedZeroBar": 7.690558717636778,
+      "labelGeometricBar": 7.690558717636778,
+      "labelPinBar": 7.690558717636775,
+      "staleMs": null,
+      "lastFreshS": 22,
+      "labelAngles": {
+        "tip": 358.7491991852346,
+        "zero": 231.09040246410038,
+        "five": 313.62400693334513,
+        "ten": 37.48241142771849
+      },
+      "labelZeroCorrectedDeg": 236.85064227770044,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 235.39326594222348,
+      "zeroVsPinDeg": 4.302863478123072,
+      "readerFiveDeg": 321.1007548754831,
+      "readerTenDeg": 50.59422356070638,
+      "zeroVsRestCorrectedDeg": -1.4573763354769653,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 7.252126215043228,
+      "hubPx": 4.273525244679123,
+      "readerHub": {
+        "x": 642.8165917162149,
+        "y": 327.7646301787727
+      },
+      "readerTipSample": {
+        "x": 713.7119359186509,
+        "y": 329.7646301787727
+      },
+      "labelTip": {
+        "x": 714.8,
+        "y": 329
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 1.329865690741739,
+      "angularTipErrorPx": 3.4377764708474174,
+      "needleAngleErrorDeg": 2.8667203939371575,
+      "tipGeometryBar": 7.7279823666924585,
+      "tipGeometryErrorBar": 0.03742364905568074,
+      "rawBar": 7.252126215043228,
+      "readerNeedleDeg": 1.6159195791717593,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.731672581722455,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.694610778443114
+    },
+    {
+      "id": "b009",
+      "clip": "20261018_160931",
+      "t": 18.231,
+      "phase": "used",
+      "group": "existing",
+      "why": "+0.31",
+      "repeatOf": null,
+      "matchedTimeS": 18.25,
+      "timeDeltaMs": 18.99999999999835,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 4.052433057147519,
+      "labelBar": 4.049341475742006,
+      "error": 0.003091581405513466,
+      "phaseAssumedZeroBar": 4.049341475742006,
+      "labelGeometricBar": 4.049341475742006,
+      "labelPinBar": 4.124798536511125,
+      "staleMs": null,
+      "lastFreshS": 18.25,
+      "labelAngles": {
+        "tip": 298.31019338402564,
+        "zero": 235.95406264339834,
+        "five": 311.5409430554656,
+        "ten": 41.62432483367229
+      },
+      "labelZeroCorrectedDeg": 241.95365522376596,
+      "restOffsetLocoDeg": 5.999592580367562,
+      "readerZeroDeg": 231.9668716349066,
+      "zeroVsPinDeg": -3.987191008491777,
+      "readerFiveDeg": 317.3239603979784,
+      "readerTenDeg": 45.67787557854729,
+      "zeroVsRestCorrectedDeg": -9.986783588859339,
+      "zeroOnlyBiasBar": 0.11931048366862917,
+      "zeroDiagnosticCorrectedBar": 3.93312257347889,
+      "hubPx": 9.125776660056244,
+      "readerHub": {
+        "x": 646.3190059420432,
+        "y": 243.17980072267233
+      },
+      "readerTipSample": {
+        "x": 685.0834275572092,
+        "y": 179.81566911738793
+      },
+      "labelTip": {
+        "x": 685,
+        "y": 179.9
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 0.11862485011173765,
+      "angularTipErrorPx": 4.51621111282888,
+      "needleAngleErrorDeg": 3.146947302277681,
+      "tipGeometryBar": 4.05101398402079,
+      "tipGeometryErrorBar": 0.0016725082787845125,
+      "rawBar": 4.052433057147519,
+      "readerNeedleDeg": 301.4571406863033,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5225328051558606,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.278481012658228
+    },
+    {
+      "id": "b010",
+      "clip": "20261025_130022",
+      "t": 49.375,
+      "phase": "return-rest",
+      "group": "existing",
+      "why": "+0.40",
+      "repeatOf": null,
+      "matchedTimeS": 49.375,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.10534425013194726,
+      "labelBar": 0.16956332686392622,
+      "error": -0.06421907673197896,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 0.16956332686392622,
+      "labelPinBar": 0.5009934722430418,
+      "staleMs": null,
+      "lastFreshS": 49.375,
+      "labelAngles": {
+        "tip": 324.4728680903864,
+        "zero": 316.06091169026416,
+        "five": 40.01366622876458,
+        "ten": 123.95109432834528
+      },
+      "labelZeroCorrectedDeg": 321.82115150386426,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 318.5545919348128,
+      "zeroVsPinDeg": 2.4936802445486137,
+      "readerFiveDeg": 38.75751649513086,
+      "readerTenDeg": 125.8359031660367,
+      "zeroVsRestCorrectedDeg": -3.2665595690514238,
+      "zeroOnlyBiasBar": 0.19370351644790784,
+      "zeroDiagnosticCorrectedBar": -0.08835926631596058,
+      "hubPx": 1.8387253521002502,
+      "readerHub": {
+        "x": 478.2590574757972,
+        "y": 629.2157010199121
+      },
+      "readerTipSample": {
+        "x": 528.2618644351603,
+        "y": 587.6111902274264
+      },
+      "labelTip": {
+        "x": 530.7,
+        "y": 591
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 4.174749897565936,
+      "angularTipErrorPx": 4.666969895324674,
+      "needleAngleErrorDeg": -4.234797397982902,
+      "tipGeometryBar": -0.0723184551695168,
+      "tipGeometryErrorBar": -0.24188178203344302,
+      "rawBar": 0.10534425013194726,
+      "readerNeedleDeg": 320.2380706924034,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6888706863072587,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.9411764705882355
+    },
+    {
+      "id": "b011",
+      "clip": "20261018_160844",
+      "t": 2.7,
+      "phase": "rest",
+      "group": "existing",
+      "why": "rest, needle-missing (gap)",
+      "repeatOf": null,
+      "matchedTimeS": 2.75,
+      "timeDeltaMs": 49.99999999999982,
+      "state": "gap",
+      "reason": "needle-missing",
+      "readerBar": null,
+      "labelBar": 0.08458087434340997,
+      "error": null,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 0.08458087434340997,
+      "labelPinBar": 0.429931499796831,
+      "staleMs": null,
+      "lastFreshS": 0.75,
+      "labelAngles": {
+        "tip": 240.51460868391416,
+        "zero": 233.46491683091836,
+        "five": 315.45113854678726,
+        "ten": 40.508647357632526
+      },
+      "labelZeroCorrectedDeg": 239.2251566445184,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 238.16237567043584,
+      "zeroVsPinDeg": 4.6974588395174806,
+      "readerFiveDeg": 332.0704805209544,
+      "readerTenDeg": 61.91353461619934,
+      "zeroVsRestCorrectedDeg": -1.062780974082557,
+      "zeroOnlyBiasBar": 0.06759085967965167,
+      "zeroDiagnosticCorrectedBar": null,
+      "hubPx": 8.979135438598714,
+      "readerHub": {
+        "x": 624.0707446603197,
+        "y": 160.0061798679238
+      },
+      "readerTipSample": {
+        "x": 593.0307644353861,
+        "y": 110.33182773321104
+      },
+      "labelTip": {
+        "x": 595,
+        "y": 108.1
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.9763977791401004,
+      "angularTipErrorPx": 3.004690723508763,
+      "needleAngleErrorDeg": -2.5146086839141617,
+      "tipGeometryBar": -0.0719474662944037,
+      "tipGeometryErrorBar": -0.15652834063781368,
+      "rawBar": null,
+      "readerNeedleDeg": 238,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6738097205640127,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.8846153846153846
+    },
+    {
+      "id": "b012",
+      "clip": "20261015_225307",
+      "t": 7.581,
+      "phase": "dry-rest",
+      "group": "existing",
+      "why": "dry rest, needle-missing (gap)",
+      "repeatOf": null,
+      "matchedTimeS": 7.625,
+      "timeDeltaMs": 43.999999999999595,
+      "state": "gap",
+      "reason": "needle-missing",
+      "readerBar": null,
+      "labelBar": -0.19640526390339297,
+      "error": null,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": -0.19640526390339297,
+      "labelPinBar": 0.21684830873400382,
+      "staleMs": null,
+      "lastFreshS": 6.5,
+      "labelAngles": {
+        "tip": 324.902474489407,
+        "zero": 321.45418838863714,
+        "five": 40.96336512378235,
+        "ten": 126.79035035697677
+      },
+      "labelZeroCorrectedDeg": 327.7773001696793,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 325.51865824041846,
+      "zeroVsPinDeg": 4.0644698517812685,
+      "readerFiveDeg": 47.48781416940943,
+      "readerTenDeg": 137.3853650573693,
+      "zeroVsRestCorrectedDeg": -2.2586419292608753,
+      "zeroOnlyBiasBar": 0.15556848578693178,
+      "zeroDiagnosticCorrectedBar": null,
+      "hubPx": 5.210117827756771,
+      "readerHub": {
+        "x": 1155.607277591785,
+        "y": 1830.5835373460206
+      },
+      "readerTipSample": {
+        "x": 1335.7501799387976,
+        "y": 1704.446119167667
+      },
+      "labelTip": {
+        "x": 1336.2,
+        "y": 1707.7
+      },
+      "sourceScale": {
+        "x": 3,
+        "y": 3
+      },
+      "tipSampleErrorPx": 3.284825498939823,
+      "angularTipErrorPx": 0.37863518579817534,
+      "needleAngleErrorDeg": 0.09752551059295911,
+      "tipGeometryBar": -0.24745611699057635,
+      "tipGeometryErrorBar": -0.05105085308718338,
+      "rawBar": null,
+      "readerNeedleDeg": 325,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.646202050642271,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 0.9063444108761329
+    },
+    {
+      "id": "b013",
+      "clip": "20261017_134943",
+      "t": 48.5,
+      "phase": "taper",
+      "group": "existing",
+      "why": "held:needle-missing",
+      "repeatOf": null,
+      "matchedTimeS": 48.5,
+      "timeDeltaMs": 0,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 6.025223263471974,
+      "labelBar": 6.391401961757241,
+      "error": -0.3661786982852675,
+      "phaseAssumedZeroBar": 6.391401961757241,
+      "labelGeometricBar": 6.391401961757241,
+      "labelPinBar": 6.391401961757241,
+      "staleMs": 125,
+      "lastFreshS": 48.375,
+      "labelAngles": {
+        "tip": 63.80524541492974,
+        "zero": 320.845628898584,
+        "five": 39.95552698851026,
+        "ten": 125.65943959583115
+      },
+      "labelZeroCorrectedDeg": 326.84522147895154,
+      "restOffsetLocoDeg": 5.999592580367562,
+      "readerZeroDeg": 321.29354948292314,
+      "zeroVsPinDeg": 0.44792058433915827,
+      "readerFiveDeg": 48.9750963073883,
+      "readerTenDeg": 138.698019350903,
+      "zeroVsRestCorrectedDeg": -5.5516719960284036,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 6.025223263471974,
+      "hubPx": 3.853102660225267,
+      "readerHub": {
+        "x": 364.55226981591994,
+        "y": 689.9198914761896
+      },
+      "readerTipSample": {
+        "x": 382.4401182165998,
+        "y": 623.0254849481977
+      },
+      "labelTip": {
+        "x": 394.3,
+        "y": 758.3
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 135.79341375198027,
+      "angularTipErrorPx": 142.51679461008138,
+      "needleAngleErrorDeg": -138.83438091003956,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": 284.9708645048902,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.14630787374952986,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3
+    },
+    {
+      "id": "b014",
+      "clip": "20261024_124006",
+      "t": 33.375,
+      "phase": "peak",
+      "group": "existing",
+      "why": "no-frame gap",
+      "repeatOf": null,
+      "matchedTimeS": 33.375,
+      "timeDeltaMs": 0,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 7.155272846888598,
+      "labelBar": 7.2789387676331305,
+      "error": -0.12366592074453209,
+      "phaseAssumedZeroBar": 7.2789387676331305,
+      "labelGeometricBar": 7.2789387676331305,
+      "labelPinBar": 7.2789387676331305,
+      "staleMs": 375,
+      "lastFreshS": 33,
+      "labelAngles": {
+        "tip": 254.5114985570903,
+        "zero": 136.59692324525366,
+        "five": 216.32919854640906,
+        "ten": 300.10130456559966
+      },
+      "labelZeroCorrectedDeg": 142.59651582562122,
+      "restOffsetLocoDeg": 5.999592580367562,
+      "readerZeroDeg": 140.97620490097233,
+      "zeroVsPinDeg": 4.379281655718614,
+      "readerFiveDeg": 216.0705959680666,
+      "readerTenDeg": 303.13816179370065,
+      "zeroVsRestCorrectedDeg": -1.6203109246489475,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 7.155272846888598,
+      "hubPx": 2.542077948221598,
+      "readerHub": {
+        "x": 313.1404711462089,
+        "y": 666.3193847492164
+      },
+      "readerTipSample": null,
+      "labelTip": {
+        "x": 296.7,
+        "y": 598.3
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": null,
+      "angularTipErrorPx": null,
+      "needleAngleErrorDeg": null,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": null,
+      "pointerReason": "ambiguous",
+      "pointerQuality": 0,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.0405405405405403
+    },
+    {
+      "id": "b015",
+      "clip": "20261025_130022",
+      "t": 37,
+      "phase": "plateau",
+      "group": "existing",
+      "why": "no-frame gap",
+      "repeatOf": null,
+      "matchedTimeS": 37,
+      "timeDeltaMs": 0,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 6.395462263073146,
+      "labelBar": 6.509355054782627,
+      "error": -0.11389279170948097,
+      "phaseAssumedZeroBar": 6.509355054782627,
+      "labelGeometricBar": 6.509355054782627,
+      "labelPinBar": 6.509355054782627,
+      "staleMs": 375,
+      "lastFreshS": 36.625,
+      "labelAngles": {
+        "tip": 62.65772817204379,
+        "zero": 317.16766990660045,
+        "five": 36.92874299952513,
+        "ten": 122.16046197443552
+      },
+      "labelZeroCorrectedDeg": 322.92790972020043,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 319.34600918394057,
+      "zeroVsPinDeg": 2.1783392773401147,
+      "readerFiveDeg": 39.16239540406889,
+      "readerTenDeg": 126.4380455127789,
+      "zeroVsRestCorrectedDeg": -3.581900536259809,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 6.395462263073146,
+      "hubPx": 0.4049370005563097,
+      "readerHub": {
+        "x": 448.8170691117178,
+        "y": 642.461262044134
+      },
+      "readerTipSample": null,
+      "labelTip": {
+        "x": 480.8,
+        "y": 703.6
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": null,
+      "angularTipErrorPx": null,
+      "needleAngleErrorDeg": null,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": null,
+      "pointerReason": "ambiguous",
+      "pointerQuality": 0,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.616279069767442
+    },
+    {
+      "id": "b016",
+      "clip": "20261017_084814",
+      "t": 1.8,
+      "phase": "rest",
+      "group": "existing",
+      "why": "representative rest",
+      "repeatOf": null,
+      "matchedTimeS": 1.75,
+      "timeDeltaMs": -50.00000000000004,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.03503845367758516,
+      "labelBar": 0.0576248045659196,
+      "error": -0.02258635088833444,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 0.0576248045659196,
+      "labelPinBar": 0.4019938844097621,
+      "staleMs": null,
+      "lastFreshS": 1.75,
+      "labelAngles": {
+        "tip": 237.1132127953344,
+        "zero": 230.4665818136176,
+        "five": 313.13737905069337,
+        "ten": 38.88754781463052
+      },
+      "labelZeroCorrectedDeg": 236.22682162721765,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 236.40127549824047,
+      "zeroVsPinDeg": 5.934693684622857,
+      "readerFiveDeg": 321.84317431072253,
+      "readerTenDeg": 51.568797897177205,
+      "zeroVsRestCorrectedDeg": 0.17445387102281984,
+      "zeroOnlyBiasBar": -0.011236125434767132,
+      "zeroDiagnosticCorrectedBar": 0.04627457911235229,
+      "hubPx": 4.83791881185973,
+      "readerHub": {
+        "x": 624.988362626104,
+        "y": 306.05315060368713
+      },
+      "readerTipSample": {
+        "x": 592.8030679364155,
+        "y": 256.49214296098813
+      },
+      "labelTip": {
+        "x": 595.6,
+        "y": 257.4
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.940583848760439,
+      "angularTipErrorPx": 0.12118044983231199,
+      "needleAngleErrorDeg": -0.11321279533444795,
+      "tipGeometryBar": -0.051014191981772164,
+      "tipGeometryErrorBar": -0.10863899654769177,
+      "rawBar": 0.03503845367758516,
+      "readerNeedleDeg": 237,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6574666078941263,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.912621359223301
+    },
+    {
+      "id": "b017",
+      "clip": "20261018_160844",
+      "t": 8.75,
+      "phase": "onset",
+      "group": "existing",
+      "why": "onset burst (truth start ~? before 11s preinfusion)",
+      "repeatOf": null,
+      "matchedTimeS": 8.75,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 1.500593965578008,
+      "labelBar": 1.707794998269632,
+      "error": -0.20720103269162404,
+      "phaseAssumedZeroBar": 1.707794998269632,
+      "labelGeometricBar": 1.707794998269632,
+      "labelPinBar": 1.9449502432784127,
+      "staleMs": null,
+      "lastFreshS": 8.75,
+      "labelAngles": {
+        "tip": 265.7167734120238,
+        "zero": 234.61155952504305,
+        "five": 314.5755945806385,
+        "ten": 41.99551984381026
+      },
+      "labelZeroCorrectedDeg": 240.3717993386431,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 238.27197504451374,
+      "zeroVsPinDeg": 3.660415519470689,
+      "readerFiveDeg": 332.14570757528895,
+      "readerTenDeg": 62.06375464271497,
+      "zeroVsRestCorrectedDeg": -2.0998242941293483,
+      "zeroOnlyBiasBar": 0.0905992675827747,
+      "zeroDiagnosticCorrectedBar": 1.4099946979952334,
+      "hubPx": 10.768256385932887,
+      "readerHub": {
+        "x": 635.4969435915508,
+        "y": 177.09787316685444
+      },
+      "readerTipSample": {
+        "x": 631.9870956027949,
+        "y": 115.69041904439514
+      },
+      "labelTip": {
+        "x": 636.3,
+        "y": 113.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 4.7090156617750765,
+      "angularTipErrorPx": 1.2769669963880914,
+      "needleAngleErrorDeg": 1.0119475927149324,
+      "tipGeometryBar": 1.4656801028769515,
+      "tipGeometryErrorBar": -0.2421148953926806,
+      "rawBar": 1.500593965578008,
+      "readerNeedleDeg": 266.72872100473876,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.7267059612142368,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.9411764705882355
+    },
+    {
+      "id": "b018",
+      "clip": "20261018_160844",
+      "t": 8.875,
+      "phase": "onset",
+      "group": "existing",
+      "why": "onset burst (truth start ~? before 11s preinfusion)",
+      "repeatOf": null,
+      "matchedTimeS": 8.875,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 1.5033774409243217,
+      "labelBar": 1.5801546769166628,
+      "error": -0.0767772359923411,
+      "phaseAssumedZeroBar": 1.5801546769166628,
+      "labelGeometricBar": 1.5801546769166628,
+      "labelPinBar": 1.8300707319515284,
+      "staleMs": null,
+      "lastFreshS": 8.875,
+      "labelAngles": {
+        "tip": 262.267384288363,
+        "zero": 233.4170571143893,
+        "five": 312.2400410304499,
+        "ten": 41.09566012890582
+      },
+      "labelZeroCorrectedDeg": 239.17729692798935,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 238.13693936549345,
+      "zeroVsPinDeg": 4.719882251104082,
+      "readerFiveDeg": 331.9582809711362,
+      "readerTenDeg": 61.942577237544754,
+      "zeroVsRestCorrectedDeg": -1.0403575624959558,
+      "zeroOnlyBiasBar": 0.04801232154252033,
+      "zeroDiagnosticCorrectedBar": 1.4553651193818014,
+      "hubPx": 12.643432391592079,
+      "readerHub": {
+        "x": 635.3684696997188,
+        "y": 177.25232321554452
+      },
+      "readerTipSample": {
+        "x": 631.8543257320661,
+        "y": 115.80988115270179
+      },
+      "labelTip": {
+        "x": 634.6,
+        "y": 115.6
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.7536843108559386,
+      "angularTipErrorPx": 5.551515618543827,
+      "needleAngleErrorDeg": 4.4592024760263484,
+      "tipGeometryBar": 1.4295005934816194,
+      "tipGeometryErrorBar": -0.15065408343504338,
+      "rawBar": 1.5033774409243217,
+      "readerNeedleDeg": 266.72658676438937,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.7916630909904625,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.830188679245283
+    },
+    {
+      "id": "b019",
+      "clip": "20261018_160844",
+      "t": 9,
+      "phase": "onset",
+      "group": "existing",
+      "why": "onset burst (truth start ~? before 11s preinfusion)",
+      "repeatOf": null,
+      "matchedTimeS": 9,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 1.503274840405654,
+      "labelBar": 1.5972553408993841,
+      "error": -0.09398050049373019,
+      "phaseAssumedZeroBar": 1.5972553408993841,
+      "labelGeometricBar": 1.5972553408993841,
+      "labelPinBar": 1.841883028619408,
+      "staleMs": null,
+      "lastFreshS": 9,
+      "labelAngles": {
+        "tip": 263.8143419507228,
+        "zero": 234.29841973047309,
+        "five": 314.4227320826356,
+        "ten": 42.41212149259468
+      },
+      "labelZeroCorrectedDeg": 240.05865954407318,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 238.069319541899,
+      "zeroVsPinDeg": 3.7708998114259202,
+      "readerFiveDeg": 332.00586626072726,
+      "readerTenDeg": 61.882238385072355,
+      "zeroVsRestCorrectedDeg": -1.989340002174231,
+      "zeroOnlyBiasBar": 0.08865636573770463,
+      "zeroDiagnosticCorrectedBar": 1.4146184746679493,
+      "hubPx": 10.040826422268577,
+      "readerHub": {
+        "x": 635.4063102721034,
+        "y": 177.4065069772816
+      },
+      "readerTipSample": {
+        "x": 631.8948519221625,
+        "y": 115.98593751545847
+      },
+      "labelTip": {
+        "x": 635.3,
+        "y": 115
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.5450114550433436,
+      "angularTipErrorPx": 3.53915264050334,
+      "needleAngleErrorDeg": 2.9135787413521257,
+      "tipGeometryBar": 1.4024593613495249,
+      "tipGeometryErrorBar": -0.19479597954985928,
+      "rawBar": 1.503274840405654,
+      "readerNeedleDeg": 266.7279206920749,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.7405167172504038,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.9220779220779223
+    },
+    {
+      "id": "b020",
+      "clip": "20261024_124006",
+      "t": 30.375,
+      "phase": "rising",
+      "group": "existing",
+      "why": "representative fast rise",
+      "repeatOf": null,
+      "matchedTimeS": 30.375,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 5.232057658510189,
+      "labelBar": 5.17946637742326,
+      "error": 0.052591281086928454,
+      "phaseAssumedZeroBar": 5.17946637742326,
+      "labelGeometricBar": 5.17946637742326,
+      "labelPinBar": 5.17946637742326,
+      "staleMs": null,
+      "lastFreshS": 30.375,
+      "labelAngles": {
+        "tip": 220.74055192391444,
+        "zero": 135,
+        "five": 217.6868943830686,
+        "ten": 302.76292881050875
+      },
+      "labelZeroCorrectedDeg": 140.99959258036756,
+      "restOffsetLocoDeg": 5.999592580367562,
+      "readerZeroDeg": 140.9332387708581,
+      "zeroVsPinDeg": 5.933238770858111,
+      "readerFiveDeg": 216.04708834601558,
+      "readerTenDeg": 303.0372169429389,
+      "zeroVsRestCorrectedDeg": -0.06635380950945091,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 5.232057658510189,
+      "hubPx": 0.14293809173610902,
+      "readerHub": {
+        "x": 309.478306637819,
+        "y": 669.0250198448239
+      },
+      "readerTipSample": {
+        "x": 266.69744532525976,
+        "y": 633.127614896009
+      },
+      "labelTip": {
+        "x": 255.5,
+        "y": 622.5
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 15.437907247747512,
+      "angularTipErrorPx": 0.9228806369924669,
+      "needleAngleErrorDeg": -0.7405519239143814,
+      "tipGeometryBar": 5.134693349992026,
+      "tipGeometryErrorBar": -0.04477302743123435,
+      "rawBar": 5.232057658510189,
+      "readerNeedleDeg": 220,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.24275417021658674,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.6785714285714284
+    },
+    {
+      "id": "b021",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 0.233,
+      "phase": "rest",
+      "group": "new",
+      "why": "app curve <0.15",
+      "repeatOf": null,
+      "matchedTimeS": 0.25,
+      "timeDeltaMs": 16.999999999999986,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.05774221543868863,
+      "labelBar": 0.10232827042723999,
+      "error": -0.044586054988551366,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 0.10232827042723999,
+      "labelPinBar": 0.44196475212911057,
+      "staleMs": null,
+      "lastFreshS": 0.25,
+      "labelAngles": {
+        "tip": 317.4351696842052,
+        "zero": 309.7007709853111,
+        "five": 37.200946753113726,
+        "ten": 121.4051636659251
+      },
+      "labelZeroCorrectedDeg": 315.76860351615005,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 315.01602572970836,
+      "zeroVsPinDeg": 5.31525474439718,
+      "readerFiveDeg": 37.1889317317154,
+      "readerTenDeg": 121.39036925695274,
+      "zeroVsRestCorrectedDeg": -0.7525777864416341,
+      "zeroOnlyBiasBar": 0.04484860364969162,
+      "zeroDiagnosticCorrectedBar": 0.012893611788997006,
+      "hubPx": 0.03786047144720971,
+      "readerHub": {
+        "x": 270.2640483473832,
+        "y": 490.31186987667695
+      },
+      "readerTipSample": {
+        "x": 311.1405814819075,
+        "y": 450.79075684236267
+      },
+      "labelTip": {
+        "x": 313.2,
+        "y": 450.9
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.0623139189155797,
+      "angularTipErrorPx": 1.4936794260220962,
+      "needleAngleErrorDeg": -1.4693143568549658,
+      "tipGeometryBar": 0.011092590976271985,
+      "tipGeometryErrorBar": -0.09123567945096801,
+      "rawBar": 0.05774221543868863,
+      "readerNeedleDeg": 315.96585532735025,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.46809404060302345,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.4482758620689653
+    },
+    {
+      "id": "b022",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 0.503,
+      "phase": "rest",
+      "group": "new",
+      "why": "app curve <0.15, last before rise",
+      "repeatOf": null,
+      "matchedTimeS": 0.5,
+      "timeDeltaMs": -3.0000000000000027,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.013882415268563241,
+      "labelBar": -0.004192138369546639,
+      "error": 0.01807455363810988,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": -0.004192138369546639,
+      "labelPinBar": 0.3429976511782554,
+      "staleMs": null,
+      "lastFreshS": 0.5,
+      "labelAngles": {
+        "tip": 313.1655309676083,
+        "zero": 307.1659383872407,
+        "five": 34.624155079948935,
+        "ten": 113.24727000874316
+      },
+      "labelZeroCorrectedDeg": 313.2337709180797,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 312.87956552219686,
+      "zeroVsPinDeg": 5.713627134956141,
+      "readerFiveDeg": 35.49024388368116,
+      "readerTenDeg": 119.20448911261497,
+      "zeroVsRestCorrectedDeg": -0.3542053958829001,
+      "zeroOnlyBiasBar": 0.021683537308517867,
+      "zeroDiagnosticCorrectedBar": -0.007801122039954625,
+      "hubPx": 4.781074019481368,
+      "readerHub": {
+        "x": 265.86657318886216,
+        "y": 479.1271057513661
+      },
+      "readerTipSample": {
+        "x": 307.2905142625801,
+        "y": 434.874737552902
+      },
+      "labelTip": {
+        "x": 308.7,
+        "y": 431.3
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.8425770800489856,
+      "angularTipErrorPx": 0.058651628073502264,
+      "needleAngleErrorDeg": -0.0563465726402228,
+      "tipGeometryBar": 0.08477327657165742,
+      "tipGeometryErrorBar": 0.08896541494120407,
+      "rawBar": 0.013882415268563241,
+      "readerNeedleDeg": 313.1091843949681,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.41501576657000416,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.4482758620689653
+    },
+    {
+      "id": "b023",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 11.294,
+      "phase": "first-movement",
+      "group": "new",
+      "why": "app curve first >0.3",
+      "repeatOf": null,
+      "matchedTimeS": 11.25,
+      "timeDeltaMs": -44.00000000000048,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 2.3827451359697087,
+      "labelBar": 2.552082284185695,
+      "error": -0.16933714821598622,
+      "phaseAssumedZeroBar": 2.552082284185695,
+      "labelGeometricBar": 2.552082284185695,
+      "labelPinBar": 2.728265719602989,
+      "staleMs": null,
+      "lastFreshS": 11.25,
+      "labelAngles": {
+        "tip": 0.2893701634405943,
+        "zero": 314.2868113649824,
+        "five": 38.59413976764324,
+        "ten": 115.17038886700851
+      },
+      "labelZeroCorrectedDeg": 320.35464389582125,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 314.47620121154625,
+      "zeroVsPinDeg": 0.18938984656392677,
+      "readerFiveDeg": 36.459492401400894,
+      "readerTenDeg": 120.69266304370689,
+      "zeroVsRestCorrectedDeg": -5.878442684275001,
+      "zeroOnlyBiasBar": 0.1710686713826126,
+      "zeroDiagnosticCorrectedBar": 2.211676464587096,
+      "hubPx": 3.051556123659294,
+      "readerHub": {
+        "x": 249.29076956509877,
+        "y": 490.81183333035136
+      },
+      "readerTipSample": {
+        "x": 302.2247090957958,
+        "y": 485.10544789919686
+      },
+      "labelTip": {
+        "x": 308.2,
+        "y": 488.1
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 6.683669925594028,
+      "angularTipErrorPx": 6.675370961172516,
+      "needleAngleErrorDeg": -6.442209545979495,
+      "tipGeometryBar": 2.3490698169074262,
+      "tipGeometryErrorBar": -0.20301246727826872,
+      "rawBar": 2.3827451359697087,
+      "readerNeedleDeg": 353.8471606174611,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.527948778880033,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.0303030303030303
+    },
+    {
+      "id": "b024",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 11.705,
+      "phase": "rising",
+      "group": "new",
+      "why": "~35% of peak",
+      "repeatOf": null,
+      "matchedTimeS": 11.75,
+      "timeDeltaMs": 44.99999999999993,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 3.7489959304521885,
+      "labelBar": 3.567568034441021,
+      "error": 0.18142789601116727,
+      "phaseAssumedZeroBar": 3.567568034441021,
+      "labelGeometricBar": 3.567568034441021,
+      "labelPinBar": 3.673956975045413,
+      "staleMs": null,
+      "lastFreshS": 11.75,
+      "labelAngles": {
+        "tip": 15.35013649242444,
+        "zero": 315.3191932410745,
+        "five": 37.01713317218639,
+        "ten": 115.75812172197561
+      },
+      "labelZeroCorrectedDeg": 321.3870257719134,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 314.14089161297255,
+      "zeroVsPinDeg": -1.1783016281019627,
+      "readerFiveDeg": 36.413499201490424,
+      "readerTenDeg": 120.37805080915075,
+      "zeroVsRestCorrectedDeg": -7.246134158940777,
+      "zeroOnlyBiasBar": 0.12524209593384583,
+      "zeroDiagnosticCorrectedBar": 3.6237538345183427,
+      "hubPx": 2.1151896069642504,
+      "readerHub": {
+        "x": 247.97405319313776,
+        "y": 491.5594391643625
+      },
+      "readerTipSample": {
+        "x": 303.9992739092524,
+        "y": 507.66021241234745
+      },
+      "labelTip": {
+        "x": 308,
+        "y": 506.6
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 4.138823457515935,
+      "angularTipErrorPx": 0.7572862734690673,
+      "needleAngleErrorDeg": 0.6836877754590205,
+      "tipGeometryBar": 3.6991690342806365,
+      "tipGeometryErrorBar": 0.13160099983961526,
+      "rawBar": 3.7489959304521885,
+      "readerNeedleDeg": 16.033824267883404,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5804656418479003,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.990033222591362
+    },
+    {
+      "id": "b025",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 13.696,
+      "phase": "rising",
+      "group": "new",
+      "why": "~75% of peak",
+      "repeatOf": null,
+      "matchedTimeS": 13.75,
+      "timeDeltaMs": 54.00000000000027,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 5.150455539522203,
+      "labelBar": 5.297795283170063,
+      "error": -0.1473397436478603,
+      "phaseAssumedZeroBar": 5.297795283170063,
+      "labelGeometricBar": 5.297795283170063,
+      "labelPinBar": 5.297795283170063,
+      "staleMs": 375,
+      "lastFreshS": 13.375,
+      "labelAngles": {
+        "tip": 43.37374280328481,
+        "zero": 313.8618229925118,
+        "five": 38.65980825409008,
+        "ten": 117.80704153150111
+      },
+      "labelZeroCorrectedDeg": 319.9296555233507,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 314.54550134230016,
+      "zeroVsPinDeg": 0.6836783497883516,
+      "readerFiveDeg": 36.53892148653091,
+      "readerTenDeg": 120.78155444977074,
+      "zeroVsRestCorrectedDeg": -5.384154181050462,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 5.150455539522203,
+      "hubPx": 2.032750206345679,
+      "readerHub": {
+        "x": 244.6802033019115,
+        "y": 492.5923512477936
+      },
+      "readerTipSample": null,
+      "labelTip": {
+        "x": 292.2,
+        "y": 537.3
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": null,
+      "angularTipErrorPx": null,
+      "needleAngleErrorDeg": null,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": null,
+      "pointerReason": "ambiguous",
+      "pointerQuality": 0,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.9411764705882355
+    },
+    {
+      "id": "b026",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 16.765,
+      "phase": "peak",
+      "group": "new",
+      "why": "app peak 7.5",
+      "repeatOf": null,
+      "matchedTimeS": 16.75,
+      "timeDeltaMs": -15.000000000000568,
+      "state": "gap",
+      "reason": "needle-missing",
+      "readerBar": null,
+      "labelBar": 6.771087495427439,
+      "error": null,
+      "phaseAssumedZeroBar": 6.771087495427439,
+      "labelGeometricBar": 6.771087495427439,
+      "labelPinBar": 6.771087495427439,
+      "staleMs": null,
+      "lastFreshS": 15,
+      "labelAngles": {
+        "tip": 64.97272120761949,
+        "zero": 314.0238885037987,
+        "five": 35.51342047779582,
+        "ten": 118.68068580455451
+      },
+      "labelZeroCorrectedDeg": 320.09172103463766,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 314.12633166886917,
+      "zeroVsPinDeg": 0.10244316507055373,
+      "readerFiveDeg": 36.31736018438545,
+      "readerTenDeg": 120.35033794534468,
+      "zeroVsRestCorrectedDeg": -5.9653893657684876,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": null,
+      "hubPx": 2.4618394573136757,
+      "readerHub": {
+        "x": 240.13941892291888,
+        "y": 493.63528946953693
+      },
+      "readerTipSample": null,
+      "labelTip": {
+        "x": 268.7,
+        "y": 551.6
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": null,
+      "angularTipErrorPx": null,
+      "needleAngleErrorDeg": null,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": null,
+      "pointerReason": "ambiguous",
+      "pointerQuality": 0,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.912621359223301
+    },
+    {
+      "id": "b027",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 36.361,
+      "phase": "falling",
+      "group": "new",
+      "why": "~50% of peak after peak",
+      "repeatOf": null,
+      "matchedTimeS": 36.375,
+      "timeDeltaMs": 14.000000000002899,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 3.5429945195597634,
+      "labelBar": 3.6340775942927452,
+      "error": -0.09108307473298183,
+      "phaseAssumedZeroBar": 3.6340775942927452,
+      "labelGeometricBar": 3.6340775942927452,
+      "labelPinBar": 3.7342734896688565,
+      "staleMs": null,
+      "lastFreshS": 36.375,
+      "labelAngles": {
+        "tip": 15.444212998401554,
+        "zero": 313.66451207748725,
+        "five": 36.38435181583583,
+        "ten": 117.00315819979744
+      },
+      "labelZeroCorrectedDeg": 319.73234460832623,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 314.2690962729202,
+      "zeroVsPinDeg": 0.604584195432949,
+      "readerFiveDeg": 36.92178975524911,
+      "readerTenDeg": 120.41975918324084,
+      "zeroVsRestCorrectedDeg": -5.463248335405979,
+      "zeroOnlyBiasBar": 0.0908768201467014,
+      "zeroDiagnosticCorrectedBar": 3.452117699413062,
+      "hubPx": 1.1517740020084313,
+      "readerHub": {
+        "x": 212.28447933507044,
+        "y": 481.6924551670368
+      },
+      "readerTipSample": {
+        "x": 275.49375454374234,
+        "y": 496.55877705253687
+      },
+      "labelTip": {
+        "x": 278.3,
+        "y": 499.1
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.785872109498701,
+      "angularTipErrorPx": 2.6640259792025938,
+      "needleAngleErrorDeg": -2.2092320067135915,
+      "tipGeometryBar": 3.5372904152494677,
+      "tipGeometryErrorBar": -0.0967871790432775,
+      "rawBar": 3.5429945195597634,
+      "readerNeedleDeg": 13.234980991687905,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6890396225829805,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.0927835051546393
+    },
+    {
+      "id": "b028",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 37.826,
+      "phase": "return-rest",
+      "group": "new",
+      "why": "end-1s (no return seen)",
+      "repeatOf": null,
+      "matchedTimeS": 37.875,
+      "timeDeltaMs": 48.99999999999949,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 0.019208174499347135,
+      "labelBar": -0.03405896662824697,
+      "error": 0.053267141127594106,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": -0.03405896662824697,
+      "labelPinBar": 0.3196373315879044,
+      "staleMs": 125,
+      "lastFreshS": 37.75,
+      "labelAngles": {
+        "tip": 316.53374638581573,
+        "zero": 311.0128593389833,
+        "five": 37.374596552305945,
+        "ten": 117.26178496489916
+      },
+      "labelZeroCorrectedDeg": 317.0806918698222,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 313.701862760326,
+      "zeroVsPinDeg": 2.6890034213427043,
+      "readerFiveDeg": 35.87888271187148,
+      "readerTenDeg": 119.88808532858866,
+      "zeroVsRestCorrectedDeg": -3.3788291094962233,
+      "zeroOnlyBiasBar": 0.20328276852589622,
+      "zeroDiagnosticCorrectedBar": -0.18407459402654908,
+      "hubPx": 3.1894177894854088,
+      "readerHub": {
+        "x": 256.7640456358676,
+        "y": 474.5933086755244
+      },
+      "readerTipSample": {
+        "x": 298.344481523025,
+        "y": 429.8089950458714
+      },
+      "labelTip": {
+        "x": 299.8,
+        "y": 435.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 6.165279750117494,
+      "angularTipErrorPx": 3.8789478425227357,
+      "needleAngleErrorDeg": -3.658276760411354,
+      "tipGeometryBar": -0.3323901248922268,
+      "tipGeometryErrorBar": -0.2983311582639798,
+      "rawBar": null,
+      "readerNeedleDeg": 312.87546962540443,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.4971729540591635,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.061224489795918
+    },
+    {
+      "id": "b029",
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 1,
+      "phase": "rest",
+      "group": "new",
+      "why": "hand-picked from noisy app curve: app 0",
+      "repeatOf": null,
+      "matchedTimeS": 1,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.04412533362907773,
+      "labelBar": -0.017061513119329193,
+      "error": 0.06118684674840692,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": -0.017061513119329193,
+      "labelPinBar": 0.32197886043255625,
+      "staleMs": null,
+      "lastFreshS": 1,
+      "labelAngles": {
+        "tip": 320.24242536102145,
+        "zero": 314.7533912810603,
+        "five": 39.992435741727604,
+        "ten": 121.39026810418784
+      },
+      "labelZeroCorrectedDeg": 320.51363109466035,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 318.2850254638358,
+      "zeroVsPinDeg": 3.531634182775406,
+      "readerFiveDeg": 39.906503554748724,
+      "readerTenDeg": 121.34373205098223,
+      "zeroVsRestCorrectedDeg": -2.2286056308246316,
+      "zeroOnlyBiasBar": 0.1368425642215751,
+      "zeroDiagnosticCorrectedBar": -0.09271723059249737,
+      "hubPx": 0.4474661982457092,
+      "readerHub": {
+        "x": 340.3299868150637,
+        "y": 515.7535397111783
+      },
+      "readerTipSample": {
+        "x": 386.0390628963107,
+        "y": 476.01924607591735
+      },
+      "labelTip": {
+        "x": 387.3,
+        "y": 477.1
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 1.6607201521871224,
+      "angularTipErrorPx": 1.3257076958332281,
+      "needleAngleErrorDeg": -1.2424253610214464,
+      "tipGeometryBar": -0.11400654791498613,
+      "tipGeometryErrorBar": -0.09694503479565694,
+      "rawBar": 0.04412533362907773,
+      "readerNeedleDeg": 319,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5526774997440649,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.1690140845070425
+    },
+    {
+      "id": "b030",
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 3.66,
+      "phase": "rest",
+      "group": "new",
+      "why": "hand-picked from noisy app curve: app 0, last before rise",
+      "repeatOf": null,
+      "matchedTimeS": 3.625,
+      "timeDeltaMs": -35.00000000000014,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 1.4413299505060315,
+      "labelBar": 1.3565938465146379,
+      "error": 0.08473610399139364,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 1.3565938465146379,
+      "labelPinBar": 1.6038629611703388,
+      "staleMs": null,
+      "lastFreshS": 3.625,
+      "labelAngles": {
+        "tip": 344.0411638507867,
+        "zero": 316.81568468636044,
+        "five": 41.69038976889385,
+        "ten": 122.62317012941242
+      },
+      "labelZeroCorrectedDeg": 322.5759244999605,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 319.6150568456704,
+      "zeroVsPinDeg": 2.7993721593099963,
+      "readerFiveDeg": 40.55025278994731,
+      "readerTenDeg": 121.64686164497232,
+      "zeroVsRestCorrectedDeg": -2.960867654290041,
+      "zeroOnlyBiasBar": 0.1314358778341782,
+      "zeroDiagnosticCorrectedBar": 1.3098940726718533,
+      "hubPx": 0.6721330403621913,
+      "readerHub": {
+        "x": 329.56052816305225,
+        "y": 511.80697486247664
+      },
+      "readerTipSample": {
+        "x": 382.3885973326292,
+        "y": 496.6587697895533
+      },
+      "labelTip": {
+        "x": 386.5,
+        "y": 495.5
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 4.271578082915602,
+      "angularTipErrorPx": 0.04206983060446687,
+      "needleAngleErrorDeg": -0.04116385078668827,
+      "tipGeometryBar": 1.355506145085106,
+      "tipGeometryErrorBar": -0.001087701429531851,
+      "rawBar": 1.4413299505060315,
+      "readerNeedleDeg": 344,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.3901153934275918,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.3582089552238807
+    },
+    {
+      "id": "b031",
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 4.318,
+      "phase": "first-movement",
+      "group": "new",
+      "why": "hand-picked from noisy app curve: app jumps to ~1.7",
+      "repeatOf": null,
+      "matchedTimeS": 4.375,
+      "timeDeltaMs": 57.000000000000384,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 1.7605702281179803,
+      "labelBar": 1.7901051267506882,
+      "error": -0.029534898632707973,
+      "phaseAssumedZeroBar": 1.7901051267506882,
+      "labelGeometricBar": 1.7901051267506882,
+      "labelPinBar": 2.0017503975918745,
+      "staleMs": null,
+      "lastFreshS": 4.375,
+      "labelAngles": {
+        "tip": 349.49122458244767,
+        "zero": 314.5158218395191,
+        "five": 41.877869537884294,
+        "ten": 122.52635509105062
+      },
+      "labelZeroCorrectedDeg": 320.2760616531191,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 319.58041848995754,
+      "zeroVsPinDeg": 5.064596650438489,
+      "readerFiveDeg": 40.737026104640165,
+      "readerTenDeg": 121.8242733201945,
+      "zeroVsRestCorrectedDeg": -0.6956431631615487,
+      "zeroOnlyBiasBar": 0.02713257087078924,
+      "zeroDiagnosticCorrectedBar": 1.733437657247191,
+      "hubPx": 0.49521996279443947,
+      "readerHub": {
+        "x": 328.4957228424742,
+        "y": 513.0139881270768
+      },
+      "readerTipSample": {
+        "x": 383.06546965534386,
+        "y": 502.46817760579637
+      },
+      "labelTip": {
+        "x": 388.2,
+        "y": 502.3
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 5.137283870615479,
+      "angularTipErrorPx": 0.4515974990803467,
+      "needleAngleErrorDeg": -0.42901677225484036,
+      "tipGeometryBar": 1.7410949527171833,
+      "tipGeometryErrorBar": -0.04901017403350494,
+      "rawBar": 1.7605702281179803,
+      "readerNeedleDeg": 349.06220781019283,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.420001175671448,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.103448275862069
+    },
+    {
+      "id": "b032",
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 13.959,
+      "phase": "rising",
+      "group": "new",
+      "why": "hand-picked from noisy app curve: app 5.0",
+      "repeatOf": null,
+      "matchedTimeS": 14,
+      "timeDeltaMs": 41.00000000000037,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 5.170125291241156,
+      "labelBar": 4.9918220067486185,
+      "error": 0.17830328449253763,
+      "phaseAssumedZeroBar": 4.9918220067486185,
+      "labelGeometricBar": 4.9918220067486185,
+      "labelPinBar": 4.992382486167177,
+      "staleMs": null,
+      "lastFreshS": 14,
+      "labelAngles": {
+        "tip": 40.52173103773555,
+        "zero": 316.6017282482173,
+        "five": 40.64977847478008,
+        "ten": 121.95630760594088
+      },
+      "labelZeroCorrectedDeg": 322.3619680618174,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 319.41502925655305,
+      "zeroVsPinDeg": 2.8133010083357703,
+      "readerFiveDeg": 40.936321627728034,
+      "readerTenDeg": 121.53191319070532,
+      "zeroVsRestCorrectedDeg": -2.946938805264381,
+      "zeroOnlyBiasBar": 0.0002966716324435126,
+      "zeroDiagnosticCorrectedBar": 5.169828619608713,
+      "hubPx": 0.636056127282495,
+      "readerHub": {
+        "x": 322.8095442197139,
+        "y": 513.826552041718
+      },
+      "readerTipSample": {
+        "x": 355.05764804127045,
+        "y": 544.5094270002154
+      },
+      "labelTip": {
+        "x": 370.2,
+        "y": 553.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 17.76529114611877,
+      "angularTipErrorPx": 3.3297512112422964,
+      "needleAngleErrorDeg": 3.0534933829694637,
+      "tipGeometryBar": 5.209514745185985,
+      "tipGeometryErrorBar": 0.2176927384373668,
+      "rawBar": 5.170125291241156,
+      "readerNeedleDeg": 43.57522442070501,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.3875153436429012,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.9315960912052117
+    },
+    {
+      "id": "b033",
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 14.494,
+      "phase": "rising",
+      "group": "new",
+      "why": "hand-picked from noisy app curve: app 5.6",
+      "repeatOf": null,
+      "matchedTimeS": 14.5,
+      "timeDeltaMs": 6.000000000000227,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 5.777124946509186,
+      "labelBar": 5.738850870558309,
+      "error": 0.03827407595087706,
+      "phaseAssumedZeroBar": 5.738850870558309,
+      "labelGeometricBar": 5.738850870558309,
+      "labelPinBar": 5.738850870558309,
+      "staleMs": null,
+      "lastFreshS": 14.5,
+      "labelAngles": {
+        "tip": 51.59840152791867,
+        "zero": 316.3520717140834,
+        "five": 39.487187578165845,
+        "ten": 121.44698780551778
+      },
+      "labelZeroCorrectedDeg": 322.11231152768346,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 319.5206617190467,
+      "zeroVsPinDeg": 3.1685900049633346,
+      "readerFiveDeg": 40.95963629800383,
+      "readerTenDeg": 121.68085150296542,
+      "zeroVsRestCorrectedDeg": -2.591649808636703,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 5.777124946509186,
+      "hubPx": 1.5915918923197458,
+      "readerHub": {
+        "x": 321.89944655787644,
+        "y": 517.5538199454701
+      },
+      "readerTipSample": {
+        "x": 355.48460816586186,
+        "y": 562.2060719750729
+      },
+      "labelTip": {
+        "x": 361.6,
+        "y": 570.2
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 10.064834949106716,
+      "angularTipErrorPx": 1.6696857041627908,
+      "needleAngleErrorDeg": 1.4529675470682832,
+      "tipGeometryBar": 5.72800399704017,
+      "tipGeometryErrorBar": -0.01084687351813951,
+      "rawBar": 5.777124946509186,
+      "readerNeedleDeg": 53.051369074986894,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.27353103521572786,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.0821917808219177
+    },
+    {
+      "id": "b034",
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 17.155,
+      "phase": "peak",
+      "group": "new",
+      "why": "hand-picked from noisy app curve: app peak 7.0",
+      "repeatOf": null,
+      "matchedTimeS": 17.125,
+      "timeDeltaMs": -30.000000000001137,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 6.715416932236953,
+      "labelBar": 6.57886409247356,
+      "error": 0.13655283976339305,
+      "phaseAssumedZeroBar": 6.57886409247356,
+      "labelGeometricBar": 6.57886409247356,
+      "labelPinBar": 6.57886409247356,
+      "staleMs": null,
+      "lastFreshS": 17.125,
+      "labelAngles": {
+        "tip": 66.14609417940767,
+        "zero": 315,
+        "five": 40.426078740099115,
+        "ten": 121.87709014100369
+      },
+      "labelZeroCorrectedDeg": 320.76023981360004,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 319.4241146067389,
+      "zeroVsPinDeg": 4.42411460673884,
+      "readerFiveDeg": 40.706544523464174,
+      "readerTenDeg": 121.82109755641284,
+      "zeroVsRestCorrectedDeg": -1.3361252068611975,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 6.715416932236953,
+      "hubPx": 1.5449493544718722,
+      "readerHub": {
+        "x": 318.99521419880955,
+        "y": 517.8182990198993
+      },
+      "readerTipSample": {
+        "x": 333.9849686259572,
+        "y": 554.6963342919612
+      },
+      "labelTip": {
+        "x": 344,
+        "y": 577.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 25.18094959630926,
+      "angularTipErrorPx": 1.9453398514939735,
+      "needleAngleErrorDeg": 1.7337196273971358,
+      "tipGeometryBar": 6.562343113698745,
+      "tipGeometryErrorBar": -0.016520978774814843,
+      "rawBar": 6.715416932236953,
+      "readerNeedleDeg": 67.8798138068048,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.4785891036312953,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.960526315789474
+    },
+    {
+      "id": "b035",
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 33.042,
+      "phase": "falling",
+      "group": "new",
+      "why": "hand-picked from noisy app curve: app 4.2 (curve gap to 35.7)",
+      "repeatOf": null,
+      "matchedTimeS": 33,
+      "timeDeltaMs": -42.00000000000159,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 3.7800462122109186,
+      "labelBar": 3.7243461692498006,
+      "error": 0.05570004296111808,
+      "phaseAssumedZeroBar": 3.7243461692498006,
+      "labelGeometricBar": 3.7243461692498006,
+      "labelPinBar": 3.809986532684639,
+      "staleMs": null,
+      "lastFreshS": 33,
+      "labelAngles": {
+        "tip": 23.54809276371418,
+        "zero": 318.16757783275045,
+        "five": 43.96908181456968,
+        "ten": 122.98689956059553
+      },
+      "labelZeroCorrectedDeg": 323.9278176463505,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 319.5490780881097,
+      "zeroVsPinDeg": 1.3815002553592421,
+      "readerFiveDeg": 41.31280034214467,
+      "readerTenDeg": 121.88746916669504,
+      "zeroVsRestCorrectedDeg": -4.378739558240795,
+      "zeroOnlyBiasBar": 0.06616625971051171,
+      "zeroDiagnosticCorrectedBar": 3.713879952500407,
+      "hubPx": 0.36356704948431556,
+      "readerHub": {
+        "x": 299.4855413415095,
+        "y": 509.34508001241346
+      },
+      "readerTipSample": {
+        "x": 358.5604343325848,
+        "y": 533.2128860692134
+      },
+      "labelTip": {
+        "x": 358.8,
+        "y": 534.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 1.6050926260814176,
+      "angularTipErrorPx": 1.744792336952083,
+      "needleAngleErrorDeg": -1.5480927637141804,
+      "tipGeometryBar": 3.6480145143268072,
+      "tipGeometryErrorBar": -0.07633165492299332,
+      "rawBar": 3.7800462122109186,
+      "readerNeedleDeg": 22,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.7758362409524612,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.7522935779816513
+    },
+    {
+      "id": "b036",
+      "clip": "20261018_094055",
+      "t": 11.125,
+      "phase": "preinfusion",
+      "group": "repeat",
+      "why": "worst +0.90 bar @11s (burst)",
+      "repeatOf": "b003",
+      "matchedTimeS": 11.125,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 2.3235462031610887,
+      "labelBar": 1.6760558073684027,
+      "error": 0.6474903957926861,
+      "phaseAssumedZeroBar": 1.6760558073684027,
+      "labelGeometricBar": 1.6760558073684027,
+      "labelPinBar": 1.9358924156160253,
+      "staleMs": null,
+      "lastFreshS": 11.125,
+      "labelAngles": {
+        "tip": 345.5910389738169,
+        "zero": 314.2729352274739,
+        "five": 35.16096261399889,
+        "ten": 118.65182845264877
+      },
+      "labelZeroCorrectedDeg": 320.59604700851605,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 276.5485246165732,
+      "zeroVsPinDeg": -37.72441061090069,
+      "readerFiveDeg": 54.59624298963246,
+      "readerTenDeg": 144.70579377904045,
+      "zeroVsRestCorrectedDeg": -44.047522391942834,
+      "zeroOnlyBiasBar": 1.2343689138038485,
+      "zeroDiagnosticCorrectedBar": 1.0891772893572402,
+      "hubPx": 10.657000388069536,
+      "readerHub": {
+        "x": 491.1518877866454,
+        "y": 776.0300664357812
+      },
+      "readerTipSample": {
+        "x": 541.612601516917,
+        "y": 759.1702670566692
+      },
+      "labelTip": {
+        "x": 545.5,
+        "y": 759
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.891125523143979,
+      "angularTipErrorPx": 4.762016430672731,
+      "needleAngleErrorDeg": -4.0664064608827175,
+      "tipGeometryBar": 1.6273572184984988,
+      "tipGeometryErrorBar": -0.04869858886990386,
+      "rawBar": 2.3235462031610887,
+      "readerNeedleDeg": 341.5246325129342,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6324411039260072,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.061224489795918
+    },
+    {
+      "id": "b037",
+      "clip": "lab-replay-e146d592-042d-4359-ad66-a4d4b4c5940f",
+      "t": 37,
+      "phase": "return-rest",
+      "group": "new",
+      "why": "hand-picked from noisy app curve: app ~0.1",
+      "repeatOf": null,
+      "matchedTimeS": 37,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.07439730856632418,
+      "labelBar": 0.21056824555564652,
+      "error": -0.13617093698932234,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 0.21056824555564652,
+      "labelPinBar": 0.5141730980786767,
+      "staleMs": null,
+      "lastFreshS": 37,
+      "labelAngles": {
+        "tip": 321.9767853218734,
+        "zero": 312.6323041948408,
+        "five": 43.501324393975835,
+        "ten": 123.49940007834755
+      },
+      "labelZeroCorrectedDeg": 318.39254400844084,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 319.76544427286876,
+      "zeroVsPinDeg": 7.133140078027964,
+      "readerFiveDeg": 41.460332660112726,
+      "readerTenDeg": 122.4281840898297,
+      "zeroVsRestCorrectedDeg": 1.3729002644279262,
+      "zeroOnlyBiasBar": -0.07852562261991097,
+      "zeroDiagnosticCorrectedBar": 0.15292293118623515,
+      "hubPx": 0.6151244422498453,
+      "readerHub": {
+        "x": 350.1852443023892,
+        "y": 515.7787041856639
+      },
+      "readerTipSample": {
+        "x": 396.48781758077814,
+        "y": 478.2836196489826
+      },
+      "labelTip": {
+        "x": 396.2,
+        "y": 480.3
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.0368182736253266,
+      "angularTipErrorPx": 0.9824998157451095,
+      "needleAngleErrorDeg": -0.9767853218734217,
+      "tipGeometryBar": 0.13021307150796177,
+      "tipGeometryErrorBar": -0.08035517404768475,
+      "rawBar": 0.07439730856632418,
+      "readerNeedleDeg": 321,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.553357749343743,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.260869565217391
+    },
+    {
+      "id": "b038",
+      "clip": "lab-replay-f62a5256",
+      "t": 0.577,
+      "phase": "rest",
+      "group": "new",
+      "why": "app curve <0.15",
+      "repeatOf": null,
+      "matchedTimeS": 0.625,
+      "timeDeltaMs": 48.00000000000004,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.00347136005574687,
+      "labelBar": -0.07348951724402761,
+      "error": 0.07696087729977448,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": -0.07348951724402761,
+      "labelPinBar": 0.27965988298616046,
+      "staleMs": null,
+      "lastFreshS": 0.625,
+      "labelAngles": {
+        "tip": 316.48962544554286,
+        "zero": 311.40874096279447,
+        "five": 42.24916520411881,
+        "ten": 118.34701176740464
+      },
+      "labelZeroCorrectedDeg": 317.7318527438366,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 314.9400348440532,
+      "zeroVsPinDeg": 3.5312938812587618,
+      "readerFiveDeg": 42.49327591448787,
+      "readerTenDeg": 118.66460720253895,
+      "zeroVsRestCorrectedDeg": -2.791817899783382,
+      "zeroOnlyBiasBar": 0.16223112966755776,
+      "zeroDiagnosticCorrectedBar": -0.1587597696118109,
+      "hubPx": 6.834430378217855,
+      "readerHub": {
+        "x": 338.85922291423,
+        "y": 502.2341737789682
+      },
+      "readerTipSample": {
+        "x": 379.69177865809877,
+        "y": 461.4016180350994
+      },
+      "labelTip": {
+        "x": 382.2,
+        "y": 454.2
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 7.62590824908335,
+      "angularTipErrorPx": 1.5557663675768059,
+      "needleAngleErrorDeg": -1.4896254455428561,
+      "tipGeometryBar": 0.14950894773952486,
+      "tipGeometryErrorBar": 0.22299846498355247,
+      "rawBar": 0.00347136005574687,
+      "readerNeedleDeg": 315,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.37418683871222336,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.1802120141342756
+    },
+    {
+      "id": "b039",
+      "clip": "lab-replay-f62a5256",
+      "t": 3.772,
+      "phase": "rest",
+      "group": "new",
+      "why": "app curve <0.15, last before rise",
+      "repeatOf": null,
+      "matchedTimeS": 3.75,
+      "timeDeltaMs": -21.999999999999797,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.7655190075039771,
+      "labelBar": 0.6414577255810466,
+      "error": 0.12406128192293042,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 0.6414577255810466,
+      "labelPinBar": 0.9782756037513775,
+      "staleMs": null,
+      "lastFreshS": 3.75,
+      "labelAngles": {
+        "tip": 330.289991358224,
+        "zero": 314.2808438834549,
+        "five": 36.10414303033667,
+        "ten": 121.65554901025962
+      },
+      "labelZeroCorrectedDeg": 320.6039556644971,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 315.64417106405847,
+      "zeroVsPinDeg": 1.3633271806036191,
+      "readerFiveDeg": 42.20085708628977,
+      "readerTenDeg": 118.94280097380772,
+      "zeroVsRestCorrectedDeg": -4.959784600438638,
+      "zeroOnlyBiasBar": 0.26867310943240286,
+      "zeroDiagnosticCorrectedBar": 0.4968458980715742,
+      "hubPx": 2.5134166618497944,
+      "readerHub": {
+        "x": 328.72329350239676,
+        "y": 496.00436425537885
+      },
+      "readerTipSample": {
+        "x": 375.4225500842738,
+        "y": 468.062239020101
+      },
+      "labelTip": {
+        "x": 380.6,
+        "y": 467.9
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 5.179991228708503,
+      "angularTipErrorPx": 1.263184564321879,
+      "needleAngleErrorDeg": -1.1838452817842153,
+      "tipGeometryBar": 0.47886524171494776,
+      "tipGeometryErrorBar": -0.16259248386609887,
+      "rawBar": 0.7655190075039771,
+      "readerNeedleDeg": 329.1061460764397,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.457127383048414,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.3333333333333335
+    },
+    {
+      "id": "b040",
+      "clip": "lab-replay-f62a5256",
+      "t": 3.917,
+      "phase": "first-movement",
+      "group": "new",
+      "why": "app curve first >0.3",
+      "repeatOf": null,
+      "matchedTimeS": 3.875,
+      "timeDeltaMs": -41.999999999999815,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.723377376670271,
+      "labelBar": 0.49182519350897225,
+      "error": 0.23155218316129877,
+      "phaseAssumedZeroBar": 0.49182519350897225,
+      "labelGeometricBar": 0.49182519350897225,
+      "labelPinBar": 0.8381459792495671,
+      "staleMs": null,
+      "lastFreshS": 3.875,
+      "labelAngles": {
+        "tip": 331.26569123319354,
+        "zero": 317.46811791382856,
+        "five": 39.77820267805191,
+        "ten": 120.21390764379191
+      },
+      "labelZeroCorrectedDeg": 323.7912296948707,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 316.1808751241869,
+      "zeroVsPinDeg": -1.2872427896415957,
+      "readerFiveDeg": 42.363290297311664,
+      "readerTenDeg": 119.29734272673716,
+      "zeroVsRestCorrectedDeg": -7.610354570683739,
+      "zeroOnlyBiasBar": 0.41040556855019117,
+      "zeroDiagnosticCorrectedBar": 0.31297180812007985,
+      "hubPx": 1.680624179211749,
+      "readerHub": {
+        "x": 328.7158923117335,
+        "y": 496.2256501436494
+      },
+      "readerTipSample": {
+        "x": 376.78246976573837,
+        "y": 467.3443366600998
+      },
+      "labelTip": {
+        "x": 379,
+        "y": 467.1
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.2309506366867846,
+      "angularTipErrorPx": 2.3358775048722,
+      "needleAngleErrorDeg": -2.265691233193593,
+      "tipGeometryBar": 0.4355001952404226,
+      "tipGeometryErrorBar": -0.05632499826854964,
+      "rawBar": 0.723377376670271,
+      "readerNeedleDeg": 329,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.44099553541380515,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.0303030303030303
+    },
+    {
+      "id": "b041",
+      "clip": "lab-replay-f62a5256",
+      "t": 14.176,
+      "phase": "rising",
+      "group": "new",
+      "why": "~35% of peak",
+      "repeatOf": null,
+      "matchedTimeS": 14.125,
+      "timeDeltaMs": -51.000000000000156,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 3.2249332190809836,
+      "labelBar": 3.359335140320457,
+      "error": -0.1344019212394736,
+      "phaseAssumedZeroBar": 3.359335140320457,
+      "labelGeometricBar": 3.359335140320457,
+      "labelPinBar": 3.4794786607373784,
+      "staleMs": null,
+      "lastFreshS": 14.125,
+      "labelAngles": {
+        "tip": 12.453757142682889,
+        "zero": 312.3648154175486,
+        "five": 38.71243755298673,
+        "ten": 117.90977556578036
+      },
+      "labelZeroCorrectedDeg": 318.6879271985907,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 314.2495370245063,
+      "zeroVsPinDeg": 1.8847216069577826,
+      "readerFiveDeg": 42.302851040814744,
+      "readerTenDeg": 117.82427276449044,
+      "zeroVsRestCorrectedDeg": -4.438390174084361,
+      "zeroOnlyBiasBar": 0.08621431121361844,
+      "zeroDiagnosticCorrectedBar": 3.138718907867365,
+      "hubPx": 2.4908132494265627,
+      "readerHub": {
+        "x": 327.85060192550003,
+        "y": 500.35069645458833
+      },
+      "readerTipSample": {
+        "x": 382.0499476242609,
+        "y": 510.9599597406186
+      },
+      "labelTip": {
+        "x": 382.9,
+        "y": 514.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.9330011740615065,
+      "angularTipErrorPx": 1.3944588300724827,
+      "needleAngleErrorDeg": -1.378419611590516,
+      "tipGeometryBar": 3.1328895455964316,
+      "tipGeometryErrorBar": -0.2264455947240256,
+      "rawBar": 3.2249332190809836,
+      "readerNeedleDeg": 11.075337531092373,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.22299599267880674,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.0405405405405403
+    },
+    {
+      "id": "b042",
+      "clip": "lab-replay-f62a5256",
+      "t": 15.771,
+      "phase": "rising",
+      "group": "new",
+      "why": "~75% of peak",
+      "repeatOf": null,
+      "matchedTimeS": 15.75,
+      "timeDeltaMs": -21.000000000000796,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 5.6861255803355775,
+      "labelBar": 5.6748339439059805,
+      "error": 0.011291636429596963,
+      "phaseAssumedZeroBar": 5.6748339439059805,
+      "labelGeometricBar": 5.6748339439059805,
+      "labelPinBar": 5.6748339439059805,
+      "staleMs": null,
+      "lastFreshS": 15.75,
+      "labelAngles": {
+        "tip": 48.464350584436716,
+        "zero": 316.3774265874802,
+        "five": 37.24903895946966,
+        "ten": 120.34586393579013
+      },
+      "labelZeroCorrectedDeg": 322.7005383685223,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 314.8350843114323,
+      "zeroVsPinDeg": -1.5423422760479752,
+      "readerFiveDeg": 42.75565614743641,
+      "readerTenDeg": 118.27311012251369,
+      "zeroVsRestCorrectedDeg": -7.865454057090005,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 5.6861255803355775,
+      "hubPx": 3.122153301817161,
+      "readerHub": {
+        "x": 321.60445472962425,
+        "y": 501.0062576419057
+      },
+      "readerTipSample": {
+        "x": 355.12721047812147,
+        "y": 545.6667891247866
+      },
+      "labelTip": {
+        "x": 361.5,
+        "y": 550.7
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 8.120693197291178,
+      "angularTipErrorPx": 5.119518695484463,
+      "needleAngleErrorDeg": 4.643296325227311,
+      "tipGeometryBar": 5.764309663994563,
+      "tipGeometryErrorBar": 0.08947572008858273,
+      "rawBar": 5.6861255803355775,
+      "readerNeedleDeg": 53.10764690966403,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.4811997248169954,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.960526315789474
+    },
+    {
+      "id": "b043",
+      "clip": "lab-replay-f62a5256",
+      "t": 20.837,
+      "phase": "peak",
+      "group": "new",
+      "why": "app peak 7.3",
+      "repeatOf": null,
+      "matchedTimeS": 20.875,
+      "timeDeltaMs": 38.000000000000256,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 7.006363978625469,
+      "labelBar": 7.015066800439143,
+      "error": -0.008702821813674433,
+      "phaseAssumedZeroBar": 7.015066800439143,
+      "labelGeometricBar": 7.015066800439143,
+      "labelPinBar": 7.015066800439143,
+      "staleMs": null,
+      "lastFreshS": 20.875,
+      "labelAngles": {
+        "tip": 70.4733399644328,
+        "zero": 317.1380494821258,
+        "five": 40.278536286363305,
+        "ten": 115.20112364547504
+      },
+      "labelZeroCorrectedDeg": 323.4611612631679,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 315.08010106815595,
+      "zeroVsPinDeg": -2.057948413969825,
+      "readerFiveDeg": 43.075629426582395,
+      "readerTenDeg": 118.38650738020112,
+      "zeroVsRestCorrectedDeg": -8.381060195011969,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 7.006363978625469,
+      "hubPx": 3.85887351456514,
+      "readerHub": {
+        "x": 312.75401401855834,
+        "y": 499.30640055225297
+      },
+      "readerTipSample": {
+        "x": 328.94477133207454,
+        "y": 552.4708810334905
+      },
+      "labelTip": {
+        "x": 332.2,
+        "y": 565.2
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 13.138758820529295,
+      "angularTipErrorPx": 3.149684066708024,
+      "needleAngleErrorDeg": 2.589024405534701,
+      "tipGeometryBar": 6.9349480584937755,
+      "tipGeometryErrorBar": -0.08011874194536794,
+      "rawBar": 7.006363978625469,
+      "readerNeedleDeg": 73.06236436996755,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.37156223622151635,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.2142857142857144
+    },
+    {
+      "id": "b044",
+      "clip": "20261018_094055",
+      "t": 22,
+      "phase": "peak",
+      "group": "repeat",
+      "why": "gap: needle-missing",
+      "repeatOf": "b005",
+      "matchedTimeS": 22,
+      "timeDeltaMs": 0,
+      "state": "gap",
+      "reason": "needle-missing",
+      "readerBar": null,
+      "labelBar": 7.460903087362923,
+      "error": null,
+      "phaseAssumedZeroBar": 7.460903087362923,
+      "labelGeometricBar": 7.460903087362923,
+      "labelPinBar": 7.460903087362923,
+      "staleMs": null,
+      "lastFreshS": 21.5,
+      "labelAngles": {
+        "tip": 80.3775595888311,
+        "zero": 317.08798383272335,
+        "five": 37.447215704699715,
+        "ten": 124.6719912445912
+      },
+      "labelZeroCorrectedDeg": 323.4110956137655,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 277.20446931085735,
+      "zeroVsPinDeg": -39.883514521866005,
+      "readerFiveDeg": 54.80601679026552,
+      "readerTenDeg": 146.0526627100943,
+      "zeroVsRestCorrectedDeg": -46.20662630290815,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": null,
+      "hubPx": 9.17378844379256,
+      "readerHub": {
+        "x": 482.6262859645439,
+        "y": 788.951150016307
+      },
+      "readerTipSample": {
+        "x": 488.4352235336547,
+        "y": 726.0676907672575
+      },
+      "labelTip": {
+        "x": 486.1,
+        "y": 854.7
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 128.65350460636517,
+      "angularTipErrorPx": 139.9945241373812,
+      "needleAngleErrorDeg": -165.09976930365235,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": 275.27779028517875,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.26136641932455756,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.542372881355932
+    },
+    {
+      "id": "b045",
+      "clip": "lab-replay-f62a5256",
+      "t": 32.691,
+      "phase": "falling",
+      "group": "new",
+      "why": "~50% of peak after peak",
+      "repeatOf": null,
+      "matchedTimeS": 32.75,
+      "timeDeltaMs": 58.9999999999975,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 3.145383442179705,
+      "labelBar": 2.9831106857242413,
+      "error": 0.1622727564554638,
+      "phaseAssumedZeroBar": 2.9831106857242413,
+      "labelGeometricBar": 2.9831106857242413,
+      "labelPinBar": 3.1341436494585144,
+      "staleMs": null,
+      "lastFreshS": 32.75,
+      "labelAngles": {
+        "tip": 9.619727799698865,
+        "zero": 316.69116843037904,
+        "five": 41.12979870577226,
+        "ten": 120.07880143768296
+      },
+      "labelZeroCorrectedDeg": 323.01428021142124,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 315.75691726168776,
+      "zeroVsPinDeg": -0.9342511686912758,
+      "readerFiveDeg": 42.64736566313371,
+      "readerTenDeg": 118.8746549807421,
+      "zeroVsRestCorrectedDeg": -7.257362949733533,
+      "zeroOnlyBiasBar": 0.17145137349879702,
+      "zeroDiagnosticCorrectedBar": 2.973932068680908,
+      "hubPx": 1.225737033539088,
+      "readerHub": {
+        "x": 290.4029968442054,
+        "y": 489.4350103576888
+      },
+      "readerTipSample": {
+        "x": 347.8495119973034,
+        "y": 500.5585747603832
+      },
+      "labelTip": {
+        "x": 348.2,
+        "y": 499.2
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 1.4030563850339317,
+      "angularTipErrorPx": 1.3984920057892622,
+      "needleAngleErrorDeg": 1.3390301121523862,
+      "tipGeometryBar": 3.068943772883669,
+      "tipGeometryErrorBar": 0.08583308715942772,
+      "rawBar": 3.145383442179705,
+      "readerNeedleDeg": 10.958757911851308,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.7829152297318456,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.694610778443114
+    },
+    {
+      "id": "b046",
+      "clip": "lab-replay-f62a5256",
+      "t": 34.442,
+      "phase": "return-rest",
+      "group": "new",
+      "why": "first <0.2 after fall",
+      "repeatOf": null,
+      "matchedTimeS": 34.5,
+      "timeDeltaMs": 57.99999999999983,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.018239189624784758,
+      "labelBar": -0.059119254256376194,
+      "error": 0.07735844388116095,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": -0.059119254256376194,
+      "labelPinBar": 0.3200094501040286,
+      "staleMs": null,
+      "lastFreshS": 34.5,
+      "labelAngles": {
+        "tip": 317.24175066319737,
+        "zero": 311.84152499637133,
+        "five": 36.21755928333579,
+        "ten": 118.86013465658385
+      },
+      "labelZeroCorrectedDeg": 318.16463677741353,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 313.9420852056589,
+      "zeroVsPinDeg": 2.1005602092875506,
+      "readerFiveDeg": 41.98726974250246,
+      "readerTenDeg": 117.6078305820651,
+      "zeroVsRestCorrectedDeg": -4.222551571754593,
+      "zeroOnlyBiasBar": 0.2596447142751931,
+      "zeroDiagnosticCorrectedBar": -0.24140552465040832,
+      "hubPx": 13.080153037911373,
+      "readerHub": {
+        "x": 337.15614686899005,
+        "y": 487.15993394090816
+      },
+      "readerTipSample": {
+        "x": 372.56537494203224,
+        "y": 450.8229552022755
+      },
+      "labelTip": {
+        "x": 374.3,
+        "y": 435.4
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 15.520195593584766,
+      "angularTipErrorPx": 3.105050275638504,
+      "needleAngleErrorDeg": -2.9826014687289444,
+      "tipGeometryBar": 0.7068479357936899,
+      "tipGeometryErrorBar": 0.7659671900500661,
+      "rawBar": 0.018239189624784758,
+      "readerNeedleDeg": 314.25914919446836,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.40831314489386195,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.990033222591362
+    },
+    {
+      "id": "b047",
+      "clip": "20261024_124140",
+      "t": 1,
+      "phase": "used_1",
+      "group": "new",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": null,
+      "matchedTimeS": 1,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.0836371721659653,
+      "labelBar": -0.21221801029452966,
+      "error": 0.29585518246049497,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": -0.21221801029452966,
+      "labelPinBar": 0.2043734483435659,
+      "staleMs": null,
+      "lastFreshS": 1,
+      "labelAngles": {
+        "tip": 321.7169551801284,
+        "zero": 318.4832714689976,
+        "five": 37.5954002053777,
+        "ten": 125.35909412245098
+      },
+      "labelZeroCorrectedDeg": 324.80638325003974,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 318.8737763846871,
+      "zeroVsPinDeg": 0.390504915689462,
+      "readerFiveDeg": 37.66526727227142,
+      "readerTenDeg": 125.43369439673614,
+      "zeroVsRestCorrectedDeg": -5.932606865352682,
+      "zeroOnlyBiasBar": 0.39280236929590134,
+      "zeroDiagnosticCorrectedBar": -0.30916519712993606,
+      "hubPx": 0.12079677197428207,
+      "readerHub": {
+        "x": 428.0286505751629,
+        "y": 609.102526312808
+      },
+      "readerTipSample": {
+        "x": 476.65387173359176,
+        "y": 568.574303505872
+      },
+      "labelTip": {
+        "x": 480.3,
+        "y": 568
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.691080580528973,
+      "angularTipErrorPx": 1.7728793624857788,
+      "needleAngleErrorDeg": -1.5275363746261519,
+      "tipGeometryBar": -0.32464187632576275,
+      "tipGeometryErrorBar": -0.11242386603123308,
+      "rawBar": 0.0836371721659653,
+      "readerNeedleDeg": 320.1894188055023,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6649499243723834,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.9315960912052117
+    },
+    {
+      "id": "b048",
+      "clip": "20261024_124140",
+      "t": 5,
+      "phase": "used_2",
+      "group": "new",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": null,
+      "matchedTimeS": 5,
+      "timeDeltaMs": 0,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 0.10412782667285964,
+      "labelBar": -0.012221421793951307,
+      "error": 0.11634924846681094,
+      "phaseAssumedZeroBar": -0.012221421793951307,
+      "labelGeometricBar": -0.012221421793951307,
+      "labelPinBar": 0.3797298793975029,
+      "staleMs": 125,
+      "lastFreshS": 4.875,
+      "labelAngles": {
+        "tip": 318.5683898687376,
+        "zero": 312.42746528066607,
+        "five": 33.286582790921045,
+        "ten": 125.47888275923765
+      },
+      "labelZeroCorrectedDeg": 318.7505770617082,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 318.52782951349957,
+      "zeroVsPinDeg": 6.100364232833499,
+      "readerFiveDeg": 37.388700044662755,
+      "readerTenDeg": 124.6886416172822,
+      "zeroVsRestCorrectedDeg": -0.22274754820864473,
+      "zeroOnlyBiasBar": 0.014934171369075539,
+      "zeroDiagnosticCorrectedBar": 0.08919365530378409,
+      "hubPx": 1.2417315017742174,
+      "readerHub": {
+        "x": 430.025771660864,
+        "y": 599.2038377521584
+      },
+      "readerTipSample": {
+        "x": 475.8629841621597,
+        "y": 558.131035069462
+      },
+      "labelTip": {
+        "x": 478.9,
+        "y": 556.7
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.3572796382372667,
+      "angularTipErrorPx": 0.47811072208379135,
+      "needleAngleErrorDeg": -0.4305741760813362,
+      "tipGeometryBar": -0.07182873498621126,
+      "tipGeometryErrorBar": -0.05960731319225995,
+      "rawBar": null,
+      "readerNeedleDeg": 318.1378156926562,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5890549422356326,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.848101265822785
+    },
+    {
+      "id": "b049",
+      "clip": "20261024_124140",
+      "t": 9,
+      "phase": "used_3",
+      "group": "new",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": null,
+      "matchedTimeS": 9,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 3.5886548070999047,
+      "labelBar": 3.74090209872862,
+      "error": -0.15224729162871542,
+      "phaseAssumedZeroBar": 3.74090209872862,
+      "labelGeometricBar": 3.74090209872862,
+      "labelPinBar": 3.8407566688610064,
+      "staleMs": null,
+      "lastFreshS": 9,
+      "labelAngles": {
+        "tip": 15.395549253995114,
+        "zero": 314.15075189720443,
+        "five": 33.880871034058146,
+        "ten": 118.85150844886687
+      },
+      "labelZeroCorrectedDeg": 320.4738636782465,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 317.0283571892633,
+      "zeroVsPinDeg": 2.877605292058888,
+      "readerFiveDeg": 36.3939007964176,
+      "readerTenDeg": 123.32359007026008,
+      "zeroVsRestCorrectedDeg": -3.4455064889832556,
+      "zeroOnlyBiasBar": 0.056448771446264256,
+      "zeroDiagnosticCorrectedBar": 3.5322060356536404,
+      "hubPx": 1.3213455422581548,
+      "readerHub": {
+        "x": 385.3179177545566,
+        "y": 605.0504635910519
+      },
+      "readerTipSample": {
+        "x": 453.4158481667678,
+        "y": 622.4966320447546
+      },
+      "labelTip": {
+        "x": 453.4,
+        "y": 623.1
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 0.6035760546997526,
+      "angularTipErrorPx": 1.281397535170633,
+      "needleAngleErrorDeg": -1.0258704748852097,
+      "tipGeometryBar": 3.7088875665763457,
+      "tipGeometryErrorBar": -0.032014532152274455,
+      "rawBar": 3.5886548070999047,
+      "readerNeedleDeg": 14.369678779109904,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.628387257872337,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.5210084033613445
+    },
+    {
+      "id": "b050",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 13.696,
+      "phase": "rising",
+      "group": "repeat",
+      "why": "~75% of peak",
+      "repeatOf": "b025",
+      "matchedTimeS": 13.75,
+      "timeDeltaMs": 54.00000000000027,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 5.150455539522203,
+      "labelBar": 5.280915290276127,
+      "error": -0.13045975075392402,
+      "phaseAssumedZeroBar": 5.280915290276127,
+      "labelGeometricBar": 5.280915290276127,
+      "labelPinBar": 5.280915290276127,
+      "staleMs": 375,
+      "lastFreshS": 13.375,
+      "labelAngles": {
+        "tip": 38.071605320959804,
+        "zero": 317.37277712736585,
+        "five": 33.48481228499463,
+        "ten": 115.12495781528185
+      },
+      "labelZeroCorrectedDeg": 323.4406096582047,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 314.54550134230016,
+      "zeroVsPinDeg": -2.8272757850656944,
+      "readerFiveDeg": 36.53892148653091,
+      "readerTenDeg": 120.78155444977074,
+      "zeroVsRestCorrectedDeg": -8.895108315904508,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 5.150455539522203,
+      "hubPx": 3.4779401438059363,
+      "readerHub": {
+        "x": 244.6802033019115,
+        "y": 492.5923512477936
+      },
+      "readerTipSample": null,
+      "labelTip": {
+        "x": 293.6,
+        "y": 528.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": null,
+      "angularTipErrorPx": null,
+      "needleAngleErrorDeg": null,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": null,
+      "pointerReason": "ambiguous",
+      "pointerQuality": 0,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.9411764705882355
+    },
+    {
+      "id": "b051",
+      "clip": "lab-replay-f62a5256",
+      "t": 0.577,
+      "phase": "rest",
+      "group": "repeat",
+      "why": "app curve <0.15",
+      "repeatOf": "b038",
+      "matchedTimeS": 0.625,
+      "timeDeltaMs": 48.00000000000004,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.00347136005574687,
+      "labelBar": 0.10187473681663675,
+      "error": -0.09840337676088988,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 0.10187473681663675,
+      "labelPinBar": 0.4628040878155897,
+      "staleMs": null,
+      "lastFreshS": 0.625,
+      "labelAngles": {
+        "tip": 319.30446896050796,
+        "zero": 311.3618134221353,
+        "five": 37.17194072526229,
+        "ten": 121.7445346596636
+      },
+      "labelZeroCorrectedDeg": 317.6849252031775,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 314.9400348440532,
+      "zeroVsPinDeg": 3.578221421917874,
+      "readerFiveDeg": 42.49327591448787,
+      "readerTenDeg": 118.66460720253895,
+      "zeroVsRestCorrectedDeg": -2.7448903591243834,
+      "zeroOnlyBiasBar": 0.16349878637274304,
+      "zeroDiagnosticCorrectedBar": -0.16002742631699618,
+      "hubPx": 7.17445851211151,
+      "readerHub": {
+        "x": 338.85922291423,
+        "y": 502.2341737789682
+      },
+      "readerTipSample": {
+        "x": 379.69177865809877,
+        "y": 461.4016180350994
+      },
+      "labelTip": {
+        "x": 383.1,
+        "y": 456.4
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 6.052450386779122,
+      "angularTipErrorPx": 4.457917462347577,
+      "needleAngleErrorDeg": -4.304468960507961,
+      "tipGeometryBar": 0.20758625430367422,
+      "tipGeometryErrorBar": 0.10571151748703747,
+      "rawBar": 0.00347136005574687,
+      "readerNeedleDeg": 315,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.37418683871222336,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.1802120141342756
+    },
+    {
+      "id": "b052",
+      "clip": "20261024_124140",
+      "t": 13,
+      "phase": "used_4",
+      "group": "new",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": null,
+      "matchedTimeS": 13,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 8.813531395391507,
+      "labelBar": 8.715981455847833,
+      "error": 0.09754993954367386,
+      "phaseAssumedZeroBar": 8.715981455847833,
+      "labelGeometricBar": 8.715981455847833,
+      "labelPinBar": 8.715981455847833,
+      "staleMs": null,
+      "lastFreshS": 13,
+      "labelAngles": {
+        "tip": 100.406088432459,
+        "zero": 314.07382096460384,
+        "five": 36.32682595212026,
+        "ten": 122.54800767989411
+      },
+      "labelZeroCorrectedDeg": 320.3969327456459,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 317.6011355968321,
+      "zeroVsPinDeg": 3.52731463222824,
+      "readerFiveDeg": 36.478956263566886,
+      "readerTenDeg": 123.81634545047928,
+      "zeroVsRestCorrectedDeg": -2.79579714881379,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 8.813531395391507,
+      "hubPx": 2.1475790778002724,
+      "readerHub": {
+        "x": 367.9694118615718,
+        "y": 612.0436050553932
+      },
+      "readerTipSample": {
+        "x": 352.514754488991,
+        "y": 681.0692385786133
+      },
+      "labelTip": {
+        "x": 355.3,
+        "y": 679.6
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.1490085038756854,
+      "angularTipErrorPx": 2.738372019612692,
+      "needleAngleErrorDeg": 2.214148664735262,
+      "tipGeometryBar": 8.828833061008218,
+      "tipGeometryErrorBar": 0.11285160516038495,
+      "rawBar": 8.813531395391507,
+      "readerNeedleDeg": 102.62023709719426,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5871722718308775,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.8846153846153846
+    },
+    {
+      "id": "b053",
+      "clip": "20261024_124140",
+      "t": 18,
+      "phase": "used_5",
+      "group": "new",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": null,
+      "matchedTimeS": 18,
+      "timeDeltaMs": 0,
+      "state": "held",
+      "reason": "held:needle-missing",
+      "readerBar": 7.447153900488257,
+      "labelBar": 7.094859582903631,
+      "error": 0.3522943175846267,
+      "phaseAssumedZeroBar": 7.094859582903631,
+      "labelGeometricBar": 7.094859582903631,
+      "labelPinBar": 7.094859582903631,
+      "staleMs": 125,
+      "lastFreshS": 17.875,
+      "labelAngles": {
+        "tip": 70.33649760090475,
+        "zero": 313.9650134900168,
+        "five": 32.729892959313474,
+        "ten": 122.48914209587309
+      },
+      "labelZeroCorrectedDeg": 320.288125271059,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 317.17275766030355,
+      "zeroVsPinDeg": 3.2077441702867873,
+      "readerFiveDeg": 36.99744407635916,
+      "readerTenDeg": 123.35605422677662,
+      "zeroVsRestCorrectedDeg": -3.11536761075547,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 7.447153900488257,
+      "hubPx": 2.6407848373034386,
+      "readerHub": {
+        "x": 353.7628171767082,
+        "y": 605.16304421213
+      },
+      "readerTipSample": null,
+      "labelTip": {
+        "x": 378,
+        "y": 680.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": null,
+      "angularTipErrorPx": null,
+      "needleAngleErrorDeg": null,
+      "tipGeometryBar": null,
+      "tipGeometryErrorBar": null,
+      "rawBar": null,
+      "readerNeedleDeg": null,
+      "pointerReason": "ambiguous",
+      "pointerQuality": 0,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.3195876288659796
+    },
+    {
+      "id": "b054",
+      "clip": "lab-replay-f62a5256",
+      "t": 20.837,
+      "phase": "peak",
+      "group": "repeat",
+      "why": "app peak 7.3",
+      "repeatOf": "b043",
+      "matchedTimeS": 20.875,
+      "timeDeltaMs": 38.000000000000256,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 7.006363978625469,
+      "labelBar": 6.8485200634129795,
+      "error": 0.15784391521248953,
+      "phaseAssumedZeroBar": 6.8485200634129795,
+      "labelGeometricBar": 6.8485200634129795,
+      "labelPinBar": 6.8485200634129795,
+      "staleMs": null,
+      "lastFreshS": 20.875,
+      "labelAngles": {
+        "tip": 68.32637570353268,
+        "zero": 318.0283085059744,
+        "five": 38.75808565258495,
+        "ten": 118.73636296799282
+      },
+      "labelZeroCorrectedDeg": 324.3514202870165,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 315.08010106815595,
+      "zeroVsPinDeg": -2.9482074378183825,
+      "readerFiveDeg": 43.075629426582395,
+      "readerTenDeg": 118.38650738020112,
+      "zeroVsRestCorrectedDeg": -9.271319218860526,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 7.006363978625469,
+      "hubPx": 3.8753819765432014,
+      "readerHub": {
+        "x": 312.75401401855834,
+        "y": 499.30640055225297
+      },
+      "readerTipSample": {
+        "x": 328.94477133207454,
+        "y": 552.4708810334905
+      },
+      "labelTip": {
+        "x": 333.5,
+        "y": 560.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 9.493383536724789,
+      "angularTipErrorPx": 5.504246001773833,
+      "needleAngleErrorDeg": 4.735988666434878,
+      "tipGeometryBar": 6.920985848562686,
+      "tipGeometryErrorBar": 0.07246578514970636,
+      "rawBar": 7.006363978625469,
+      "readerNeedleDeg": 73.06236436996755,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.37156223622151635,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.2142857142857144
+    },
+    {
+      "id": "b055",
+      "clip": "lab-replay-9801a937-8390-4ad9-ac95-b71e4016ccb1",
+      "t": 36.361,
+      "phase": "falling",
+      "group": "repeat",
+      "why": "~50% of peak after peak",
+      "repeatOf": "b027",
+      "matchedTimeS": 36.375,
+      "timeDeltaMs": 14.000000000002899,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 3.5429945195597634,
+      "labelBar": 3.586046517557909,
+      "error": -0.04305199799814563,
+      "phaseAssumedZeroBar": 3.586046517557909,
+      "labelGeometricBar": 3.586046517557909,
+      "labelPinBar": 3.6914731049558984,
+      "staleMs": null,
+      "lastFreshS": 36.375,
+      "labelAngles": {
+        "tip": 14.364582449697195,
+        "zero": 314.2820453550936,
+        "five": 35.66220902734307,
+        "ten": 117.12952335238498
+      },
+      "labelZeroCorrectedDeg": 320.34987788593253,
+      "restOffsetLocoDeg": 6.067832530838928,
+      "readerZeroDeg": 314.2690962729202,
+      "zeroVsPinDeg": -0.012949082173463466,
+      "readerFiveDeg": 36.92178975524911,
+      "readerTenDeg": 120.41975918324084,
+      "zeroVsRestCorrectedDeg": -6.080781613012277,
+      "zeroOnlyBiasBar": 0.10563476499086732,
+      "zeroDiagnosticCorrectedBar": 3.437359754568896,
+      "hubPx": 2.5791726822273873,
+      "readerHub": {
+        "x": 212.28447933507044,
+        "y": 481.6924551670368
+      },
+      "readerTipSample": {
+        "x": 275.49375454374234,
+        "y": 496.55877705253687
+      },
+      "labelTip": {
+        "x": 275.4,
+        "y": 497.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 1.2447587395882913,
+      "angularTipErrorPx": 1.3350381079483014,
+      "needleAngleErrorDeg": -1.129601458009347,
+      "tipGeometryBar": 3.5169825135625903,
+      "tipGeometryErrorBar": -0.06906400399531876,
+      "rawBar": 3.5429945195597634,
+      "readerNeedleDeg": 13.234980991687905,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6890396225829805,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.0927835051546393
+    },
+    {
+      "id": "b056",
+      "clip": "20261024_124140",
+      "t": 23,
+      "phase": "used_6",
+      "group": "new",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": null,
+      "matchedTimeS": 23,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.00966437341297332,
+      "labelBar": 0.00735114491498711,
+      "error": 0.002313228497986209,
+      "phaseAssumedZeroBar": 0.00735114491498711,
+      "labelGeometricBar": 0.00735114491498711,
+      "labelPinBar": 0.382338356355921,
+      "staleMs": null,
+      "lastFreshS": 23,
+      "labelAngles": {
+        "tip": 317.9001702076887,
+        "zero": 311.46258057001245,
+        "five": 35.64965637157616,
+        "ten": 121.83420554555926
+      },
+      "labelZeroCorrectedDeg": 317.78569235105465,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 317.4845095178305,
+      "zeroVsPinDeg": 6.021928947817969,
+      "readerFiveDeg": 36.26619946466815,
+      "readerTenDeg": 123.82694182606622,
+      "zeroVsRestCorrectedDeg": -0.30118283322417483,
+      "zeroOnlyBiasBar": 0.01923747588271664,
+      "zeroDiagnosticCorrectedBar": -0.00957310246974332,
+      "hubPx": 1.2336722603682746,
+      "readerHub": {
+        "x": 393.4139955038138,
+        "y": 601.2603817127595
+      },
+      "readerTipSample": {
+        "x": 443.8280863657349,
+        "y": 555.2888176211607
+      },
+      "labelTip": {
+        "x": 442.3,
+        "y": 558.5
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.556225556866886,
+      "angularTipErrorPx": 0.29308416512009705,
+      "needleAngleErrorDeg": -0.26120886658952713,
+      "tipGeometryBar": -0.06658673231316546,
+      "tipGeometryErrorBar": -0.07393787722815257,
+      "rawBar": 0.00966437341297332,
+      "readerNeedleDeg": 317.63896134109916,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5361795619502229,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 3.0821917808219177
+    },
+    {
+      "id": "b057",
+      "clip": "20261024_124140",
+      "t": 28,
+      "phase": "used_7",
+      "group": "new",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": null,
+      "matchedTimeS": 28,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.47755772954904774,
+      "labelBar": 0.5712566579172971,
+      "error": -0.09369892836824933,
+      "phaseAssumedZeroBar": 0.5712566579172971,
+      "labelGeometricBar": 0.5712566579172971,
+      "labelPinBar": 0.9297672862993361,
+      "staleMs": null,
+      "lastFreshS": 28,
+      "labelAngles": {
+        "tip": 328.51762027625995,
+        "zero": 313.9927054691519,
+        "five": 32.1031908623313,
+        "ten": 124.07160980739422
+      },
+      "labelZeroCorrectedDeg": 320.31581725019396,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 317.73733476530305,
+      "zeroVsPinDeg": 3.7446292961511745,
+      "readerFiveDeg": 38.162674881007604,
+      "readerTenDeg": 124.16387975186933,
+      "zeroVsRestCorrectedDeg": -2.5784824848908556,
+      "zeroOnlyBiasBar": 0.15355752944924173,
+      "zeroDiagnosticCorrectedBar": 0.324000200099806,
+      "hubPx": 0.8116464962329616,
+      "readerHub": {
+        "x": 363.0056058641177,
+        "y": 617.0349273541257
+      },
+      "readerTipSample": {
+        "x": 422.0045114334621,
+        "y": 576.3358635013786
+      },
+      "labelTip": {
+        "x": 423.9,
+        "y": 578.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.1088334773212907,
+      "angularTipErrorPx": 3.9158429369826173,
+      "needleAngleErrorDeg": -3.116597167775126,
+      "tipGeometryBar": 0.39923222852325163,
+      "tipGeometryErrorBar": -0.17202442939404544,
+      "rawBar": 0.47755772954904774,
+      "readerNeedleDeg": 325.4010231084849,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5840087767809391,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.393617021276596
+    },
+    {
+      "id": "b058",
+      "clip": "20261018_160844",
+      "t": 2.7,
+      "phase": "rest",
+      "group": "repeat",
+      "why": "rest, needle-missing (gap)",
+      "repeatOf": "b011",
+      "matchedTimeS": 2.75,
+      "timeDeltaMs": 49.99999999999982,
+      "state": "gap",
+      "reason": "needle-missing",
+      "readerBar": null,
+      "labelBar": 0.038353926735285426,
+      "error": null,
+      "phaseAssumedZeroBar": 0,
+      "labelGeometricBar": 0.038353926735285426,
+      "labelPinBar": 0.395724100877323,
+      "staleMs": null,
+      "lastFreshS": 0.75,
+      "labelAngles": {
+        "tip": 239.7914039939261,
+        "zero": 233.4618874520021,
+        "five": 313.43574458998586,
+        "ten": 41.78261735101319
+      },
+      "labelZeroCorrectedDeg": 239.22212726560213,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 238.16237567043584,
+      "zeroVsPinDeg": 4.7004882184337475,
+      "readerFiveDeg": 332.0704805209544,
+      "readerTenDeg": 61.91353461619934,
+      "zeroVsRestCorrectedDeg": -1.05975159516629,
+      "zeroOnlyBiasBar": 0.06985355400277828,
+      "zeroDiagnosticCorrectedBar": null,
+      "hubPx": 10.106667704489293,
+      "readerHub": {
+        "x": 624.0707446603197,
+        "y": 160.0061798679238
+      },
+      "readerTipSample": {
+        "x": 593.0307644353861,
+        "y": 110.33182773321104
+      },
+      "labelTip": {
+        "x": 595,
+        "y": 108.8
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.4948717227894996,
+      "angularTipErrorPx": 2.156182680070296,
+      "needleAngleErrorDeg": -1.7914039939261102,
+      "tipGeometryBar": -0.10065288143915947,
+      "tipGeometryErrorBar": -0.13900680817444488,
+      "rawBar": null,
+      "readerNeedleDeg": 238,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.6738097205640127,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.8846153846153846
+    },
+    {
+      "id": "b059",
+      "clip": "20261024_124140",
+      "t": 34.5,
+      "phase": "used_8",
+      "group": "new",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": null,
+      "matchedTimeS": 34.5,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 0.6362731370512242,
+      "labelBar": 0.6844058262065217,
+      "error": -0.04813268915529745,
+      "phaseAssumedZeroBar": 0.6844058262065217,
+      "labelGeometricBar": 0.6844058262065217,
+      "labelPinBar": 1.0375325425520059,
+      "staleMs": null,
+      "lastFreshS": 34.5,
+      "labelAngles": {
+        "tip": 331.35238354319114,
+        "zero": 315.31724913605365,
+        "five": 32.592581472599306,
+        "ten": 126.41786931632407
+      },
+      "labelZeroCorrectedDeg": 321.6403609170958,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 318.0362048111004,
+      "zeroVsPinDeg": 2.7189556750468,
+      "readerFiveDeg": 37.33601923276973,
+      "readerTenDeg": 124.14535478903946,
+      "zeroVsRestCorrectedDeg": -3.6041561059953438,
+      "zeroOnlyBiasBar": 0.20862166039927887,
+      "zeroDiagnosticCorrectedBar": 0.42765147665194536,
+      "hubPx": 0.8449981558410179,
+      "readerHub": {
+        "x": 361.7471730900738,
+        "y": 603.5433128701394
+      },
+      "readerTipSample": {
+        "x": 422.69327280997305,
+        "y": 566.0466647140393
+      },
+      "labelTip": {
+        "x": 425.9,
+        "y": 567.6
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.563137631620312,
+      "angularTipErrorPx": 3.8064871016196444,
+      "needleAngleErrorDeg": -2.953991265916784,
+      "tipGeometryBar": 0.5213142258937407,
+      "tipGeometryErrorBar": -0.16309160031278103,
+      "rawBar": 0.6362731370512242,
+      "readerNeedleDeg": 328.3983922772744,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.4820852311237821,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.4258760107816713
+    },
+    {
+      "id": "b060",
+      "clip": "lab-replay-f62a5256",
+      "t": 15.771,
+      "phase": "rising",
+      "group": "repeat",
+      "why": "~75% of peak",
+      "repeatOf": "b042",
+      "matchedTimeS": 15.75,
+      "timeDeltaMs": -21.000000000000796,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 5.6861255803355775,
+      "labelBar": 5.7219406945796925,
+      "error": -0.03581511424411499,
+      "phaseAssumedZeroBar": 5.7219406945796925,
+      "labelGeometricBar": 5.7219406945796925,
+      "labelPinBar": 5.7219406945796925,
+      "staleMs": null,
+      "lastFreshS": 15.75,
+      "labelAngles": {
+        "tip": 50.78724296403152,
+        "zero": 317.21965555319787,
+        "five": 38.81706983405178,
+        "ten": 121.7198153078242
+      },
+      "labelZeroCorrectedDeg": 323.54276733424,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 314.8350843114323,
+      "zeroVsPinDeg": -2.3845712417655704,
+      "readerFiveDeg": 42.75565614743641,
+      "readerTenDeg": 118.27311012251369,
+      "zeroVsRestCorrectedDeg": -8.707683022807714,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 5.6861255803355775,
+      "hubPx": 4.240067858225398,
+      "readerHub": {
+        "x": 321.60445472962425,
+        "y": 501.0062576419057
+      },
+      "readerTipSample": {
+        "x": 355.12721047812147,
+        "y": 545.6667891247866
+      },
+      "labelTip": {
+        "x": 357.5,
+        "y": 551.3
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 6.112544059535116,
+      "angularTipErrorPx": 2.5558092053144574,
+      "needleAngleErrorDeg": 2.3204039456325063,
+      "tipGeometryBar": 5.617975718137292,
+      "tipGeometryErrorBar": -0.10396497644240021,
+      "rawBar": 5.6861255803355775,
+      "readerNeedleDeg": 53.10764690966403,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.4811997248169954,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.960526315789474
+    },
+    {
+      "id": "b061",
+      "clip": "20261017_084814",
+      "t": 22,
+      "phase": "peak",
+      "group": "repeat",
+      "why": "-0.36",
+      "repeatOf": "b008",
+      "matchedTimeS": 22,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 7.252126215043228,
+      "labelBar": 7.639166941015484,
+      "error": -0.3870407259722555,
+      "phaseAssumedZeroBar": 7.639166941015484,
+      "labelGeometricBar": 7.639166941015484,
+      "labelPinBar": 7.6391669410154845,
+      "staleMs": null,
+      "lastFreshS": 22,
+      "labelAngles": {
+        "tip": 358.1737967120913,
+        "zero": 230.29258004001193,
+        "five": 310.58984007108404,
+        "ten": 40.73941701049921
+      },
+      "labelZeroCorrectedDeg": 236.05281985361194,
+      "restOffsetLocoDeg": 5.7602398136000375,
+      "readerZeroDeg": 235.39326594222348,
+      "zeroVsPinDeg": 5.1006859022115805,
+      "readerFiveDeg": 321.1007548754831,
+      "readerTenDeg": 50.59422356070638,
+      "zeroVsRestCorrectedDeg": -0.659553911388457,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 7.252126215043228,
+      "hubPx": 4.0292334456975825,
+      "readerHub": {
+        "x": 642.8165917162149,
+        "y": 327.7646301787727
+      },
+      "readerTipSample": {
+        "x": 713.7119359186509,
+        "y": 329.7646301787727
+      },
+      "labelTip": {
+        "x": 715.1,
+        "y": 327.9
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 2.324557505746336,
+      "angularTipErrorPx": 4.146752861087162,
+      "needleAngleErrorDeg": 3.4421228670804567,
+      "tipGeometryBar": 7.724691810688874,
+      "tipGeometryErrorBar": 0.08552486967339057,
+      "rawBar": 7.252126215043228,
+      "readerNeedleDeg": 1.6159195791717593,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.731672581722455,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.694610778443114
+    },
+    {
+      "id": "b062",
+      "clip": "20261024_124140",
+      "t": 13,
+      "phase": "used_4",
+      "group": "repeat",
+      "why": "evenly spaced (no curve)",
+      "repeatOf": "b052",
+      "matchedTimeS": 13,
+      "timeDeltaMs": 0,
+      "state": "fresh",
+      "reason": "tap-fresh",
+      "readerBar": 8.813531395391507,
+      "labelBar": 8.674637999839874,
+      "error": 0.1388933955516336,
+      "phaseAssumedZeroBar": 8.674637999839874,
+      "labelGeometricBar": 8.674637999839874,
+      "labelPinBar": 8.674637999839874,
+      "staleMs": null,
+      "lastFreshS": 13,
+      "labelAngles": {
+        "tip": 98.13010235415595,
+        "zero": 314.73657298484693,
+        "five": 35.93483298181809,
+        "ten": 120.5625832187776
+      },
+      "labelZeroCorrectedDeg": 321.0596847658891,
+      "restOffsetLocoDeg": 6.323111781042144,
+      "readerZeroDeg": 317.6011355968321,
+      "zeroVsPinDeg": 2.864562611985093,
+      "readerFiveDeg": 36.478956263566886,
+      "readerTenDeg": 123.81634545047928,
+      "zeroVsRestCorrectedDeg": -3.4585491690570507,
+      "zeroOnlyBiasBar": 0,
+      "zeroDiagnosticCorrectedBar": 8.813531395391507,
+      "hubPx": 2.9041796187538753,
+      "readerHub": {
+        "x": 367.9694118615718,
+        "y": 612.0436050553932
+      },
+      "readerTipSample": {
+        "x": 352.514754488991,
+        "y": 681.0692385786133
+      },
+      "labelTip": {
+        "x": 356,
+        "y": 682.4
+      },
+      "sourceScale": {
+        "x": 1,
+        "y": 1
+      },
+      "tipSampleErrorPx": 3.7306651193399114,
+      "angularTipErrorPx": 5.76161113395606,
+      "needleAngleErrorDeg": 4.490134743038311,
+      "tipGeometryBar": 8.843880087558489,
+      "tipGeometryErrorBar": 0.16924208771861515,
+      "rawBar": 8.813531395391507,
+      "readerNeedleDeg": 102.62023709719426,
+      "pointerReason": "shaft",
+      "pointerQuality": 0.5871722718308775,
+      "poseLost": false,
+      "duplicate": false,
+      "displayScale": 2.8846153846153846
+    }
+  ],
+  "ranking": [
+    {
+      "rank": 1,
+      "candidate": "B",
+      "name": "Needle tracking across frames",
+      "expectedGaps": "Largest direct opportunity: four needle-missing gaps / 52 unique frames; at most +7.69 coverage percentage points if all four are recovered. One pose-lost gap is outside this bound.",
+      "expectedSmoothness": "Eight held + four missing observations are candidates for genuine fresh evidence: at most 12/52 = 23.08 percentage points of freshness. Avoid plateau/lag then catch-up jumps. No numeric jitter improvement established.",
+      "expectedMedian": "Likely helps held-error tail more than median; eight held samples, maximum age 375 ms. A new quantitative median cannot be predicted from sparse labels.",
+      "risk": "Medium/high: wrong-end identity, drift onto print or bezel, false certainty across occlusion. Prediction must never become measured pressure.",
+      "firstTicket": "Add a behind-flag image-evidence tracker in registered dial coordinates; propagate prior tip/shaft and seek current-frame support, keep shaft-end identity, expire when support disappears. Preserve fresh/held/gap semantics and hold timeout. Run temporal clips, this frozen batch and one exam; no interpolation or relaxed safety gates."
+    },
+    {
+      "rank": 2,
+      "candidate": "A",
+      "name": "Continuous session zero through countdown until pressure onset",
+      "expectedGaps": "No demonstrated direct recovery of these five gaps: a scale offset does not supply a missing pointer or pose.",
+      "expectedSmoothness": "Improves common baseline consistency; must freeze before first pressure movement. It cannot remove mid-shot needle gaps or smooth jitter by itself.",
+      "expectedMedian": "Not demonstrated: median isolated zero bias 0.067 bar; diagnostic subtraction changes shown median 0.114 to 0.137 (worse). Some early 094055 frames have large zero error; benefits are clip- and range-specific, not additive to other fixes.",
+      "risk": "Medium: early pressurisation may be erased as zero. b030/b039 tagged rest are geometrically above rest, so phase name/countdown time is not rest evidence. Session confirmation and fresh image stability must govern eligibility; trust taps and freeze zero at onset.",
+      "firstTicket": "Collect confirmed-rest observations through the 3-2-1 countdown, estimate one robust session zero with uncertainty, then freeze at onset. Keep user 5/10 taps fixed. Add onset/false-rest/occlusion acceptance cases; no mid-shot rezero."
+    },
+    {
+      "rank": 3,
+      "candidate": "C",
+      "name": "Tip geometric precision",
+      "expectedGaps": "No demonstrated coverage gain from subpixel refinement alone. Off-scale/wrong-end cases need identity/evidence recovery, not endpoint polishing.",
+      "expectedSmoothness": "Potential smaller reduction in fresh-sample jitter; current angular chord median 2.34 source px is close to repeat tip disagreement 2.63 source px. Physical endpoint length errors inflate full-distance metrics.",
+      "expectedMedian": "Conditional tip geometry median |error| 0.091 bar versus repeat geometric disagreement 0.050 bar. These are different sample sets; subtracting them is not a forecast. A few hundredths bar may be worth testing, but no measured whole-reader median gain is established.",
+      "risk": "Low/medium for refinement of a verified shaft; high if tuned on these 52 frames. Hub/tap noise and perspective can dominate. Avoid optimising the tip sample length when angular pressure is already correct.",
+      "firstTicket": "Refine the centreline-to-pivot ray only after shaft identity is verified; report angular and transverse residuals independently of tip extent. Validate on held-out clips and repeats before touching acceptance thresholds."
+    }
+  ]
+}
