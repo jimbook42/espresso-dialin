@@ -23,7 +23,8 @@ import {
 import { barToDialAngle, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION } from './dialFaceTemplate.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { detectNeedleAngle, refineNeedleAngle } from './needleFromFrame.js';
-import { findPointerEvidence } from './pointerEvidence.js';
+import { findPointerEvidence, capturePointerAppearance, trackPointerEvidence } from './pointerEvidence.js';
+import { createNeedleTrack, missNeedleTrack, rememberNeedleTrack, needleTrackingEnabled } from './needleTracking.js';
 import { regularizeTapAnchors } from './anchorRegularize.js';
 import {
   createDialRegistration, inverseDialAngle, rememberDialReference,
@@ -1167,6 +1168,7 @@ export function calibrateFromTaps(image, taps) {
 
 export function createCalibratedTracker(calibration, options = {}) {
   return {
+    pointerTrack: (options.needleTracking ?? needleTrackingEnabled()) ? createNeedleTrack() : null,
     calibration,
     pose: {
       x: calibration.hub.x,
@@ -1284,6 +1286,7 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
   if (diagnostics) diagnostics.source = 'missing';
   if (!tracker.legacyScale && tracker.lastRead
     && isRepeatedGaugeFrame(image, tracker.previousFrame, tracker.calibration)) {
+    if (tracker.pointerTrack) missNeedleTrack(tracker.pointerTrack);
     return { ...tracker.lastRead, ok: false, bar: null, rawBar: null,
       fresh: false, needleDeg: null, pointerVerified: false, duplicate: true };
   }
@@ -1316,11 +1319,26 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
   const tenPrior = matrix ? transformDialAngle(tracker.calibration.tenAngleDeg, matrix)
     : wrap360(tracker.calibration.tenAngleDeg + prevShift);
   let needle = { angleDeg: null, quality: 0, likeness: 0 };
+  let pointerEvidence = null;
   if (bezelOk) {
     if (!tracker.legacyScale) {
       // One shared geometric reader covers direct measurement and recovery.
       // A template cannot bypass unresolved shaft direction.
-      const evidence = findPointerEvidence(image, { x: pose.x, y: pose.y }, pose.radius);
+      let evidence = findPointerEvidence(image, { x: pose.x, y: pose.y }, pose.radius);
+      const prior = tracker.pointerTrack;
+      const priorDeg = prior?.referenceAngleDeg == null ? null
+        : matrix ? transformDialAngle(prior.referenceAngleDeg, matrix)
+          : wrap360(prior.referenceAngleDeg + prevShift);
+      const reversed = priorDeg != null && evidence.angleDeg != null
+        && Math.abs(wrapDelta(priorDeg, evidence.angleDeg)) > 90;
+      if (priorDeg != null && (evidence.rayAngleDeg == null || reversed
+        || barFromRestSpan(evidence.rayAngleDeg, zeroPrior, tenPrior) == null)) {
+        const tracked = trackPointerEvidence(image, { x: pose.x, y: pose.y }, pose.radius, priorDeg, prior.appearance);
+        // A directed identity contradiction is not a fresh observation, even if
+        // the independent search would otherwise have accepted the other end.
+        if (tracked.rayAngleDeg != null || reversed) evidence = tracked;
+      }
+      pointerEvidence = evidence;
       needle = { angleDeg: evidence.rayAngleDeg ?? null, quality: evidence.quality, likeness: evidence.quality };
       tracker.needleMisses = needle.angleDeg == null ? Math.min(4, (tracker.needleMisses || 0) + 1) : 0;
       if (diagnostics) { diagnostics.source = 'pointer'; diagnostics.pointer = evidence; }
@@ -1458,12 +1476,21 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
       previousBar: tracker.lastGoodBar,
     });
   if (bar != null) tracker.lastGoodBar = bar;
+  if (tracker.pointerTrack) {
+    if (bar != null && bar === rawBar && pointerEvidence?.candidates?.[0]) {
+      const shaftAngle = pointerEvidence.candidates[0].angleDeg;
+      rememberNeedleTrack(tracker.pointerTrack,
+        matrix ? inverseDialAngle(shaftAngle, matrix) : wrap360(shaftAngle - shiftDeg),
+        capturePointerAppearance(image, { x: pose.x, y: pose.y }, pose.radius, pointerEvidence.candidates[0]));
+    } else missNeedleTrack(tracker.pointerTrack, { lost });
+  }
   const result = {
     ok: bar != null,
     lost,
     bar,
     rawBar,
     pointerVerified: !tracker.legacyScale && rawBar != null,
+    pointerSource: pointerEvidence?.reason ?? null,
     fresh: bar != null && rawBar === bar,
     score,
     bezelScore: found?.score ?? 0,

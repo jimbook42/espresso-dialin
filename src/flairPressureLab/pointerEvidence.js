@@ -61,3 +61,44 @@ export function findPointerEvidence(image,hub,radius,{maxOffset=Math.max(4,Math.
   rayAngleDeg:resolved?pointerTipRay(best.angleDeg,best.offsetPx,best.tipEnd,radius):null,
   offsetPx:best.offsetPx,candidates};
 }
+
+/** Appearance belongs to a measured shaft, never to a predicted pressure. */
+export function capturePointerAppearance(image,hub,radius,candidate){
+ if(!candidate?.resolved)return null;
+ const p=profile(image,hub.x,hub.y,radius,candidate.angleDeg,candidate.offsetPx,1);
+ return {samples:Array.from(p.samples),tipEnd:p.end};
+}
+function appearanceAgreement(samples,template){
+ let dot=0,a=0,b=0;
+ for(let i=0;i<SAMPLES;i++){const x=samples[i],y=template.samples[i];dot+=x*y;a+=x*x;b+=y*y;}
+ return a>0&&b>0?dot/Math.sqrt(a*b):0;
+}
+/** Re-identify a recent shaft using current pixels. The prior only limits the
+ * search and identifies its directed end; it is never returned as an angle.
+ * Contrast/width/coherence, tip-vs-tail and quality gates are unchanged; an
+ * additional appearance gate prevents proximity alone from certifying a ray.
+ */
+export function trackPointerEvidence(image,hub,radius,priorDeg,template){
+ const empty={angleDeg:null,rayAngleDeg:null,quality:0,reason:'tracking-unsupported',candidates:[]};
+ if(!image?.data||!template||!Number.isFinite(priorDeg)||!(radius>12))return empty;
+ const maxOffset=Math.max(4,Math.min(20,Math.ceil(radius*.09)*2));
+ const rows=[];
+ // The existing needle detector also uses a 32 degree hint window. There is no
+ // velocity extrapolation, angle blending, or change to the measured tip ray.
+ // Retain the independent detector's one-degree refinement resolution.
+ for(let a=priorDeg-32;a<=priorDeg+32;a++)for(let off=-maxOffset;off<=maxOffset;off+=2){
+   const row=measure(image,hub,radius,a,off);
+   if(Math.abs(wrapDelta(priorDeg,row.angleDeg))>32||!row.resolved)continue;
+   const p=profile(image,hub.x,hub.y,radius,row.angleDeg,row.offsetPx,1);
+   const agreement=appearanceAgreement(p.samples,template);
+   if(agreement<.9)continue;
+   rows.push({...row,agreement,score:row.score*agreement*agreement});
+ }
+ const candidates=leaders(rows),best=candidates[0],second=candidates[1];
+ if(!best||best.score<=0)return empty;
+ const margin=Math.max(0,(best.score-(second?.score??0))/best.score);
+ const quality=margin*Math.min(1,best.coverage/NEEDLE_LIKENESS_GATE);
+ if(quality<NEEDLE_LOST_QUALITY)return {...empty,candidates};
+ return {angleDeg:best.angleDeg,rayAngleDeg:pointerTipRay(best.angleDeg,best.offsetPx,best.tipEnd,radius),
+   quality,reason:'tracked-shaft',margin,offsetPx:best.offsetPx,candidates};
+}

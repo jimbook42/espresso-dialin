@@ -580,6 +580,32 @@ describe('calibrateFromTaps gauge sizes', () => {
 });
 
 describe('userPlaced rim radius vs tap radius', () => {
+  it('keeps a propagated shaft hint out of fresh reads when the current image has no supporting shaft', () => {
+    const hub = { x: 200, y: 200 }, image = paintBandDial(400, hub, 88);
+    const taps = idealTapsAtRadius(50, hub);
+    const result = calibrateFromTaps(image, { centre: hub, five: taps.five, ten: taps.ten });
+    expect(result.ok).toBe(true);
+    const tracker = createCalibratedTracker(result.calibration, { needleTracking: true });
+    tracker.pointerTrack.referenceAngleDeg = result.calibration.fiveAngleDeg;
+    tracker.pointerTrack.appearance = { samples: Array(32).fill(20), tipEnd: 24 };
+    const direct = vi.spyOn(pointerEvidence, 'findPointerEvidence').mockReturnValue({
+      angleDeg: null, rayAngleDeg: null, quality: 0, reason: 'ambiguous' });
+    const tracked = vi.spyOn(pointerEvidence, 'trackPointerEvidence').mockReturnValue({
+      angleDeg: null, rayAngleDeg: null, quality: 0, reason: 'tracking-unsupported' });
+    try {
+      for (let i = 0; i < 3; i++) {
+        // Camera noise inside the freshness window, away from the shaft, does
+        // not create shaft evidence (an exact gauge repeat is rejected earlier).
+        const current = { ...image, data: image.data.slice() };
+        current.data[(100 * 400 + 100) * 4] = i;
+        expect(readCalibratedFrame(current, tracker)).toMatchObject({
+          bar: null, rawBar: null, fresh: false, pointerVerified: false });
+      }
+      expect(tracked).toHaveBeenCalledTimes(3);
+      expect(tracker.pointerTrack.appearance).toBeNull();
+      expect(tracker.pointerTrack.referenceAngleDeg).toBeNull();
+    } finally { direct.mockRestore(); tracked.mockRestore(); }
+  });
   it('updates hints only from verified rays and never recertifies duplicate or ambiguous pixels', () => {
     const hub = { x: 200, y: 200 }, image = paintBandDial(400, hub, 88);
     const taps = idealTapsAtRadius(50, hub);
