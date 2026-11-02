@@ -100,7 +100,7 @@ export function ScaleFlowChart({
   let pressurePath = '';
   if (showPressure) {
     pressurePath = pressurePoints
-      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.tS).toFixed(1)} ${yBar(p.bar).toFixed(1)}`)
+      .map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'} ${x(p.tS).toFixed(1)} ${yBar(p.bar).toFixed(1)}`)
       .join(' ');
   }
 

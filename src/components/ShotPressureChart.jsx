@@ -60,7 +60,7 @@ export function ShotPressureChart({
 
   let path = '';
   points.forEach((p, i) => {
-    const cmd = i === 0 ? 'M' : 'L';
+    const cmd = i === 0 || p.breakBefore ? 'M' : 'L';
     path += `${cmd} ${x(p.tS).toFixed(1)} ${y(p.bar).toFixed(1)} `;
   });
 

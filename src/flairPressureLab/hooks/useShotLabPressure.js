@@ -371,6 +371,8 @@ export function useShotLabPressure({
         const epoch = shotEpochRef.current;
         if (confident && rawBar != null && epoch) {
           sessionRef.current.pushRaw(rawBar, true, gated.measuredAtMs);
+          // In-memory display boundary only; getShotMetrics saves just tS/bar.
+          if (read.needleTrackingReset) sessionRef.current.getSamples().at(-1).reset = true;
           if (image) gaugeSnapshotRef.current = gaugeSnapshotJpegFromImageData(image);
         }
         const all = sessionRef.current.getSamples();
@@ -379,7 +381,8 @@ export function useShotLabPressure({
         setHold({ held: gated.held, gap: rawBar == null });
         setReaderUncertain(gated.uncertain);
         setDisplayBar(
-          gated.held ? rawBar : confident ? rollingDisplayBar(all, tS) ?? rawBar : null,
+          gated.displayBar !== undefined ? gated.displayBar
+            : gated.held ? rawBar : confident ? rollingDisplayBar(all, tS) ?? rawBar : null,
         );
         setPeakBar(peakBarFromRaw(all));
         replayFrameObserverRef?.current?.({

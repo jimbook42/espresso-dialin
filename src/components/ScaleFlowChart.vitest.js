@@ -62,6 +62,16 @@ describe('ScaleFlowChart history pressure overlay', () => {
     expect(container.textContent).toContain('peak 8.2 bar');
   });
 
+  it('starts a new SVG subpath after a missing pressure interval', () => {
+    renderChart({ pressureSamples: [
+      { tS: 0, bar: 5 }, { tS: .125, bar: 5.1 },
+      { tS: .5, bar: 6 }, { tS: .625, bar: 6.1 },
+    ] });
+    const path = container.querySelector('[data-testid="history-measured-pressure"]')?.getAttribute('d');
+    expect(path.match(/M /g)).toHaveLength(2);
+    expect(path.match(/L /g)).toHaveLength(2);
+  });
+
   it('shows pressure without ideal profile when flairProfile missing', () => {
     renderChart({ pressureSamples: PRESSURE });
     expect(container.querySelector('[data-testid="history-measured-pressure"]')).not.toBeNull();

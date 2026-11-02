@@ -13,6 +13,29 @@ const TAP_CAL = {
 };
 
 describe('shotLabR7Live', () => {
+  it('smooths only display output, preserves holds/gaps, and resets at restart', () => {
+    const pub = createShotLabR7Publisher(TAP_CAL);
+    pub.beginShot(0);
+    const step = (nowMs, bar, extra = {}) => pub.stepFrame({ nowMs,
+      read: { ok: bar != null, lost: false, bar, fresh: bar != null,
+        needleDeg: 260, needleQuality: .3, ...extra } });
+    expect(step(0, 5).displayBar).toBe(5);
+    const fresh = step(125, 5.1);
+    expect(fresh.bar).toBe(5.1);
+    expect(fresh.measuredAtMs).toBe(125);
+    expect(fresh.displayBar).toBeGreaterThan(5);
+    expect(fresh.displayBar).toBeLessThan(5.1);
+    const held = step(250, null);
+    expect(held.held).toBe(true);
+    expect(held.displayBar).toBe(fresh.displayBar);
+    expect(held.measuredAtMs).toBeNull();
+    expect(step(375, 5.2).displayBar).toBe(5.2);
+    expect(step(500, 5.3, { needleTrackingReset: true }).displayBar).toBe(5.3);
+    expect(step(1125, null).displayBar).toBeNull();
+    pub.beginShot(2000);
+    expect(step(2000, 2).displayBar).toBe(2);
+  });
+
   it('publisher uses temporal gate config from frozen r7_config', () => {
     const pub = createShotLabR7Publisher(TAP_CAL);
     expect(pub.gateConfig.classicalDirect).toBe(true);

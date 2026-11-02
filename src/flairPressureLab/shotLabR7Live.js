@@ -7,6 +7,7 @@ import { initialTemporalState, stepTemporalGate } from './temporalGate.js';
 import { gateConfigR7, loadR7Config } from './r7Config.js';
 import { publishTapBar } from './tapCalibrate.js';
 import { createTapReadingPublisher } from './tapReadingPublisher.js';
+import { createPressureCurveFilter } from './pressureCurveFilter.js';
 
 export const SHOT_LAB_R7_FRAME_MS = PROCESS_INTERVAL_MS;
 
@@ -22,6 +23,8 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
   const { anchors } = regularizeReplayAnchors(tapCalibration, bundle.reader);
   const classical = createClassicalReaderR6(bundle.reader);
   const tapPublisher = createTapReadingPublisher(gateCfg);
+  const curveFilter = createPressureCurveFilter();
+  let lastDisplayBar = null;
   let gateState = initialTemporalState();
   let shotT0 = 0;
   let lastOut = null;
@@ -32,6 +35,8 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
     shotT0 = 0;
     lastOut = null;
     tapPublisher.reset();
+    curveFilter.reset();
+    lastDisplayBar = null;
   };
 
   const beginShot = (epochMs = Date.now()) => {
@@ -74,7 +79,19 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
     });
     if (!legacyScale) {
       const observation = tapPublisher.step({ ...frame, nowMs });
-      return { ...observation, classicalStep };
+      // bar and its freshness/timestamp remain the measured, unsmoothed value.
+      // Never feed display output back into acceptance, rate or tracking gates.
+      let displayBar = null;
+      if (observation.fresh) {
+        displayBar = curveFilter.step(observation.bar, observation.measuredAtMs,
+          read.needleTrackingReset === true);
+        lastDisplayBar = displayBar;
+      } else {
+        curveFilter.reset();
+        if (observation.held) displayBar = lastDisplayBar;
+        else lastDisplayBar = null;
+      }
+      return { ...observation, displayBar, classicalStep };
     }
     const tapSure = !legacyScale && read.ok && read.bar != null && !read.lost;
     let classicalBar = classicalStep.published ? classicalStep.bar : null;

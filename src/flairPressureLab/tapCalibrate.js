@@ -1284,6 +1284,8 @@ function trackPose(image, tracker) {
  */
 export function readCalibratedFrame(image, tracker, diagnostics = null) {
   if (diagnostics) diagnostics.source = 'missing';
+  const needleTrackingReset = tracker.pointerTrack != null
+    && tracker.pointerTrack.referenceAngleDeg == null;
   if (!tracker.legacyScale && tracker.lastRead
     && isRepeatedGaugeFrame(image, tracker.previousFrame, tracker.calibration)) {
     if (tracker.pointerTrack) missNeedleTrack(tracker.pointerTrack);
@@ -1491,6 +1493,7 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
     rawBar,
     pointerVerified: !tracker.legacyScale && rawBar != null,
     pointerSource: pointerEvidence?.reason ?? null,
+    needleTrackingReset,
     fresh: bar != null && rawBar === bar,
     score,
     bezelScore: found?.score ?? 0,

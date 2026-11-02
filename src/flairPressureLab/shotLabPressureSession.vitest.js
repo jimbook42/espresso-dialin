@@ -8,6 +8,7 @@ describe('createShotLabPressureSession getShotMetrics', () => {
     session.pushRaw(5, true, 1000);
     session.pushRaw(6, false, 2000);
     session.pushRaw(7, true, 3000);
+    session.getSamples().at(-1).reset = true;
     const metrics = session.getShotMetrics();
     expect(metrics.labPressureCurve).toEqual([
       { tS: 1, bar: 5 },

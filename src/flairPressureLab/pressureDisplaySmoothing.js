@@ -1,40 +1,37 @@
-/** Rolling window for live bar readout (display only — raw samples stay unsmoothed). */
+import { createPressureCurveFilter, PRESSURE_CURVE_GAP_MS } from './pressureCurveFilter.js';
+
+/** Legacy window constant (callers may still import it); causal filter below (display only — raw samples stay unsmoothed). */
 export const PRESSURE_DISPLAY_WINDOW_S = 1.0;
 
 /**
  * Plot-time lead for saved/history pressure vs scale flow (seconds earlier on the time axis).
- * History used a 1 s trailing mean (~0.5 s lag on rises); zero-phase smoothing removes most of that.
+ * Historical alignment offset vs scale flow; independent of the causal filter.
  * Residual 0.35 s covers shot-lab frame cadence (125 ms) plus gated publish vs scale timestamps.
  */
 export const LAB_PRESSURE_CURVE_LEAD_S = 0.35;
 
 /**
- * @typedef {{ tS: number, bar: number, confident?: boolean }} LabPressureRawSample
+ * @typedef {{ tS: number, bar: number | null, confident?: boolean, reset?: boolean }} LabPressureRawSample
  */
 
 /**
  * @param {LabPressureRawSample[]} samples
  * @param {number} nowS
- * @param {number} [windowS]
  */
-export function rollingDisplayBar(samples, nowS, windowS = PRESSURE_DISPLAY_WINDOW_S) {
-  if (!samples?.length || nowS == null) return null;
-  const cutoff = nowS - windowS;
-  const inWindow = samples.filter(
-    (s) => s.bar != null && Number.isFinite(s.bar) && s.tS >= cutoff && s.tS <= nowS
-  );
-  if (!inWindow.length) return null;
-  const sum = inWindow.reduce((acc, s) => acc + s.bar, 0);
-  const mean = sum / inWindow.length;
-  // The one-second mean lags a lever ramp and holds the plateau after flow
-  // tails off. When the newest sample has already left that mean, show it.
-  const latest = inWindow[inWindow.length - 1];
-  if (latest && Math.abs(latest.bar - mean) > 0.2) return latest.bar;
-  return mean;
+export function rollingDisplayBar(samples, nowS) {
+  if (!samples?.length || !Number.isFinite(nowS)) return null;
+  const filter = createPressureCurveFilter();
+  let bar = null, lastTS = null;
+  for (const sample of samples) {
+    if (sample.tS > nowS) break;
+    bar = filter.step(sample.bar, sample.tS * 1000, sample.reset === true);
+    lastTS = sample.tS;
+  }
+  return lastTS != null && (nowS - lastTS) * 1000 <= PRESSURE_CURVE_GAP_MS ? bar : null;
 }
 
 /**
- * Centered rolling mean (zero-phase) for history/saved curves only.
+ * Legacy centered-mean helper; current charts use the causal filter below.
  * @param {LabPressureRawSample[]} samples
  * @param {number} centerTS
  * @param {number} [windowS]
@@ -85,35 +82,33 @@ export function pressureChartPointsFromRaw(samples) {
 }
 
 /**
- * Display-only smoothed pressure curve (same window as live bar readout).
+ * Display-only causal pressure curve, shared by live readout and History.
  * @param {LabPressureRawSample[]} samples
- * @param {number} [windowS]
  */
-export function pressureChartPointsForDisplay(samples, windowS = PRESSURE_DISPLAY_WINDOW_S) {
-  if (!samples?.length) return [];
-  return samples
-    .filter((s) => s.bar != null && Number.isFinite(s.bar))
-    .map((s) => ({
-      tS: s.tS,
-      bar: rollingDisplayBar(samples, s.tS, windowS) ?? s.bar,
-      dim: s.confident === false,
-    }));
+export function pressureChartPointsForDisplay(samples) {
+  const filter = createPressureCurveFilter();
+  const points = [];
+  let previousTS = null, gap = true;
+  for (const sample of samples ?? []) {
+    const bar = filter.step(sample.bar, sample.tS * 1000, sample.reset === true);
+    if (bar == null) { gap = true; continue; }
+    const breakBefore = gap || (previousTS != null
+      && (sample.tS - previousTS) * 1000 > PRESSURE_CURVE_GAP_MS);
+    points.push({ tS: sample.tS, bar, dim: sample.confident === false, breakBefore });
+    previousTS = sample.tS;
+    gap = false;
+  }
+  return points;
 }
 
 /**
- * Saved labPressureCurve on History charts: zero-phase smoothing + plot-time lead (raw DB unchanged).
+ * Saved labPressureCurve: same causal filter + existing plot-time alignment (raw DB unchanged).
  * @param {LabPressureRawSample[]} samples
- * @param {number} [windowS]
  */
-export function pressureChartPointsForSavedCurve(samples, windowS = PRESSURE_DISPLAY_WINDOW_S) {
-  if (!samples?.length) return [];
-  return samples
-    .filter((s) => s.bar != null && Number.isFinite(s.bar))
-    .map((s) => ({
-      tS: labPressureCurvePlotTimeS(s.tS),
-      bar: rollingCenteredBar(samples, s.tS, windowS) ?? s.bar,
-      dim: s.confident === false,
-    }));
+export function pressureChartPointsForSavedCurve(samples) {
+  return pressureChartPointsForDisplay(samples).map(point => ({
+    ...point, tS: labPressureCurvePlotTimeS(point.tS),
+  }));
 }
 
 /**
