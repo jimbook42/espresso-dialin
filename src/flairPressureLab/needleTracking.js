@@ -1,8 +1,10 @@
-/** Experimental, off by default. Node replay and Vite build opt-ins are separate
- * from the pressure-lab entry flag; neither requires editing an env file. */
+/** On by default since v4.13.28. Opt out with VITE_ENABLE_NEEDLE_TRACKING=false (Vite)
+ * or DIALIN_NEEDLE_TRACKING=0 (Node replay). */
 export function needleTrackingEnabled(){
- return import.meta.env?.VITE_ENABLE_NEEDLE_TRACKING==='true'
-   ||globalThis.process?.env?.DIALIN_NEEDLE_TRACKING==='1';
+ // On by default (v4.13.28). Opt out: VITE_ENABLE_NEEDLE_TRACKING=false (Vite) or DIALIN_NEEDLE_TRACKING=0 (Node replay).
+ if(import.meta.env?.VITE_ENABLE_NEEDLE_TRACKING==='false')return false;
+ if(globalThis.process?.env?.DIALIN_NEEDLE_TRACKING==='0')return false;
+ return true;
 }
 export const NEEDLE_TRACK_MAX_MISSES=3;
 export function createNeedleTrack(){return {referenceAngleDeg:null,appearance:null,misses:0};}
