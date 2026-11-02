@@ -316,12 +316,17 @@ export function barFromTapAnchors(needleDeg, zeroDeg, fiveDeg, tenDeg) {
  * Propagate their relative position error into both the pointer and tapped ray.
  * This is a geometric bound, independent of any pressure scoring threshold.
  */
-export function endpointIsResolved(needleDeg, tenDeg, pointerRadius, pinRadius) {
-  if (![needleDeg, tenDeg, pointerRadius, pinRadius].every(Number.isFinite)
+export function endpointIsResolved(needleDeg, zeroDeg, tenDeg, pointerRadius, pinRadius) {
+  if (![needleDeg, zeroDeg, tenDeg, pointerRadius, pinRadius].every(Number.isFinite)
     || pointerRadius <= 0 || pinRadius <= 0) return false;
   const uncertainty = (Math.atan2(Math.SQRT2, pointerRadius)
     + Math.atan2(Math.SQRT2, pinRadius)) * 180 / Math.PI;
-  return wrapDelta(needleDeg, tenDeg) > uncertainty;
+  // Use distance to the endpoint, not a signed shortest step. On a valid
+  // calibration arc wider than 180°, near-zero lies on the negative side of
+  // the shortest turn to ten even though it is far from the ten endpoint.
+  const progress = clockwiseDeg(zeroDeg, needleDeg);
+  const endpoint = clockwiseDeg(zeroDeg, tenDeg);
+  return progress <= endpoint && Math.abs(wrapDelta(needleDeg, tenDeg)) > uncertainty;
 }
 
 /**
@@ -1414,7 +1419,7 @@ export function readCalibratedFrame(image, tracker) {
   const referenceAngle = inverseDialAngle(needle.angleDeg, matrix);
   const pinRadius = pointDist(tracker.calibration.hub, tracker.calibration.ten) * scale;
   const endpointOk = tracker.legacyScale || endpointIsResolved(
-    needle.angleDeg, ten, pose.radius * OUTER_RADIUS_RATIO, pinRadius,
+    needle.angleDeg, zero, ten, pose.radius * OUTER_RADIUS_RATIO, pinRadius,
   );
   const rawBar = !lost && endpointOk && needle.angleDeg != null && (needle.quality ?? 0) >= NEEDLE_LOST_QUALITY
     ? (tracker.legacyScale
