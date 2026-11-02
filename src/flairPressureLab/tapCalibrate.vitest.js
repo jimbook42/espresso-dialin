@@ -602,5 +602,9 @@ describe('userPlaced rim radius vs tap radius', () => {
     expect(scale).toBeGreaterThan(0.88);
     expect(scale).toBeLessThan(1.12);
     expect(Math.abs(wrapDelta(read.shiftDeg ?? 0, 0))).toBeLessThan(1);
+    const repeated = readCalibratedFrame(image, tracker);
+    expect(repeated).toMatchObject({ duplicate: true, fresh: false, bar: null });
+    expect(repeated.hub).toEqual(read.hub);
+    expect(result.calibration.zeroAngleDeg).toBe(tracker.calibration.zeroAngleDeg);
   });
 });

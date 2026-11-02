@@ -29,6 +29,7 @@ import {
   registerDialFrame, seedDialRegistration, transformDialAngle,
 } from './dialRegistration.js';
 import { getOpenCvSync } from './opencvRuntime.js';
+import { isRepeatedGaugeFrame } from './cameraFrameFreshness.js';
 
 /** Clockwise travel from the printed 5 to the printed 10. */
 export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
@@ -1169,6 +1170,8 @@ export function createCalibratedTracker(calibration, options = {}) {
     lastGoodBar: null,
     pendingShift: null,
     registration: createDialRegistration(calibration),
+    previousFrame: null,
+    lastRead: null,
   };
 }
 
@@ -1261,6 +1264,11 @@ function trackPose(image, tracker) {
  * A weak bezel or colour match does not move the pose.
  */
 export function readCalibratedFrame(image, tracker) {
+  if (!tracker.legacyScale && tracker.lastRead
+    && isRepeatedGaugeFrame(image, tracker.previousFrame, tracker.calibration)) {
+    return { ...tracker.lastRead, ok: false, bar: null, rawBar: null,
+      fresh: false, needleDeg: null, duplicate: true };
+  }
   const found = trackPose(image, tracker);
   let bezelOk = Boolean(
     found && (found.std != null ? found.std <= LOST_RIM_STD : found.score >= LOST_BEZEL),
@@ -1410,7 +1418,7 @@ export function readCalibratedFrame(image, tracker) {
       previousBar: tracker.lastGoodBar,
     });
   if (bar != null) tracker.lastGoodBar = bar;
-  return {
+  const result = {
     ok: bar != null,
     lost,
     bar,
@@ -1431,6 +1439,9 @@ export function readCalibratedFrame(image, tracker) {
     registration: registered ? { inliers: registered.inliers, residual: registered.residual } : null,
     poseMatrix: matrix,
   };
+  tracker.previousFrame = image;
+  tracker.lastRead = result;
+  return result;
 }
 
 /**

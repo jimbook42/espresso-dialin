@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFrontCameraStream } from './useFrontCameraStream.js';
 import { PROCESS_INTERVAL_MS } from '../gaugeConfig.js';
+import { isRepeatedGaugeFrame } from '../cameraFrameFreshness.js';
 import { createReadingHold } from '../frameQuality.js';
 import {
   createCalibratedTracker,
@@ -289,6 +290,7 @@ export function useShotLabPressure({
     let last = 0;
     let lastRead = null;
     let presentedFrame = 0;
+    let presentedAtMs = null;
     let consumedFrame = -1;
     let lastMediaTime = -1;
     let videoFrameCallback = 0;
@@ -296,6 +298,7 @@ export function useShotLabPressure({
     const useVideoFrames = typeof sourceVideo?.requestVideoFrameCallback === 'function';
     const observeVideoFrame = (_now, metadata) => {
       presentedFrame = metadata.presentedFrames ?? presentedFrame + 1;
+      presentedAtMs = Date.now();
       videoFrameCallback = sourceVideo.requestVideoFrameCallback(observeVideoFrame);
     };
     if (useVideoFrames) videoFrameCallback = sourceVideo.requestVideoFrameCallback(observeVideoFrame);
@@ -306,15 +309,18 @@ export function useShotLabPressure({
       last = wallNow;
       try {
         const video = videoRef.current;
-        const capturedAtMs = Date.now();
+        const capturedAtMs = useVideoFrames && presentedAtMs != null ? presentedAtMs : Date.now();
         const cal = trackerRef.current.calibration;
         const newFrame = video?.readyState >= 2 && (useVideoFrames
           ? presentedFrame > 0 && presentedFrame !== consumedFrame : video.currentTime !== lastMediaTime);
-        const image = newFrame ? grabSourceImage(video) : null;
-        let read;
+        let image = newFrame ? grabSourceImage(video) : null;
         if (image) {
           consumedFrame = presentedFrame;
           lastMediaTime = video.currentTime;
+          if (isRepeatedGaugeFrame(image, lastFrameRef.current, cal)) image = null;
+        }
+        let read;
+        if (image) {
           lastFrameRef.current = image;
           read = readCalibratedFrame(image, trackerRef.current);
           lastRead = read;
