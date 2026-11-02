@@ -33,6 +33,22 @@ function patch(image, pose) {
     const dx = (x - CENTRE) * scale, dy = (y - CENTRE) * scale;
     data[y * SIZE + x] = grayAt(image, pose.x + dx, pose.y + dy);
   }
+  // LK assumes comparable brightness. Camera exposure can change after the
+  // lever/hand moves; use the face interior, not the changing surround, to
+  // normalize both patches. A contrast floor prevents amplification of noise.
+  let sum = 0, sum2 = 0, count = 0;
+  for (let y = 0; y < SIZE; y += 2) for (let x = 0; x < SIZE; x += 2) {
+    const r = Math.hypot(x - CENTRE, y - CENTRE) / FACE_RADIUS;
+    if (r < 0.35 || r > 0.8) continue;
+    const value = data[y * SIZE + x];
+    sum += value; sum2 += value * value; count += 1;
+  }
+  const mean = sum / count;
+  const deviation = Math.sqrt(Math.max(0, sum2 / count - mean * mean));
+  const gain = 32 / Math.max(8, deviation);
+  for (let i = 0; i < data.length; i += 1) {
+    data[i] = Math.max(0, Math.min(255, Math.round(128 + (data[i] - mean) * gain)));
+  }
   return data;
 }
 

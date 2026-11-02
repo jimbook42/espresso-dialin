@@ -116,6 +116,25 @@ describe('calibration-anchored dial registration', () => {
       transformDialAngle(cal.zeroAngleDeg, matrix)))).toBeLessThan(1);
   });
 
+  it('recovers the same tapped pose after exposure changes without learning a new zero', () => {
+    const cal = calibration(), zero = cal.zeroAngleDeg;
+    rememberDialReference(texture(), cal);
+    const state = createDialRegistration(cal);
+    expect(registerDialFrame(texture(), cal, { x: 128, y: 128, radius: 80 }, state)).not.toBeNull();
+    state.misses = 4;
+    const matrix = [0.99, -0.08, 0.09, 1.02], image = texture(matrix, [20, -5]);
+    for (let i = 0; i < image.data.length; i += 4) for (let c = 0; c < 3; c += 1) {
+      image.data[i + c] = image.data[i + c] * 0.65 + 25;
+    }
+    const recovered = registerDialFrame(image, cal, { x: 146, y: 125, radius: 82 }, state);
+    expect(recovered).not.toBeNull();
+    expect(recovered.x).toBeCloseTo(148, 0);
+    expect(recovered.y).toBeCloseTo(123, 0);
+    expect(cal.zeroAngleDeg).toBe(zero);
+    expect(Math.abs(wrapDelta(transformDialAngle(zero, recovered.matrix),
+      transformDialAngle(zero, matrix)))).toBeLessThan(1);
+  });
+
   it('can restore a transient reference from confirmed face rotation without changing zero', () => {
     const cal = { ...calibration(), zeroAngleDeg: 141 };
     const state = createDialRegistration(cal), before = JSON.stringify(cal);
