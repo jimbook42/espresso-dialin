@@ -23,7 +23,7 @@ import {
 import { barToDialAngle, RED_BAND_INNER_FRACTION, RED_BAND_OUTER_FRACTION, DARK_BAND_INNER_FRACTION, DARK_BAND_OUTER_FRACTION } from './dialFaceTemplate.js';
 import { measureDialColorBands, registerDialFromColorBands } from './colorRegistration.js';
 import { detectNeedleAngle, refineNeedleAngle } from './needleFromFrame.js';
-import { regularizeTapAnchors } from './anchorRegularize.js';
+import { regularizeTapAnchors, PROFILE_FIVE_DEG, PROFILE_FIVE_TO_TEN_DEG } from './anchorRegularize.js';
 import {
   createDialRegistration, inverseDialAngle, rememberDialReference,
   registerDialFrame, seedDialRegistration, transformDialAngle,
@@ -38,6 +38,12 @@ export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
  * The design-dial sweep (179.52°) is longer than the gauge in Isaac's taps.
  */
 export const REST_TO_TEN_DEG = 161.757;
+
+/** Transfer the existing scale profile onto the two user rays. Never use a moving needle as zero. */
+export function zeroFromTapAngles(fiveDeg, tenDeg) {
+  const gap = clockwiseDeg(fiveDeg, tenDeg);
+  return wrap360(fiveDeg - gap * PROFILE_FIVE_DEG / PROFILE_FIVE_TO_TEN_DEG);
+}
 /** A detected tick may replace a tap only inside this angle. Farther, the tap wins. */
 export const TICK_SNAP_MAX_DEG = 6;
 /** Top of the scale is shown only after the needle has already climbed there. */
@@ -1088,7 +1094,8 @@ export function calibrateFromTaps(image, taps) {
     return { ok: false, redo: null, reason: 'needle', hub, marks };
   }
 
-  let zeroAngleDeg = needleWeak
+  const legacyScale = taps.legacyScale === true;
+  let zeroAngleDeg = !legacyScale ? zeroFromTapAngles(marks.fiveDeg, marks.tenDeg) : needleWeak
     ? wrap360(marks.tenDeg - REST_TO_TEN_DEG)
     : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
   let tenAngleDeg = marks.tenDeg;
@@ -1108,7 +1115,6 @@ export function calibrateFromTaps(image, taps) {
   }
   const spanDeg = clockwiseDeg(zeroAngleDeg, tenAngleDeg);
   const fiveBar = fiveCheckBar(fiveAngleDeg, zeroAngleDeg, tenAngleDeg);
-  const legacyScale = taps.legacyScale === true;
   // The snap histogram is measured on another radius, so correlating it
   // against the live annulus rotates a correct 10 tap by about 10°.
   // The tracking template is the same annulus the reader samples.
@@ -1138,7 +1144,9 @@ export function calibrateFromTaps(image, taps) {
       bezelScore: hub.score,
       margin: marks.margin,
       template: templateBands,
-      needleTemplate: captureTipTemplate(image, hub.x, hub.y, zeroAngleDeg, hub.radius),
+      needleTemplate: legacyScale || (!needleWeak && barFromTapAnchors(needle.angleDeg, zeroAngleDeg, fiveAngleDeg, tenAngleDeg) != null)
+        ? captureTipTemplate(image, hub.x, hub.y, legacyScale ? zeroAngleDeg : needle.angleDeg, hub.radius)
+        : null,
       needleQuality: needle.quality,
       userPlaced,
       legacyScale,
