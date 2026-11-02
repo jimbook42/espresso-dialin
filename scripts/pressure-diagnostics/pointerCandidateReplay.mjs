@@ -18,7 +18,7 @@ export function candidateReplay(){
   if(!publisher){calibration=cal;publisher=createShotLabR7Publisher(cal);publisher.beginShot(0);}
   if(!read.duplicate){const baseline=rawPressure(read,calibration);if(read.rawBar==null)assert.equal(baseline,null,'baseline raw mapping @'+timeS);else assert.ok(Math.abs(baseline-read.rawBar)<1e-9,'baseline raw mapping @'+timeS);baselineFrames++;}
   const evidence=read.lost||read.duplicate?{angleDeg:null,quality:0,reason:read.lost?'pose-lost':'duplicate'}:findPointerEvidence(image,read.hub,read.radius);
-  const next={...read,needleDeg:evidence.angleDeg,needleQuality:evidence.quality};
+  const next={...read,needleDeg:evidence.rayAngleDeg,needleQuality:evidence.quality};
   const raw=rawPressure(next,calibration),bar=publishTapBar({bar:raw,needleDeg:next.needleDeg,tenDeg:read.tenDeg,previousBar:lastGood});
   if(bar!=null)lastGood=bar;
   Object.assign(next,{rawBar:raw,bar,ok:bar!=null,fresh:bar!=null&&bar===raw});

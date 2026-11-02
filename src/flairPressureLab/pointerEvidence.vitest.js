@@ -22,3 +22,18 @@ describe('experimental shaft evidence',()=>{
  it('abstains when both ends have equal reach',()=>expect(findPointerEvidence(dial({symmetric:true}),{x:110,y:110},90).angleDeg).toBeNull());
  it('abstains on an empty face',()=>expect(findPointerEvidence(dial({hub:{x:-500,y:-500}}),{x:110,y:110},90).angleDeg).toBeNull());
 });
+
+import {pointerTipRay} from './pointerEvidence.js';
+describe('shaft versus calibrated hub ray',()=>{
+ it('projects the measured tip using the fitted lateral offset',()=>{
+  const radius=90,end=24,along=radius*(.24+(.86-.24)*(end+.5)/32);
+  expect(pointerTipRay(0,10,end,radius)).toBeCloseTo(Math.atan2(10,along)*180/Math.PI,10);
+  expect(pointerTipRay(40,0,end,radius)).toBe(40);
+  expect(pointerTipRay(40,-10,end,radius)).toBeLessThan(40);
+ });
+ it('preserves image scaling and the opposite-line offset convention',()=>{
+  expect(pointerTipRay(40,8,24,90)).toBeCloseTo(pointerTipRay(40,16,24,180),10);
+  expect(pointerTipRay(220,-8,24,90)).toBeCloseTo(220-Math.atan2(8,90*(.24+.62*24.5/32))*180/Math.PI,10);
+  expect(pointerTipRay(40,8,-1,90)).toBeNull();
+ });
+});

@@ -2,6 +2,13 @@
 import {pointerMerit} from './needleFromFrame.js';
 import {NEEDLE_LOST_QUALITY,NEEDLE_LIKENESS_GATE,TIP_INNER_RATIO,OUTER_RADIUS_RATIO,wrap360,wrapDelta} from './gaugeConfig.js';
 const SAMPLES=32;
+/** The fitted shaft orientation and the hub-to-observed-tip ray are different
+ * when the shaft misses the user's pivot. Keep both coordinate meanings. */
+export function pointerTipRay(angleDeg,offsetPx,tipEnd,radius){
+ if(![angleDeg,offsetPx,tipEnd,radius].every(Number.isFinite)||tipEnd<0||radius<=0)return null;
+ const along=radius*(TIP_INNER_RATIO+(OUTER_RADIUS_RATIO-TIP_INNER_RATIO)*(tipEnd+.5)/SAMPLES);
+ return wrap360(angleDeg+Math.atan2(offsetPx,along)*180/Math.PI);
+}
 function luma(image,x,y){x=Math.round(x);y=Math.round(y);if(x<0||y<0||x>=image.width||y>=image.height)return null;const i=(y*image.width+x)*4,d=image.data;return .299*d[i]+.587*d[i+1]+.114*d[i+2];}
 function profile(image,cx,cy,radius,angle,offset,direction){
  const rad=angle*Math.PI/180,cos=Math.cos(rad),sin=Math.sin(rad),scale=Math.max(.35,Math.min(2.5,radius/90));
@@ -51,5 +58,6 @@ export function findPointerEvidence(image,hub,radius,{maxOffset=Math.max(4,Math.
  const quality=margin*Math.min(1,best.coverage/NEEDLE_LIKENESS_GATE);
  const resolved=best.resolved&&quality>=NEEDLE_LOST_QUALITY;
  return {angleDeg:resolved?best.angleDeg:null,quality:resolved?quality:0,reason:resolved?'shaft':'ambiguous',margin,
+  rayAngleDeg:resolved?pointerTipRay(best.angleDeg,best.offsetPx,best.tipEnd,radius):null,
   offsetPx:best.offsetPx,candidates};
 }
