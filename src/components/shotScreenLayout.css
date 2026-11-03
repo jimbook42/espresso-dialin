@@ -1,0 +1,127 @@
+.shot-screen {
+  container-type: inline-size;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.shot-hero {
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.shot-metric--big .shot-metric-value {
+  font-size: clamp(2.75rem, 13cqw, 5.5rem);
+}
+
+.shot-screen--timer .shot-hero,
+.shot-screen--scale .shot-hero {
+  flex: 1 1 0;
+  min-height: 10rem;
+}
+
+.shot-screen--timer .shot-metric--big .shot-metric-value {
+  font-size: clamp(4.5rem, 24cqw, 9rem);
+}
+
+.shot-screen--scale .shot-metric--big .shot-metric-value {
+  font-size: clamp(3rem, 17cqw, 6rem);
+}
+
+.shot-screen-support {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.shot-screen-support:empty {
+  display: none;
+}
+
+.shot-live-chart {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.shot-live-chart svg {
+  height: 3.5rem;
+}
+
+.shot-live-chart--grow {
+  flex: 1 1 0;
+  min-height: 7rem;
+}
+
+.shot-live-chart--grow svg {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.shot-trust-camera {
+  flex: 0 0 42%;
+  min-height: 8rem;
+}
+
+.shot-gauge-camera--expanded {
+  height: 100%;
+}
+
+.shot-gauge-camera--aim {
+  height: 6rem;
+}
+
+/* Minimal uses the entire host as its centring box. Cameras and secondary
+   readings are overlays, so opening trust view never moves the hero number. */
+.shot-minimal-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.shot-minimal-center > * {
+  pointer-events: auto;
+}
+
+.shot-minimal-center .shot-metric--big .shot-metric-value {
+  font-size: clamp(4rem, 28cqw, 10rem);
+  text-shadow: 0 2px 12px #121110;
+}
+
+.shot-screen--minimal .shot-gauge-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+}
+
+.shot-screen--minimal .shot-trust-camera {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 42%;
+  min-height: 0;
+}
+
+.shot-screen--minimal .shot-aim-camera {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5rem;
+}
+
+.shot-screen--minimal .shot-screen-support {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+}

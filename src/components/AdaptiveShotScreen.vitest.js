@@ -4,6 +4,7 @@ import { act, createElement, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AdaptiveShotScreen, ShotScreenView } from './AdaptiveShotScreen.jsx';
 import { ShotScreenCustomizer } from './ShotScreenCustomizer.jsx';
+import { ShotScreenPreview } from './ShotScreenPreview.jsx';
 import { ShotLabPressureContext } from './ShotLabPressureContext.jsx';
 import { drawShotGaugeFrame } from './shotGaugeFrame.js';
 import { publishScaleLiveWeight, resetScaleLiveWeightStore } from '../scales/scaleLiveWeightStore.js';
@@ -24,6 +25,7 @@ const bigMetrics = (container) => [...container.querySelectorAll('[data-size="bi
 afterEach(() => {
   act(() => roots.splice(0).forEach((root) => root.unmount()));
   resetScaleLiveWeightStore();
+  vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
 
@@ -72,6 +74,35 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('[data-testid="live-shot-chart"]')).not.toBeNull();
   });
 
+  it('keeps the Minimal hero in its full-height centring layer when trust opens', () => {
+    const container = render(ShotScreenView, {
+      settings: { labCameraPressureEnabled: true, shotScreen: { minimal: true } }, values, preview: true,
+    });
+    const screen = container.querySelector('[data-testid="adaptive-shot-screen"]');
+    const hero = container.querySelector('[aria-label="Cycle big number"]');
+    expect(screen.classList.contains('shot-screen--minimal')).toBe(true);
+    expect(hero.classList.contains('shot-minimal-center')).toBe(true);
+    expect(hero.parentElement).toBe(screen);
+    expect(container.querySelector('.shot-hero')).toBeNull();
+    click(container.querySelector('[aria-pressed]'));
+    expect(container.querySelector('[aria-label="Cycle big number"]')).toBe(hero);
+    expect(container.querySelector('.shot-trust-camera').parentElement).toBe(screen);
+    expect(container.querySelector('[data-testid="live-shot-chart"]')).toBeNull();
+    click(container.querySelector('[data-testid="shot-gauge-camera"]'));
+    expect(container.querySelector('.shot-trust-camera')).toBeNull();
+    expect(hero.parentElement).toBe(screen);
+  });
+
+  it('uses growing hero/chart regions for scale-only and a distinct timer hero', () => {
+    const scale = render(ShotScreenView, { equipment: { gauge: false, scale: true }, values });
+    expect(scale.querySelector('.shot-screen--scale .shot-hero')).not.toBeNull();
+    expect(scale.querySelector('.shot-live-chart--grow')).not.toBeNull();
+    const timer = render(ShotScreenView, { equipment: { gauge: false, scale: false }, values });
+    expect(timer.querySelector('.shot-screen--timer .shot-hero')).not.toBeNull();
+    expect(timer.querySelector('[aria-label="Cycle big number"]')).toBeNull();
+    expect(timer.querySelector('[data-testid="live-shot-chart"]')).toBeNull();
+  });
+
   it('does not turn missing, stale or disconnected sensor readings into numbers', () => {
     const pressure = { enabled: true, calibrated: true, readerUncertain: true, displayBar: null, samples: [] };
     function Host() {
@@ -104,6 +135,26 @@ describe('adaptive live shot screen', () => {
 });
 
 describe('customiser', () => {
+  it('scales a full phone layout to fit both preview dimensions without cropping', () => {
+    let resize;
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) { resize = callback; }
+      observe() {}
+      disconnect() {}
+    });
+    const container = render(ShotScreenPreview, { settings: {} });
+    const phone = container.querySelector('[data-testid="shot-screen-preview-phone"]');
+    expect(phone.style.width).toBe('390px');
+    expect(phone.style.height).toBe('844px');
+    expect(phone.textContent).toContain('Stop shot');
+    expect(phone.querySelector('[data-layout="timer"]')).not.toBeNull();
+    act(() => resize([{ contentRect: { width: 195, height: 422 } }]));
+    expect(phone.style.transform).toBe('scale(0.5)');
+    act(() => resize([{ contentRect: { width: 195, height: 211 } }]));
+    expect(phone.style.transform).toBe('scale(0.25)');
+    expect(container.querySelector('[data-testid="shot-screen-preview"]').className).not.toContain('overflow');
+  });
+
   function Harness() {
     const [settings, setSettings] = useState({});
     return createElement(ShotScreenCustomizer, { settings, onPatch: (patch) => setSettings((old) => ({ ...old, ...patch })) });

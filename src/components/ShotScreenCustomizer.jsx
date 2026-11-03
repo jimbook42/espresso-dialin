@@ -1,6 +1,6 @@
 import { SHOT_METRICS, recommendedShotScreen, resolveShotScreen, shotEquipment, shotEquipmentPatch } from '../settings/shotScreenLayout.js';
 import { getAppTheme } from '../theme.js';
-import { ShotScreenView } from './AdaptiveShotScreen.jsx';
+import { ShotScreenPreview } from './ShotScreenPreview.jsx';
 import { SettingsToggle } from './SettingsToggle.jsx';
 
 const defaultTheme = getAppTheme(true);
@@ -61,9 +61,8 @@ export function ShotScreenCustomizer({ settings, onPatch, ui = defaultTheme }) {
     </div>
     <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
       <h5 className={ui.fieldLabel}>Live preview · example values</h5>
-      <div className={`max-h-80 overflow-auto ${ui.inset} rounded-xl`} data-testid="shot-screen-preview">
-        <ShotScreenView key={JSON.stringify(options)} settings={settings} preview
-          values={{ pressure: 8.4, weight: 24.6, time: 21.3, flow: 1.8 }} targetYieldG={36} targetTimeS={30} />
+      <div className={`${ui.inset} rounded-xl`}>
+        <ShotScreenPreview settings={settings} />
       </div>
     </div>
   </section>;

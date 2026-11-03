@@ -25,9 +25,9 @@ export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview
   return (
     <button type="button" onClick={onToggle} aria-label={expanded ? 'Hide gauge' : 'Show gauge'}
       data-testid="shot-gauge-camera"
-      className={`relative block w-full overflow-hidden rounded-xl border border-[#2e2b26] bg-black shrink-0 ${expanded ? preview ? 'h-40' : 'h-[42dvh] min-h-40' : 'h-24'}`}>
+      className={`shot-gauge-camera--${expanded ? 'expanded' : 'aim'} relative block w-full overflow-hidden rounded-xl border border-[#2e2b26] bg-black shrink-0`}>
       {preview ? (
-        <div className="h-full flex items-center justify-center text-[#a09880] text-xs">Camera preview Â· example</div>
+        <div className="h-full flex items-center justify-center text-[#a09880] text-xs">Camera preview · example</div>
       ) : (
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-contain" aria-label="Live gauge camera with tracked needle" />
       )}

@@ -243,6 +243,7 @@ import {
 } from './settings/labCameraPressure.js';
 import { LAB_PRESSURE_CAMERA_PREVIEW_KEY } from './flairPressureLab/shotLabPressureTrust.js';
 import { AdaptiveShotScreen } from './components/AdaptiveShotScreen.jsx';
+import { isShotScreenLayoutTest } from './config/shotScreenLayoutTest.js';
 import { ShotScreenCustomizer } from './components/ShotScreenCustomizer.jsx';
 import { isPressureSimAllowed } from './config/pressureSimFlag.js';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
@@ -1470,6 +1471,10 @@ export default function App() {
   const requestStartTimerWithLab = useCallback(
     (opts = {}) => {
       if (shotCountdownValue != null || timerRunning) return;
+      if (isShotScreenLayoutTest()) {
+        requestStartTimer(opts);
+        return;
+      }
       const labOn = isLabCameraPressureEnabled(settingsSetting);
       const calibration = labGaugeTapCalibrationFromSettings(settingsSetting);
       const viewMoved = settingsSetting?.labGaugeTapCalibration?.viewMoved === true;
@@ -2693,7 +2698,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 w-full max-w-xl mx-auto">
+          <div className="flex flex-col flex-1 min-h-0 overflow-y-auto px-4 py-3 w-full max-w-xl mx-auto">
             <AdaptiveShotScreen
               settings={settingsSetting}
               seconds={timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds}
