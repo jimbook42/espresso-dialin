@@ -39,6 +39,8 @@ export function ShotLabPressureProvider({
   children,
 }) {
   const replayFrameObserverRef = useRef(null);
+  const readerFrameObserverRef = useRef(null);
+  const liveFrameRef = useRef(null);
   const enabled = isLabCameraPressureEnabled(settings);
   const storedCalibration = labGaugeTapCalibrationFromSettings(settings);
   const viewMoved = settings?.labGaugeTapCalibration?.viewMoved === true;
@@ -65,7 +67,7 @@ export function ShotLabPressureProvider({
     weighingViewOpen,
     preShotDialCheckSurface,
     onCalibrationSaved: onSaveCalibration,
-    replayFrameObserverRef,
+    replayFrameObserverRef: readerFrameObserverRef,
     leapCap: !labPressureReaderLegacy(settings),
     modelTiebreak: labPressureModelTiebreak(settings),
     legacyScale: labPressureScaleLegacy(settings),
@@ -80,6 +82,16 @@ export function ShotLabPressureProvider({
     shotReplayDiscardRef,
     onReplayStored: onLabShotReplayStored,
   });
+
+  // Fan out existing reader output; replay recording retains its original observer.
+  useEffect(() => {
+    liveFrameRef.current = null;
+    readerFrameObserverRef.current = (frame) => {
+      liveFrameRef.current = { ...frame, observedAtMs: Date.now() };
+      replayFrameObserverRef.current?.(frame);
+    };
+    return () => { readerFrameObserverRef.current = null; };
+  }, [enabled, timerRunning]);
 
   useEffect(() => {
     if (!metricsGetterRef) return;
@@ -141,6 +153,8 @@ export function ShotLabPressureProvider({
     && !calibrateOpen;
 
   const value = {
+    videoRef: pressure.videoRef,
+    liveFrameRef,
     enabled,
     calibrated: pressure.calibrated,
     needsSetup,
@@ -151,6 +165,8 @@ export function ShotLabPressureProvider({
     hold: pressure.hold,
     readerUncertain: pressure.readerUncertain,
     readerReady: pressure.readerReady,
+    readerError: pressure.readerError,
+    cameraStatus: pressure.cameraStatus,
     readerPath: pressure.readerPath,
     peakBar: pressure.peakBar,
     samples: pressure.samples,
@@ -167,7 +183,7 @@ export function ShotLabPressureProvider({
   };
 
   const showCornerPreview =
-    previewOn && timerRunning && displaySurfaceActive && Boolean(storedCalibration);
+    previewOn && timerRunning && weighingViewOpen && Boolean(storedCalibration);
 
   useLabPressureCornerPreviewStyle(
     showCornerPreview ? pressure.cornerPreviewPose : null,

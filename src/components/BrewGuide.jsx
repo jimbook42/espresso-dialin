@@ -287,6 +287,7 @@ export function BrewGuide({
   onAccessoriesExit = () => {},
   onAccessoriesOpenHandled = () => {},
   scaleLiveReadoutEnabled = false,
+  liveShotScreen,
 }) {
   const [screen, setScreen] = useState(setupComplete ? 'menu' : 'setup');
   const [setupReturnTo, setSetupReturnTo] = useState('brew');
@@ -732,6 +733,7 @@ export function BrewGuide({
             {step.stopAt && (
               <p className={`text-center text-sm ${ui.sub}`}>Aim for {step.timeLabel}</p>
             )}
+            {timerLive && liveShotScreen ? liveShotScreen : <>
             <p
               className={`text-center text-[clamp(2.75rem,14vw,3.75rem)] font-black font-mono tabular-nums leading-none ${ui.text}`}
               aria-live="polite"
@@ -755,6 +757,7 @@ export function BrewGuide({
                 frozenYieldG={timer.frozenShotWeightG}
               />
             )}
+            </>}
             <p className={`text-base leading-relaxed text-center ${ui.sub}`}>{timerHint}</p>
             {step.note && <p className={`text-sm leading-relaxed text-center ${ui.muted}`}>{step.note}</p>}
             <StepHelps key={step.id} helps={step.helps} ui={ui} />

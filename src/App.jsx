@@ -45,7 +45,6 @@ import { PastBeansList } from './components/PastBeansList.jsx';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx';
-import { ShotTimerWeightGoalLine } from './components/ShotTimerWeightGoalLine.jsx';
 import { GrinderGrindControls } from './components/GrindControls';
 import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
 import { formatBeanDisplayName, formatBeanRoasterRoastLine } from './utils/beanDisplayName.js';
@@ -243,7 +242,8 @@ import {
   labGaugeTapCalibrationFromSettings,
 } from './settings/labCameraPressure.js';
 import { LAB_PRESSURE_CAMERA_PREVIEW_KEY } from './flairPressureLab/shotLabPressureTrust.js';
-import { shotTimerLabCompactClass } from './flairPressureLab/shotTimerCompactLayout.js';
+import { AdaptiveShotScreen } from './components/AdaptiveShotScreen.jsx';
+import { ShotScreenCustomizer } from './components/ShotScreenCustomizer.jsx';
 import { isPressureSimAllowed } from './config/pressureSimFlag.js';
 import { ScaleTimerControls } from './components/ScaleTimerControls.jsx';
 import { WeighingView } from './components/WeighingView.jsx';
@@ -1108,12 +1108,6 @@ export default function App() {
       void timemoreScale.notifyShotCancelled();
     }
     labShotReplayDiscardRef.current?.();
-  };
-
-  const handleTimerSurfaceTap = (e) => {
-    if (e.target.closest('[data-timer-dismiss]')) return;
-    if (timerUsePreInfusion && preInfusionPhase) handleEndPreInfusion();
-    else handleStopTimer();
   };
 
   const stashPendingGrind = (model, beanId, grindFields) => {
@@ -2672,12 +2666,10 @@ export default function App() {
         </div>
       )}
 
-      {/* FULL-SCREEN ACTIVE TIMER — mobile-first, tap anywhere to advance */}
+      {/* Adaptive live shot screen; explicit controls keep metric/camera taps safe. */}
       {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
         <div
-          className={`shot-timer-fullscreen ${shotTimerLabCompactClass(labCameraPressureEnabled)} fixed inset-0 z-[60] flex flex-col bg-[#121212] cursor-pointer select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]`}
-          onClick={handleTimerSurfaceTap}
-          role="presentation"
+          className="fixed inset-0 z-[60] flex flex-col bg-[#121110] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
         >
           <div className="shot-timer-header h-14 px-4 flex items-center justify-between border-b border-[#1e1e1e] shrink-0">
             <div className="flex items-center gap-2">
@@ -2701,79 +2693,22 @@ export default function App() {
             </button>
           </div>
 
-          <div className="shot-timer-mid flex-1 flex flex-col items-center justify-start pt-2 px-5 min-h-0 overflow-hidden pointer-events-none">
-            {flairEnabled && activeRecipe?.flairProfile && (
-              <div className="shot-timer-profile-wrap w-full max-w-sm mb-2 shrink-0 opacity-70 max-h-[22vh] overflow-hidden">
-                <PressureProfileChart
-                  profile={activeRecipe.flairProfile}
-                  progress={timerProgress}
-                  compact
-                  liveFlowSamples={scaleLiveFlowOnProfile}
-                  flowTimeOffsetSec={flowChartTimeOffsetSec}
-                  scaleConnected={timemoreScale.isConnected}
-                  extractionElapsedS={scaleExtractionElapsedS}
-                  liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
-                  targetTimeMaxS={activeRecipe?.targetTimeMaxS}
-                  targetYieldG={activeRecipe?.targetYieldG}
-                  timerRunning={timerRunning}
-                  timerUsePreInfusion={timerUsePreInfusion}
-                  preInfusionPhase={preInfusionPhase}
-                />
-              </div>
-            )}
-
-            {timerUsePreInfusion && !preInfusionPhase && (
-              <div className="flex flex-wrap gap-2 justify-center mb-4">
-                <span className="px-3 py-1.5 rounded-full bg-[#1e1e1e] border border-[#262626] text-[11px] text-[#6b6457]">
-                  Total <span className="text-[#f5f2eb] font-semibold tabular-nums">{timerSeconds.toFixed(1)}s</span>
-                </span>
-                <span className="px-3 py-1.5 rounded-full bg-[#1a2a1e] border border-[#2a3a2e] text-[11px] text-[#3dd68c] font-medium tabular-nums">
-                  Shot {timerDisplaySeconds.toFixed(1)}s
-                </span>
-              </div>
-            )}
-
-            <div
-              className={`shot-timer-main-time text-[clamp(3.75rem,20vw,5.25rem)] font-bold tabular-nums tracking-[-0.06em] leading-[0.9] ${
-                timerUsePreInfusion && preInfusionPhase ? 'text-[#a09880]' : 'text-[#ede9e3]'
-              }`}
-            >
-              {formatTimerLive(timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds)}
-            </div>
-            {scaleShowLiveReadout && (
-              <ShotTimerWeightReadout
-                variant="fullscreen"
-                timerRunning={timerRunning}
-                showFlow={scaleShowFlow}
-                instantFlowGs={timemoreScale.instantFlowGs}
-                yieldSettleActive={yieldSettleActive}
-                frozenYieldG={frozenShotWeightG}
-              />
-            )}
-            <ShotLabPressureIntegration variant="fullscreen" ui={ui} />
-            <ShotTimerWeightGoalLine
-              enabled={shotScreenWeightGoalsEnabled}
-              scaleConnected={timemoreScale.isConnected}
-              scaleFeatureEnabled={scaleFeatureEnabled}
-              flairProfile={activeRecipe?.flairProfile}
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 w-full max-w-xl mx-auto">
+            <AdaptiveShotScreen
+              settings={settingsSetting}
+              seconds={timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds}
               targetYieldG={activeRecipe?.targetYieldG}
-              timerRunning={timerRunning}
-              timerUsePreInfusion={timerUsePreInfusion}
-              preInfusionPhase={preInfusionPhase}
-              extractionElapsedS={scaleExtractionElapsedS}
-              liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
-              targetTimeMaxS={activeRecipe?.targetTimeMaxS}
+              targetTimeS={activeRecipe?.targetTimeMaxS}
+              scaleEnabled={scaleFeatureEnabled}
+              flowGs={timemoreScale.instantFlowGs}
+              flowSeries={scaleLiveFlowOnProfile?.map((point) => ({ ...point, tS: point.tS + flowChartTimeOffsetSec }))}
+              yieldSettleActive={yieldSettleActive}
+              frozenYieldG={frozenShotWeightG}
             />
-            <p className="shot-timer-total-label text-[11px] text-[#6b6457] mt-2 text-center shrink-0">
-              {timerUsePreInfusion && preInfusionPhase
-                ? `Total ${timerSeconds.toFixed(1)}s · pre-infusing`
-                : timerUsePreInfusion
-                  ? `Total ${timerSeconds.toFixed(1)}s · extraction`
-                  : 'Total extraction time'}
-            </p>
+            {timerUsePreInfusion && <p className="text-center text-xs text-[#a09880] mt-2">Total {timerSeconds.toFixed(1)}s · {preInfusionPhase ? 'pre-infusing' : 'extraction'}</p>}
           </div>
 
-          <div className="shot-timer-footer px-4 pb-6 pt-1 space-y-3 max-w-md mx-auto w-full shrink-0">
+          <div className="shot-timer-footer px-4 pb-3 pt-1 space-y-2 max-w-md mx-auto w-full shrink-0">
             <div className="w-full h-1 bg-[#1e1e1e] rounded-full overflow-hidden pointer-events-none">
               <div
                 className="h-full bg-[#c88a4b] transition-[width] duration-100 ease-linear"
@@ -2783,8 +2718,8 @@ export default function App() {
 
             <p className="shot-timer-hint text-center text-[11px] text-[#4a4846] pointer-events-none">
               {timerUsePreInfusion && preInfusionPhase
-                ? 'Tap anywhere to end pre-infusion'
-                : 'Tap anywhere to stop and fill shot time'}
+                ? 'End pre-infusion to begin extraction'
+                : 'Stop shot to fill shot time'}
             </p>
 
             <div className="flex flex-col gap-3 pointer-events-auto">
@@ -2792,7 +2727,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleEndPreInfusion(); }}
-                  className="w-full min-h-[64px] rounded-[18px] bg-[#ede6dd] text-[#121212] font-bold text-[15px] active:scale-[0.99]"
+                  className="w-full min-h-[52px] rounded-[18px] bg-[#c88a4b] text-[#121212] font-bold text-[15px] active:scale-[0.99]"
                 >
                   End pre-infusion
                 </button>
@@ -2800,7 +2735,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleStopTimer(); }}
-                  className="shot-timer-stop-btn w-full min-h-[72px] rounded-[20px] bg-[#ede6dd] text-[#121212] font-bold text-base active:scale-[0.99] shadow-[0_12px_32px_rgba(237,230,221,0.2)]"
+                  className="shot-timer-stop-btn w-full min-h-[56px] rounded-[20px] bg-[#c88a4b] text-[#121212] font-bold text-base active:scale-[0.99] "
                 >
                   Stop shot
                 </button>
@@ -3509,6 +3444,19 @@ export default function App() {
             accessoriesReturnTo={brewAccessoriesReturnTo}
             onAccessoriesExit={handleExitBrewAccessories}
             onAccessoriesOpenHandled={handleAccessoriesOpenHandled}
+            liveShotScreen={
+              <AdaptiveShotScreen
+              settings={settingsSetting}
+              seconds={timerUsePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds}
+              targetYieldG={activeRecipe?.targetYieldG}
+              targetTimeS={activeRecipe?.targetTimeMaxS}
+              scaleEnabled={scaleFeatureEnabled}
+              flowGs={timemoreScale.instantFlowGs}
+              flowSeries={scaleLiveFlowOnProfile?.map((point) => ({ ...point, tS: point.tS + flowChartTimeOffsetSec }))}
+              yieldSettleActive={yieldSettleActive}
+              frozenYieldG={frozenShotWeightG}
+            />
+            }
             scaleLiveReadoutEnabled={
               scaleFeatureEnabled && timemoreScale.isConnected
             }
@@ -4294,6 +4242,7 @@ export default function App() {
               </div>
 
               <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
+                <ShotScreenCustomizer settings={settingsSetting} onPatch={(patch) => { void patchGlobalSettings(db, patch); }} />
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <label className={`block ${ui.fieldLabel}`}>Primary grinder</label>
                   <select
@@ -4550,15 +4499,15 @@ export default function App() {
                     <>
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <span className={`font-bold block ${ui.text}`}>Gauge camera preview</span>
+                        <span className={`font-bold block ${ui.text}`}>Gauge setup camera preview</span>
                         <span className={`text-[10px] ${ui.muted}`}>
-                          Optional small preview during calibration and shots (off by default).
+                          Preview during calibration and weighing. Customise the live shot camera above.
                         </span>
                       </div>
                       <SettingsToggle
                         checked={settingsSetting?.[LAB_PRESSURE_CAMERA_PREVIEW_KEY] === true}
                         onChange={handleToggleLabPressurePreview}
-                        label="Gauge camera preview"
+                        label="Gauge setup camera preview"
                       />
                     </div>
                     <div>
