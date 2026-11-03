@@ -93,6 +93,33 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('[data-testid="live-shot-chart"]')).toBe(chart);
   });
 
+  it.each([false, true])('keeps a uniquely named toolbar toggle inside the screen (preview=%s)', (preview) => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    const container = render(ShotScreenView, {
+      settings: { labCameraPressureEnabled: true }, values, preview,
+    });
+    const screen = container.querySelector('[data-testid="adaptive-shot-screen"]');
+    const toolbar = screen.querySelector('.shot-camera-toolbar');
+    const toggle = toolbar.querySelector('.shot-gauge-toggle');
+    expect(toolbar.parentElement).toBe(screen);
+    expect(toggle.textContent).toBe('Show gauge');
+    click(toggle);
+    expect(toggle.textContent).toBe('Hide gauge');
+    expect(toggle.closest('[data-testid="adaptive-shot-screen"]')).toBe(screen);
+    const camera = screen.querySelector('[data-testid="shot-gauge-camera"]');
+    expect(camera.tagName).toBe('BUTTON');
+    expect(camera.getAttribute('aria-label')).toBe('Hide gauge camera');
+    const namedHideButtons = [...screen.querySelectorAll('button')].filter((button) =>
+      (button.getAttribute('aria-label') || button.textContent.trim()) === 'Hide gauge');
+    expect(namedHideButtons).toEqual([toggle]);
+    click(toggle);
+    expect(toggle.textContent).toBe('Show gauge');
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
+    expect(toolbar.parentElement).toBe(screen);
+  });
+
   it('uses edge data, an inline flip control and a persistent Aim slot in portrait mode', () => {
     vi.useFakeTimers();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
