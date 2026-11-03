@@ -13,6 +13,17 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PY = path.join(ROOT, 'scripts/needle-reader/rectify.py');
 
+function findPython() {
+  const candidates = process.env.PYTHON ? [process.env.PYTHON] : ['python3', 'python'];
+  for (const command of candidates) {
+    const probe = spawnSync(command, ['-c', 'import numpy'], { encoding: 'utf8' });
+    if (probe.status === 0) return command;
+  }
+  return null;
+}
+
+const PYTHON = findPython();
+
 function blank(width, height, fill = 230) {
   const data = new Uint8ClampedArray(width * height * 4);
   for (let i = 0; i < width * height; i += 1) {
@@ -67,7 +78,7 @@ function pythonRectify(image, pose, mode) {
         outerRadiusPx: 48,
       },
     };
-    const proc = spawnSync('python3', [PY, '--worker'], {
+    const proc = spawnSync(PYTHON, [PY, '--worker'], {
       input: `${JSON.stringify(job)}\n`,
       encoding: 'utf8',
     });
@@ -107,7 +118,7 @@ describe('needle rectify', () => {
     expect(angDiff(measureTensorAngle(turned.tensor, turned.spec), 0)).toBeLessThan(1.5);
   });
 
-  it('matches Python within 1e-4 and 0.3° on a synthetic frame', () => {
+  it.skipIf(!PYTHON)('matches Python within 1e-4 and 0.3° on a synthetic frame (requires Python with NumPy; set PYTHON to its executable)', () => {
     const image = blank(160, 140, 210);
     paintRay(image, pose, 110);
     const shifted = { ...pose, rotationDeg: 20 };

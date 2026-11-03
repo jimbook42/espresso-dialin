@@ -1,8 +1,12 @@
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { scorePhaseR4 } from './score_r4.mjs';
 import { scorePhaseR4Repair } from './score_r4r1.mjs';
 
-describe('phase R4 replay', () => {
+const RAW_FRAMES = '/workspace/pl-state/nr/train-r2/raw-frames.json';
+const HAS_REPLAY_FIXTURES = existsSync(RAW_FRAMES);
+
+if (HAS_REPLAY_FIXTURES) describe('phase R4 replay', () => {
   const report = scorePhaseR4();
 
   it('keeps the 094055 window, the wild rate, and the flip count on the chosen recovery', () => {
@@ -30,7 +34,7 @@ describe('phase R4 replay', () => {
   });
 });
 
-describe('phase R4 repair 1', () => {
+if (HAS_REPLAY_FIXTURES) describe('phase R4 repair 1', () => {
   const report = scorePhaseR4Repair();
 
   it('keeps pre-lock and the short hold, and drops the classical carry', () => {
@@ -44,3 +48,12 @@ describe('phase R4 repair 1', () => {
     expect(report.columns.carry.labels.wild).toBeGreaterThan(5);
   });
 });
+
+if (!HAS_REPLAY_FIXTURES) {
+  describe('phase R4 replay', () => {
+    it.skip('requires Linux-box replay fixtures under /workspace/pl-state/nr', () => {});
+  });
+  describe('phase R4 repair 1', () => {
+    it.skip('requires Linux-box replay fixtures under /workspace/pl-state/nr', () => {});
+  });
+}

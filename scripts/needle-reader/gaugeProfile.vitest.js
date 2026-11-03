@@ -14,6 +14,17 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const LABELS = path.join(ROOT, 'scripts/pressure-label/fixtures/labels-2026-10-22.json');
 const PROFILE_PATH = path.join(ROOT, 'profiles/flair58-v1.json');
 
+function findPython() {
+  const candidates = process.env.PYTHON ? [process.env.PYTHON] : ['python3', 'python'];
+  for (const command of candidates) {
+    const probe = spawnSync(command, ['-c', 'import sys'], { encoding: 'utf8' });
+    if (probe.status === 0) return command;
+  }
+  return null;
+}
+
+const PYTHON = findPython();
+
 function labels() {
   const raw = JSON.parse(readFileSync(LABELS, 'utf8'));
   return Object.values(raw.frames);
@@ -66,8 +77,8 @@ describe('flair58 gauge profile', () => {
     expect(() => parseGaugeProfile(broken)).toThrow(/softness/);
   });
 
-  it('agrees with the Python loader', () => {
-    const probe = spawnSync('python3', ['-c', `
+  it.skipIf(!PYTHON)('agrees with the Python loader (requires Python; set PYTHON to its executable)', () => {
+    const probe = spawnSync(PYTHON, ['-c', `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(path.join(ROOT, 'scripts/needle-reader'))})
 from gauge_profile import load_gauge_profile, angle_to_value
