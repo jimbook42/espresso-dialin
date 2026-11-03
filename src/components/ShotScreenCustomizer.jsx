@@ -1,41 +1,70 @@
 import { SHOT_METRICS, recommendedShotScreen, resolveShotScreen, shotEquipment, shotEquipmentPatch } from '../settings/shotScreenLayout.js';
+import { getAppTheme } from '../theme.js';
 import { ShotScreenView } from './AdaptiveShotScreen.jsx';
+import { SettingsToggle } from './SettingsToggle.jsx';
 
-export function ShotScreenCustomizer({ settings, onPatch }) {
+const defaultTheme = getAppTheme(true);
+
+function ToggleRow({ title, description, checked, onChange, disabled, ui, divider = false }) {
+  return <div className={`${divider ? `border-t ${ui.modalDivider} pt-3 ` : ''}flex items-center justify-between gap-3`}>
+    <div>
+      <span className={`font-bold block ${ui.text}`}>{title}</span>
+      <span className={`text-[10px] ${ui.muted}`}>{description}</span>
+    </div>
+    <SettingsToggle checked={checked} onChange={onChange} label={title} disabled={disabled} />
+  </div>;
+}
+
+export function ShotScreenCustomizer({ settings, onPatch, ui = defaultTheme }) {
   const equipment = shotEquipment(settings);
   const options = resolveShotScreen(settings);
   const change = (patch) => onPatch({ shotScreen: { ...settings?.shotScreen, ...patch } });
-  return <section className="space-y-3 rounded-xl border border-[#2e2b26] p-3 bg-[#121110] text-[#f5f2eb]" aria-label="Shot screen customiser">
-    <h4 className="font-bold text-sm">Shot screen</h4>
-    <fieldset className="space-y-2"><legend className="mb-2 text-[#a09880]">What do you have?</legend>
-      {['scale', 'gauge', 'timer'].map((item) => <label key={item} className="flex items-center gap-2 min-h-8">
-        <input type="checkbox" checked={item === 'timer' ? !equipment.scale && !equipment.gauge : equipment[item]}
-          onChange={(event) => onPatch(shotEquipmentPatch(item === 'timer'
-            ? { gauge: false, scale: false } : { ...equipment, [item]: event.target.checked }))} />
-        {{ scale: 'Smart scale', gauge: 'Pressure gauge via camera', timer: 'Timer only' }[item]}
-      </label>)}
-    </fieldset>
-    <p className="text-[10px] text-[#a09880]">Choose your scale model below to connect. Gauge setup uses the existing camera calibration.</p>
-    <label className="block text-[#a09880]">Choose big number
-      <select aria-label="Choose big number" value={options.bigNumber} onChange={(e) => change({ bigNumber: e.target.value })}
-        className="mt-1 w-full rounded-lg bg-[#1a1815] border border-[#2e2b26] p-2 text-[#f5f2eb]">
-        {SHOT_METRICS.map((metric) => <option key={metric} value={metric} disabled={!options.available.includes(metric)}>
-          {metric[0].toUpperCase() + metric.slice(1)}{options.available.includes(metric) ? '' : metric === 'pressure' ? ' — select pressure gauge' : ' — select smart scale'}
-        </option>)}
-      </select>
-    </label>
-    <div className="flex flex-wrap gap-x-4 gap-y-2">
-      {[[ 'chart', 'Chart' ], [ 'cameraPreview', 'Camera preview' ], [ 'minimal', 'Minimal mode' ], [ 'showGauge', 'Show gauge' ]].map(([key, label]) => <label key={key} className="flex items-center gap-2 min-h-8 text-xs">
-        <input type="checkbox" checked={Boolean(options[key])} disabled={(key === 'cameraPreview' || key === 'showGauge') ? !equipment.gauge : key === 'chart' && !equipment.gauge && !equipment.scale}
-          onChange={(e) => change({ [key]: e.target.checked })} />{label}
-      </label>)}
+  return <section className="space-y-3" aria-label="Shot screen customiser">
+    <h4 className={ui.sectionTitle}>Shot screen</h4>
+    <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
+      <h5 className={ui.fieldLabel}>What do you have?</h5>
+      {[
+        ['scale', 'Smart scale', 'Choose your scale model below to connect for weight and flow.'],
+        ['gauge', 'Pressure gauge via camera', 'Read pressure using your existing gauge camera setup.'],
+        ['timer', 'Timer only', 'Use the timer with no equipment connected.'],
+      ].map(([item, title, description], index) => <ToggleRow key={item} title={title} description={description}
+        checked={item === 'timer' ? !equipment.scale && !equipment.gauge : equipment[item]}
+        onChange={(checked) => onPatch(shotEquipmentPatch(item === 'timer'
+          ? { gauge: false, scale: false } : { ...equipment, [item]: checked }))}
+        ui={ui} divider={index > 0} />)}
     </div>
-    <button type="button" className="w-full min-h-10 rounded-lg bg-[#c88a4b] text-[#121110] font-bold"
-      onClick={() => change(recommendedShotScreen(equipment))}>Recommended for my setup</button>
-    <p className="text-[10px] uppercase tracking-wider text-[#a09880]">Live preview · example values</p>
-    <div className="max-h-80 overflow-auto border border-[#2e2b26] rounded-xl" data-testid="shot-screen-preview">
-      <ShotScreenView key={JSON.stringify(options)} settings={settings} preview
-        values={{ pressure: 8.4, weight: 24.6, time: 21.3, flow: 1.8 }} targetYieldG={36} targetTimeS={30} />
+    <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
+      <div className="space-y-2">
+        <label htmlFor="shot-screen-big-number" className={`block ${ui.fieldLabel}`}>Choose big number</label>
+        <select id="shot-screen-big-number" aria-label="Choose big number" value={options.bigNumber} onChange={(e) => change({ bigNumber: e.target.value })}
+          className={`w-full ${ui.input} border rounded-lg p-2.5 font-semibold text-xs`}>
+          {SHOT_METRICS.map((metric) => <option key={metric} value={metric} disabled={!options.available.includes(metric)}>
+            {metric[0].toUpperCase() + metric.slice(1)}{options.available.includes(metric) ? '' : metric === 'pressure' ? ' — select pressure gauge' : ' — select smart scale'}
+          </option>)}
+        </select>
+      </div>
+      {[
+        ['chart', 'Chart', 'Show a live chart of the available pressure and flow readings.'],
+        ['cameraPreview', 'Camera preview', 'Keep a small gauge camera preview on the shot screen.'],
+        ['minimal', 'Minimal mode', 'Show one huge number; tap it to cycle through your metrics.'],
+        ['showGauge', 'Show gauge', 'Give the gauge camera a large view with pressure and needle overlay.'],
+      ].map(([key, title, description]) => {
+        const disabled = key === 'cameraPreview' || key === 'showGauge'
+          ? !equipment.gauge : key === 'chart' && !equipment.gauge && !equipment.scale;
+        return <ToggleRow key={key} title={title}
+          description={disabled ? key === 'chart' ? 'Select a smart scale or pressure gauge to show a chart.' : 'Select a pressure gauge to use the camera.' : description}
+          checked={Boolean(options[key])} disabled={disabled} onChange={(checked) => change({ [key]: checked })}
+          ui={ui} divider />;
+      })}
+      <button type="button" className={`w-full rounded-lg p-2.5 text-xs ${ui.primary}`}
+        onClick={() => change(recommendedShotScreen(equipment))}>Recommended for my setup</button>
+    </div>
+    <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
+      <h5 className={ui.fieldLabel}>Live preview · example values</h5>
+      <div className={`max-h-80 overflow-auto ${ui.inset} rounded-xl`} data-testid="shot-screen-preview">
+        <ShotScreenView key={JSON.stringify(options)} settings={settings} preview
+          values={{ pressure: 8.4, weight: 24.6, time: 21.3, flow: 1.8 }} targetYieldG={36} targetTimeS={30} />
+      </div>
     </div>
   </section>;
 }

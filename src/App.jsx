@@ -4242,7 +4242,7 @@ export default function App() {
               </div>
 
               <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
-                <ShotScreenCustomizer settings={settingsSetting} onPatch={(patch) => { void patchGlobalSettings(db, patch); }} />
+                <ShotScreenCustomizer settings={settingsSetting} ui={ui} onPatch={(patch) => { void patchGlobalSettings(db, patch); }} />
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <label className={`block ${ui.fieldLabel}`}>Primary grinder</label>
                   <select

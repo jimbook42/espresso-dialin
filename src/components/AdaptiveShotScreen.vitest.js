@@ -110,8 +110,10 @@ describe('customiser', () => {
   }
   it('updates its preview, disables unavailable metrics, and resets recommended settings', () => {
     const container = render(Harness);
-    const check = (text) => [...container.querySelectorAll('label')].find((label) => label.textContent === text).querySelector('input');
+    const check = (text) => [...container.querySelectorAll('[role="switch"]')].find((toggle) => toggle.getAttribute('aria-label') === text);
     const preview = () => container.querySelector('[data-testid="shot-screen-preview"]');
+    expect(container.querySelectorAll('[role="switch"]').length).toBe(7);
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
     expect(bigMetrics(preview())).toEqual(['time']);
     expect(container.querySelector('option[value="pressure"]').disabled).toBe(true);
     click(check('Pressure gauge via camera'));
@@ -127,7 +129,7 @@ describe('customiser', () => {
     expect(preview().querySelector('[aria-pressed="true"]')).not.toBeNull();
     click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Recommended for my setup'));
     expect(bigMetrics(preview())).toEqual(['pressure', 'weight']);
-    expect(check('Minimal mode').checked).toBe(false);
+    expect(check('Minimal mode').getAttribute('aria-checked')).toBe('false');
     click(check('Timer only'));
     expect(bigMetrics(preview())).toEqual(['time']);
     expect(check('Camera preview').disabled).toBe(true);
