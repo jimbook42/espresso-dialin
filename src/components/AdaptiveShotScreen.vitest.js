@@ -25,6 +25,8 @@ const bigMetrics = (container) => [...container.querySelectorAll('[data-size="bi
 afterEach(() => {
   act(() => roots.splice(0).forEach((root) => root.unmount()));
   resetScaleLiveWeightStore();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
@@ -63,6 +65,7 @@ describe('adaptive live shot screen', () => {
   });
 
   it('expands and collapses trust view from its toggle and camera tap', () => {
+    vi.useFakeTimers();
     const container = render(ShotScreenView, { equipment: { gauge: true, scale: false }, values, preview: true });
     const toggle = container.querySelector('[aria-pressed]');
     const chart = container.querySelector('[data-testid="live-shot-chart"]');
@@ -82,9 +85,14 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('[data-testid="live-shot-chart"]')).toBe(chart);
     expect(container.querySelector('.shot-trust-camera').getAttribute('aria-hidden')).toBe('true');
     expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('8.4');
+    act(() => vi.advanceTimersByTime(200));
+    expect(container.querySelector('.shot-trust-camera')).toBeNull();
+    expect(container.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
+    expect(container.querySelector('[data-testid="live-shot-chart"]')).toBe(chart);
   });
 
   it('keeps the Minimal hero in its full-height centring layer when trust opens', () => {
+    vi.useFakeTimers();
     const container = render(ShotScreenView, {
       settings: { labCameraPressureEnabled: true, shotScreen: { minimal: true } }, values, preview: true,
     });
@@ -99,8 +107,40 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('.shot-trust-camera').parentElement).toBe(screen);
     expect(container.querySelector('[data-testid="live-shot-chart"]')).toBeNull();
     click(container.querySelector('[data-testid="shot-gauge-camera"]'));
-    expect(container.querySelector('.shot-trust-camera').getAttribute('aria-hidden')).toBe('true');
+    act(() => vi.advanceTimersByTime(200));
+    expect(container.querySelector('.shot-trust-camera')).toBeNull();
     expect(hero.parentElement).toBe(screen);
+  });
+
+  it('reserves the gauge-only time sub-label and retains its block when trust changes', () => {
+    vi.useFakeTimers();
+    const container = render(ShotScreenView, { equipment: { gauge: true, scale: false }, values, preview: true });
+    const time = container.querySelector('[data-metric="time"]');
+    const sublabel = time.querySelector('.shot-time-sublabel');
+    const timeMarkup = time.innerHTML;
+    expect(sublabel).not.toBeNull();
+    expect(sublabel.textContent).toBe('\u00a0');
+    const toggle = container.querySelector('[aria-pressed]');
+    click(toggle);
+    expect(container.querySelector('[data-metric="time"]')).toBe(time);
+    expect(time.innerHTML).toBe(timeMarkup);
+    click(toggle);
+    act(() => vi.advanceTimersByTime(200));
+    expect(container.querySelector('[data-metric="time"]')).toBe(time);
+    expect(time.innerHTML).toBe(timeMarkup);
+    expect(container.querySelector('.shot-trust-camera')).toBeNull();
+  });
+
+  it('removes the hidden camera immediately with reduced motion', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true });
+    const container = render(ShotScreenView, {
+      settings: { labCameraPressureEnabled: true, shotScreen: { showGauge: true } }, values, preview: true,
+    });
+    expect(container.querySelector('.shot-trust-camera')).not.toBeNull();
+    click(container.querySelector('[aria-pressed]'));
+    expect(container.querySelector('.shot-trust-camera')).toBeNull();
+    expect(container.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
+    expect(container.querySelector('[data-testid="live-shot-chart"]')).not.toBeNull();
   });
 
   it('uses growing hero/chart regions for scale-only and a distinct timer hero', () => {

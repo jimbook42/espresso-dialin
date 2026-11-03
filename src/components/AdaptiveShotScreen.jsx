@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useShotLabPressureContext } from './ShotLabPressureContext.jsx';
 import { ShotGaugeCamera } from './ShotGaugeCamera.jsx';
 import { getScaleLiveWeightSnapshot, resolveShotWeightReadout, subscribeScaleLiveWeight } from '../scales/scaleLiveWeightStore.js';
@@ -40,6 +40,20 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
   const [trustOverride, setTrustOverride] = useState(null);
   const selectedMetric = options.available.includes(selected) ? selected : options.bigNumber;
   const trust = equipment.gauge && (trustOverride ?? options.showGauge);
+  const [cameraMounted, setCameraMounted] = useState(trust);
+  useEffect(() => {
+    if (trust) {
+      setCameraMounted(true);
+      return undefined;
+    }
+    if (!cameraMounted) return undefined;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+      setCameraMounted(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setCameraMounted(false), 200);
+    return () => clearTimeout(timer);
+  }, [trust, cameraMounted]);
   const primary = options.minimal ? [selectedMetric]
     : equipment.gauge ? ['pressure', options.bigNumber !== 'pressure' ? options.bigNumber : equipment.scale ? 'weight' : 'time']
       : equipment.scale ? [options.bigNumber, options.bigNumber === 'time' ? 'weight' : 'time'] : ['time'];
@@ -55,7 +69,7 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
       <div className="text-xs text-[#a09880] mt-2">/ {targetYieldG} g</div>
       <progress aria-label="Target yield" className="w-full h-1 accent-[#c88a4b]" max={targetYieldG} value={values.weight ?? 0} />
     </>}
-    {metric === 'time' && targetTimeS > 0 && <div className="text-xs text-[#a09880] mt-2">Target {targetTimeS}s</div>}
+    {metric === 'time' && (targetTimeS > 0 || options.layout === 'gauge') && <div className="shot-time-sublabel text-xs text-[#a09880] mt-2">{targetTimeS > 0 ? `Target ${targetTimeS}s` : '\u00a0'}</div>}
   </div>;
   return <div data-testid="adaptive-shot-screen" data-layout={options.minimal ? 'minimal' : options.layout}
     className={`shot-screen shot-screen--${options.minimal ? 'minimal' : options.layout} ${trust ? 'shot-screen--trust' : ''} w-full flex-1 text-[#f5f2eb]`}
@@ -71,11 +85,11 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
     {equipment.gauge && <p className="text-xs text-[#a09880] text-center" role="status">{pressure?.statusText}</p>}
     {equipment.scale && values.weight == null && <p className="text-xs text-[#a09880] text-center">Connect your smart scale for weight and flow.</p>}
     </div>
-    {equipment.gauge && <div className={`shot-trust-camera ${trust ? 'shot-trust-camera--open' : ''}`} aria-hidden={!trust} inert={!trust}>
+    {(trust || cameraMounted) && <div className={`shot-trust-camera ${trust ? 'shot-trust-camera--open' : ''}`} aria-hidden={!trust} inert={!trust}>
       <div className="shot-trust-camera-inner"><ShotGaugeCamera pressure={pressure} expanded active={trust} onToggle={() => setTrustOverride(false)} barText={number(values.pressure)} preview={preview} /></div>
     </div>}
     {options.chart && !options.minimal && <LiveShotChart pressure={pressure?.samples} flow={flowSeries} gauge={equipment.gauge} scale={equipment.scale} grow={options.layout === 'scale'} />}
-    {options.cameraPreview && !trust && <div className="shot-aim-camera"><ShotGaugeCamera pressure={pressure} expanded={false} onToggle={() => setTrustOverride(true)} preview={preview} /></div>}
+    {options.cameraPreview && !trust && trustOverride !== false && <div className="shot-aim-camera"><ShotGaugeCamera pressure={pressure} expanded={false} onToggle={() => setTrustOverride(true)} preview={preview} /></div>}
   </div>;
 }
 
