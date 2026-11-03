@@ -1,0 +1,107 @@
+[
+ {
+  "clip": "87755a9b",
+  "t": 1.8,
+  "phase": "preinfusion",
+  "id": "d001",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 3.2,
+  "phase": "preinfusion",
+  "id": "d002",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 5.0,
+  "phase": "preinfusion",
+  "id": "d003",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 7.0,
+  "phase": "preinfusion",
+  "id": "d004",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 9.0,
+  "phase": "preinfusion",
+  "id": "d005",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 11.0,
+  "phase": "preinfusion",
+  "id": "d006",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 13.0,
+  "phase": "preinfusion",
+  "id": "d007",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 15.5,
+  "phase": "preinfusion",
+  "id": "d008",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 19.0,
+  "phase": "rise",
+  "id": "d009",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 23.0,
+  "phase": "rise",
+  "id": "d010",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 26.5,
+  "phase": "rise",
+  "id": "d011",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 29.8,
+  "phase": "peak",
+  "id": "d012",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 35.0,
+  "phase": "decline",
+  "id": "d013",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 39.0,
+  "phase": "decline",
+  "id": "d014",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ },
+ {
+  "clip": "87755a9b",
+  "t": 41.5,
+  "phase": "decline",
+  "id": "d015",
+  "source": "/workspace/newshots/2026-11-03b/lab-replay-87755a9b.mp4"
+ }
+]

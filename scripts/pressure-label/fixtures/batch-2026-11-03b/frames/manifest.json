@@ -1,0 +1,287 @@
+[
+ {
+  "id": "d001",
+  "file": "d001.jpg",
+  "clip": "87755a9b",
+  "t": 1.8,
+  "phase": "preinfusion",
+  "crop": {
+   "x": 264,
+   "y": 408,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d002",
+  "file": "d002.jpg",
+  "clip": "87755a9b",
+  "t": 3.2,
+  "phase": "preinfusion",
+  "crop": {
+   "x": 259,
+   "y": 406,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d003",
+  "file": "d003.jpg",
+  "clip": "87755a9b",
+  "t": 5.0,
+  "phase": "preinfusion",
+  "crop": {
+   "x": 257,
+   "y": 405,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d004",
+  "file": "d004.jpg",
+  "clip": "87755a9b",
+  "t": 7.0,
+  "phase": "preinfusion",
+  "crop": {
+   "x": 254,
+   "y": 406,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d005",
+  "file": "d005.jpg",
+  "clip": "87755a9b",
+  "t": 9.0,
+  "phase": "preinfusion",
+  "crop": {
+   "x": 255,
+   "y": 406,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d006",
+  "file": "d006.jpg",
+  "clip": "87755a9b",
+  "t": 11.0,
+  "phase": "preinfusion",
+  "crop": {
+   "x": 253,
+   "y": 407,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d007",
+  "file": "d007.jpg",
+  "clip": "87755a9b",
+  "t": 13.0,
+  "phase": "preinfusion",
+  "crop": {
+   "x": 253,
+   "y": 407,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d008",
+  "file": "d008.jpg",
+  "clip": "87755a9b",
+  "t": 15.5,
+  "phase": "preinfusion",
+  "crop": {
+   "x": 253,
+   "y": 407,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d009",
+  "file": "d009.jpg",
+  "clip": "87755a9b",
+  "t": 19.0,
+  "phase": "rise",
+  "crop": {
+   "x": 253,
+   "y": 406,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d010",
+  "file": "d010.jpg",
+  "clip": "87755a9b",
+  "t": 23.0,
+  "phase": "rise",
+  "crop": {
+   "x": 252,
+   "y": 407,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d011",
+  "file": "d011.jpg",
+  "clip": "87755a9b",
+  "t": 26.5,
+  "phase": "rise",
+  "crop": {
+   "x": 246,
+   "y": 408,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d012",
+  "file": "d012.jpg",
+  "clip": "87755a9b",
+  "t": 29.8,
+  "phase": "peak",
+  "crop": {
+   "x": 242,
+   "y": 406,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d013",
+  "file": "d013.jpg",
+  "clip": "87755a9b",
+  "t": 35.0,
+  "phase": "decline",
+  "crop": {
+   "x": 235,
+   "y": 402,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d014",
+  "file": "d014.jpg",
+  "clip": "87755a9b",
+  "t": 39.0,
+  "phase": "decline",
+  "crop": {
+   "x": 233,
+   "y": 400,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ },
+ {
+  "id": "d015",
+  "file": "d015.jpg",
+  "clip": "87755a9b",
+  "t": 41.5,
+  "phase": "decline",
+  "crop": {
+   "x": 230,
+   "y": 400,
+   "size": 250,
+   "scale": 3.6,
+   "outSize": 900,
+   "srcW": 720,
+   "srcH": 1280,
+   "rotation": "r180",
+   "orientation": "upright (ffmpeg autorotate applied)",
+   "source": "override"
+  }
+ }
+]

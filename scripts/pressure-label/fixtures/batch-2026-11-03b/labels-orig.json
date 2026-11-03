@@ -1,0 +1,934 @@
+{
+ "frames": {
+  "d001": {
+   "clip": "87755a9b",
+   "t": 1.8,
+   "phase": "preinfusion",
+   "hub": [
+    533,
+    471
+   ],
+   "tip": [
+    349,
+    616
+   ],
+   "zero": [
+    405,
+    597
+   ],
+   "five": [
+    387,
+    368
+   ],
+   "ten": [
+    615,
+    323
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:10:27.989Z",
+   "orig": {
+    "hub": [
+     365.7,
+     526.9
+    ],
+    "tip": [
+     416.8,
+     486.6
+    ],
+    "zero": [
+     401.2,
+     491.9
+    ],
+    "five": [
+     406.2,
+     555.5
+    ],
+    "ten": [
+     342.9,
+     568.0
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 264,
+    "y": 408,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d002": {
+   "clip": "87755a9b",
+   "t": 3.2,
+   "phase": "preinfusion",
+   "hub": [
+    534,
+    470
+   ],
+   "tip": [
+    333,
+    576
+   ],
+   "zero": [
+    413,
+    601
+   ],
+   "five": [
+    382,
+    354
+   ],
+   "ten": [
+    622,
+    329
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:10:33.239Z",
+   "orig": {
+    "hub": [
+     360.4,
+     525.2
+    ],
+    "tip": [
+     416.2,
+     495.7
+    ],
+    "zero": [
+     394.0,
+     488.8
+    ],
+    "five": [
+     402.6,
+     557.4
+    ],
+    "ten": [
+     335.9,
+     564.3
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 259,
+    "y": 406,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d003": {
+   "clip": "87755a9b",
+   "t": 5,
+   "phase": "preinfusion",
+   "hub": [
+    540,
+    469
+   ],
+   "tip": [
+    332,
+    567
+   ],
+   "zero": [
+    400,
+    600
+   ],
+   "five": [
+    387,
+    361
+   ],
+   "ten": [
+    609,
+    325
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:10:39.244Z",
+   "orig": {
+    "hub": [
+     356.7,
+     524.4
+    ],
+    "tip": [
+     414.5,
+     497.2
+    ],
+    "zero": [
+     395.6,
+     488.1
+    ],
+    "five": [
+     399.2,
+     554.4
+    ],
+    "ten": [
+     337.6,
+     564.4
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 257,
+    "y": 405,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d004": {
+   "clip": "87755a9b",
+   "t": 7,
+   "phase": "preinfusion",
+   "hub": [
+    528,
+    476
+   ],
+   "tip": [
+    327,
+    568
+   ],
+   "zero": [
+    398,
+    611
+   ],
+   "five": [
+    384,
+    361
+   ],
+   "ten": [
+    611,
+    330
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:10:43.886Z",
+   "orig": {
+    "hub": [
+     357.1,
+     523.5
+    ],
+    "tip": [
+     412.9,
+     497.9
+    ],
+    "zero": [
+     393.2,
+     486.0
+    ],
+    "five": [
+     397.1,
+     555.4
+    ],
+    "ten": [
+     334.0,
+     564.1
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 254,
+    "y": 406,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d005": {
+   "clip": "87755a9b",
+   "t": 9,
+   "phase": "preinfusion",
+   "hub": [
+    534,
+    475
+   ],
+   "tip": [
+    326,
+    565
+   ],
+   "zero": [
+    414,
+    610
+   ],
+   "five": [
+    388,
+    358
+   ],
+   "ten": [
+    618,
+    328
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:10:48.496Z",
+   "orig": {
+    "hub": [
+     356.4,
+     523.8
+    ],
+    "tip": [
+     414.2,
+     498.8
+    ],
+    "zero": [
+     389.7,
+     486.3
+    ],
+    "five": [
+     396.9,
+     556.3
+    ],
+    "ten": [
+     333.1,
+     564.6
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 255,
+    "y": 406,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d006": {
+   "clip": "87755a9b",
+   "t": 11,
+   "phase": "preinfusion",
+   "hub": [
+    532,
+    479
+   ],
+   "tip": [
+    322,
+    560
+   ],
+   "zero": [
+    405,
+    604
+   ],
+   "five": [
+    382,
+    358
+   ],
+   "ten": [
+    613,
+    327
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:10:53.373Z",
+   "orig": {
+    "hub": [
+     354.9,
+     523.7
+    ],
+    "tip": [
+     413.3,
+     501.2
+    ],
+    "zero": [
+     390.2,
+     488.9
+    ],
+    "five": [
+     396.6,
+     557.3
+    ],
+    "ten": [
+     332.4,
+     565.9
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 253,
+    "y": 407,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d007": {
+   "clip": "87755a9b",
+   "t": 13,
+   "phase": "preinfusion",
+   "hub": [
+    532,
+    471
+   ],
+   "tip": [
+    324,
+    552
+   ],
+   "zero": [
+    410,
+    602
+   ],
+   "five": [
+    384,
+    362
+   ],
+   "ten": [
+    611,
+    328
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:10:58.421Z",
+   "orig": {
+    "hub": [
+     354.9,
+     525.9
+    ],
+    "tip": [
+     412.7,
+     503.4
+    ],
+    "zero": [
+     388.8,
+     489.5
+    ],
+    "five": [
+     396.1,
+     556.2
+    ],
+    "ten": [
+     333.0,
+     565.6
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 253,
+    "y": 407,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d008": {
+   "clip": "87755a9b",
+   "t": 15.5,
+   "phase": "preinfusion",
+   "hub": [
+    531,
+    476
+   ],
+   "tip": [
+    315,
+    548
+   ],
+   "zero": [
+    407,
+    604
+   ],
+   "five": [
+    386,
+    359
+   ],
+   "ten": [
+    621,
+    326
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:11:09.083Z",
+   "orig": {
+    "hub": [
+     355.2,
+     524.5
+    ],
+    "tip": [
+     415.2,
+     504.5
+    ],
+    "zero": [
+     389.7,
+     488.9
+    ],
+    "five": [
+     395.5,
+     557.0
+    ],
+    "ten": [
+     330.2,
+     566.2
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 253,
+    "y": 407,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d009": {
+   "clip": "87755a9b",
+   "t": 19,
+   "phase": "rise",
+   "hub": [
+    529,
+    469
+   ],
+   "tip": [
+    313,
+    416
+   ],
+   "zero": [
+    395,
+    606
+   ],
+   "five": [
+    381,
+    353
+   ],
+   "ten": [
+    615,
+    318
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:11:15.076Z",
+   "orig": {
+    "hub": [
+     355.8,
+     525.4
+    ],
+    "tip": [
+     415.8,
+     540.2
+    ],
+    "zero": [
+     393.0,
+     487.4
+    ],
+    "five": [
+     396.9,
+     557.7
+    ],
+    "ten": [
+     331.9,
+     567.4
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 253,
+    "y": 406,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d010": {
+   "clip": "87755a9b",
+   "t": 23,
+   "phase": "rise",
+   "hub": [
+    548,
+    468
+   ],
+   "tip": [
+    389,
+    293
+   ],
+   "zero": [
+    410,
+    601
+   ],
+   "five": [
+    401,
+    353
+   ],
+   "ten": [
+    630,
+    320
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:11:24.652Z",
+   "orig": {
+    "hub": [
+     349.5,
+     526.7
+    ],
+    "tip": [
+     393.7,
+     575.3
+    ],
+    "zero": [
+     387.8,
+     489.8
+    ],
+    "five": [
+     390.3,
+     558.7
+    ],
+    "ten": [
+     326.7,
+     567.8
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 252,
+    "y": 407,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d011": {
+   "clip": "87755a9b",
+   "t": 26.5,
+   "phase": "rise",
+   "hub": [
+    537,
+    472
+   ],
+   "tip": [
+    434,
+    269
+   ],
+   "zero": [
+    400,
+    617
+   ],
+   "five": [
+    386,
+    354
+   ],
+   "ten": [
+    621,
+    321
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:11:30.903Z",
+   "orig": {
+    "hub": [
+     346.6,
+     526.6
+    ],
+    "tip": [
+     375.2,
+     583.0
+    ],
+    "zero": [
+     384.6,
+     486.3
+    ],
+    "five": [
+     388.5,
+     559.4
+    ],
+    "ten": [
+     323.2,
+     568.6
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 246,
+    "y": 408,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d012": {
+   "clip": "87755a9b",
+   "t": 29.8,
+   "phase": "peak",
+   "hub": [
+    540,
+    469
+   ],
+   "tip": [
+    442,
+    253
+   ],
+   "zero": [
+    402,
+    602
+   ],
+   "five": [
+    390,
+    341
+   ],
+   "ten": [
+    629,
+    310
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:11:36.361Z",
+   "orig": {
+    "hub": [
+     341.7,
+     525.4
+    ],
+    "tip": [
+     368.9,
+     585.4
+    ],
+    "zero": [
+     380.1,
+     488.5
+    ],
+    "five": [
+     383.4,
+     561.0
+    ],
+    "ten": [
+     317.0,
+     569.6
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 242,
+    "y": 406,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d013": {
+   "clip": "87755a9b",
+   "t": 35,
+   "phase": "decline",
+   "hub": [
+    533,
+    466
+   ],
+   "tip": [
+    347,
+    322
+   ],
+   "zero": [
+    398,
+    604
+   ],
+   "five": [
+    382,
+    343
+   ],
+   "ten": [
+    620,
+    311
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:11:41.685Z",
+   "orig": {
+    "hub": [
+     336.7,
+     522.3
+    ],
+    "tip": [
+     388.3,
+     562.3
+    ],
+    "zero": [
+     374.2,
+     483.9
+    ],
+    "five": [
+     378.6,
+     556.4
+    ],
+    "ten": [
+     312.5,
+     565.3
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 235,
+    "y": 402,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d014": {
+   "clip": "87755a9b",
+   "t": 39,
+   "phase": "decline",
+   "hub": [
+    545,
+    470
+   ],
+   "tip": [
+    331,
+    359
+   ],
+   "zero": [
+    405,
+    609
+   ],
+   "five": [
+    392,
+    344
+   ],
+   "ten": [
+    629,
+    310
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:11:47.721Z",
+   "orig": {
+    "hub": [
+     331.3,
+     519.2
+    ],
+    "tip": [
+     390.8,
+     550.0
+    ],
+    "zero": [
+     370.2,
+     480.6
+    ],
+    "five": [
+     373.8,
+     554.2
+    ],
+    "ten": [
+     308.0,
+     563.6
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 233,
+    "y": 400,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  },
+  "d015": {
+   "clip": "87755a9b",
+   "t": 41.5,
+   "phase": "decline",
+   "hub": [
+    540,
+    471
+   ],
+   "tip": [
+    326,
+    360
+   ],
+   "zero": [
+    404,
+    612
+   ],
+   "five": [
+    383,
+    345
+   ],
+   "ten": [
+    634,
+    309
+   ],
+   "unclear": false,
+   "updatedAt": "2026-11-03T01:11:53.056Z",
+   "orig": {
+    "hub": [
+     329.7,
+     518.9
+    ],
+    "tip": [
+     389.2,
+     549.7
+    ],
+    "zero": [
+     367.5,
+     479.7
+    ],
+    "five": [
+     373.3,
+     553.9
+    ],
+    "ten": [
+     303.6,
+     563.9
+    ]
+   },
+   "coord": "display=crop px; orig=upright source frame px",
+   "crop": {
+    "x": 230,
+    "y": 400,
+    "size": 250,
+    "scale": 3.6,
+    "outSize": 900,
+    "srcW": 720,
+    "srcH": 1280,
+    "rotation": "r180",
+    "orientation": "upright (ffmpeg autorotate applied)",
+    "source": "override"
+   }
+  }
+ }
+}
