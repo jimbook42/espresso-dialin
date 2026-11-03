@@ -5,15 +5,18 @@
   flex-direction: column;
   gap: 0.75rem;
   min-height: 0;
+  transition: gap 200ms ease;
 }
 
 .shot-hero {
   align-items: center;
   flex-shrink: 0;
+  transition: padding 200ms ease;
 }
 
 .shot-metric--big .shot-metric-value {
   font-size: clamp(2.75rem, 13cqw, 5.5rem);
+  transition: font-size 200ms ease;
 }
 
 .shot-screen--timer .shot-hero,
@@ -49,6 +52,41 @@
 
 .shot-live-chart svg {
   height: 3.5rem;
+  transition: height 200ms ease;
+}
+
+.shot-chart-axis-labels {
+  padding-top: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+
+.shot-screen--trust .shot-live-chart svg {
+  height: 1.25rem;
+}
+
+.shot-screen--trust:not(.shot-screen--minimal) {
+  gap: 0.375rem;
+}
+
+.shot-screen--trust .shot-hero {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.shot-screen--trust .shot-hero .shot-metric-value {
+  font-size: clamp(2rem, 10cqw, 3.5rem);
+}
+
+.shot-screen--trust .shot-live-chart {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.shot-camera-pressure-placeholder {
+  display: inline-block;
+  font-size: 0.3em;
+  vertical-align: middle;
+  color: #a09880;
 }
 
 .shot-live-chart--grow {
@@ -62,12 +100,33 @@
 }
 
 .shot-trust-camera {
-  flex: 0 0 42%;
-  min-height: 8rem;
+  display: grid;
+  grid-template-rows: 0fr;
+  width: 100%;
+  flex-shrink: 0;
+  opacity: 0;
+  margin-bottom: -0.75rem;
+  transition: grid-template-rows 200ms ease, opacity 200ms ease, margin-bottom 200ms ease;
+}
+
+.shot-trust-camera--open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-bottom: 0;
+}
+
+.shot-screen--trust:not(.shot-screen--minimal) .shot-trust-camera {
+  margin-bottom: 0;
+}
+
+.shot-trust-camera-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .shot-gauge-camera--expanded {
-  height: 100%;
+  aspect-ratio: 4 / 3;
+  height: auto;
 }
 
 .shot-gauge-camera--aim {
@@ -106,9 +165,7 @@
 
 .shot-screen--minimal .shot-trust-camera {
   position: absolute;
-  inset: 0 0 auto;
-  height: 42%;
-  min-height: 0;
+  inset: 2.75rem 0 auto;
 }
 
 .shot-screen--minimal .shot-aim-camera {
@@ -124,4 +181,14 @@
   left: 0;
   right: 0;
   z-index: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shot-screen,
+  .shot-hero,
+  .shot-metric--big .shot-metric-value,
+  .shot-trust-camera,
+  .shot-live-chart svg {
+    transition: none;
+  }
 }

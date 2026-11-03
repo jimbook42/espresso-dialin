@@ -2710,7 +2710,7 @@ export default function App() {
               yieldSettleActive={yieldSettleActive}
               frozenYieldG={frozenShotWeightG}
             />
-            {timerUsePreInfusion && <p className="text-center text-xs text-[#a09880] mt-2">Total {timerSeconds.toFixed(1)}s · {preInfusionPhase ? 'pre-infusing' : 'extraction'}</p>}
+            <p className="text-center text-xs text-[#a09880] mt-2 h-4 shrink-0">Total {timerSeconds.toFixed(1)}s · {timerUsePreInfusion && preInfusionPhase ? 'pre-infusing' : 'extraction'}</p>
           </div>
 
           <div className="shot-timer-footer px-4 pb-3 pt-1 space-y-2 max-w-md mx-auto w-full shrink-0">

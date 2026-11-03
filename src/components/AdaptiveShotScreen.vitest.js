@@ -65,13 +65,23 @@ describe('adaptive live shot screen', () => {
   it('expands and collapses trust view from its toggle and camera tap', () => {
     const container = render(ShotScreenView, { equipment: { gauge: true, scale: false }, values, preview: true });
     const toggle = container.querySelector('[aria-pressed]');
+    const chart = container.querySelector('[data-testid="live-shot-chart"]');
+    const metrics = container.querySelector('.shot-hero');
     click(toggle);
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
-    expect(container.querySelector('[data-testid="shot-gauge-camera"]').textContent).toContain('8.4');
-    expect(container.querySelector('[data-testid="live-shot-chart"]')).toBeNull();
-    click(container.querySelector('[data-testid="shot-gauge-camera"]'));
+    const camera = container.querySelector('.shot-trust-camera--open [data-testid="shot-gauge-camera"]');
+    expect(camera.textContent).toContain('8.4');
+    expect(camera.querySelector('[data-testid="shot-camera-pressure"]').className).toContain('bottom-3 left-3');
+    expect(camera.textContent).not.toContain('Tap to hide gauge');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).not.toContain('8.4');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).not.toContain('bar');
+    expect(container.querySelector('[data-testid="live-shot-chart"]')).toBe(chart);
+    expect(container.querySelector('.shot-hero')).toBe(metrics);
+    click(camera);
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
-    expect(container.querySelector('[data-testid="live-shot-chart"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="live-shot-chart"]')).toBe(chart);
+    expect(container.querySelector('.shot-trust-camera').getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('8.4');
   });
 
   it('keeps the Minimal hero in its full-height centring layer when trust opens', () => {
@@ -89,7 +99,7 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('.shot-trust-camera').parentElement).toBe(screen);
     expect(container.querySelector('[data-testid="live-shot-chart"]')).toBeNull();
     click(container.querySelector('[data-testid="shot-gauge-camera"]'));
-    expect(container.querySelector('.shot-trust-camera')).toBeNull();
+    expect(container.querySelector('.shot-trust-camera').getAttribute('aria-hidden')).toBe('true');
     expect(hero.parentElement).toBe(screen);
   });
 

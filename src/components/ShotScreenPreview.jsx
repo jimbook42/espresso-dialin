@@ -25,6 +25,7 @@ export function ShotScreenPreview({ settings }) {
       <div className="flex flex-col flex-1 min-h-0 px-4 py-3">
         <ShotScreenView key={JSON.stringify(settings?.shotScreen)} settings={settings} preview
           values={{ pressure: 8.4, weight: 24.6, time: 21.3, flow: 1.8 }} targetYieldG={36} targetTimeS={30} />
+        <p className="text-center text-xs text-[#a09880] mt-2 h-4 shrink-0">Total 21.3s · extraction</p>
       </div>
       <div className="shrink-0 p-4 space-y-3">
         <div className="h-1 rounded-full bg-[#2e2b26]" />
