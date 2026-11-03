@@ -74,7 +74,7 @@ describe('adaptive live shot screen', () => {
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     const camera = container.querySelector('.shot-trust-camera--open [data-testid="shot-gauge-camera"]');
     expect(camera.textContent).toContain('8.4');
-    expect(camera.querySelector('[data-testid="shot-camera-pressure"]').className).toContain('bottom-3 left-3');
+    expect(camera.querySelector('[data-testid="shot-camera-pressure"]').className).toContain('shot-camera-pressure-hero');
     expect(camera.textContent).not.toContain('Tap to hide gauge');
     expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('8.4');
     expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('bar');
@@ -90,6 +90,40 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('.shot-trust-camera')).toBeNull();
     expect(container.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
     expect(container.querySelector('[data-testid="live-shot-chart"]')).toBe(chart);
+  });
+
+  it('uses edge data, an inline flip control and a persistent Aim slot in portrait mode', () => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    const flipCamera = vi.fn();
+    function Host() {
+      const [aim, setAim] = useState('Aim: 1.5 bar');
+      return createElement('div', { className: 'fixed' },
+        createElement('div', { className: 'shot-timer-header' },
+          createElement('span', null, 'Extracting'),
+          createElement('button', { 'data-toggle-aim': true, onClick: () => setAim('') }, 'Change aim')),
+        createElement(ShotScreenView, {
+          settings: { labCameraPressureEnabled: true, shotScreen: { scale: true } }, values,
+          pressure: { flipCamera, facingMode: 'user', aimText: aim },
+        }));
+    }
+    const container = render(Host);
+    const host = container.querySelector('.fixed');
+    expect(host.classList.contains('shot-portrait-fullscreen')).toBe(false);
+    click(container.querySelector('[aria-pressed]'));
+    expect(host.classList.contains('shot-portrait-fullscreen')).toBe(true);
+    expect([...container.querySelectorAll('[data-edge-metric]')].map((node) => node.dataset.edgeMetric)).toEqual(['time', 'weight', 'flow']);
+    const aim = container.querySelector('[data-testid="shot-camera-aim"]');
+    expect(aim.style.visibility).toBe('visible');
+    click(container.querySelector('[data-toggle-aim]'));
+    expect(container.querySelector('[data-testid="shot-camera-aim"]')).toBe(aim);
+    expect(aim.style.visibility).toBe('hidden');
+    click(container.querySelector('[aria-label="Switch to rear camera"]'));
+    expect(flipCamera).toHaveBeenCalledTimes(1);
+    click(container.querySelector('[aria-pressed]'));
+    act(() => vi.advanceTimersByTime(200));
+    expect(host.classList.contains('shot-portrait-fullscreen')).toBe(false);
+    expect(container.querySelector('.shot-trust-camera')).toBeNull();
   });
 
   it('draws an uncalibrated, unlocked stream in trust view without preview or test-mode bypass', () => {

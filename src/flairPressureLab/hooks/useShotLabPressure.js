@@ -49,6 +49,7 @@ export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
  *   weighingViewOpen: boolean,
  *   preShotDialCheckSurface: boolean,
  *   cameraPreviewActive?: boolean,
+ *   cameraFacingMode?: 'user' | 'environment',
  *   replayFrameObserverRef?: import('react').MutableRefObject<((frame: object) => void) | null>,
  *   leapCap?: boolean,
  *   modelTiebreak?: boolean,
@@ -65,12 +66,13 @@ export function useShotLabPressure({
   weighingViewOpen = false,
   preShotDialCheckSurface = false,
   cameraPreviewActive = false,
+  cameraFacingMode = 'user',
   replayFrameObserverRef,
   leapCap = true,
   modelTiebreak = true,
   legacyScale = false,
 }) {
-  const { videoRef, start, stop, status, error: cameraError } = useFrontCameraStream();
+  const { videoRef, start, stop, status, error: cameraError } = useFrontCameraStream({ facingMode: cameraFacingMode });
   const sessionRef = useRef(createShotLabPressureSession());
   const holdRef = useRef(createReadingHold());
   const trackerRef = useRef(null);

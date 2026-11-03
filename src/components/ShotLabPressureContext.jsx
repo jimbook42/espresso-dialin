@@ -45,6 +45,13 @@ export function ShotLabPressureProvider({
   const storedCalibration = labGaugeTapCalibrationFromSettings(settings);
   const viewMoved = settings?.labGaugeTapCalibration?.viewMoved === true;
   const [calibrateOpen, setCalibrateOpen] = useState(false);
+  const [facingMode, setFacingMode] = useState(() => {
+    try { return localStorage.getItem('espresso-dialin.camera-facing-mode') === 'environment' ? 'environment' : 'user'; }
+    catch { return 'user'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('espresso-dialin.camera-facing-mode', facingMode); } catch { /* UI preference only. */ }
+  }, [facingMode]);
 
   useEffect(() => {
     if (calibrateRequest > 0) setCalibrateOpen(true);
@@ -68,6 +75,7 @@ export function ShotLabPressureProvider({
     preShotDialCheckSurface,
     // Guided-brew Start can reach a live shot without the Dial calibration guard.
     cameraPreviewActive: enabled && timerRunning,
+    cameraFacingMode: facingMode,
     onCalibrationSaved: onSaveCalibration,
     replayFrameObserverRef: readerFrameObserverRef,
     leapCap: !labPressureReaderLegacy(settings),
@@ -144,6 +152,8 @@ export function ShotLabPressureProvider({
     && !calibrateOpen;
 
   const value = {
+    facingMode,
+    flipCamera: () => setFacingMode((current) => current === 'user' ? 'environment' : 'user'),
     videoRef: pressure.videoRef,
     liveFrameRef,
     enabled,

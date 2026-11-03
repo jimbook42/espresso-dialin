@@ -234,3 +234,152 @@
     transition: none;
   }
 }
+
+/* Portrait trust mode is isolated from every camera-off layout. */
+.shot-screen--trust {
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+.shot-screen--trust .shot-hero,
+.shot-screen--trust .shot-screen-support,
+.shot-screen--trust .shot-minimal-center {
+  display: none;
+}
+.shot-screen--trust .shot-camera-toolbar {
+  position: absolute;
+  top: -48px;
+  right: 0;
+  z-index: 4;
+}
+.shot-screen--trust .shot-gauge-toggle {
+  position: static;
+}
+.shot-camera-flip {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #2e2b26;
+  border-radius: 8px;
+  color: #c88a4b;
+  background: #121110;
+}
+.shot-camera-flip:disabled { opacity: 0.5; }
+.shot-screen--trust .shot-trust-camera--open {
+  position: relative;
+  inset: auto;
+  display: block;
+  flex: 1 1 0;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+}
+.shot-camera-top-scrim,
+.shot-camera-bottom-scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 10px 14px;
+  text-align: left;
+  color: #f5f2eb;
+  pointer-events: none;
+}
+.shot-camera-top-scrim {
+  top: 0;
+  background: linear-gradient(#121110ed, #121110b8 80%, transparent);
+}
+.shot-camera-bottom-scrim {
+  bottom: 0;
+  background: linear-gradient(transparent, #121110cf 20%, #121110f5);
+}
+.shot-camera-pressure-hero {
+  display: block;
+  font-size: clamp(3rem, 16cqw, 5rem);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #c97868;
+}
+.shot-camera-pressure-hero small { font-size: 0.3em; }
+.shot-camera-lock-slot {
+  display: block;
+  height: 20px;
+  line-height: 20px;
+  font-size: 11px;
+}
+.shot-camera-edge-metrics {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.shot-camera-edge-metric { display: flex; flex-direction: column; }
+.shot-camera-edge-label { font-size: 10px; color: #a09880; text-transform: uppercase; }
+.shot-camera-edge-value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.shot-camera-edge-value small { font-size: 12px; }
+.shot-camera-aim {
+  height: 20px;
+  min-height: 20px;
+  line-height: 20px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #a09880;
+}
+.shot-screen--trust .shot-live-chart {
+  flex: 0 0 64px;
+  height: 64px;
+  min-height: 0;
+  max-height: 70px;
+  padding: 4px 10px;
+  overflow: hidden;
+}
+.shot-screen--trust .shot-live-chart svg {
+  flex: 1 1 0;
+  height: 32px;
+  min-height: 0;
+}
+.shot-screen--trust .shot-chart-axis-labels { padding: 0 0 2px; font-size: 8px; }
+/* The existing stage/Cancel handlers stay in their original footer. */
+.shot-portrait-fullscreen {
+  height: 100dvh;
+  max-height: 100dvh;
+  bottom: auto;
+  overflow: hidden;
+}
+.shot-portrait-fullscreen > .shot-timer-header { height: 48px; }
+.shot-portrait-fullscreen > .shot-timer-header > div { max-width: calc(100% - 155px); min-width: 0; }
+.shot-portrait-fullscreen > .shot-timer-header > div > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot-portrait-fullscreen > .shot-timer-header > button { display: none; }
+.shot-portrait-fullscreen > .flex-1 { padding: 8px 16px; overflow: visible; }
+.shot-portrait-fullscreen > .flex-1 > p { display: none; }
+.shot-portrait-fullscreen .shot-timer-footer {
+  max-width: 36rem;
+  padding: 0 16px 8px;
+  margin-top: 0;
+}
+.shot-portrait-fullscreen .shot-timer-footer > :not(:last-child) { display: none; }
+.shot-portrait-fullscreen .shot-timer-footer > div:last-child {
+  display: grid;
+  grid-template-columns: 1fr 88px;
+  gap: 8px;
+  margin-top: 0;
+}
+.shot-portrait-fullscreen .shot-timer-footer button { min-height: 48px; height: 48px; border-radius: 12px; }
+html:has(.shot-portrait-fullscreen),
+body:has(.shot-portrait-fullscreen),
+#root:has(.shot-portrait-fullscreen) { height: 100dvh; overflow: hidden; }
+@media (max-height: 740px) {
+  .shot-screen--trust .shot-live-chart { display: none; }
+}
+
+/* Keep the settings preview a scaled whole phone with the same compact shell. */
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > div:first-child { height: 48px; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > .flex-1 { padding: 8px 16px; overflow: visible; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > .flex-1 > p { display: none; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > div:last-child { display: grid; grid-template-columns: 1fr 88px; gap: 8px; padding: 0 16px 8px; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > div:last-child > :not(button) { display: none; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > div:last-child > button { height: 48px; margin: 0; }
