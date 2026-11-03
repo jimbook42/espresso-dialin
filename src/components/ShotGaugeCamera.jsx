@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { drawShotGaugeOverlay, shotGaugeObjectPosition } from './shotGaugeFrame.js';
 import { useSharedCameraVideo } from './useSharedCameraVideo.js';
 
-export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview = false, active = true }) {
+export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview = false, active = true, edgeMetrics }) {
   const canvasRef = useRef(null);
   const previewVideoRef = useRef(null);
   const videoRef = pressure?.videoRef;
@@ -41,9 +41,19 @@ export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview
         className="absolute inset-0 flex items-center justify-center bg-black text-sm text-[#a09880]">
         {feedStatus === 'loading' ? 'Starting camera…' : 'Camera unavailable'}
       </span>}
-      {!preview && feedStatus === 'live' && lookingForGauge && <span role="status" data-testid="shot-camera-status"
-        className="absolute top-3 left-3 rounded-lg bg-black/70 px-2 py-1 text-xs text-[#f5f2eb]">Looking for gauge…</span>}
-      {expanded && <span data-testid="shot-camera-pressure" className="absolute bottom-3 left-3 rounded-xl bg-black/70 px-4 py-2 text-4xl font-bold text-[#c97868] tabular-nums">{barText} <span className="text-base">bar</span></span>}
+      {expanded && <div className="shot-camera-top-scrim">
+        <span data-testid="shot-camera-pressure" className="shot-camera-pressure-hero">{barText} <small>bar</small></span>
+        <span className="shot-camera-lock-slot">
+          {!preview && feedStatus === 'live' && lookingForGauge
+            ? <span role="status" data-testid="shot-camera-status">Looking for gauge…</span> : '\u00a0'}
+        </span>
+      </div>}
+      {expanded && <div className="shot-camera-bottom-scrim">
+        <div className="shot-camera-edge-metrics">{edgeMetrics}</div>
+        <div data-testid="shot-camera-aim" className="shot-camera-aim" style={{ visibility: pressure?.aimText ? 'visible' : 'hidden' }}>
+          {pressure?.aimText || '\u00a0'}
+        </div>
+      </div>}
     </button>
   );
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cameraErrorMessage } from '../cameraErrors.js';
 import { isPressureReplayBuild } from '../../config/pressureReplayFlag.js';
 
-async function openFrontCamera() {
+async function openCamera(facingMode) {
   if (!navigator.mediaDevices?.getUserMedia) {
     const error = new Error('unsupported');
     error.name = 'UnsupportedError';
@@ -21,13 +21,13 @@ async function openFrontCamera() {
   try {
     return await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { ...video, facingMode: { exact: 'user' } },
+      video: { ...video, facingMode: { exact: facingMode } },
     });
   } catch (err) {
     if (err?.name !== 'OverconstrainedError') throw err;
     return navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { ...video, facingMode: 'user' },
+      video: { ...video, facingMode },
     });
   }
 }
@@ -77,10 +77,13 @@ export function bindCameraTrackEvents(track, log) {
   };
 }
 
-export function useFrontCameraStream() {
+export function useFrontCameraStream({ facingMode = 'user' } = {}) {
+  const requestedFacingMode = facingMode === 'environment' ? 'environment' : 'user';
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const mountedRef = useRef(true);
+  const generationRef = useRef(0);
+  const pendingOpenRef = useRef(Promise.resolve());
   const trackDiagnosticsRef = useRef(createCameraTrackLog());
   const unbindTrackRef = useRef(() => {});
   const [status, setStatus] = useState('idle');
@@ -94,6 +97,7 @@ export function useFrontCameraStream() {
   }, []);
 
   const stop = useCallback(() => {
+    generationRef.current += 1;
     releaseCamera();
     setTrackInfo(null);
     setError('');
@@ -101,56 +105,67 @@ export function useFrontCameraStream() {
   }, [releaseCamera]);
 
   const start = useCallback(async () => {
+    const generation = ++generationRef.current;
     setError('');
     setStatus('requesting');
     releaseCamera();
-    try {
-      const stream = await openFrontCamera();
-      if (!mountedRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      const track = stream.getVideoTracks()[0];
-      const settings = track?.getSettings?.() || {};
-      if (!isPressureReplayBuild() && settings.facingMode === 'environment') {
-        stream.getTracks().forEach((item) => item.stop());
-        const rear = new Error('rear');
-        rear.name = 'RearCameraError';
-        throw rear;
-      }
-      streamRef.current = stream;
-      unbindTrackRef.current = bindCameraTrackEvents(track, trackDiagnosticsRef.current);
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        video.playsInline = true;
-        video.muted = true;
-        await video.play();
-      }
-      if (!mountedRef.current) {
+    const previous = pendingOpenRef.current;
+    const opening = (async () => {
+      // A superseded pending camera must resolve and release its tracks before
+      // the next facingMode can acquire a stream.
+      await previous;
+      if (!mountedRef.current || generation !== generationRef.current) return;
+      try {
+        const stream = await openCamera(requestedFacingMode);
+        if (!mountedRef.current || generation !== generationRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        const track = stream.getVideoTracks()[0];
+        const settings = track?.getSettings?.() || {};
+        if (!isPressureReplayBuild() && requestedFacingMode === 'user' && settings.facingMode === 'environment') {
+          stream.getTracks().forEach((item) => item.stop());
+          const rear = new Error('rear');
+          rear.name = 'RearCameraError';
+          throw rear;
+        }
+        streamRef.current = stream;
+        unbindTrackRef.current = bindCameraTrackEvents(track, trackDiagnosticsRef.current);
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          video.playsInline = true;
+          video.muted = true;
+          await video.play();
+        }
+        if (!mountedRef.current || generation !== generationRef.current) {
+          releaseCamera();
+          return;
+        }
+        setTrackInfo({
+          label: track?.label || 'unknown',
+          facingMode: settings.facingMode || 'unspecified',
+          width: settings.width || video?.videoWidth,
+          height: settings.height || video?.videoHeight,
+        });
+        setStatus('live');
+      } catch (err) {
+        if (!mountedRef.current || generation !== generationRef.current) return;
         releaseCamera();
-        return;
+        setTrackInfo(null);
+        setError(cameraErrorMessage(err));
+        setStatus('error');
       }
-      setTrackInfo({
-        label: track?.label || 'unknown',
-        facingMode: settings.facingMode || 'unspecified',
-        width: settings.width || video?.videoWidth,
-        height: settings.height || video?.videoHeight,
-      });
-      setStatus('live');
-    } catch (err) {
-      releaseCamera();
-      if (!mountedRef.current) return;
-      setTrackInfo(null);
-      setError(cameraErrorMessage(err));
-      setStatus('error');
-    }
-  }, [releaseCamera]);
+    })();
+    pendingOpenRef.current = opening.catch(() => {});
+    await opening;
+  }, [requestedFacingMode, releaseCamera]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      generationRef.current += 1;
       releaseCamera();
     };
   }, [releaseCamera]);

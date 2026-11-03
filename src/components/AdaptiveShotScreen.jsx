@@ -1,4 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { SwitchCamera } from 'lucide-react';
 import { useShotLabPressureContext } from './ShotLabPressureContext.jsx';
 import { ShotGaugeCamera } from './ShotGaugeCamera.jsx';
 import { getScaleLiveWeightSnapshot, resolveShotWeightReadout, subscribeScaleLiveWeight } from '../scales/scaleLiveWeightStore.js';
@@ -40,6 +41,14 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
   const [trustOverride, setTrustOverride] = useState(null);
   const selectedMetric = options.available.includes(selected) ? selected : options.bigNumber;
   const trust = equipment.gauge && (trustOverride ?? options.showGauge);
+  const screenRef = useRef(null);
+  useLayoutEffect(() => {
+    if (preview) return undefined;
+    const host = screenRef.current?.closest('.fixed');
+    if (!host || !Array.from(host.children).some((child) => child.classList.contains('shot-timer-header'))) return undefined;
+    host.classList.toggle('shot-portrait-fullscreen', trust);
+    return () => host.classList.remove('shot-portrait-fullscreen');
+  }, [trust, preview]);
   const pressureText = Number.isFinite(values.pressure) ? number(values.pressure) : '--';
   const [cameraMounted, setCameraMounted] = useState(trust);
   useEffect(() => {
@@ -70,11 +79,23 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
     </>}
     {metric === 'time' && (targetTimeS > 0 || options.layout === 'gauge') && <div className="shot-time-sublabel text-xs text-[#a09880] mt-2">{targetTimeS > 0 ? `Target ${targetTimeS}s` : '\u00a0'}</div>}
   </div>;
-  return <div data-testid="adaptive-shot-screen" data-layout={options.minimal ? 'minimal' : options.layout}
+  const edgeMetrics = ['time', ...(equipment.scale ? ['weight', 'flow'] : [])].map((metric) =>
+    <span key={metric} data-edge-metric={metric} className="shot-camera-edge-metric">
+      <span className="shot-camera-edge-label">{labels[metric]}</span>
+      <span className="shot-camera-edge-value" style={{ color: colours[metric] }}>{number(values[metric], metric === 'flow' ? 2 : 1)}<small> {units[metric]}</small></span>
+    </span>);
+  return <div ref={screenRef} data-testid="adaptive-shot-screen" data-layout={options.minimal ? 'minimal' : options.layout}
     className={`shot-screen shot-screen--${options.minimal ? 'minimal' : options.layout} ${trust ? 'shot-screen--trust' : ''} w-full flex-1 text-[#f5f2eb]`}
     onClick={(event) => event.stopPropagation()}>
-    {equipment.gauge && <button type="button" aria-pressed={trust} onClick={() => setTrustOverride(!trust)}
-      className="shot-gauge-toggle self-end min-h-9 px-3 rounded-lg border border-[#2e2b26] text-xs text-[#c88a4b]">{trust ? 'Hide gauge' : 'Show gauge'}</button>}
+    {equipment.gauge && <div className="shot-camera-toolbar self-end flex items-center gap-2">
+      <button type="button" aria-pressed={trust} onClick={() => setTrustOverride(!trust)}
+        className="shot-gauge-toggle min-h-9 px-3 rounded-lg border border-[#2e2b26] text-xs text-[#c88a4b]">{trust ? 'Hide gauge' : 'Show gauge'}</button>
+      {trust && <button type="button" className="shot-camera-flip" onClick={pressure?.flipCamera} disabled={!pressure?.flipCamera}
+        aria-label={pressure?.facingMode === 'environment' ? 'Switch to front camera' : 'Switch to rear camera'}
+        title={pressure?.facingMode === 'environment' ? 'Switch to front camera' : 'Switch to rear camera'}>
+        <SwitchCamera size={20} aria-hidden="true" />
+      </button>}
+    </div>}
     {options.minimal ? <button type="button" aria-label="Cycle big number" onClick={() => setSelected(cycleShotMetric(selectedMetric, options.available))}
       className="shot-minimal-center">
       {renderMetric(selectedMetric, true)}<div className="text-[10px] text-[#6b6457] mt-2">Tap number to cycle</div>
@@ -85,7 +106,7 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
     {equipment.scale && values.weight == null && <p className="text-xs text-[#a09880] text-center">Connect your smart scale for weight and flow.</p>}
     </div>
     {(trust || cameraMounted) && <div className={`shot-trust-camera ${trust ? 'shot-trust-camera--open' : ''}`} aria-hidden={!trust} inert={!trust}>
-      <div className="shot-trust-camera-inner"><ShotGaugeCamera pressure={pressure} expanded active={trust} onToggle={() => setTrustOverride(false)} barText={pressureText} preview={preview} /></div>
+      <div className="shot-trust-camera-inner"><ShotGaugeCamera pressure={pressure} expanded active={trust} onToggle={() => setTrustOverride(false)} barText={pressureText} preview={preview} edgeMetrics={edgeMetrics} /></div>
     </div>}
     {options.chart && !options.minimal && <LiveShotChart pressure={pressure?.samples} flow={flowSeries} gauge={equipment.gauge} scale={equipment.scale} grow={options.layout === 'scale'} />}
   </div>;

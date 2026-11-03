@@ -31,7 +31,7 @@ vi.mock('../flairPressureLab/hooks/useLabShotReplay.js', async () => {
 vi.mock('./LabGaugeTapCalibrateSheet.jsx', () => ({ LabGaugeTapCalibrateSheet: () => null }));
 vi.mock('../flairPressureLab/hooks/useLabPressureCornerPreviewStyle.js', () => ({ useLabPressureCornerPreviewStyle: () => ({}) }));
 
-import { ShotLabPressureProvider } from './ShotLabPressureContext.jsx';
+import { ShotLabPressureProvider, useShotLabPressureContext } from './ShotLabPressureContext.jsx';
 import { AdaptiveShotScreen } from './AdaptiveShotScreen.jsx';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -43,9 +43,32 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
+  localStorage.removeItem('espresso-dialin.camera-facing-mode');
 });
 
 describe('reader frames while trust camera is hidden', () => {
+  it('defaults to user, forwards flips to the existing owner, and remembers the UI choice', () => {
+    localStorage.removeItem('espresso-dialin.camera-facing-mode');
+    function Controls() {
+      const pressure = useShotLabPressureContext();
+      return createElement('button', { onClick: pressure.flipCamera }, pressure.facingMode);
+    }
+    const container = document.createElement('div');
+    root = createRoot(container);
+    const settings = { labCameraPressureEnabled: true };
+    const view = () => createElement(ShotLabPressureProvider, { settings, timerRunning: true, timerSeconds: 1 }, createElement(Controls));
+    act(() => root.render(view()));
+    expect(reader.options.cameraFacingMode).toBe('user');
+    act(() => container.querySelector('button').click());
+    expect(reader.options.cameraFacingMode).toBe('environment');
+    expect(localStorage.getItem('espresso-dialin.camera-facing-mode')).toBe('environment');
+    act(() => root.unmount());
+    root = createRoot(container);
+    act(() => root.render(view()));
+    expect(reader.options.cameraFacingMode).toBe('environment');
+    act(() => container.querySelector('button').click());
+    expect(reader.options.cameraFacingMode).toBe('user');
+  });
   it('keeps an uncalibrated owner video mounted from idle into a live shot', () => {
     const container = document.createElement('div');
     root = createRoot(container);

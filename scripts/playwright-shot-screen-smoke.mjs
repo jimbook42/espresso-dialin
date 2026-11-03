@@ -95,6 +95,59 @@ try {
   await live.getByRole('button', { name: 'Cycle big number' }).click();
   assert.equal(await page.getByRole('button', { name: 'Stop shot', exact: true }).isVisible(), true);
   await page.screenshot({ path: path.join(tmpdir(), 'shot-screen-timer-mobile.png') });
+  // Enable the existing gauge preference during this running manual timer.
+  // This exercises the production uncalibrated camera path without inventing
+  // calibration anchors or pressure readings, and without a test-mode bypass.
+  await page.getByTitle('Settings', { exact: true }).evaluate((node) => node.click());
+  await customiser.getByRole('switch', { name: 'Pressure gauge via camera' }).evaluate((node) => node.click());
+  await page.getByRole('button', { name: '✕', exact: true }).evaluate((node) => node.click());
+  await live.getByRole('button', { name: 'Show gauge', exact: true }).click();
+  for (const viewport of [{ width: 390, height: 844 }, { width: 375, height: 667 }]) {
+    await page.setViewportSize(viewport);
+    await page.waitForFunction(() => {
+      const camera = document.querySelector('.shot-trust-camera--open');
+      const rect = camera?.getBoundingClientRect();
+      return rect && rect.height >= rect.width * 1.3;
+    });
+    const measurement = await page.evaluate(() => {
+      const camera = document.querySelector('.shot-trust-camera--open').getBoundingClientRect();
+      const aim = document.querySelector('[data-testid="shot-camera-aim"]');
+      const aimHeight = aim.getBoundingClientRect().height;
+      const visibility = aim.style.visibility;
+      aim.style.visibility = visibility === 'hidden' ? 'visible' : 'hidden';
+      const alternateAimHeight = aim.getBoundingClientRect().height;
+      aim.style.visibility = visibility;
+      const header = document.querySelector('.shot-timer-header').getBoundingClientRect();
+      const controls = [...document.querySelectorAll('.shot-camera-toolbar button, .shot-timer-footer button')].map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { text: button.getAttribute('aria-label') || button.textContent.trim(), top: rect.top, bottom: rect.bottom, height: rect.height };
+      });
+      return { scrollHeight: document.documentElement.scrollHeight, innerHeight, cameraHeight: camera.height,
+        cameraWidth: camera.width, aimHeight, alternateAimHeight, headerTop: header.top, headerBottom: header.bottom, controls };
+    });
+    assert.ok(measurement.scrollHeight <= measurement.innerHeight, JSON.stringify(measurement));
+    assert.ok(measurement.cameraHeight >= measurement.cameraWidth * 1.3, JSON.stringify(measurement));
+    assert.equal(measurement.aimHeight, measurement.alternateAimHeight);
+    assert.ok(measurement.aimHeight > 0);
+    for (const control of measurement.controls) {
+      assert.ok(control.height > 0 && control.top >= 0 && control.bottom <= viewport.height, JSON.stringify(control));
+    }
+    assert.ok(measurement.controls.some((control) => control.text === 'Stop shot'));
+    assert.ok(measurement.controls.some((control) => control.text === 'Cancel'));
+    const hide = measurement.controls.find((control) => control.text === 'Hide gauge');
+    assert.ok(hide && hide.top >= measurement.headerTop && hide.bottom <= measurement.headerBottom);
+    await page.screenshot({ path: path.join(tmpdir(), `shot-screen-portrait-${viewport.width}x${viewport.height}.png`) });
+  }
+  await live.getByRole('button', { name: 'Hide gauge', exact: true }).click();
+  await live.locator('.shot-trust-camera').waitFor({ state: 'detached' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByTitle('Settings', { exact: true }).evaluate((node) => node.click());
+  await customiser.getByRole('switch', { name: 'Timer only', exact: true }).evaluate((node) => node.click());
+  await customiser.getByRole('switch', { name: 'Minimal mode' }).evaluate((node) => node.click());
+  await page.getByRole('button', { name: '✕', exact: true }).evaluate((node) => node.click());
+  passed++;
+  console.log('PASS portrait trust: 390x844 and 375x667, no scroll, tall camera, visible controls, fixed Aim slot');
+
   await page.getByRole('button', { name: 'Stop shot', exact: true }).click();
   assert.ok(Number(await page.getByTestId('dial-time-tile').locator('input').inputValue()) > 0);
   assert.equal(await page.getByTestId('dial-bean-select').inputValue(), originalBean);
