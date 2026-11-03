@@ -41,6 +41,8 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
   const [trustOverride, setTrustOverride] = useState(null);
   const selectedMetric = options.available.includes(selected) ? selected : options.bigNumber;
   const trust = equipment.gauge && (trustOverride ?? options.showGauge);
+  // Minimal remains interactive in the customiser, even with the gauge shown.
+  const portraitTrust = trust && !(preview && options.minimal);
   const screenRef = useRef(null);
   useLayoutEffect(() => {
     if (preview) return undefined;
@@ -85,7 +87,7 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
       <span className="shot-camera-edge-value" style={{ color: colours[metric] }}>{number(values[metric], metric === 'flow' ? 2 : 1)}<small> {units[metric]}</small></span>
     </span>);
   return <div ref={screenRef} data-testid="adaptive-shot-screen" data-layout={options.minimal ? 'minimal' : options.layout}
-    className={`shot-screen shot-screen--${options.minimal ? 'minimal' : options.layout} ${trust ? 'shot-screen--trust' : ''} w-full flex-1 text-[#f5f2eb]`}
+    className={`shot-screen shot-screen--${options.minimal ? 'minimal' : options.layout} ${trust ? 'shot-screen--trust' : ''} ${portraitTrust ? 'shot-screen--portrait' : ''} ${preview ? 'shot-screen--preview' : ''} w-full flex-1 text-[#f5f2eb]`}
     onClick={(event) => event.stopPropagation()}>
     {equipment.gauge && <div className="shot-camera-toolbar self-end flex items-center gap-2">
       <button type="button" aria-pressed={trust} onClick={() => setTrustOverride(!trust)}

@@ -113,6 +113,7 @@ describe('adaptive live shot screen', () => {
     expect(host.classList.contains('shot-portrait-fullscreen')).toBe(false);
     click(container.querySelector('[aria-pressed]'));
     expect(host.classList.contains('shot-portrait-fullscreen')).toBe(true);
+    expect(container.querySelector('.shot-screen--portrait')).not.toBeNull();
     expect([...container.querySelectorAll('[data-edge-metric]')].map((node) => node.dataset.edgeMetric)).toEqual(['time', 'weight', 'flow']);
     const aim = container.querySelector('[data-testid="shot-camera-aim"]');
     expect(aim.style.visibility).toBe('visible');
@@ -325,6 +326,30 @@ describe('customiser', () => {
     const [settings, setSettings] = useState({});
     return createElement(ShotScreenCustomizer, { settings, onPatch: (patch) => setSettings((old) => ({ ...old, ...patch })) });
   }
+  it('keeps the gauge-only Show gauge + Minimal preview visible and cycles pressure/time', () => {
+    const container = render(Harness);
+    const toggle = (name) => container.querySelector(`[role="switch"][aria-label="${name}"]`);
+    click(toggle('Pressure gauge via camera'));
+    click(toggle('Show gauge'));
+    const preview = container.querySelector('[data-testid="shot-screen-preview"]');
+    expect(preview.querySelector('.shot-screen--portrait')).not.toBeNull();
+    click(toggle('Minimal mode'));
+    const screen = preview.querySelector('[data-layout="minimal"]');
+    const cycle = preview.querySelector('[aria-label="Cycle big number"]');
+    expect(screen.classList.contains('shot-screen--trust')).toBe(true);
+    expect(screen.classList.contains('shot-screen--portrait')).toBe(false);
+    expect(preview.querySelector('.shot-trust-camera--open')).not.toBeNull();
+    expect(cycle).not.toBeNull();
+    expect(cycle.tagName).toBe('BUTTON');
+    expect(bigMetrics(preview)).toEqual(['pressure']);
+    click(cycle);
+    expect(bigMetrics(preview)).toEqual(['time']);
+    click(cycle);
+    expect(bigMetrics(preview)).toEqual(['pressure']);
+    click(toggle('Minimal mode'));
+    expect(preview.querySelector('.shot-screen--portrait')).not.toBeNull();
+  });
+
   it('updates its preview, disables unavailable metrics, and resets recommended settings', () => {
     const container = render(Harness);
     const check = (text) => [...container.querySelectorAll('[role="switch"]')].find((toggle) => toggle.getAttribute('aria-label') === text);

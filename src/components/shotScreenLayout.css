@@ -236,23 +236,23 @@
 }
 
 /* Portrait trust mode is isolated from every camera-off layout. */
-.shot-screen--trust {
+.shot-screen--portrait {
   gap: 8px;
   height: 100%;
   min-height: 0;
 }
-.shot-screen--trust .shot-hero,
-.shot-screen--trust .shot-screen-support,
-.shot-screen--trust .shot-minimal-center {
+.shot-screen--portrait .shot-hero,
+.shot-screen--portrait .shot-screen-support,
+.shot-screen--portrait .shot-minimal-center {
   display: none;
 }
-.shot-screen--trust .shot-camera-toolbar {
+.shot-screen--portrait .shot-camera-toolbar {
   position: absolute;
   top: -48px;
   right: 0;
   z-index: 4;
 }
-.shot-screen--trust .shot-gauge-toggle {
+.shot-screen--portrait .shot-gauge-toggle {
   position: static;
 }
 .shot-camera-flip {
@@ -266,7 +266,7 @@
   background: #121110;
 }
 .shot-camera-flip:disabled { opacity: 0.5; }
-.shot-screen--trust .shot-trust-camera--open {
+.shot-screen--portrait .shot-trust-camera--open {
   position: relative;
   inset: auto;
   display: block;
@@ -329,7 +329,7 @@
   text-overflow: ellipsis;
   color: #a09880;
 }
-.shot-screen--trust .shot-live-chart {
+.shot-screen--portrait .shot-live-chart {
   flex: 0 0 64px;
   height: 64px;
   min-height: 0;
@@ -337,12 +337,12 @@
   padding: 4px 10px;
   overflow: hidden;
 }
-.shot-screen--trust .shot-live-chart svg {
+.shot-screen--portrait .shot-live-chart svg {
   flex: 1 1 0;
   height: 32px;
   min-height: 0;
 }
-.shot-screen--trust .shot-chart-axis-labels { padding: 0 0 2px; font-size: 8px; }
+.shot-screen--portrait .shot-chart-axis-labels { padding: 0 0 2px; font-size: 8px; }
 /* The existing stage/Cancel handlers stay in their original footer. */
 .shot-portrait-fullscreen {
   height: 100dvh;
@@ -373,13 +373,34 @@ html:has(.shot-portrait-fullscreen),
 body:has(.shot-portrait-fullscreen),
 #root:has(.shot-portrait-fullscreen) { height: 100dvh; overflow: hidden; }
 @media (max-height: 740px) {
-  .shot-screen--trust .shot-live-chart { display: none; }
+  .shot-screen--portrait .shot-live-chart { display: none; }
 }
 
 /* Keep the settings preview a scaled whole phone with the same compact shell. */
-[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > div:first-child { height: 48px; }
-[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > .flex-1 { padding: 8px 16px; overflow: visible; }
-[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > .flex-1 > p { display: none; }
-[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > div:last-child { display: grid; grid-template-columns: 1fr 88px; gap: 8px; padding: 0 16px 8px; }
-[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > div:last-child > :not(button) { display: none; }
-[data-testid="shot-screen-preview-phone"]:has(.shot-screen--trust) > div:last-child > button { height: 48px; margin: 0; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--portrait) > div:first-child { height: 48px; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--portrait) > .flex-1 { padding: 8px 16px; overflow: visible; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--portrait) > .flex-1 > p { display: none; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--portrait) > div:last-child { display: grid; grid-template-columns: 1fr 88px; gap: 8px; padding: 0 16px 8px; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--portrait) > div:last-child > :not(button) { display: none; }
+[data-testid="shot-screen-preview-phone"]:has(.shot-screen--portrait) > div:last-child > button { height: 48px; margin: 0; }
+
+/* The preview keeps Minimal's full-size tap target above its optional camera. */
+.shot-screen--preview.shot-screen--minimal .shot-minimal-center {
+  pointer-events: auto;
+}
+
+/* Keep the existing tall-phone layout; reclaim space only on short phones. */
+@media (max-height: 700px) and (max-width: 400px) {
+  .fixed:has(> .shot-timer-header):has(.shot-screen--gauge-scale:not(.shot-screen--trust)) > .flex-1 {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .shot-screen--gauge-scale:not(.shot-screen--trust) { gap: 6px; }
+  .shot-screen--gauge-scale:not(.shot-screen--trust) .shot-hero { padding-top: 6px; padding-bottom: 6px; }
+  .shot-screen--gauge-scale:not(.shot-screen--trust) .shot-metric--big .shot-metric-value { font-size: 2.5rem; }
+  .shot-screen--gauge-scale:not(.shot-screen--trust) .shot-screen-support { gap: 4px; }
+  .shot-screen--gauge-scale:not(.shot-screen--trust) .shot-screen-support .shot-metric-value { font-size: 1.25rem; }
+  .shot-screen--gauge-scale:not(.shot-screen--trust) .shot-metric > div:first-child { margin-bottom: 2px; }
+  .shot-screen--gauge-scale:not(.shot-screen--trust) .shot-metric > .mt-2 { margin-top: 4px; }
+  .shot-screen--gauge-scale:not(.shot-screen--trust) .shot-gauge-toggle { min-height: 32px; }
+}
