@@ -40,6 +40,7 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
   const [trustOverride, setTrustOverride] = useState(null);
   const selectedMetric = options.available.includes(selected) ? selected : options.bigNumber;
   const trust = equipment.gauge && (trustOverride ?? options.showGauge);
+  const pressureText = Number.isFinite(values.pressure) ? number(values.pressure) : '--';
   const [cameraMounted, setCameraMounted] = useState(trust);
   useEffect(() => {
     if (trust) {
@@ -62,9 +63,7 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
     className={`shot-metric ${big ? 'shot-metric--big' : ''} min-w-0 text-center`}>
     <div className="text-[10px] uppercase tracking-widest text-[#a09880] mb-1">{labels[metric]}</div>
     <div className={`shot-metric-value font-bold tabular-nums leading-none tracking-tight ${big ? '' : metric === 'pressure' ? 'text-4xl' : 'text-2xl'}`}
-      style={{ color: colours[metric] }}>{metric === 'pressure' && trust
-        ? <span className="shot-camera-pressure-placeholder">On camera</span>
-        : <>{number(values[metric], metric === 'flow' ? 2 : 1)}<span className="ml-1 text-[0.3em] tracking-normal">{units[metric]}</span></>}</div>
+      style={{ color: colours[metric] }}>{metric === 'pressure' ? pressureText : number(values[metric], metric === 'flow' ? 2 : 1)}<span className="ml-1 text-[0.3em] tracking-normal">{units[metric]}</span></div>
     {metric === 'weight' && targetYieldG > 0 && <>
       <div className="text-xs text-[#a09880] mt-2">/ {targetYieldG} g</div>
       <progress aria-label="Target yield" className="w-full h-1 accent-[#c88a4b]" max={targetYieldG} value={values.weight ?? 0} />
@@ -86,7 +85,7 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
     {equipment.scale && values.weight == null && <p className="text-xs text-[#a09880] text-center">Connect your smart scale for weight and flow.</p>}
     </div>
     {(trust || cameraMounted) && <div className={`shot-trust-camera ${trust ? 'shot-trust-camera--open' : ''}`} aria-hidden={!trust} inert={!trust}>
-      <div className="shot-trust-camera-inner"><ShotGaugeCamera pressure={pressure} expanded active={trust} onToggle={() => setTrustOverride(false)} barText={number(values.pressure)} preview={preview} /></div>
+      <div className="shot-trust-camera-inner"><ShotGaugeCamera pressure={pressure} expanded active={trust} onToggle={() => setTrustOverride(false)} barText={pressureText} preview={preview} /></div>
     </div>}
     {options.chart && !options.minimal && <LiveShotChart pressure={pressure?.samples} flow={flowSeries} gauge={equipment.gauge} scale={equipment.scale} grow={options.layout === 'scale'} />}
   </div>;

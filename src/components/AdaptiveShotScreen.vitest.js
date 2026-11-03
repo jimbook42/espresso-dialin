@@ -76,8 +76,9 @@ describe('adaptive live shot screen', () => {
     expect(camera.textContent).toContain('8.4');
     expect(camera.querySelector('[data-testid="shot-camera-pressure"]').className).toContain('bottom-3 left-3');
     expect(camera.textContent).not.toContain('Tap to hide gauge');
-    expect(container.querySelector('[data-metric="pressure"]').textContent).not.toContain('8.4');
-    expect(container.querySelector('[data-metric="pressure"]').textContent).not.toContain('bar');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('8.4');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('bar');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).not.toContain('On camera');
     expect(container.querySelector('[data-testid="live-shot-chart"]')).toBe(chart);
     expect(container.querySelector('.shot-hero')).toBe(metrics);
     click(camera);
@@ -89,6 +90,49 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('.shot-trust-camera')).toBeNull();
     expect(container.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
     expect(container.querySelector('[data-testid="live-shot-chart"]')).toBe(chart);
+  });
+
+  it('draws an uncalibrated, unlocked stream in trust view without preview or test-mode bypass', () => {
+    let nextFrame;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => { nextFrame = callback; return 1; });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    const context = { canvas: null, drawImage: vi.fn() };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function () {
+      context.canvas = this;
+      return context;
+    });
+    const video = { readyState: 2, videoWidth: 640, videoHeight: 480, srcObject: {} };
+    const pressure = { enabled: true, calibrated: false, readerUncertain: true, displayBar: null,
+      hold: { gap: true }, samples: [], videoRef: { current: video },
+      liveFrameRef: { current: { valid: false, fresh: false } } };
+    function Host() {
+      return createElement(ShotLabPressureContext.Provider, { value: pressure }, createElement(AdaptiveShotScreen, {
+        settings: { labCameraPressureEnabled: true, shotScreen: { showGauge: true } }, seconds: 12, scaleEnabled: false,
+      }));
+    }
+    const container = render(Host);
+    act(() => nextFrame(100));
+    expect(context.drawImage).toHaveBeenCalledWith(video, 0, 0, 640, 480);
+    expect(container.querySelector('.shot-trust-camera--open')).not.toBeNull();
+    expect(container.querySelector('[data-testid="shot-gauge-camera"] canvas')).not.toBeNull();
+    expect(container.querySelector('[data-testid="shot-camera-status"]').textContent).toBe('Looking for gauge…');
+    const tile = container.querySelector('[data-metric="pressure"]');
+    expect(tile.textContent).toContain('--');
+    expect(tile.textContent).toContain('bar');
+    expect(tile.textContent).not.toContain('On camera');
+    expect(container.querySelector('[data-testid="shot-camera-pressure"]').textContent).toContain('--');
+  });
+
+  it('shows Camera unavailable inside the trust box when no stream exists', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    const container = render(ShotScreenView, {
+      settings: { labCameraPressureEnabled: true, shotScreen: { showGauge: true } }, values,
+      pressure: { videoRef: { current: null }, calibrated: false },
+    });
+    expect(container.querySelector('.shot-trust-camera--open')).not.toBeNull();
+    expect(container.querySelector('[data-testid="shot-camera-status"]').textContent).toBe('Camera unavailable');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('8.4');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).not.toContain('On camera');
   });
 
   it('keeps the Minimal hero in its full-height centring layer when trust opens', () => {
@@ -161,7 +205,7 @@ describe('adaptive live shot screen', () => {
       }));
     }
     const container = render(Host);
-    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('—');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('--');
     expect(container.querySelector('[data-metric="weight"]').textContent).toContain('—');
     expect(container.textContent).toContain('Pressure uncertain');
     act(() => publishScaleLiveWeight({ isConnected: true, weightTriggersPrimed: false, liveWeightG: 999 }));

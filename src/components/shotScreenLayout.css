@@ -78,13 +78,6 @@
   padding-bottom: 0.25rem;
 }
 
-.shot-camera-pressure-placeholder {
-  display: inline-block;
-  font-size: 0.3em;
-  vertical-align: middle;
-  color: #a09880;
-}
-
 .shot-live-chart--grow {
   flex: 1 1 0;
   min-height: 7rem;
@@ -143,6 +136,8 @@
 .shot-trust-camera--open {
   grid-template-rows: 1fr;
   flex-basis: 32dvh;
+  height: min(32dvh, 56.25cqw);
+  min-height: 8rem;
   max-height: min(32dvh, 56.25cqw);
   opacity: 1;
   margin-bottom: 0;
@@ -156,6 +151,7 @@
   display: flex;
   justify-content: center;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
