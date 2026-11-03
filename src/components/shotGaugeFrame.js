@@ -26,6 +26,23 @@ export function drawShotGaugeFrame(context, video, frame, nowMs) {
     canvas.height = height;
   }
   context.drawImage(video, 0, 0, width, height);
+  strokeGaugeNeedle(context, frame, nowMs);
+}
+
+/** Transparent overlay; the actual image is played by a shared-stream video. */
+export function drawShotGaugeOverlay(context, video, frame, nowMs) {
+  const { videoWidth: width, videoHeight: height } = video;
+  if (video.readyState < 2 || !width || !height) return;
+  const canvas = context.canvas;
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  context.clearRect(0, 0, width, height);
+  strokeGaugeNeedle(context, frame, nowMs);
+}
+
+function strokeGaugeNeedle(context, frame, nowMs) {
   const tip = needleTipFromSample(frame);
   if (!frame?.valid || !frame.fresh || frame.held || !tip
     || nowMs - frame.observedAtMs > 500) return;

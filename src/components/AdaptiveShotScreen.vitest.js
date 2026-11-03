@@ -6,7 +6,7 @@ import { AdaptiveShotScreen, ShotScreenView } from './AdaptiveShotScreen.jsx';
 import { ShotScreenCustomizer } from './ShotScreenCustomizer.jsx';
 import { ShotScreenPreview } from './ShotScreenPreview.jsx';
 import { ShotLabPressureContext } from './ShotLabPressureContext.jsx';
-import { drawShotGaugeFrame, shotGaugeObjectPosition } from './shotGaugeFrame.js';
+import { drawShotGaugeFrame, drawShotGaugeOverlay, shotGaugeObjectPosition } from './shotGaugeFrame.js';
 import { publishScaleLiveWeight, resetScaleLiveWeightStore } from '../scales/scaleLiveWeightStore.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -96,12 +96,19 @@ describe('adaptive live shot screen', () => {
     let nextFrame;
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => { nextFrame = callback; return 1; });
     vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
-    const context = { canvas: null, drawImage: vi.fn() };
+    const context = { canvas: null, clearRect: vi.fn() };
+    const stream = {};
+    // Unit-test media attachment; Happy DOM's native setter requires its own
+    // MediaStream implementation, so model just the display's srcObject slot.
+    vi.spyOn(HTMLMediaElement.prototype, 'srcObject', 'set').mockImplementation(function (value) {
+      Object.defineProperty(this, 'srcObject', { configurable: true, writable: true, value });
+    });
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function () {
       context.canvas = this;
       return context;
     });
-    const video = { readyState: 2, videoWidth: 640, videoHeight: 480, srcObject: {} };
+    const video = { readyState: 2, videoWidth: 640, videoHeight: 480, srcObject: stream };
     const pressure = { enabled: true, calibrated: false, readerUncertain: true, displayBar: null,
       hold: { gap: true }, samples: [], videoRef: { current: video },
       liveFrameRef: { current: { valid: false, fresh: false } } };
@@ -112,7 +119,12 @@ describe('adaptive live shot screen', () => {
     }
     const container = render(Host);
     act(() => nextFrame(100));
-    expect(context.drawImage).toHaveBeenCalledWith(video, 0, 0, 640, 480);
+    const trustVideo = container.querySelector('[data-testid="shot-trust-video"]');
+    expect(trustVideo.srcObject).toBe(stream);
+    expect(trustVideo.muted).toBe(true);
+    expect(trustVideo.playsInline).toBe(true);
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(context.clearRect).toHaveBeenCalledWith(0, 0, 640, 480);
     expect(container.querySelector('.shot-trust-camera--open')).not.toBeNull();
     expect(container.querySelector('[data-testid="shot-gauge-camera"] canvas')).not.toBeNull();
     expect(container.querySelector('[data-testid="shot-camera-status"]').textContent).toBe('Looking for gauge…');
@@ -293,7 +305,7 @@ describe('trust camera overlay', () => {
   });
 
   it('draws the existing needle angle in source-image coordinates and withholds invalid or stale lines', () => {
-    const context = { canvas: {}, drawImage: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn() };
+    const context = { canvas: {}, drawImage: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn() };
     const video = { videoWidth: 640, videoHeight: 480, readyState: 2 };
     const frame = { hubX: 100, hubY: 100, radius: 50, needleDeg: 0, fresh: true, valid: true, observedAtMs: 1000 };
     drawShotGaugeFrame(context, video, frame, 1100);
@@ -306,6 +318,10 @@ describe('trust camera overlay', () => {
     drawShotGaugeFrame(context, video, { ...frame, held: true }, 1100);
     drawShotGaugeFrame(context, video, { ...frame, fresh: false }, 1100);
     expect(context.stroke).toHaveBeenCalledTimes(1);
+    expect(context.drawImage).toHaveBeenCalledTimes(5);
+    drawShotGaugeOverlay(context, video, frame, 1100);
+    expect(context.clearRect).toHaveBeenCalledWith(0, 0, 640, 480);
+    expect(context.stroke).toHaveBeenCalledTimes(2);
     expect(context.drawImage).toHaveBeenCalledTimes(5);
   });
 });

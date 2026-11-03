@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useFrontCameraStream } from '../flairPressureLab/hooks/useFrontCameraStream.js';
+import { useSharedCameraVideo } from './useSharedCameraVideo.js';
 import {
   calibrateFromTaps,
   createCalibratedTracker,
@@ -40,6 +41,7 @@ const PHASE_LABEL = {
 const LOUPE_SIZE = 112;
 const LOUPE_ZOOM = 3.2;
 const MARKER_HIT = 44;
+const NO_CAMERA_ACTION = () => {};
 
 /**
  * Reuses the pressure-lab tap-calibrate flow in a modal sheet.
@@ -52,8 +54,13 @@ export function LabGaugeTapCalibrateSheet({
   showCameraPreview = false,
   leapCap = true,
   legacyScale = false,
+  sourceCamera,
 }) {
-  const { videoRef, start, stop, status, error } = useFrontCameraStream();
+  const { videoRef, start: localStart, stop: localStop, status: localStatus, error: localError } = useFrontCameraStream();
+  const start = sourceCamera ? NO_CAMERA_ACTION : localStart;
+  const stop = sourceCamera ? NO_CAMERA_ACTION : localStop;
+  const status = sourceCamera ? sourceCamera.cameraStatus : localStatus;
+  const error = sourceCamera ? sourceCamera.cameraError : localError;
   const [tapPhase, setTapPhase] = useState('aim');
   const [tapNote, setTapNote] = useState('');
   const [reviewPose, setReviewPose] = useState(null);
@@ -77,6 +84,8 @@ export function LabGaugeTapCalibrateSheet({
   const fixtureHook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
   const fixtureSrc = fixtureHook?.src ?? null;
   const mirrorPreview = fixtureHook?.mirror !== false;
+  useSharedCameraVideo({ sourceRef: sourceCamera?.videoRef, targetRef: videoRef,
+    active: open && Boolean(sourceCamera) && !fixtureSrc, cameraStatus: sourceCamera?.cameraStatus });
 
   const syncSourceCanvas = useCallback((image) => {
     if (!image) return null;

@@ -46,6 +46,21 @@ afterEach(() => {
 });
 
 describe('reader frames while trust camera is hidden', () => {
+  it('keeps an uncalibrated owner video mounted from idle into a live shot', () => {
+    const container = document.createElement('div');
+    root = createRoot(container);
+    const settings = { labCameraPressureEnabled: true };
+    act(() => root.render(createElement(ShotLabPressureProvider, { settings, timerRunning: false, timerSeconds: 0 })));
+    const video = container.querySelector('[data-testid="shot-reader-video"]');
+    expect(video).not.toBeNull();
+    expect(reader.options.storedCalibration).toBeNull();
+    expect(reader.options.cameraPreviewActive).toBe(false);
+    act(() => root.render(createElement(ShotLabPressureProvider, { settings, timerRunning: true, timerSeconds: 1 })));
+    expect(container.querySelector('[data-testid="shot-reader-video"]')).toBe(video);
+    expect(reader.videoRef.current).toBe(video);
+    expect(reader.options.cameraPreviewActive).toBe(true);
+  });
+
   it('retains the playing source video and frame observer through show/hide', async () => {
     vi.useFakeTimers();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);

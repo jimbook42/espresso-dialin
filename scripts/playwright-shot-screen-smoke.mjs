@@ -10,8 +10,8 @@ let browser;
 let passed = 0;
 try {
   await waitForServer(server.url);
-  browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, permissions: ['camera'] });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(server.url);
@@ -61,6 +61,22 @@ try {
   assert.equal(await preview.locator('[data-size="big"]').getAttribute('data-metric'), 'time');
   await customiser.getByRole('button', { name: 'Recommended for my setup' }).click();
   await layout('gauge');
+  await page.getByRole('button', { name: '✕', exact: true }).click();
+  // Dial keeps its calibration guard. Verify a cancelled setup can acquire the
+  // shared stream again on a second Start, without any layout-test bypass.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await page.getByRole('button', { name: 'Close gauge setup', exact: true }).waitFor();
+    await page.waitForFunction(() => {
+      const owner = document.querySelector('[data-testid="shot-reader-video"]');
+      const setup = document.querySelector('[data-testid="gauge-tap-viewport"] video');
+      return owner?.srcObject && owner.srcObject === setup?.srcObject;
+    }, null, { timeout: 30000 });
+    await page.getByRole('button', { name: 'Close gauge setup', exact: true }).click();
+  }
+  passed++;
+  console.log('PASS Start → Cancel setup → Start: setup uses the owner stream both times');
+  await page.getByTitle('Settings', { exact: true }).click();
   await customiser.getByRole('switch', { name: 'Timer only', exact: true }).click();
   await layout('timer');
   await customiser.getByRole('switch', { name: 'Minimal mode' }).click();

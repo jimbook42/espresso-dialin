@@ -1,39 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
-import { drawShotGaugeFrame, shotGaugeObjectPosition } from './shotGaugeFrame.js';
+import { useRef } from 'react';
+import { drawShotGaugeOverlay, shotGaugeObjectPosition } from './shotGaugeFrame.js';
+import { useSharedCameraVideo } from './useSharedCameraVideo.js';
 
 export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview = false, active = true }) {
   const canvasRef = useRef(null);
+  const previewVideoRef = useRef(null);
   const videoRef = pressure?.videoRef;
   const frameRef = pressure?.liveFrameRef;
-  const [feedStatus, setFeedStatus] = useState('unavailable');
+  const feedStatus = useSharedCameraVideo({ sourceRef: videoRef, targetRef: previewVideoRef,
+    active: !preview && active, cameraStatus: pressure?.cameraStatus,
+    onFrame: (source, target) => {
+      if (!source) return;
+      const canvas = canvasRef.current;
+      const context = canvas?.getContext('2d');
+      const frame = frameRef?.current;
+      if (context) drawShotGaugeOverlay(context, source, frame, Date.now());
+      if (expanded) {
+        const position = shotGaugeObjectPosition(frame, source.videoWidth, source.videoHeight, target.clientWidth, target.clientHeight);
+        if (target.style.objectPosition !== position) target.style.objectPosition = position;
+        if (canvas && canvas.style.objectPosition !== position) canvas.style.objectPosition = position;
+      }
+    } });
   const lookingForGauge = !pressure?.calibrated || pressure?.readerUncertain
     || pressure?.hold?.gap || pressure?.displayBar == null;
-  useEffect(() => {
-    if (preview || !active) return undefined;
-    const context = canvasRef.current?.getContext('2d');
-    let raf;
-    let last = 0;
-    const draw = (now) => {
-      raf = requestAnimationFrame(draw);
-      if (now - last < 50) return;
-      last = now;
-      const video = videoRef?.current;
-      const ready = context && video?.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
-      const status = ready ? 'live' : video?.srcObject ? 'loading' : 'unavailable';
-      setFeedStatus((previous) => previous === status ? previous : status);
-      if (ready) {
-        const frame = frameRef?.current;
-        drawShotGaugeFrame(context, video, frame, Date.now());
-        if (expanded) {
-          const canvas = canvasRef.current;
-          const position = shotGaugeObjectPosition(frame, video.videoWidth, video.videoHeight, canvas.clientWidth, canvas.clientHeight);
-          if (canvas.style.objectPosition !== position) canvas.style.objectPosition = position;
-        }
-      }
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [videoRef, frameRef, preview, active, expanded]);
 
   return (
     <button type="button" onClick={onToggle} aria-label={expanded ? 'Hide gauge' : 'Show gauge'}
@@ -42,7 +31,11 @@ export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview
       {preview ? (
         <div className="h-full flex items-center justify-center text-[#a09880] text-xs">Camera preview · example</div>
       ) : (
-        <canvas ref={canvasRef} className={`absolute inset-0 w-full h-full ${expanded ? 'object-cover' : 'object-contain'}`} aria-label="Live gauge camera with tracked needle" />
+        <>
+          <video ref={previewVideoRef} data-testid="shot-trust-video" autoPlay muted playsInline
+            className={`absolute inset-0 w-full h-full ${expanded ? 'object-cover' : 'object-contain'}`} aria-label="Live gauge camera" />
+          <canvas ref={canvasRef} className={`pointer-events-none absolute inset-0 w-full h-full ${expanded ? 'object-cover' : 'object-contain'}`} aria-label="Tracked needle overlay" />
+        </>
       )}
       {!preview && feedStatus !== 'live' && <span role="status" data-testid="shot-camera-status"
         className="absolute inset-0 flex items-center justify-center bg-black text-sm text-[#a09880]">

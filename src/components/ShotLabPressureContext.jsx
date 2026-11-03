@@ -66,6 +66,8 @@ export function ShotLabPressureProvider({
     calibrateSheetOpen: calibrateOpen,
     weighingViewOpen,
     preShotDialCheckSurface,
+    // Guided-brew Start can reach a live shot without the Dial calibration guard.
+    cameraPreviewActive: enabled && timerRunning,
     onCalibrationSaved: onSaveCalibration,
     replayFrameObserverRef: readerFrameObserverRef,
     leapCap: !labPressureReaderLegacy(settings),
@@ -97,17 +99,6 @@ export function ShotLabPressureProvider({
     if (!metricsGetterRef) return;
     metricsGetterRef.current = enabled ? pressure.getShotMetrics : () => ({});
   }, [enabled, metricsGetterRef, pressure.getShotMetrics]);
-
-  const displaySurfaceActive = timerRunning || weighingViewOpen;
-  const preShotDialCheckActive =
-    enabled
-    && Boolean(storedCalibration)
-    && !calibrateOpen
-    && !timerRunning
-    && preShotDialCheckSurface;
-  const shouldRunHiddenCamera =
-    enabled
-    && (calibrateOpen || ((displaySurfaceActive || preShotDialCheckActive) && Boolean(storedCalibration)));
 
   const phaseGoal = useMemo(
     () =>
@@ -192,7 +183,9 @@ export function ShotLabPressureProvider({
 
   return (
     <ShotLabPressureContext.Provider value={value}>
-      {shouldRunHiddenCamera && (
+      {/* Keep the owner's ref stable through setup close/accept and shot start.
+          The camera hook still controls stream acquisition and release. */}
+      {enabled && (
         <video
           ref={pressure.videoRef}
           data-testid="shot-reader-video"
@@ -229,6 +222,7 @@ export function ShotLabPressureProvider({
         open={calibrateOpen}
         onClose={() => setCalibrateOpen(false)}
         onAccepted={pressure.acceptCalibration}
+        sourceCamera={pressure}
         ui={ui}
         showCameraPreview={previewOn}
         leapCap={!labPressureReaderLegacy(settings)}

@@ -48,6 +48,7 @@ export const SHOT_LAB_PRESSURE_READER_PATH = 'r7-tap-gated';
  *   calibrateSheetOpen: boolean,
  *   weighingViewOpen: boolean,
  *   preShotDialCheckSurface: boolean,
+ *   cameraPreviewActive?: boolean,
  *   replayFrameObserverRef?: import('react').MutableRefObject<((frame: object) => void) | null>,
  *   leapCap?: boolean,
  *   modelTiebreak?: boolean,
@@ -63,12 +64,13 @@ export function useShotLabPressure({
   calibrateSheetOpen,
   weighingViewOpen = false,
   preShotDialCheckSurface = false,
+  cameraPreviewActive = false,
   replayFrameObserverRef,
   leapCap = true,
   modelTiebreak = true,
   legacyScale = false,
 }) {
-  const { videoRef, start, stop, status } = useFrontCameraStream();
+  const { videoRef, start, stop, status, error: cameraError } = useFrontCameraStream();
   const sessionRef = useRef(createShotLabPressureSession());
   const holdRef = useRef(createReadingHold());
   const trackerRef = useRef(null);
@@ -126,7 +128,8 @@ export function useShotLabPressure({
     && !simMode;
   const shouldRunCamera =
     enabled
-    && (calibrateSheetOpen || ((displaySurfaceActive || preShotDialCheckActive) && calibrated && !simMode));
+    && (calibrateSheetOpen || (cameraPreviewActive && !simMode)
+      || ((displaySurfaceActive || preShotDialCheckActive) && calibrated && !simMode));
 
   useEffect(() => {
     if (!shouldRunCamera) {
@@ -523,6 +526,7 @@ export function useShotLabPressure({
     getShotMetrics,
     cameraStatus: status,
     cornerPreviewPose,
+    cameraError,
     dialRecalibrateHint,
     preShotDialStatus,
   };
