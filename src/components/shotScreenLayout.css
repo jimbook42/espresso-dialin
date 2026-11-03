@@ -142,8 +142,8 @@
 
 .shot-trust-camera--open {
   grid-template-rows: 1fr;
-  flex-basis: 38dvh;
-  max-height: min(38dvh, 75cqw);
+  flex-basis: 32dvh;
+  max-height: min(32dvh, 56.25cqw);
   opacity: 1;
   margin-bottom: 0;
 }
@@ -160,14 +160,15 @@
 }
 
 .shot-gauge-camera--expanded {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   height: auto;
 }
 
 .shot-trust-camera .shot-gauge-camera--expanded {
   height: 100%;
-  width: auto;
+  width: 100%;
   max-width: 100%;
+  aspect-ratio: auto;
 }
 
 .shot-gauge-camera--aim {
@@ -210,7 +211,7 @@
 }
 
 .shot-screen--minimal .shot-trust-camera--open {
-  height: min(38dvh, 75cqw);
+  height: min(32dvh, 56.25cqw);
 }
 
 .shot-screen--minimal .shot-aim-camera {

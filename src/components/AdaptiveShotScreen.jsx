@@ -89,7 +89,6 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
       <div className="shot-trust-camera-inner"><ShotGaugeCamera pressure={pressure} expanded active={trust} onToggle={() => setTrustOverride(false)} barText={number(values.pressure)} preview={preview} /></div>
     </div>}
     {options.chart && !options.minimal && <LiveShotChart pressure={pressure?.samples} flow={flowSeries} gauge={equipment.gauge} scale={equipment.scale} grow={options.layout === 'scale'} />}
-    {options.cameraPreview && !trust && trustOverride !== false && <div className="shot-aim-camera"><ShotGaugeCamera pressure={pressure} expanded={false} onToggle={() => setTrustOverride(true)} preview={preview} /></div>}
   </div>;
 }
 

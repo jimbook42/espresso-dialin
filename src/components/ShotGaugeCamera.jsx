@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { drawShotGaugeFrame } from './shotGaugeFrame.js';
+import { drawShotGaugeFrame, shotGaugeObjectPosition } from './shotGaugeFrame.js';
 
 export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview = false, active = true }) {
   const canvasRef = useRef(null);
@@ -16,11 +16,19 @@ export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview
       if (now - last < 50) return;
       last = now;
       const video = videoRef?.current;
-      if (video) drawShotGaugeFrame(context, video, frameRef?.current, Date.now());
+      if (video) {
+        const frame = frameRef?.current;
+        drawShotGaugeFrame(context, video, frame, Date.now());
+        if (expanded) {
+          const canvas = canvasRef.current;
+          const position = shotGaugeObjectPosition(frame, video.videoWidth, video.videoHeight, canvas.clientWidth, canvas.clientHeight);
+          if (canvas.style.objectPosition !== position) canvas.style.objectPosition = position;
+        }
+      }
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [videoRef, frameRef, preview, active]);
+  }, [videoRef, frameRef, preview, active, expanded]);
 
   return (
     <button type="button" onClick={onToggle} aria-label={expanded ? 'Hide gauge' : 'Show gauge'}
@@ -29,7 +37,7 @@ export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview
       {preview ? (
         <div className="h-full flex items-center justify-center text-[#a09880] text-xs">Camera preview · example</div>
       ) : (
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-contain" aria-label="Live gauge camera with tracked needle" />
+        <canvas ref={canvasRef} className={`absolute inset-0 w-full h-full ${expanded ? 'object-cover' : 'object-contain'}`} aria-label="Live gauge camera with tracked needle" />
       )}
       {expanded && <span data-testid="shot-camera-pressure" className="absolute bottom-3 left-3 rounded-xl bg-black/70 px-4 py-2 text-4xl font-bold text-[#c97868] tabular-nums">{barText} <span className="text-base">bar</span></span>}
     </button>

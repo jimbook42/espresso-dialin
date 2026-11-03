@@ -6,7 +6,7 @@ import { AdaptiveShotScreen, ShotScreenView } from './AdaptiveShotScreen.jsx';
 import { ShotScreenCustomizer } from './ShotScreenCustomizer.jsx';
 import { ShotScreenPreview } from './ShotScreenPreview.jsx';
 import { ShotLabPressureContext } from './ShotLabPressureContext.jsx';
-import { drawShotGaugeFrame } from './shotGaugeFrame.js';
+import { drawShotGaugeFrame, shotGaugeObjectPosition } from './shotGaugeFrame.js';
 import { publishScaleLiveWeight, resetScaleLiveWeightStore } from '../scales/scaleLiveWeightStore.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,7 +41,7 @@ describe('adaptive live shot screen', () => {
     const container = render(ShotScreenView, { equipment: { gauge, scale }, values, preview: true, targetYieldG: 36, targetTimeS: 30 });
     expect(bigMetrics(container)).toEqual(big);
     expect([...container.querySelectorAll('[data-size="small"]')].map((node) => node.dataset.metric)).toEqual(small);
-    expect(Boolean(container.querySelector('[data-testid="shot-gauge-camera"]'))).toBe(gauge);
+    expect(container.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
     expect(Boolean(container.querySelector('progress'))).toBe(scale);
   });
 
@@ -238,6 +238,16 @@ describe('customiser', () => {
 });
 
 describe('trust camera overlay', () => {
+  it('centres a cover crop on the reported gauge hub without changing source coordinates', () => {
+    const frame = { hubX: 320, hubY: 240 };
+    expect(shotGaugeObjectPosition(frame, 640, 480, 320, 180)).toBe('50.00% 50.00%');
+    expect(shotGaugeObjectPosition({ ...frame, hubY: 100 }, 640, 480, 320, 180)).toBe('50.00% 0.00%');
+    expect(shotGaugeObjectPosition({ ...frame, hubY: 400 }, 640, 480, 320, 180)).toBe('50.00% 100.00%');
+    expect(shotGaugeObjectPosition({ ...frame, hubX: 600 }, 640, 480, 180, 320)).toBe('100.00% 50.00%');
+    expect(shotGaugeObjectPosition(null, 640, 480, 320, 180)).toBe('50% 50%');
+    expect(frame).toEqual({ hubX: 320, hubY: 240 });
+  });
+
   it('draws the existing needle angle in source-image coordinates and withholds invalid or stale lines', () => {
     const context = { canvas: {}, drawImage: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn() };
     const video = { videoWidth: 640, videoHeight: 480, readyState: 2 };

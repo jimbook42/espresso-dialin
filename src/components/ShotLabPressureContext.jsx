@@ -195,7 +195,9 @@ export function ShotLabPressureProvider({
       {shouldRunHiddenCamera && (
         <video
           ref={pressure.videoRef}
-          className="fixed w-px h-px opacity-0 pointer-events-none"
+          data-testid="shot-reader-video"
+          style={{ position: 'absolute', top: 0, left: 0, width: 1, height: 1, opacity: 0.01, pointerEvents: 'none', overflow: 'hidden' }}
+          autoPlay
           playsInline
           muted
           aria-hidden

@@ -1,5 +1,21 @@
 import { needleTipFromSample } from '../flairPressureLab/shotReplayInterpolation.js';
 
+/** Cover-crop the display around the reader's existing hub, without changing
+ * the source video or the source coordinates used by the reader/needle line.
+ */
+export function shotGaugeObjectPosition(frame, sourceW, sourceH, boxW, boxH) {
+  if (!(sourceW > 0 && sourceH > 0 && boxW > 0 && boxH > 0)
+    || !Number.isFinite(frame?.hubX) || !Number.isFinite(frame?.hubY)) return '50% 50%';
+  const scale = Math.max(boxW / sourceW, boxH / sourceH);
+  const position = (hub, source, box) => {
+    const excess = source * scale - box;
+    if (excess <= 0) return 50;
+    const offset = Math.min(excess, Math.max(0, hub * scale - box / 2));
+    return offset / excess * 100;
+  };
+  return `${position(frame.hubX, sourceW, boxW).toFixed(2)}% ${position(frame.hubY, sourceH, boxH).toFixed(2)}%`;
+}
+
 /** Display-only observer of the existing camera and reader frame output. */
 export function drawShotGaugeFrame(context, video, frame, nowMs) {
   const { videoWidth: width, videoHeight: height } = video;
