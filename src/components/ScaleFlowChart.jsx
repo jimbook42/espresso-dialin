@@ -1,6 +1,7 @@
+import { pressureGapBridges } from './pressureGapBridges.js';
 import { useId } from 'react';
 import { flowRateSeriesFromWeightCurve } from '../scales/flowMetrics.js';
-import { pressureChartPointsForSavedCurve } from '../flairPressureLab/pressureDisplaySmoothing.js';
+import { pressureChartPointsForDisplay, labPressureCurvePlotTimeS } from '../flairPressureLab/pressureDisplaySmoothing.js';
 import { shotPressureChartY } from '../flairPressureLab/shotPressureChartLayout.js';
 import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js';
 import {
@@ -42,7 +43,7 @@ export function ScaleFlowChart({
   if (!flowSeries.length) return null;
 
   const pressurePoints = pressureSamples?.length
-    ? pressureChartPointsForSavedCurve(pressureSamples)
+    ? pressureChartPointsForDisplay(pressureSamples)
     : [];
   const hasRecordedPressure = Boolean(pressureSamples?.length);
   const showIdealPressure = Boolean(flairProfile) && !hasRecordedPressure;
@@ -59,7 +60,7 @@ export function ScaleFlowChart({
 
   const maxT = Math.max(
     ...flowSeries.map((p) => p.tS),
-    ...(showPressure ? pressurePoints.map((p) => p.tS) : []),
+    ...(showPressure ? pressurePoints.map((p) => labPressureCurvePlotTimeS(p.tS)) : []),
     1,
   );
   const timeAxisMax = Math.max(10, Math.ceil(maxT / 10) * 10);
@@ -97,10 +98,13 @@ export function ScaleFlowChart({
     }
   }
 
+  const pressureX = (tS) => x(labPressureCurvePlotTimeS(tS));
+  const bridges = pressureGapBridges(pressurePoints);
+
   let pressurePath = '';
   if (showPressure) {
     pressurePath = pressurePoints
-      .map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'} ${x(p.tS).toFixed(1)} ${yBar(p.bar).toFixed(1)}`)
+      .map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'} ${pressureX(p.tS).toFixed(1)} ${yBar(p.bar).toFixed(1)}`)
       .join(' ');
   }
 
@@ -228,6 +232,19 @@ export function ScaleFlowChart({
           strokeLinejoin="round"
           data-testid="history-flow"
         />
+        {bridges.map(([before, after], index) => (
+          <path
+            key={index}
+            d={`M ${pressureX(before.tS).toFixed(1)} ${yBar(before.bar).toFixed(1)} L ${pressureX(after.tS).toFixed(1)} ${yBar(after.bar).toFixed(1)}`}
+            fill="none"
+            stroke={pressureLiveStroke}
+            strokeWidth="1"
+            strokeDasharray="1 3"
+            strokeLinecap="round"
+            opacity={hasDimPressure ? 0.75 : 1}
+            data-testid="pressure-gap-bridge"
+          />
+        ))}
         {pressurePath && (
           <path
             d={pressurePath}

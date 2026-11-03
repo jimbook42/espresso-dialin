@@ -1,7 +1,8 @@
+import { pressureGapBridges } from './pressureGapBridges.js';
 import { useId } from 'react';
 import {
   pressureChartPointsForDisplay,
-  pressureChartPointsForSavedCurve,
+  labPressureCurvePlotTimeS,
 } from '../flairPressureLab/pressureDisplaySmoothing.js';
 import {
   shotPressureChartY,
@@ -30,9 +31,9 @@ export function ShotPressureChart({
   savedCurve = false,
 }) {
   const labelId = useId();
-  const points = savedCurve
-    ? pressureChartPointsForSavedCurve(samples)
-    : pressureChartPointsForDisplay(samples);
+  const points = pressureChartPointsForDisplay(samples);
+  const plotTime = (tS) => savedCurve ? labPressureCurvePlotTimeS(tS) : tS;
+  const bridges = pressureGapBridges(points);
   if (!points.length) return null;
 
   const w = compact ? 280 : 320;
@@ -44,7 +45,7 @@ export function ShotPressureChart({
   const chartW = w - padL - padR;
   const chartH = h - padT - padB;
 
-  const maxT = Math.max(...points.map((p) => p.tS), 1);
+  const maxT = Math.max(...points.map((p) => plotTime(p.tS)), 1);
   const goalBars = [
     phaseGoal?.targetBar,
     phaseGoal?.taperBand?.lowBar,
@@ -55,7 +56,7 @@ export function ShotPressureChart({
     sampleBars: points.map((p) => p.bar),
     goalBars,
   });
-  const x = (t) => padL + (t / maxT) * chartW;
+  const x = (t) => padL + (plotTime(t) / maxT) * chartW;
   const y = (bar) => shotPressureChartY(bar, yMax, padT, chartH);
 
   let path = '';
@@ -113,6 +114,19 @@ export function ShotPressureChart({
             strokeDasharray="4 3"
           />
         )}
+        {bridges.map(([before, after], index) => (
+          <path
+            key={index}
+            d={`M ${x(before.tS).toFixed(1)} ${y(before.bar).toFixed(1)} L ${x(after.tS).toFixed(1)} ${y(after.bar).toFixed(1)}`}
+            fill="none"
+            stroke={pressureLiveStroke}
+            strokeWidth="1"
+            strokeDasharray="1 3"
+            strokeLinecap="round"
+            opacity={hasDim ? 0.75 : 1}
+            data-testid="pressure-gap-bridge"
+          />
+        ))}
         <path
           d={path.trim()}
           fill="none"

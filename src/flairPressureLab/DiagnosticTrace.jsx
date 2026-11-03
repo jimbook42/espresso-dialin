@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { DIAGNOSTIC_WINDOW_MS } from './diagnosticHistory.js';
 import { wrapDelta } from './gaugeConfig.js';
+import { pressureGapBridges } from '../components/pressureGapBridges.js';
 
 const STATE_COLOR = {
   CALIBRATING: '#a8a29e',
@@ -62,12 +63,34 @@ function linePath(samples, values, xOf, yOf) {
   return path;
 }
 
-function Lane({ title, samples, values, xOf, yOf, color, width, y, height }) {
+function Lane({ title, samples, values, xOf, yOf, color, width, y, height, bridgePressure = false }) {
+  const points = [];
+  let gap = true;
+  if (bridgePressure) {
+    samples.forEach((sample, index) => {
+      const bar = values[index];
+      if (!Number.isFinite(bar)) { gap = true; return; }
+      points.push({ tS: sample.t / 1000, bar, breakBefore: gap });
+      gap = false;
+    });
+  }
   return (
     <g>
       <text x="0" y={y + 10} fill="#a8a29e" fontSize="8">{title}</text>
       <line x1="46" x2={width} y1={y + height} y2={y + height} stroke="#44403c" strokeWidth="0.5" />
       <path d={linePath(samples, values, xOf, (value) => y + yOf(value) * height)} fill="none" stroke={color} strokeWidth="1.4" />
+      {pressureGapBridges(points).map(([before, after], index) => (
+        <path
+          key={index}
+          d={`M ${xOf(before.tS * 1000).toFixed(1)} ${(y + yOf(before.bar) * height).toFixed(1)} L ${xOf(after.tS * 1000).toFixed(1)} ${(y + yOf(after.bar) * height).toFixed(1)}`}
+          fill="none"
+          stroke={color}
+          strokeWidth="1"
+          strokeDasharray="1 3"
+          strokeLinecap="round"
+          data-testid="pressure-gap-bridge"
+        />
+      ))}
     </g>
   );
 }
@@ -135,6 +158,7 @@ export const DiagnosticTrace = memo(function DiagnosticTrace({ samples }) {
       width={width}
       y={y}
       height={28}
+      bridgePressure={title === 'bar'}
     />
   );
 
