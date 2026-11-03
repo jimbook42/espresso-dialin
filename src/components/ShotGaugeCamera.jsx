@@ -25,7 +25,7 @@ export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview
     || pressure?.hold?.gap || pressure?.displayBar == null;
 
   return (
-    <button type="button" onClick={onToggle} aria-label={expanded ? 'Hide gauge' : 'Show gauge'}
+    <button type="button" onClick={onToggle} aria-label={expanded ? 'Hide gauge camera' : 'Show gauge camera'}
       data-testid="shot-gauge-camera"
       className={`shot-gauge-camera--${expanded ? 'expanded' : 'aim'} relative block w-full overflow-hidden rounded-xl border border-[#2e2b26] bg-black shrink-0`}>
       {preview ? (

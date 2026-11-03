@@ -101,7 +101,9 @@ try {
   await page.getByTitle('Settings', { exact: true }).evaluate((node) => node.click());
   await customiser.getByRole('switch', { name: 'Pressure gauge via camera' }).evaluate((node) => node.click());
   await page.getByRole('button', { name: '✕', exact: true }).evaluate((node) => node.click());
-  await live.getByRole('button', { name: 'Show gauge', exact: true }).click();
+  const liveToolbar = live.locator('.shot-camera-toolbar');
+  assert.equal(await liveToolbar.count(), 1);
+  await liveToolbar.getByRole('button', { name: 'Show gauge', exact: true }).click();
   for (const viewport of [{ width: 390, height: 844 }, { width: 375, height: 667 }]) {
     await page.setViewportSize(viewport);
     await page.waitForFunction(() => {
@@ -138,7 +140,8 @@ try {
     assert.ok(hide && hide.top >= measurement.headerTop && hide.bottom <= measurement.headerBottom);
     await page.screenshot({ path: path.join(tmpdir(), `shot-screen-portrait-${viewport.width}x${viewport.height}.png`) });
   }
-  await live.getByRole('button', { name: 'Hide gauge', exact: true }).click();
+  assert.equal(await liveToolbar.getByRole('button', { name: 'Hide gauge', exact: true }).count(), 1);
+  await liveToolbar.getByRole('button', { name: 'Hide gauge', exact: true }).click();
   await live.locator('.shot-trust-camera').waitFor({ state: 'detached' });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByTitle('Settings', { exact: true }).evaluate((node) => node.click());
