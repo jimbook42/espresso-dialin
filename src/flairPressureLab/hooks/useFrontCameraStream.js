@@ -38,25 +38,72 @@ function releaseStream(streamRef, videoRef) {
   if (videoRef.current) videoRef.current.srcObject = null;
 }
 
+/** Session counters only. No frames, labels or device identifiers. */
+export function createCameraTrackLog() {
+  return {
+    readyState: null,
+    muted: null,
+    events: { mute: 0, unmute: 0, ended: 0 },
+  };
+}
+
+export function resetCameraTrackLog(log, track) {
+  if (!log) return;
+  log.events.mute = 0;
+  log.events.unmute = 0;
+  log.events.ended = 0;
+  log.readyState = track?.readyState ?? null;
+  log.muted = track?.muted ?? null;
+}
+
+/** Count mute / unmute / ended. Does not start, stop or replace the track. */
+export function bindCameraTrackEvents(track, log) {
+  if (!track?.addEventListener || !log) return () => {};
+  const apply = (name) => () => {
+    log.events[name] += 1;
+    log.readyState = track.readyState ?? null;
+    log.muted = track.muted ?? null;
+  };
+  const names = ['mute', 'unmute', 'ended'];
+  const listeners = names.map((name) => {
+    const listener = apply(name);
+    track.addEventListener(name, listener);
+    return [name, listener];
+  });
+  log.readyState = track.readyState ?? null;
+  log.muted = track.muted ?? null;
+  return () => {
+    listeners.forEach(([name, listener]) => track.removeEventListener(name, listener));
+  };
+}
+
 export function useFrontCameraStream() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const mountedRef = useRef(true);
+  const trackDiagnosticsRef = useRef(createCameraTrackLog());
+  const unbindTrackRef = useRef(() => {});
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [trackInfo, setTrackInfo] = useState(null);
 
-  const stop = useCallback(() => {
+  const releaseCamera = useCallback(() => {
+    unbindTrackRef.current();
+    unbindTrackRef.current = () => {};
     releaseStream(streamRef, videoRef);
+  }, []);
+
+  const stop = useCallback(() => {
+    releaseCamera();
     setTrackInfo(null);
     setError('');
     setStatus('idle');
-  }, []);
+  }, [releaseCamera]);
 
   const start = useCallback(async () => {
     setError('');
     setStatus('requesting');
-    releaseStream(streamRef, videoRef);
+    releaseCamera();
     try {
       const stream = await openFrontCamera();
       if (!mountedRef.current) {
@@ -72,6 +119,7 @@ export function useFrontCameraStream() {
         throw rear;
       }
       streamRef.current = stream;
+      unbindTrackRef.current = bindCameraTrackEvents(track, trackDiagnosticsRef.current);
       const video = videoRef.current;
       if (video) {
         video.srcObject = stream;
@@ -80,7 +128,7 @@ export function useFrontCameraStream() {
         await video.play();
       }
       if (!mountedRef.current) {
-        releaseStream(streamRef, videoRef);
+        releaseCamera();
         return;
       }
       setTrackInfo({
@@ -91,21 +139,21 @@ export function useFrontCameraStream() {
       });
       setStatus('live');
     } catch (err) {
-      releaseStream(streamRef, videoRef);
+      releaseCamera();
       if (!mountedRef.current) return;
       setTrackInfo(null);
       setError(cameraErrorMessage(err));
       setStatus('error');
     }
-  }, []);
+  }, [releaseCamera]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      releaseStream(streamRef, videoRef);
+      releaseCamera();
     };
-  }, []);
+  }, [releaseCamera]);
 
-  return { videoRef, start, stop, status, error, trackInfo };
+  return { videoRef, start, stop, status, error, trackInfo, trackDiagnosticsRef };
 }

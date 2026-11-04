@@ -21,7 +21,20 @@ export function currentTapModel(frame, shotT0) {
 /** Fresh observations and short display holds are separate states. Never re-zero a shot. */
 export function createTapReadingPublisher(config) {
   let last = null, pending = [], shotT0 = 0;
-  const reset = (epoch = 0) => { last = null; pending = []; shotT0 = epoch; };
+  const rejectionCounts = { publisher: 0, rate: 0, byReason: {} };
+  const resetCounts = () => {
+    rejectionCounts.publisher = 0;
+    rejectionCounts.rate = 0;
+    rejectionCounts.byReason = {};
+  };
+  const noteRejection = (reason) => {
+    const underlying = String(reason ?? 'unspecified').replace(/^held:/, '');
+    rejectionCounts.byReason[underlying] = (rejectionCounts.byReason[underlying] ?? 0) + 1;
+    if (underlying === 'pose-lost' || underlying === 'needle-missing') return;
+    rejectionCounts.publisher += 1;
+    if (underlying.includes('rate')) rejectionCounts.rate += 1;
+  };
+  const reset = (epoch = 0) => { last = null; pending = []; shotT0 = epoch; resetCounts(); };
   const step = frame => {
     const { read, nowMs } = frame;
     const model = currentTapModel(frame, shotT0);
@@ -58,8 +71,10 @@ export function createTapReadingPublisher(config) {
         measuredAtMs: last.at, reason: candidate.source === 'tap' ? 'tap-fresh' : 'model-fresh' };
     }
     const held = !read.lost && last != null && nowMs - last.at <= TAP_DISPLAY_HOLD_MS;
+    const outReason = held ? `held:${reason}` : reason;
+    noteRejection(outReason);
     return { bar: held ? last.bar : null, fresh: false, held, uncertain: true,
-      measuredAtMs: null, reason: held ? `held:${reason}` : reason };
+      measuredAtMs: null, reason: outReason };
   };
-  return { reset, beginShot: reset, step };
+  return { reset, beginShot: reset, step, rejectionCounts };
 }

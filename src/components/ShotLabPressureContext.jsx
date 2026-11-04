@@ -83,6 +83,7 @@ export function ShotLabPressureProvider({
     shotReplayCommitRef,
     shotReplayDiscardRef,
     onReplayStored: onLabShotReplayStored,
+    readerStallSnapshotRef: pressure.readerStallSnapshotRef,
   });
 
   // Fan out existing reader output; replay recording retains its original observer.
@@ -171,6 +172,7 @@ export function ShotLabPressureProvider({
     timerRunning,
     dialRecalibrateHint: pressure.dialRecalibrateHint,
     preShotDialStatus: pressure.preShotDialStatus,
+    noPressureReadingWarning: pressure.noPressureReadingWarning,
   };
 
   const showCornerPreview =

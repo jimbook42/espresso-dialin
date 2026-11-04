@@ -4,7 +4,8 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const camera = vi.hoisted(() => ({ videoRef: { current: null }, start: vi.fn(async () => {}), stop: vi.fn() }));
-vi.mock('../flairPressureLab/hooks/useFrontCameraStream.js', () => ({
+vi.mock('../flairPressureLab/hooks/useFrontCameraStream.js', async (importOriginal) => ({
+  ...await importOriginal(),
   useFrontCameraStream: () => ({ ...camera, status: 'live', error: '' }),
 }));
 vi.mock('../flairPressureLab/opencvRuntime.js', async (importOriginal) => ({

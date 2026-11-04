@@ -81,7 +81,7 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
     </button> : <div className={`shot-hero grid ${primary.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-3 py-4 bg-[#1a1815] rounded-xl border border-[#2e2b26]`}>{primary.map((metric) => renderMetric(metric, true))}</div>}
     <div className="shot-screen-support">
     {secondary.length > 0 && <div className="flex items-center justify-around gap-2">{secondary.map((metric) => renderMetric(metric))}</div>}
-    {equipment.gauge && <p className="text-xs text-[#a09880] text-center" role="status">{pressure?.statusText}</p>}
+    {equipment.gauge && <p className="text-xs text-[#a09880] text-center" role="status" data-testid={pressure?.noPressureReadingWarning ? 'no-pressure-reading-warning' : undefined}>{pressure?.statusText}</p>}
     {equipment.scale && values.weight == null && <p className="text-xs text-[#a09880] text-center">Connect your smart scale for weight and flow.</p>}
     </div>
     {(trust || cameraMounted) && <div className={`shot-trust-camera ${trust ? 'shot-trust-camera--open' : ''}`} aria-hidden={!trust} inert={!trust}>
@@ -98,10 +98,12 @@ export function AdaptiveShotScreen({ settings, seconds, targetYieldG, targetTime
   const weight = resolveShotWeightReadout({ ...snapshot, timerRunning: true, yieldSettleActive, frozenYieldG });
   const equipment = shotEquipment(settings);
   const weightReady = scaleEnabled && snapshot.isConnected && ['shot', 'settling', 'frozen'].includes(weight.mode);
-  const statusText = pressure?.readerError || (!pressure?.calibrated ? 'Set up gauge in Settings before using pressure.'
-    : pressure.readerUncertain ? 'Pressure uncertain — compare with the gauge.'
-      : pressure.hold?.held ? 'Pressure held — waiting for a fresh reading.'
-        : pressure.hold?.gap || pressure.displayBar == null ? 'Waiting for a pressure reading…' : pressure.aimText);
+  const statusText = pressure?.noPressureReadingWarning
+    || pressure?.readerError
+    || (!pressure?.calibrated ? 'Set up gauge in Settings before using pressure.'
+      : pressure.readerUncertain ? 'Pressure uncertain — compare with the gauge.'
+        : pressure.hold?.held ? 'Pressure held — waiting for a fresh reading.'
+          : pressure.hold?.gap || pressure.displayBar == null ? 'Waiting for a pressure reading…' : pressure.aimText);
   return <ShotScreenView settings={settings} equipment={equipment}
     values={{ pressure: pressure?.enabled ? pressure.displayBar : null, weight: weightReady ? weight.grams : null,
       time: seconds, flow: weightReady ? flowGs : null }}

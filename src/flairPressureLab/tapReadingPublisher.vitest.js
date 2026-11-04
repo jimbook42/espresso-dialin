@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createShotLabR7Publisher } from './shotLabR7Live.js';
-import { currentTapModel, TAP_DISPLAY_HOLD_MS, TAP_MODEL_MAX_AGE_MS } from './tapReadingPublisher.js';
+import { createTapReadingPublisher, currentTapModel, TAP_DISPLAY_HOLD_MS, TAP_MODEL_MAX_AGE_MS } from './tapReadingPublisher.js';
 
 const calibration = { hub: { x: 100, y: 100 }, zeroAngleDeg: 0, fiveAngleDeg: 75, tenAngleDeg: 160 };
 const read = (bar = 5) => ({ ok: bar != null, lost: false, fresh: bar != null, bar,
@@ -59,6 +59,31 @@ describe('fresh tap observations and held display pressure', () => {
       { read: { ...frame.read, hub: { x: 120, y: 100 } } },
     ];
     for (const change of bad) expect(currentTapModel({ ...frame, ...change }, 1000)).toBeNull();
+  });
+
+  it('counts publisher and rate rejections without changing what is published', () => {
+    const pub = createTapReadingPublisher({
+      rateSlackBar: 0.3, rateBarPerS: 2, relockCount: 2, relockBandBar: 0.35,
+    });
+    pub.beginShot(1000);
+    expect(pub.step({ nowMs: 1000, capturedAtMs: 1000, read: read(2) }))
+      .toMatchObject({ bar: 2, fresh: true, reason: 'tap-fresh' });
+    expect(pub.rejectionCounts).toMatchObject({ publisher: 0, rate: 0 });
+    const rejected = pub.step({ nowMs: 1100, capturedAtMs: 1100, read: read(8) });
+    expect(rejected).toMatchObject({ bar: 2, fresh: false, held: true, reason: 'held:rate-unconfirmed' });
+    expect(pub.rejectionCounts.publisher).toBe(1);
+    expect(pub.rejectionCounts.rate).toBe(1);
+    expect(pub.step({ nowMs: 1200, capturedAtMs: 1200, read: { ...read(null), lost: true } }).fresh).toBe(false);
+    expect(pub.rejectionCounts.publisher).toBe(1);
+    expect(pub.rejectionCounts.byReason['pose-lost']).toBe(1);
+    expect(pub.step({ nowMs: 1300, capturedAtMs: 1300, read: read(2.1) }))
+      .toMatchObject({ bar: 2.1, fresh: true });
+    expect(pub.rejectionCounts.publisher).toBe(1);
+    pub.beginShot(2000);
+    expect(pub.rejectionCounts).toMatchObject({ publisher: 0, rate: 0, byReason: {} });
+    expect(pub.step({ nowMs: 2000, capturedAtMs: 2000, read: read(null) }).reason).toBe('needle-missing');
+    expect(pub.rejectionCounts.publisher).toBe(0);
+    expect(pub.rejectionCounts.byReason['needle-missing']).toBe(1);
   });
 
   it('does not treat a suppressed top-of-scale hold as a measurement', () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useFrontCameraStream } from './useFrontCameraStream.js';
+import { resetCameraTrackLog, useFrontCameraStream } from './useFrontCameraStream.js';
 import { PROCESS_INTERVAL_MS } from '../gaugeConfig.js';
 import { isRepeatedGaugeFrame } from '../cameraFrameFreshness.js';
 import { createReadingHold } from '../frameQuality.js';
@@ -22,6 +22,11 @@ import {
 import { createShotLabR7Publisher } from '../shotLabR7Live.js';
 import { r5SampleFromTapFrame } from '../shotLabR7Needle.js';
 import { loadNeedleModel, isNeedleModelReady, needleModelStatus } from '../needleModel.js';
+import {
+  NO_PRESSURE_READING_WARNING,
+  createReaderStallDiagnostics,
+  recordReaderSample,
+} from '../readerStallDiagnostics.js';
 import { gaugeSnapshotJpegFromImageData } from '../gaugeSnapshotJpeg.js';
 import { shouldPublishCornerPreviewPose } from '../labPressureCornerPreview.js';
 import {
@@ -70,7 +75,14 @@ export function useShotLabPressure({
   modelTiebreak = true,
   legacyScale = false,
 }) {
-  const { videoRef, start, stop, status, error: cameraError } = useFrontCameraStream();
+  const {
+    videoRef, start, stop, status, error: cameraError, trackDiagnosticsRef: cameraTrackLogRef,
+  } = useFrontCameraStream();
+  const fallbackTrackLogRef = useRef(null);
+  if (!cameraTrackLogRef && !fallbackTrackLogRef.current) {
+    fallbackTrackLogRef.current = { readyState: null, muted: null, events: { mute: 0, unmute: 0, ended: 0 } };
+  }
+  const trackDiagnosticsRef = cameraTrackLogRef ?? fallbackTrackLogRef;
   const sessionRef = useRef(createShotLabPressureSession());
   const holdRef = useRef(createReadingHold());
   const trackerRef = useRef(null);
@@ -102,8 +114,16 @@ export function useShotLabPressure({
   const shotStartDialHintRef = useRef(createShotStartDialHintTracker());
   const shotStartHintDoneRef = useRef(false);
   const [preShotDialStatus, setPreShotDialStatus] = useState(null);
+  const [noPressureReadingWarning, setNoPressureReadingWarning] = useState('');
   const preShotDialSamplerRef = useRef(createPreShotDialVerdictSampler());
   const preShotDialSamplerLockedRef = useRef(false);
+  const stallRef = useRef(null);
+  const readerStallSnapshotRef = useRef(null);
+  const warningOnRef = useRef(false);
+  const legacyScaleRef = useRef(legacyScale);
+  const recordingRef = useRef(false);
+  legacyScaleRef.current = legacyScale;
+  recordingRef.current = Boolean(timerRunning && !simMode);
 
   useEffect(() => {
     r5GenerationRef.current += 1;
@@ -185,8 +205,39 @@ export function useShotLabPressure({
     preShotDialSamplerRef.current.reset();
     preShotDialSamplerLockedRef.current = false;
     setPreShotDialStatus(null);
+    warningOnRef.current = false;
+    setNoPressureReadingWarning('');
     r7Ref.current?.reset();
   }, []);
+
+  const finishReaderStall = useCallback(() => {
+    const stall = stallRef.current;
+    if (!stall) return;
+    try {
+      if (!legacyScaleRef.current) stall.syncPublisher(r7Ref.current?.rejectionCounts);
+      stall.observe(
+        Date.now(),
+        videoRef.current,
+        r5InferBusyRef.current,
+        needleModelStatus(),
+        trackDiagnosticsRef.current,
+      );
+      readerStallSnapshotRef.current = stall.snapshot();
+    } catch {
+      try { readerStallSnapshotRef.current = stall.snapshot(); } catch { /* observation only */ }
+    }
+    stall.stop();
+    stallRef.current = null;
+  }, [videoRef, trackDiagnosticsRef]);
+
+  const beginReaderStall = useCallback((epoch) => {
+    finishReaderStall();
+    warningOnRef.current = false;
+    setNoPressureReadingWarning('');
+    const track = videoRef.current?.srcObject?.getVideoTracks?.()[0] ?? null;
+    resetCameraTrackLog(trackDiagnosticsRef.current, track);
+    stallRef.current = createReaderStallDiagnostics(epoch);
+  }, [finishReaderStall, videoRef, trackDiagnosticsRef]);
 
   const observePreShotDialPose = useCallback((read, cal) => {
     if (!preShotDialCheckActive || preShotDialSamplerLockedRef.current) return;
@@ -215,6 +266,7 @@ export function useShotLabPressure({
       lastR5Ref.current = { r5Bar: null, r5Conf: null, r5Angle: null };
       stoppedShotMetricsRef.current = null;
       const epoch = Date.now();
+      if (!simMode) beginReaderStall(epoch);
       sessionRef.current.begin(epoch);
       shotEpochRef.current = epoch;
       r7Ref.current?.beginShot(epoch);
@@ -233,6 +285,7 @@ export function useShotLabPressure({
       r5GenerationRef.current += 1;
       lastR5Ref.current = { r5Bar: null, r5Conf: null, r5Angle: null };
       const epoch = Date.now();
+      if (!simMode) beginReaderStall(epoch);
       sessionRef.current.begin(epoch);
       shotEpochRef.current = epoch;
       r7Ref.current?.beginShot(epoch);
@@ -251,8 +304,11 @@ export function useShotLabPressure({
     if (snap.labPressureCurve?.length || snap.labPressureRawSampleCount) {
       stoppedShotMetricsRef.current = snap;
     }
+    finishReaderStall();
+    warningOnRef.current = false;
+    setNoPressureReadingWarning('');
     resetShotSession();
-  }, [timerRunning, weighingViewOpen, resetShotSession, metricsFromLiveSession]);
+  }, [timerRunning, weighingViewOpen, simMode, resetShotSession, metricsFromLiveSession, beginReaderStall, finishReaderStall]);
 
   const grabSourceImage = useCallback((source) => {
     const width = source.videoWidth || source.width;
@@ -302,6 +358,7 @@ export function useShotLabPressure({
     const observeVideoFrame = (_now, metadata) => {
       presentedFrame = metadata.presentedFrames ?? presentedFrame + 1;
       presentedAtMs = Date.now();
+      try { stallRef.current?.presented(presentedAtMs); } catch { /* observation only */ }
       videoFrameCallback = sourceVideo.requestVideoFrameCallback(observeVideoFrame);
     };
     if (useVideoFrames) videoFrameCallback = sourceVideo.requestVideoFrameCallback(observeVideoFrame);
@@ -317,13 +374,19 @@ export function useShotLabPressure({
         const newFrame = video?.readyState >= 2 && (useVideoFrames
           ? presentedFrame > 0 && presentedFrame !== consumedFrame : video.currentTime !== lastMediaTime);
         let image = newFrame ? grabSourceImage(video) : null;
+        let repeatedFrame = false;
         if (image) {
           consumedFrame = presentedFrame;
           lastMediaTime = video.currentTime;
-          if (isRepeatedGaugeFrame(image, lastFrameRef.current, cal)) image = null;
+          if (isRepeatedGaugeFrame(image, lastFrameRef.current, cal)) {
+            repeatedFrame = true;
+            image = null;
+          }
         }
         let read;
+        let hadImage = false;
         if (image) {
+          hadImage = true;
           lastFrameRef.current = image;
           read = readCalibratedFrame(image, trackerRef.current);
           lastRead = read;
@@ -355,7 +418,8 @@ export function useShotLabPressure({
                 lastR5Ref.current = r5;
               }
             })
-            .catch(() => {
+            .catch((error) => {
+              try { stallRef.current?.inferenceRejected(error); } catch { /* observation only */ }
               if (generation === r5GenerationRef.current) lastR5Ref.current = {};
             })
             .finally(() => {
@@ -372,6 +436,21 @@ export function useShotLabPressure({
         const rawBar = gated.bar;
         const confident = rawBar != null && gated.fresh === true;
         const epoch = shotEpochRef.current;
+        try {
+          recordReaderSample(stallRef.current, {
+            hadImage,
+            read: hadImage ? read : null,
+            repeated: repeatedFrame,
+            gated,
+            legacyScale: legacyScaleRef.current,
+            publisherCounts: r7Ref.current?.rejectionCounts,
+            publishedAtMs: confident && rawBar != null && epoch ? nowMs : null,
+          });
+          if (confident && rawBar != null && epoch && warningOnRef.current) {
+            warningOnRef.current = false;
+            setNoPressureReadingWarning('');
+          }
+        } catch { /* observation only */ }
         if (confident && rawBar != null && epoch) {
           sessionRef.current.pushRaw(rawBar, true, gated.measuredAtMs);
           // In-memory display boundary only; getShotMetrics saves just tS/bar.
@@ -418,14 +497,34 @@ export function useShotLabPressure({
             atMs: nowMs,
           });
         }
-      } catch {
+      } catch (error) {
+        try { stallRef.current?.error(error); } catch { /* observation only */ }
         setReaderError('Pressure reader paused');
         setReaderUncertain(true);
       }
     };
+    const watch = window.setInterval(() => {
+      const stall = stallRef.current;
+      if (!stall) return;
+      try {
+        if (!legacyScaleRef.current) stall.syncPublisher(r7Ref.current?.rejectionCounts);
+        const stale = stall.observe(
+          Date.now(),
+          videoRef.current,
+          r5InferBusyRef.current,
+          needleModelStatus(),
+          trackDiagnosticsRef.current,
+        );
+        const show = Boolean(recordingRef.current && stale);
+        if (show === warningOnRef.current) return;
+        warningOnRef.current = show;
+        setNoPressureReadingWarning(show ? NO_PRESSURE_READING_WARNING : '');
+      } catch { /* observation only */ }
+    }, 500);
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
+      window.clearInterval(watch);
       if (videoFrameCallback) sourceVideo.cancelVideoFrameCallback(videoFrameCallback);
       r5GenerationRef.current += 1;
     };
@@ -529,5 +628,7 @@ export function useShotLabPressure({
     cameraError,
     dialRecalibrateHint,
     preShotDialStatus,
+    noPressureReadingWarning,
+    readerStallSnapshotRef,
   };
 }

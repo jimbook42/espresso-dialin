@@ -4,6 +4,7 @@ import { SHOT_REPLAY_MAX_DURATION_S } from '../shotReplayRecorder.js';
 import { createShotReplayRecorder } from '../shotReplayRecorder.js';
 import { createShotReplaySampleLogger } from '../shotReplaySampleLogger.js';
 import { createLabReplayDiagnostics, commitReplayDiagnostics } from '../labReplayDiagnostics.js';
+import { commitReaderStallDiagnostics } from '../readerStallDiagnostics.js';
 
 /**
  * Records the last Lab pressure shot (MediaRecorder + throttled tracker samples).
@@ -17,6 +18,7 @@ export function useLabShotReplay({
   shotReplayCommitRef,
   shotReplayDiscardRef,
   onReplayStored,
+  readerStallSnapshotRef,
 }) {
   const recorderRef = useRef(createShotReplayRecorder());
   const loggerRef = useRef(createShotReplaySampleLogger());
@@ -88,8 +90,12 @@ export function useLabShotReplay({
       if (cancelled) return;
       const samples = loggerRef.current.getSamples();
       loggerRef.current.reset();
+      const replayDiagnostics = diagnosticsRef.current.snapshot();
+      const readerStall = readerStallSnapshotRef?.current ?? null;
       if (!captured || !samples.length) {
-        pendingRef.current = null;
+        pendingRef.current = readerStall
+          ? { blob: null, samples: [], diagnostics: replayDiagnostics, readerStall }
+          : null;
         return;
       }
       pendingRef.current = {
@@ -99,7 +105,8 @@ export function useLabShotReplay({
         videoH: captured.videoH,
         durationS: Math.min(captured.durationS, SHOT_REPLAY_MAX_DURATION_S),
         samples,
-        diagnostics: diagnosticsRef.current.snapshot(),
+        diagnostics: replayDiagnostics,
+        readerStall,
       };
     })();
 
@@ -112,18 +119,21 @@ export function useLabShotReplay({
     const pending = pendingRef.current;
     if (!pending || !shotId) return;
     try {
-      await saveLastLabShotReplay({
-        shotId,
-        blob: pending.blob,
-        mimeType: pending.mimeType,
-        videoW: pending.videoW,
-        videoH: pending.videoH,
-        durationS: pending.durationS,
-        samples: pending.samples,
-      });
-      commitReplayDiagnostics(shotId, pending.diagnostics);
+      if (pending.readerStall) commitReaderStallDiagnostics(shotId, pending.readerStall);
+      if (pending.blob && pending.samples?.length) {
+        await saveLastLabShotReplay({
+          shotId,
+          blob: pending.blob,
+          mimeType: pending.mimeType,
+          videoW: pending.videoW,
+          videoH: pending.videoH,
+          durationS: pending.durationS,
+          samples: pending.samples,
+        });
+        commitReplayDiagnostics(shotId, pending.diagnostics);
+        onReplayStored?.();
+      }
       pendingRef.current = null;
-      onReplayStored?.();
     } catch {
       // silent
     }

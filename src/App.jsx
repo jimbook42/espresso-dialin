@@ -227,6 +227,7 @@ import {
 } from './flairPressureLab/labShotReplayDb.js';
 import { shouldShowLabShotReplayPlay } from './flairPressureLab/historyLabShotReplay.js';
 import { exportLabShotReplayDownloads } from './flairPressureLab/labShotReplayExport.js';
+import { readerStallDiagnosticsForShot } from './flairPressureLab/readerStallDiagnostics.js';
 import { LabPressureStartPanel } from './components/LabPressureStartPanel.jsx';
 import { LabPreShotDialUnderScale } from './components/LabPreShotDialUnderScale.jsx';
 import { LabPressurePreShotConfirm } from './components/LabPressurePreShotConfirm.jsx';
@@ -1460,11 +1461,12 @@ export default function App() {
 
   const exportLabShotReplay = useCallback(async (shot) => {
     const data = await loadLastLabShotReplayWithBlob();
-    if (!data || data.meta.shotId !== shot?.id) return;
+    const same = Boolean(data && data.meta.shotId === shot?.id);
+    if (!same && !readerStallDiagnosticsForShot(shot?.id)) return;
     exportLabShotReplayDownloads({
       shot,
-      blob: data.blob,
-      mimeType: data.meta.mimeType || data.blob.type,
+      blob: same ? data.blob : null,
+      mimeType: same ? (data.meta.mimeType || data.blob.type) : undefined,
     });
   }, []);
 
@@ -4001,6 +4003,26 @@ export default function App() {
                         >
                           <Download className="w-3.5 h-3.5" />
                           Export replay
+                        </button>
+                      </div>
+                    )}
+                    {s.id === newestShotId
+                      && !shouldShowLabShotReplayPlay({
+                        shotId: s.id,
+                        newestShotId,
+                        labReplayShotId,
+                      })
+                      && readerStallDiagnosticsForShot(s.id) && (
+                      <div className="flex justify-end gap-3 -mb-1">
+                        <button
+                          type="button"
+                          onClick={() => void exportLabShotReplay(s)}
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${ui.accentText} hover:opacity-90`}
+                          data-testid="history-lab-reader-stall-export"
+                          aria-label="Export reader diagnostics"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Export diagnostics
                         </button>
                       </div>
                     )}

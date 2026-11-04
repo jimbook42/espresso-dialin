@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AdaptiveShotScreen, ShotScreenView } from './AdaptiveShotScreen.jsx';
+import { NO_PRESSURE_READING_WARNING } from '../flairPressureLab/readerStallDiagnostics.js';
 import { ShotScreenCustomizer } from './ShotScreenCustomizer.jsx';
 import { ShotScreenPreview } from './ShotScreenPreview.jsx';
 import { ShotLabPressureContext } from './ShotLabPressureContext.jsx';
@@ -227,6 +228,31 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('[data-metric="flow"]').textContent).toContain('—');
     act(() => publishScaleLiveWeight({ isConnected: false }));
     expect(container.querySelector('[data-metric="weight"]').textContent).toContain('—');
+  });
+
+  it('shows the no-reading warning while a shot has no published reading and clears it when readings resume', () => {
+    function Host() {
+      const [warning, setWarning] = useState(NO_PRESSURE_READING_WARNING);
+      return createElement(ShotLabPressureContext.Provider, {
+        value: {
+          enabled: true, calibrated: true, readerUncertain: true, displayBar: null,
+          hold: { gap: true }, samples: [], noPressureReadingWarning: warning,
+        },
+      }, createElement('div', null,
+        createElement('button', { type: 'button', onClick: () => setWarning('') }, 'resume'),
+        createElement(AdaptiveShotScreen, {
+          settings: { labCameraPressureEnabled: true }, seconds: 4, scaleEnabled: false,
+        })));
+    }
+    const container = render(Host);
+    const status = container.querySelector('[data-testid="no-pressure-reading-warning"]');
+    expect(status.textContent).toBe(NO_PRESSURE_READING_WARNING);
+    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('--');
+    expect(container.textContent).not.toContain('Waiting for a pressure reading');
+    click(container.querySelector('button'));
+    expect(container.querySelector('[data-testid="no-pressure-reading-warning"]')).toBeNull();
+    expect(container.textContent).toContain('Pressure uncertain');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('--');
   });
 
   it('plots the provided pressure and flow series', () => {

@@ -154,5 +154,6 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
     gateConfig: gateCfg,
     readerConfig: bundle.reader,
     anchors,
+    rejectionCounts: tapPublisher.rejectionCounts,
   };
 }

@@ -3,6 +3,7 @@
  * Does not change stored shot or bean records.
  */
 import { replayDiagnosticsForShot } from './labReplayDiagnostics.js';
+import { readerStallDiagnosticsForShot } from './readerStallDiagnostics.js';
 
 /**
  * @param {object | null | undefined} shot
@@ -63,14 +64,15 @@ export function downloadBlobFile(filename, blob) {
  * @returns {{ shotId: string | null, labPressureCurve: { tS: number, bar: number }[] } | null}
  */
 export function exportLabShotReplayDownloads({ shot, blob, mimeType }) {
-  if (!shot?.id || !blob) return null;
+  if (!shot?.id) return null;
   const documentJson = labPressureCurveExportDocument(shot);
   documentJson.readerDiagnostics = replayDiagnosticsForShot(shot.id);
   documentJson.readerDiagnosticsAvailability = documentJson.readerDiagnostics
     ? 'current-session' : 'unavailable: replay predates capture or page was reloaded';
+  documentJson.readerStallDiagnostics = readerStallDiagnosticsForShot(shot.id);
   if (documentJson.shotId !== String(shot.id)) return null;
-  const names = labReplayExportFilenames(shot.id, mimeType || blob.type);
-  downloadBlobFile(names.video, blob);
+  const names = labReplayExportFilenames(shot.id, mimeType || blob?.type);
+  if (blob) downloadBlobFile(names.video, blob);
   downloadBlobFile(
     names.pressure,
     new Blob([JSON.stringify(documentJson)], { type: 'application/json' }),

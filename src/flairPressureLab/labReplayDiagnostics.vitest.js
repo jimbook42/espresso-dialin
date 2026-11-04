@@ -50,6 +50,7 @@ describe('export-only replay evidence', () => {
       expect(exported.readerDiagnosticsAvailability).toBe('current-session');
       expect(exported.readerDiagnostics.calibrations[0].template.red).toEqual([1,2]);
       expect(exported.readerDiagnostics.frames.map(f=>f.status)).toEqual(['fresh','held','gap']);
+      expect(exported.readerStallDiagnostics).toBeNull();
       expect(JSON.stringify(shot)).toBe(original);
       const missing=exportLabShotReplayDownloads({shot:{id:'old-shot'},blob:blobs[0]});
       expect(missing.readerDiagnostics).toBeNull();
