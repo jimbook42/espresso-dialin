@@ -310,6 +310,12 @@
   line-height: 20px;
   font-size: 11px;
 }
+.shot-camera-lock-slot--warning {
+  height: auto;
+  min-height: 20px;
+  line-height: 1.25;
+  white-space: normal;
+}
 .shot-camera-edge-metrics {
   display: flex;
   justify-content: space-between;

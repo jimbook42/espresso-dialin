@@ -23,6 +23,7 @@ export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview
     } });
   const lookingForGauge = !pressure?.calibrated || pressure?.readerUncertain
     || pressure?.hold?.gap || pressure?.displayBar == null;
+  const noReadingWarning = pressure?.noPressureReadingWarning || '';
 
   return (
     <button type="button" onClick={onToggle} aria-label={expanded ? 'Hide gauge camera' : 'Show gauge camera'}
@@ -43,9 +44,11 @@ export function ShotGaugeCamera({ pressure, expanded, onToggle, barText, preview
       </span>}
       {expanded && <div className="shot-camera-top-scrim">
         <span data-testid="shot-camera-pressure" className="shot-camera-pressure-hero">{barText} <small>bar</small></span>
-        <span className="shot-camera-lock-slot">
-          {!preview && feedStatus === 'live' && lookingForGauge
-            ? <span role="status" data-testid="shot-camera-status">Looking for gauge…</span> : '\u00a0'}
+        <span className={`shot-camera-lock-slot${noReadingWarning ? ' shot-camera-lock-slot--warning' : ''}`}>
+          {!preview && noReadingWarning
+            ? <span role="status" data-testid="no-pressure-reading-warning">{noReadingWarning}</span>
+            : !preview && feedStatus === 'live' && lookingForGauge
+              ? <span role="status" data-testid="shot-camera-status">Looking for gauge…</span> : '\u00a0'}
         </span>
       </div>}
       {expanded && <div className="shot-camera-bottom-scrim">

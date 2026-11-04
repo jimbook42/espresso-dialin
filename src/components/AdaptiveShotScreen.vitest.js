@@ -317,6 +317,29 @@ describe('adaptive live shot screen', () => {
     expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('--');
   });
 
+  it('shows the no-reading warning on the portrait camera overlay', () => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    const container = render(ShotScreenView, {
+      settings: { labCameraPressureEnabled: true, shotScreen: { showGauge: true, scale: true } },
+      values,
+      pressure: {
+        calibrated: true,
+        displayBar: null,
+        noPressureReadingWarning: NO_PRESSURE_READING_WARNING,
+        statusText: NO_PRESSURE_READING_WARNING,
+        aimText: 'Aim: 1.5 bar',
+      },
+    });
+    const camera = container.querySelector('.shot-screen--portrait [data-testid="shot-gauge-camera"]');
+    const warning = camera.querySelector('[data-testid="no-pressure-reading-warning"]');
+    expect(warning.textContent).toBe(NO_PRESSURE_READING_WARNING);
+    expect(warning.closest('.shot-camera-top-scrim')).toBe(camera.querySelector('.shot-camera-top-scrim'));
+    expect(camera.querySelector('[data-testid="shot-camera-aim"]').textContent).toContain('Aim: 1.5 bar');
+    expect(container.querySelector('.shot-screen-support [data-testid="no-pressure-reading-warning"]').textContent)
+      .toBe(NO_PRESSURE_READING_WARNING);
+  });
+
   it('plots the provided pressure and flow series', () => {
     const container = render(ShotScreenView, { equipment: { gauge: true, scale: true }, values, preview: true,
       pressure: { samples: [{ tS: 1, bar: 2, confident: true }, { tS: 2, bar: 5, confident: true }] },
