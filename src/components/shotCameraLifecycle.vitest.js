@@ -71,6 +71,7 @@ describe('shared gauge camera lifecycle', () => {
     })));
     const video = container.querySelector('video');
     expect(video.srcObject).toBe(stream);
+    expect(container.textContent).toContain("Set the lever where it'll be when you press Start.");
     expect(play).toHaveBeenCalled();
     expect(camera.start).not.toHaveBeenCalled();
     expect(camera.stop).not.toHaveBeenCalled();

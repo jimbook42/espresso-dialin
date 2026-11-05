@@ -35,6 +35,11 @@ import {
   preShotDialMismatch,
   PRE_SHOT_DIAL_SAMPLE_MS,
 } from '../preShotDialCheck.js';
+import {
+  createPreShotReadableWindow,
+  isRecordedSampleConfident,
+  preShotDialDisplayStatus,
+} from '../preShotReadableStatus.js';
 
 export const DIAL_RECALIBRATE_HINT = 'Dial not where you calibrated. Recalibrate.';
 
@@ -119,6 +124,8 @@ export function useShotLabPressure({
   const [noPressureReadingWarning, setNoPressureReadingWarning] = useState('');
   const preShotDialSamplerRef = useRef(createPreShotDialVerdictSampler());
   const preShotDialSamplerLockedRef = useRef(false);
+  const preShotReadableRef = useRef(createPreShotReadableWindow());
+  const preShotPoseStatusRef = useRef(null);
   const stallRef = useRef(null);
   const readerStallSnapshotRef = useRef(null);
   const warningOnRef = useRef(false);
@@ -206,6 +213,8 @@ export function useShotLabPressure({
     shotStartHintDoneRef.current = false;
     preShotDialSamplerRef.current.reset();
     preShotDialSamplerLockedRef.current = false;
+    preShotReadableRef.current.reset();
+    preShotPoseStatusRef.current = null;
     setPreShotDialStatus(null);
     warningOnRef.current = false;
     setNoPressureReadingWarning('');
@@ -241,6 +250,16 @@ export function useShotLabPressure({
     stallRef.current = createReaderStallDiagnostics(epoch);
   }, [finishReaderStall, videoRef, trackDiagnosticsRef]);
 
+  const syncPreShotDialStatus = useCallback((nowMs = Date.now()) => {
+    const snap = preShotReadableRef.current.snapshot(nowMs);
+    setPreShotDialStatus(preShotDialDisplayStatus({
+      poseStatus: preShotPoseStatusRef.current,
+      nowMs,
+      lastConfidentMs: snap.lastConfidentMs,
+      rejections: snap.rejections,
+    }));
+  }, []);
+
   const observePreShotDialPose = useCallback((read, cal) => {
     if (!preShotDialCheckActive || preShotDialSamplerLockedRef.current) return;
     const mismatch = preShotDialMismatch({
@@ -251,13 +270,22 @@ export function useShotLabPressure({
     });
     const next = preShotDialSamplerRef.current.observe(mismatch, Date.now());
     if (next.locked) preShotDialSamplerLockedRef.current = true;
-    setPreShotDialStatus(next.status);
-  }, [preShotDialCheckActive]);
+    preShotPoseStatusRef.current = next.status;
+    syncPreShotDialStatus(Date.now());
+  }, [preShotDialCheckActive, syncPreShotDialStatus]);
+
+  const notePreShotReadable = useCallback((gated, nowMs, read) => {
+    if (!preShotDialCheckActive) return;
+    preShotReadableRef.current.note(gated, nowMs, read);
+    syncPreShotDialStatus(nowMs);
+  }, [preShotDialCheckActive, syncPreShotDialStatus]);
 
   useEffect(() => {
     if (!preShotDialCheckActive) {
       preShotDialSamplerRef.current.reset();
       preShotDialSamplerLockedRef.current = false;
+      preShotReadableRef.current.reset();
+      preShotPoseStatusRef.current = null;
       setPreShotDialStatus(null);
     }
   }, [preShotDialCheckActive]);
@@ -436,7 +464,8 @@ export function useShotLabPressure({
           read,
         });
         const rawBar = gated.bar;
-        const confident = rawBar != null && gated.fresh === true;
+        const confident = isRecordedSampleConfident(gated);
+        notePreShotReadable(gated, nowMs, read);
         const epoch = shotEpochRef.current;
         try {
           recordReaderSample(stallRef.current, {
@@ -538,6 +567,7 @@ export function useShotLabPressure({
     grabSourceImage,
     videoRef,
     observePreShotDialPose,
+    notePreShotReadable,
   ]);
 
   useEffect(() => {
@@ -545,22 +575,46 @@ export function useShotLabPressure({
     if (displaySurfaceActive) return undefined;
     let raf = 0;
     let last = 0;
+    let lastImage = null;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const wallNow = performance.now();
-      if (wallNow - last < PRE_SHOT_DIAL_SAMPLE_MS) return;
-      if (preShotDialSamplerLockedRef.current) return;
+      // Pose sampling stays at the existing cadence until the lock latches.
+      // After that, keep reading at the shot interval so the freshness gate
+      // sees the same spacing it uses for recorded samples.
+      const interval = preShotDialSamplerLockedRef.current
+        ? PROCESS_INTERVAL_MS
+        : PRE_SHOT_DIAL_SAMPLE_MS;
+      if (wallNow - last < interval) return;
       last = wallNow;
       try {
+        const nowMs = Date.now();
         const video = videoRef.current;
-        if (!video || video.readyState < 2) return;
+        if (!video || video.readyState < 2) {
+          syncPreShotDialStatus(nowMs);
+          return;
+        }
         const image = grabSourceImage(video);
         if (!image) return;
-        const read = readCalibratedFrame(image, trackerRef.current);
         const cal = trackerRef.current.calibration;
+        const repeated = isRepeatedGaugeFrame(image, lastImage, cal);
+        const read = readCalibratedFrame(image, trackerRef.current);
         observePreShotDialPose(read, cal);
+        if (repeated) {
+          syncPreShotDialStatus(nowMs);
+          return;
+        }
+        lastImage = image;
+        const gated = r7Ref.current?.stepFrame({
+          ...lastR5Ref.current,
+          read,
+          nowMs,
+          capturedAtMs: nowMs,
+        });
+        if (gated) notePreShotReadable(gated, nowMs, read);
+        else syncPreShotDialStatus(nowMs);
       } catch {
-        // ignore — informational only
+        // informational only — does not block Start
       }
     };
     raf = requestAnimationFrame(loop);
@@ -571,6 +625,8 @@ export function useShotLabPressure({
     grabSourceImage,
     videoRef,
     observePreShotDialPose,
+    notePreShotReadable,
+    syncPreShotDialStatus,
   ]);
 
   const acceptCalibration = useCallback(
@@ -581,6 +637,8 @@ export function useShotLabPressure({
       r7Ref.current = createShotLabR7Publisher(calibration, { modelTiebreak, legacyScale });
       preShotDialSamplerRef.current.reset();
       preShotDialSamplerLockedRef.current = false;
+      preShotReadableRef.current.reset();
+      preShotPoseStatusRef.current = 'checking';
       setPreShotDialStatus('checking');
       setCalibrated(true);
       setReaderReady(isNeedleModelReady());

@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { PreShotDialStatus } from './PreShotDialStatus.jsx';
 import { PRE_SHOT_DIAL_FOUND_LABEL, PRE_SHOT_DIAL_NOT_FOUND_LABEL } from '../flairPressureLab/preShotDialCheck.js';
+import { PRE_SHOT_GAUGE_NOT_READABLE_LABEL } from '../flairPressureLab/preShotReadableStatus.js';
 
 function renderStatus(status) {
   const container = document.createElement('div');
@@ -36,5 +37,14 @@ describe('PreShotDialStatus', () => {
     expect(el.querySelector('[data-testid="pre-shot-dial-status"]').textContent).toBe(
       PRE_SHOT_DIAL_NOT_FOUND_LABEL,
     );
+  });
+
+  it('shows amber recalibrate copy when locked but not readable', () => {
+    const el = renderStatus('unreadable');
+    const node = el.querySelector('[data-testid="pre-shot-dial-status"]');
+    expect(node.textContent).toBe(PRE_SHOT_GAUGE_NOT_READABLE_LABEL);
+    expect(node.getAttribute('data-dial-found')).toBe('false');
+    expect(node.className).toContain('text-amber-700/90');
+    expect(node.className).not.toContain('text-[#6d7a5c]');
   });
 });

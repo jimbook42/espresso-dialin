@@ -1,15 +1,14 @@
-import {
-  PRE_SHOT_DIAL_FOUND_LABEL,
-  PRE_SHOT_DIAL_NOT_FOUND_LABEL,
-} from '../flairPressureLab/preShotDialCheck.js';
+import { preShotDialStatusView } from '../flairPressureLab/preShotReadableStatus.js';
 
 /**
- * Pre-shot dial pose verdict (informational; does not block Start).
- * @param {{ status: 'checking' | 'found' | 'not_found' | null, ui?: { muted?: string } }} props
+ * Pre-shot dial verdict (informational; does not block Start).
+ * Green requires the pose lock and a recent confident reading.
+ * @param {{ status: 'checking' | 'found' | 'not_found' | 'unreadable' | null }} props
  */
-export function PreShotDialStatus({ status, ui }) {
-  if (!status || status === 'checking') return null;
-  const found = status === 'found';
+export function PreShotDialStatus({ status }) {
+  const view = preShotDialStatusView(status);
+  if (view.tone === 'hidden') return null;
+  const found = view.tone === 'green';
   return (
     <p
       className={`text-[10px] leading-snug ${
@@ -18,7 +17,7 @@ export function PreShotDialStatus({ status, ui }) {
       data-testid="pre-shot-dial-status"
       data-dial-found={found ? 'true' : 'false'}
     >
-      {found ? PRE_SHOT_DIAL_FOUND_LABEL : PRE_SHOT_DIAL_NOT_FOUND_LABEL}
+      {view.label}
     </p>
   );
 }

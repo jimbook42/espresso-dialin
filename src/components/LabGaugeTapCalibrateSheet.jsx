@@ -19,6 +19,7 @@ import {
   phaseAfterRedo,
   pointerToVideoPoint,
 } from './labGaugeTapPlacement.js';
+import { CALIBRATION_LEVER_HINT } from '../flairPressureLab/preShotReadableStatus.js';
 import {
   initialDialCrop,
   paintFrozenCrop,
@@ -456,6 +457,7 @@ export function LabGaugeTapCalibrateSheet({
         </div>
         <div className="px-3 pt-2 space-y-1 shrink-0">
           <p className={`text-xs ${muted}`}>{PHASE_LABEL[tapPhase] || 'Calibrating'}</p>
+          <p className={`text-xs ${muted}`} data-testid="gauge-calibration-lever-hint">{CALIBRATION_LEVER_HINT}</p>
           {tapNote && <p className={`text-[11px] ${text}`} data-testid="gauge-tap-note">{tapNote}</p>}
           {error && !fixtureSrc && <p className="text-[11px] text-rose-400">{error}</p>}
           {!opencvReady && status === 'live' && (
