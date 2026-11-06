@@ -256,6 +256,7 @@ export function useShotLabPressure({
       poseStatus: preShotPoseStatusRef.current,
       nowMs,
       lastConfidentMs: snap.lastConfidentMs,
+      confidentAt: snap.confidentAt,
       rejections: snap.rejections,
     }));
   }, []);

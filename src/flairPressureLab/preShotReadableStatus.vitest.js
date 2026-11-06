@@ -19,6 +19,7 @@ function viewAt(readable, poseStatus, nowMs) {
     poseStatus,
     nowMs,
     lastConfidentMs: snap.lastConfidentMs,
+    confidentAt: snap.confidentAt,
     rejections: snap.rejections,
   }));
 }
@@ -67,6 +68,7 @@ describe('pre-shot readable status', () => {
     readable.note(CONFIDENT, 1000);
     readable.note(LOST, 1100);
     readable.note({ bar: null, fresh: false, reason: 'held:pose-lost' }, 1200);
+    readable.note(LOST, 1250);
     expect(viewAt(readable, 'found', 1300)).toEqual({
       tone: 'amber',
       label: PRE_SHOT_GAUGE_NOT_READABLE_LABEL,
@@ -77,6 +79,45 @@ describe('pre-shot readable status', () => {
     mixed.note(LOST, 1100);
     mixed.note({ bar: null, fresh: false, reason: 'needle-missing' }, 1200);
     expect(viewAt(mixed, 'found', 1300).tone).toBe('green');
+  });
+
+  it('one pose-lost rejection among confident readings stays found', () => {
+    const readable = createPreShotReadableWindow();
+    readable.note(CONFIDENT, 1000);
+    readable.note(CONFIDENT, 1100);
+    readable.note(LOST, 1200);
+    readable.note(CONFIDENT, 1300);
+    expect(viewAt(readable, 'found', 1400)).toEqual({
+      tone: 'green',
+      label: PRE_SHOT_DIAL_FOUND_LABEL,
+    });
+  });
+
+  it('three or more pose-lost rejections that are the majority show the recalibrate message', () => {
+    const readable = createPreShotReadableWindow();
+    readable.note(CONFIDENT, 1000);
+    readable.note(LOST, 1100);
+    readable.note(LOST, 1200);
+    readable.note(LOST, 1300);
+    expect(viewAt(readable, 'found', 1400)).toEqual({
+      tone: 'amber',
+      label: PRE_SHOT_GAUGE_NOT_READABLE_LABEL,
+    });
+  });
+
+  it('three or more pose-lost rejections that are still a minority stay found', () => {
+    const readable = createPreShotReadableWindow();
+    readable.note(CONFIDENT, 1000);
+    readable.note(CONFIDENT, 1050);
+    readable.note(CONFIDENT, 1100);
+    readable.note(CONFIDENT, 1150);
+    readable.note(LOST, 1200);
+    readable.note(LOST, 1250);
+    readable.note(LOST, 1300);
+    expect(viewAt(readable, 'found', 1400)).toEqual({
+      tone: 'green',
+      label: PRE_SHOT_DIAL_FOUND_LABEL,
+    });
   });
 
   it('returns to green when confident readings resume', () => {
