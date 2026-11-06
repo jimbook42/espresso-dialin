@@ -39,6 +39,7 @@ import {
   createPreShotReadableWindow,
   isRecordedSampleConfident,
   preShotDialDisplayStatus,
+  samplePreShotDialPose,
 } from '../preShotReadableStatus.js';
 
 export const DIAL_RECALIBRATE_HINT = 'Dial not where you calibrated. Recalibrate.';
@@ -261,18 +262,20 @@ export function useShotLabPressure({
     }));
   }, []);
 
-  const observePreShotDialPose = useCallback((read, cal) => {
-    if (!preShotDialCheckActive || preShotDialSamplerLockedRef.current) return;
-    const mismatch = preShotDialMismatch({
-      trackedHub: read.lost ? null : read.hub,
-      calibratedHub: cal?.hub,
-      calibratedRadius: cal?.radius,
-      poseLost: read.lost,
+  const observePreShotDialPose = useCallback((read, cal, nowMs = Date.now()) => {
+    // The first lock only switches the sample cadence. Keep feeding the sampler
+    // so movement, mismatch and recovery keep updating the pose verdict.
+    if (!preShotDialCheckActive) return;
+    const step = samplePreShotDialPose({
+      sampler: preShotDialSamplerRef.current,
+      readable: preShotReadableRef.current,
+      read,
+      calibration: cal,
+      nowMs,
     });
-    const next = preShotDialSamplerRef.current.observe(mismatch, Date.now());
-    if (next.locked) preShotDialSamplerLockedRef.current = true;
-    preShotPoseStatusRef.current = next.status;
-    syncPreShotDialStatus(Date.now());
+    if (step.locked) preShotDialSamplerLockedRef.current = true;
+    preShotPoseStatusRef.current = step.poseStatus;
+    syncPreShotDialStatus(nowMs);
   }, [preShotDialCheckActive, syncPreShotDialStatus]);
 
   const notePreShotReadable = useCallback((gated, nowMs, read) => {
@@ -580,9 +583,9 @@ export function useShotLabPressure({
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const wallNow = performance.now();
-      // Pose sampling stays at the existing cadence until the lock latches.
-      // After that, keep reading at the shot interval so the freshness gate
-      // sees the same spacing it uses for recorded samples.
+      // Slower pose cadence until the first lock, then the shot interval so the
+      // freshness gate sees the same spacing it uses for recorded samples.
+      // Pose checks keep running on every sample after the lock.
       const interval = preShotDialSamplerLockedRef.current
         ? PROCESS_INTERVAL_MS
         : PRE_SHOT_DIAL_SAMPLE_MS;
@@ -600,7 +603,7 @@ export function useShotLabPressure({
         const cal = trackerRef.current.calibration;
         const repeated = isRepeatedGaugeFrame(image, lastImage, cal);
         const read = readCalibratedFrame(image, trackerRef.current);
-        observePreShotDialPose(read, cal);
+        observePreShotDialPose(read, cal, nowMs);
         if (repeated) {
           syncPreShotDialStatus(nowMs);
           return;

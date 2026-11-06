@@ -1,6 +1,7 @@
 import {
   PRE_SHOT_DIAL_FOUND_LABEL,
   PRE_SHOT_DIAL_NOT_FOUND_LABEL,
+  preShotDialMismatch,
 } from './preShotDialCheck.js';
 
 /** How long a confident reading still counts as "readable right now". */
@@ -120,6 +121,47 @@ export function createPreShotReadableWindow({
         rejections: rejections.filter((rejection) => nowMs - rejection.atMs <= windowMs),
       };
     },
+  };
+}
+
+/**
+ * One pre-shot pose sample. The sampler keeps running after its first lock;
+ * movement and recovery update the verdict this returns.
+ * Does not record the publisher result. The caller notes that, then asks
+ * preShotDialDisplayStatus again with this pose verdict.
+ * @param {{
+ *   sampler: { observe: (mismatch: boolean, nowMs: number) => { status: 'checking' | 'found' | 'not_found', locked: boolean } },
+ *   readable: { snapshot: (nowMs: number) => { lastConfidentMs: number | null, confidentAt: number[], rejections: { atMs: number, reason: string }[] } },
+ *   read?: { hub?: { x: number, y: number } | null, lost?: boolean } | null,
+ *   calibration?: { hub?: { x: number, y: number } | null, radius?: number | null } | null,
+ *   nowMs: number,
+ * }} input
+ */
+export function samplePreShotDialPose({
+  sampler,
+  readable,
+  read,
+  calibration,
+  nowMs,
+}) {
+  const mismatch = preShotDialMismatch({
+    trackedHub: read?.lost ? null : read?.hub ?? null,
+    calibratedHub: calibration?.hub,
+    calibratedRadius: calibration?.radius,
+    poseLost: Boolean(read?.lost),
+  });
+  const verdict = sampler.observe(mismatch, nowMs);
+  const snap = readable.snapshot(nowMs);
+  return {
+    poseStatus: verdict.status,
+    locked: verdict.locked,
+    status: preShotDialDisplayStatus({
+      poseStatus: verdict.status,
+      nowMs,
+      lastConfidentMs: snap.lastConfidentMs,
+      confidentAt: snap.confidentAt,
+      rejections: snap.rejections,
+    }),
   };
 }
 
