@@ -160,14 +160,13 @@ import {
   SHOT_START_COUNTDOWN_ON,
 } from './settings/shotStartCountdown.js';
 import { SHOT_YIELD_SETTLE_MS } from './scales/scaleShotStopSettle.js';
-import { FLOW_PLOT_SMOOTH_WINDOW_S, smoothFlowSeriesForPlot } from './scales/flowMetrics.js';
 import {
-  createFlowEndAutoStopState,
+  createFlowEndDetector,
   flowEndAutoStopRecordedEndExtractionS,
   flowEndAutoStopShouldFreezeTimer,
   flowEndAutoStopShouldStop,
-  FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S,
-  stepFlowEndAutoStop,
+  flowEndDisplayedAndSavedTimes,
+  stepFlowEndDetector,
 } from './scales/flowEndAutoStop.js';
 import {
   normalizeScaleFlowAutoStopEnabled,
@@ -681,7 +680,10 @@ export default function App() {
     || (timemoreScale.isConnected && scaleRecipePreinfusion)
     || flairTimedPreinfusionAuto;
   const scaleAutoEndPreinfusionRef = useRef(false);
-  const flowAutoStopStateRef = useRef(createFlowEndAutoStopState());
+  const flowAutoStopDetectorRef = useRef(createFlowEndDetector());
+  const flowAutoStopAppliedRef = useRef(0);
+  const flowAutoStopLastTRef = useRef(null);
+  const flowAutoStopEpochRef = useRef(-1);
   const [flowAutoStopTimerFrozen, setFlowAutoStopTimerFrozen] = useState(false);
   const [brewGuideTimerActive, setBrewGuideTimerActive] = useState(false);
   const brewGuideTimerActiveRef = useRef(false);
@@ -736,9 +738,13 @@ export default function App() {
   }, [timerRunning, flowAutoStopTimerFrozen]);
 
   const resetFlowAutoStop = useCallback(() => {
-    flowAutoStopStateRef.current = createFlowEndAutoStopState();
+    const series = timemoreScale.liveFlowSeries;
+    flowAutoStopDetectorRef.current = createFlowEndDetector();
+    flowAutoStopAppliedRef.current = series.length;
+    flowAutoStopLastTRef.current = series.length ? series[series.length - 1].tS : null;
+    flowAutoStopEpochRef.current = timemoreScale.flowSeriesEpoch;
     setFlowAutoStopTimerFrozen(false);
-  }, []);
+  }, [timemoreScale]);
 
   useEffect(() => {
     if (!timerRunning || !preInfusionPhase) {
@@ -938,41 +944,62 @@ export default function App() {
       || !timemoreScale.isConnected
       || !normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled)
     ) {
-      if (!timerRunning) resetFlowAutoStop();
+      if (!timerRunning) {
+        flowAutoStopDetectorRef.current = createFlowEndDetector();
+        flowAutoStopAppliedRef.current = 0;
+        flowAutoStopLastTRef.current = null;
+        setFlowAutoStopTimerFrozen(false);
+      }
       return;
     }
     const series = timemoreScale.liveFlowSeries;
+    const flowEpoch = timemoreScale.flowSeriesEpoch;
+    if (flowAutoStopEpochRef.current !== flowEpoch) {
+      flowAutoStopDetectorRef.current = createFlowEndDetector();
+      flowAutoStopAppliedRef.current = 0;
+      flowAutoStopLastTRef.current = null;
+      flowAutoStopEpochRef.current = flowEpoch;
+    }
     if (!series.length) return;
 
     const legacyMode = scaleFlowAutoStopLegacyAlgorithm(settingsSetting);
-    const detectSmoothed = smoothFlowSeriesForPlot(series, FLOW_PLOT_SMOOTH_WINDOW_S);
-    const backdateSmoothed = legacyMode
-      ? detectSmoothed
-      : smoothFlowSeriesForPlot(series, FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S);
-    const last = detectSmoothed[detectSmoothed.length - 1];
-    const backdateLast = backdateSmoothed[backdateSmoothed.length - 1];
-    flowAutoStopStateRef.current = stepFlowEndAutoStop(flowAutoStopStateRef.current, {
-      enabled: true,
-      legacyMode,
-      preinfusionActive: preInfusionPhase,
-      extractionActive: !preInfusionPhase,
-      tExtractionS: last.tS,
-      smoothedFlowGs: last.flowGs,
-      backdateFlowGs: backdateLast.flowGs,
-    });
+    let applied = flowAutoStopAppliedRef.current;
+    const lastT = flowAutoStopLastTRef.current;
+    const prefixOk = applied > 0
+      && applied <= series.length
+      && series[applied - 1]?.tS === lastT;
+    let detector = flowAutoStopDetectorRef.current;
+    if (!prefixOk) {
+      detector = createFlowEndDetector();
+      applied = 0;
+    }
+    for (let i = applied; i < series.length; i += 1) {
+      detector = stepFlowEndDetector(detector, series[i], {
+        enabled: true,
+        legacyMode,
+        preinfusionActive: preInfusionPhase,
+        extractionActive: !preInfusionPhase,
+      });
+    }
+    flowAutoStopDetectorRef.current = detector;
+    flowAutoStopAppliedRef.current = series.length;
+    flowAutoStopLastTRef.current = series[series.length - 1].tS;
 
-    const autoState = flowAutoStopStateRef.current;
+    const autoState = detector.auto;
+    const last = series[series.length - 1];
+    const timesFor = (endS) => flowEndDisplayedAndSavedTimes(endS, {
+      includePreInfusion: timerUsePreInfusion,
+      preInfusionSeconds,
+    });
     if (flowEndAutoStopShouldFreezeTimer(autoState)) {
       const endExtractionS = flowEndAutoStopRecordedEndExtractionS(autoState);
       if (endExtractionS != null) {
         setFlowAutoStopTimerFrozen(true);
-        const totalS = timerUsePreInfusion ? preInfusionSeconds + endExtractionS : endExtractionS;
-        setTimerTicks(Math.round(totalS * 10));
+        setTimerTicks(timesFor(endExtractionS).displayedTicks);
       }
     } else if (flowAutoStopTimerFrozen && !flowEndAutoStopShouldStop(autoState)) {
       setFlowAutoStopTimerFrozen(false);
-      const totalS = timerUsePreInfusion ? preInfusionSeconds + last.tS : last.tS;
-      setTimerTicks(Math.round(totalS * 10));
+      setTimerTicks(timesFor(last.tS).displayedTicks);
     }
 
     if (!flowEndAutoStopShouldStop(autoState)) return;
@@ -992,14 +1019,12 @@ export default function App() {
       }
     }
     setTimerRunning(false);
-    const rounded = Math.round(endExtractionS);
-    setActualTimeS(rounded);
-    if (timerUsePreInfusion) {
-      const totalS = preInfusionSeconds + endExtractionS;
-      setTimerTicks(Math.round(totalS * 10));
-    } else {
-      setTimerTicks(Math.round(endExtractionS * 10));
-    }
+    const shotTimes = flowEndDisplayedAndSavedTimes(endExtractionS, {
+      includePreInfusion: timerUsePreInfusion,
+      preInfusionSeconds,
+    });
+    setActualTimeS(shotTimes.savedExtractionS);
+    setTimerTicks(shotTimes.displayedTicks);
     clearYieldSettleTimer();
     yieldSettleUserEditedRef.current = false;
     const began = timemoreScale.notifyShotYieldSettleBegin();
@@ -1022,6 +1047,7 @@ export default function App() {
     preInfusionSeconds,
     timemoreScale.isConnected,
     timemoreScale.liveFlowSeries,
+    timemoreScale.flowSeriesEpoch,
     flowAutoStopTimerFrozen,
     settingsSetting?.scaleFlowAutoStopEnabled,
     settingsSetting?.scaleFlowAutoStopAlgorithm,

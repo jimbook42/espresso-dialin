@@ -42,7 +42,7 @@ export function createScaleSession(transport, handlers = {}) {
     const flow = instantaneousFlowGs(lastSample, sample);
     if (flow != null) {
       handlers.onInstantFlowGs?.(flow);
-      handlers.onFlowSample?.({ tS: sample.tS, flowGs: flow });
+      handlers.onFlowSample?.({ tS: sample.tS, flowGs: flow, weightG: sample.weightG });
     }
     lastSample = sample;
     extractionSamples.push(sample);

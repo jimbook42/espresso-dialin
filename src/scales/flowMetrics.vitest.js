@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createFlowEmaState,
   FLOW_PLOT_SMOOTH_WINDOW_S,
   flowRateSeriesFromWeightCurve,
   smoothFlowSeriesForPlot,
+  stepFlowEma,
   summarizeScaleFlow,
 } from './flowMetrics.js';
 
@@ -38,5 +40,20 @@ describe('flow plot smoothing', () => {
     const smoothVariance = smoothed.reduce((s, p) => s + p.flowGs ** 2, 0);
     expect(smoothVariance).toBeLessThan(rawVariance);
     expect(flowRateSeriesFromWeightCurve(weightCurve).length).toBeGreaterThan(0);
+  });
+
+  it('matches a full-series EMA when stepped one sample at a time', () => {
+    const raw = [];
+    for (let t = 0; t <= 30; t += 0.25) {
+      const flowGs = t < 8 ? 0.2 : t < 22 ? 2.8 : 0.1;
+      raw.push({ tS: t, flowGs });
+    }
+    const full = smoothFlowSeriesForPlot(raw, FLOW_PLOT_SMOOTH_WINDOW_S);
+    let state = createFlowEmaState();
+    const stepped = raw.map((sample) => {
+      state = stepFlowEma(state, sample, FLOW_PLOT_SMOOTH_WINDOW_S);
+      return { tS: sample.tS, flowGs: state.ema };
+    });
+    expect(stepped.map((p) => p.flowGs)).toEqual(full.map((p) => p.flowGs));
   });
 });

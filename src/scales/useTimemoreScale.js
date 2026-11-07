@@ -58,6 +58,7 @@ export function useTimemoreScale({
   const [weightTriggersPrimed, setWeightTriggersPrimed] = useState(false);
   const [instantFlowGs, setInstantFlowGs] = useState(null);
   const [liveFlowSeries, setLiveFlowSeries] = useState([]);
+  const [flowSeriesEpoch, setFlowSeriesEpoch] = useState(0);
   const [batteryPercent, setBatteryPercent] = useState(null);
 
   const transportRef = useRef(null);
@@ -219,6 +220,7 @@ export function useTimemoreScale({
     if (!enabled || !transport || connectStatus !== 'connected') return;
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
+    setFlowSeriesEpoch((epoch) => epoch + 1);
     sessionRef.current?.resetRecording();
     recordingExtractionRef.current = false;
 
@@ -284,6 +286,7 @@ export function useTimemoreScale({
     resetShotWeightTracking();
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
+    setFlowSeriesEpoch((epoch) => epoch + 1);
     const shotMetrics =
       metrics?.scaleFlowCurve?.length
         ? {
@@ -333,6 +336,7 @@ export function useTimemoreScale({
     yieldSettleSnapshotRef.current = null;
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
+    setFlowSeriesEpoch((epoch) => epoch + 1);
   }, [enabled, connectStatus, resetShotWeightTracking]);
 
   if (!enabled) {
@@ -348,6 +352,7 @@ export function useTimemoreScale({
       weightTriggersPrimed: false,
       instantFlowGs: null,
       liveFlowSeries: [],
+      flowSeriesEpoch: 0,
       batteryPercent: null,
       connect: noopAsync,
       disconnect: noopAsync,
@@ -375,6 +380,7 @@ export function useTimemoreScale({
     weightTriggersPrimed,
     instantFlowGs,
     liveFlowSeries,
+    flowSeriesEpoch,
     batteryPercent,
     connect,
     disconnect,

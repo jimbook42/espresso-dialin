@@ -66,6 +66,40 @@ export function smoothFlowSeriesForPlot(series, windowS = FLOW_PLOT_SMOOTH_WINDO
 }
 
 /**
+ * Running EMA state for one new flow sample at a time.
+ * Same recurrence as smoothFlowSeriesForPlot when maxDtS is not capping.
+ *
+ * @typedef {{ ema: number | null, lastTS: number | null }} FlowEmaState
+ */
+
+export function createFlowEmaState() {
+  return { ema: null, lastTS: null };
+}
+
+/**
+ * @param {FlowEmaState} state
+ * @param {{ tS: number, flowGs: number }} sample
+ * @param {number} windowS
+ * @param {number} [maxDtS] cap the integrated gap so a missed notify is not a long observed flow
+ * @returns {FlowEmaState}
+ */
+export function stepFlowEma(state, sample, windowS, maxDtS = Infinity) {
+  if (state?.ema == null || state.lastTS == null) {
+    return { ema: sample.flowGs, lastTS: sample.tS };
+  }
+  let dt = Math.max(0, sample.tS - state.lastTS);
+  if (Number.isFinite(maxDtS) && maxDtS > 0 && dt > maxDtS) dt = maxDtS;
+  if (!(windowS > 0)) {
+    return { ema: sample.flowGs, lastTS: sample.tS };
+  }
+  const alpha = 1 - Math.exp(-dt / windowS);
+  return {
+    ema: alpha * sample.flowGs + (1 - alpha) * state.ema,
+    lastTS: sample.tS,
+  };
+}
+
+/**
  * Flow rate series from stored weight-vs-time curve, smoothed for display.
  *
  * @param {{ tS: number, weightG: number }[]} weightCurve
