@@ -481,6 +481,85 @@ describe('flow end backdates to when weight stopped rising', () => {
     expect(confirmed.endS).toBeGreaterThan(18);
   });
 
+  /**
+   * 10 Hz. Pour to 10 s, flat to 10.6 s, then a stepped ~1 g/s resume
+   * with a flat notify between the steps, then a real stop at 20 s.
+   */
+  function steppedResumeShot(stepG, stepS) {
+    const dtS = 0.1;
+    const samples = [{ tS: 0, weightG: 0 }];
+    let t = 0;
+    let w = 0;
+    const push = (tS, weightG) => {
+      t = round3(tS);
+      w = round3(weightG);
+      samples.push({ tS: t, weightG: w });
+    };
+    while (t < 10 - 1e-9) push(round3(t + dtS), w + 2.5 * dtS);
+    while (t < 10.6 - 1e-9) push(round3(t + dtS), w);
+    let nextStep = 10.6;
+    while (t < 20 - 1e-9) {
+      const nextT = round3(t + dtS);
+      if (nextT + 1e-9 >= nextStep) {
+        push(nextT, w + stepG);
+        nextStep = round3(nextStep + stepS);
+      } else {
+        push(nextT, w);
+      }
+    }
+    while (t < 26 - 1e-9) push(round3(t + dtS), w);
+    return samples;
+  }
+
+  function playedDisplay(samples) {
+    let det = createFlowEndDetector();
+    let displayed = 0;
+    let frozen = false;
+    let confirmed = null;
+    let frozenNear10AfterResume = false;
+    for (let i = 1; i < samples.length; i += 1) {
+      const prev = samples[i - 1];
+      const next = samples[i];
+      const dt = next.tS - prev.tS;
+      const flowGs = dt > 0 ? (next.weightG - prev.weightG) / dt : 0;
+      det = stepFlowEndDetector(det, { tS: next.tS, flowGs, weightG: next.weightG });
+      const stopped = flowEndAutoStopShouldStop(det.auto);
+      const displayEnd = flowEndAutoStopDisplayEndS(det.auto);
+      let nextDisplayed = next.tS;
+      if (stopped) {
+        nextDisplayed = flowEndAutoStopRecordedEndExtractionS(det.auto);
+        if (confirmed == null && nextDisplayed != null) {
+          confirmed = { endS: nextDisplayed, atS: next.tS };
+        }
+      } else if (flowEndAutoStopShouldFreezeTimer(det.auto) && displayEnd != null) {
+        nextDisplayed = displayEnd;
+        frozen = true;
+      } else if (frozen) {
+        nextDisplayed = next.tS;
+        frozen = false;
+      }
+      if (next.tS > 12 && frozen && nextDisplayed < 11) frozenNear10AfterResume = true;
+      displayed = nextDisplayed;
+    }
+    return { confirmed, displayed, frozenNear10AfterResume };
+  }
+
+  it('a 0.2 g step every 0.2 s resume does not keep the early plateau', () => {
+    const played = playedDisplay(steppedResumeShot(0.2, 0.2));
+    expect(played.confirmed).not.toBeNull();
+    expect(Math.abs(played.confirmed.endS - 20)).toBeLessThanOrEqual(0.3);
+    expect(played.frozenNear10AfterResume).toBe(false);
+    expect(Math.abs(played.displayed - 20)).toBeLessThanOrEqual(0.3);
+  });
+
+  it('a 0.3 g step every 0.3 s resume does not keep the early plateau', () => {
+    const played = playedDisplay(steppedResumeShot(0.3, 0.3));
+    expect(played.confirmed).not.toBeNull();
+    expect(Math.abs(played.confirmed.endS - 20)).toBeLessThanOrEqual(0.3);
+    expect(played.frozenNear10AfterResume).toBe(false);
+    expect(Math.abs(played.displayed - 20)).toBeLessThanOrEqual(0.3);
+  });
+
   it('an 8 s notify gap does not confirm until 1.5 s of samples after the gap', () => {
     const peak = 4;
     const below = flowEndThreshold(peak) - 0.05;

@@ -51,16 +51,21 @@ export const FLOW_AUTO_STOP_PLATEAU_HOLD_S = 0.3;
 export const FLOW_AUTO_STOP_FAST_RESUME_S = 0.3;
 
 /**
- * Rising notifies in a row, each above one scale count, that cancel a plateau.
- * A post-stop drip is one blob and then flat, so it never reaches this.
- */
-export const FLOW_AUTO_STOP_RESUME_SAMPLES = 3;
-
-/**
- * Grams those rising notifies must add before the pour counts as resumed.
- * 0.5 g is about 0.3 s of a 2 g/s pour, and more than a single drip blob.
+ * Grams the cup must gain before a held plateau is a resumed pour.
+ * 0.5 g is more than one drip blob (0.3 g) and about half a second at 1 g/s.
  */
 export const FLOW_AUTO_STOP_RESUME_GAIN_G = 0.5;
+
+/**
+ * How far back (s) the resume check looks, using observed samples only.
+ *
+ * A 1 g/s stepped pour puts this 0.5 g inside the window. Drips of 0.3 g
+ * every 0.5 s do not: the window holds one blob. A 1.5–2 s window cannot
+ * make that split — those drips add about 0.9–1.2 g in that time, the same
+ * test a slow pour passes — and clearing them would move the saved end off
+ * the real stop. 0.5 s is the shortest window that still sees 0.5 g at 1 g/s.
+ */
+export const FLOW_AUTO_STOP_RESUME_WINDOW_S = 0.5;
 
 /**
  * @typedef {{
@@ -76,12 +81,10 @@ export const FLOW_AUTO_STOP_RESUME_GAIN_G = 0.5;
  *   lastWeightG: number | null,
  *   lastRiseT: number | null,
  *   flatInvalid: boolean,
- *   pendingRise: number,
- *   pendingGainG: number,
+ *   recentWeights: { tS: number, weightG: number }[],
  *   fastAboveSinceS: number | null,
  *   fastWasBelow: boolean,
  *   lastFlowT: number | null,
- *   slowFillGainG: number,
  * }} FlowEndAutoStopState
  */
 
@@ -99,12 +102,10 @@ export function createFlowEndAutoStopState() {
     lastWeightG: null,
     lastRiseT: null,
     flatInvalid: false,
-    pendingRise: 0,
-    pendingGainG: 0,
+    recentWeights: [],
     fastAboveSinceS: null,
     fastWasBelow: false,
     lastFlowT: null,
-    slowFillGainG: 0,
   };
 }
 
@@ -144,12 +145,40 @@ export function flowEndDisplayedAndSavedTimes(endExtractionS, opts = {}) {
 function clearAllEndCandidates(state) {
   state.plateauHeld = false;
   state.plateauStartS = null;
-  state.slowFillGainG = 0;
   state.backdateRecordedEndExtractionS = null;
   state.recordedEndExtractionS = null;
   state.belowThresholdSinceS = null;
-  state.pendingRise = 0;
-  state.pendingGainG = 0;
+}
+
+/** Keep just enough observed weights to see the resume window. */
+function rememberWeight(state, tS, weightG) {
+  const cutoff = tS - FLOW_AUTO_STOP_RESUME_WINDOW_S - 0.15;
+  const kept = [];
+  const prev = state.recentWeights;
+  for (let i = 0; i < prev.length; i += 1) {
+    if (prev[i].tS >= cutoff) kept.push(prev[i]);
+  }
+  kept.push({ tS, weightG });
+  state.recentWeights = kept;
+}
+
+/**
+ * Weight at the start of the resume window. The sample on the edge counts,
+ * so a drip that landed half a second ago is the baseline, not new gain.
+ * Samples older than the window, including across a notify gap, are ignored.
+ *
+ * @param {{ tS: number, weightG: number }[]} samples
+ * @param {number} tS
+ */
+function weightAtResumeWindowStart(samples, tS) {
+  const edge = tS - FLOW_AUTO_STOP_RESUME_WINDOW_S;
+  let baseline = null;
+  for (let i = 0; i < samples.length; i += 1) {
+    if (samples[i].tS <= edge + 1e-9) baseline = samples[i].weightG;
+  }
+  if (baseline != null) return baseline;
+  if (samples.length > 1) return samples[0].weightG;
+  return null;
 }
 
 /**
@@ -163,7 +192,10 @@ function stepWeightPlateau(state, tS, weightG) {
   const prevW = state.lastWeightG;
   state.lastWeightT = tS;
   state.lastWeightG = weightG;
-  if (prevT == null || prevW == null) return false;
+  if (prevT == null || prevW == null) {
+    rememberWeight(state, tS, weightG);
+    return false;
+  }
 
   const dt = tS - prevT;
   if (!(dt > 0)) return false;
@@ -171,55 +203,36 @@ function stepWeightPlateau(state, tS, weightG) {
 
   if (dt > FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S) {
     state.flatInvalid = true;
-    state.pendingRise = 0;
-    state.pendingGainG = 0;
+    rememberWeight(state, tS, weightG);
     return false;
   }
 
-  // Scale-count steps (0.1 g) never pass the blob test below. A slow pour of
-  // those steps is still filling: accumulate them even when a flat notify
-  // sits in between, and retire the plateau once they add up to a real pour.
-  if (dw > 1e-6 && dw <= FLOW_AUTO_STOP_PLATEAU_NOISE_G + 1e-6) {
+  rememberWeight(state, tS, weightG);
+
+  // Net gain over the window, not since the plateau forever. A flat sample
+  // does not count: the tail of a real pour is still inside the window for
+  // a few notifies after the cup stops, and that must not erase the stop.
+  const baseline = weightAtResumeWindowStart(state.recentWeights, tS);
+  const net = baseline == null ? 0 : weightG - baseline;
+  if (dw > 1e-6 && net >= FLOW_AUTO_STOP_RESUME_GAIN_G - 1e-6) {
+    clearAllEndCandidates(state);
     state.lastRiseT = tS;
     state.flatInvalid = false;
-    state.pendingRise = 0;
-    state.pendingGainG = 0;
-    if (state.plateauHeld) {
-      state.slowFillGainG += dw;
-      if (state.slowFillGainG >= FLOW_AUTO_STOP_RESUME_GAIN_G - 1e-6) {
-        clearAllEndCandidates(state);
-        state.lastRiseT = tS;
-        return true;
-      }
+    return true;
+  }
+
+  if (dw > 1e-6) {
+    if (!state.plateauHeld) {
+      state.lastRiseT = tS;
+      state.flatInvalid = false;
     }
     return false;
   }
 
-  if (dw > FLOW_AUTO_STOP_PLATEAU_NOISE_G) {
-    state.pendingRise += 1;
-    state.pendingGainG += dw;
-    const resumed = state.pendingRise >= FLOW_AUTO_STOP_RESUME_SAMPLES
-      && state.pendingGainG >= FLOW_AUTO_STOP_RESUME_GAIN_G;
-    if (!resumed) return false;
-    state.lastRiseT = tS;
-    state.flatInvalid = false;
-    const hadEndCandidate = state.plateauHeld
-      || state.plateauStartS != null
-      || state.backdateRecordedEndExtractionS != null
-      || state.recordedEndExtractionS != null
-      || state.belowThresholdSinceS != null;
-    if (hadEndCandidate) clearAllEndCandidates(state);
-    state.lastRiseT = tS;
-    return true;
-  }
-
-  state.pendingRise = 0;
-  state.pendingGainG = 0;
   if (state.flatInvalid || state.lastRiseT == null || state.plateauHeld) return false;
   if (tS - state.lastRiseT >= FLOW_AUTO_STOP_PLATEAU_HOLD_S - 1e-6) {
     state.plateauHeld = true;
     state.plateauStartS = state.lastRiseT;
-    state.slowFillGainG = 0;
   }
   return false;
 }
