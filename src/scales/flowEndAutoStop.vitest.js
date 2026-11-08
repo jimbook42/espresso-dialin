@@ -10,6 +10,7 @@ import {
   FLOW_AUTO_STOP_PEAK_END_FRACTION,
   FLOW_AUTO_STOP_PEAK_END_FRACTION_LEGACY,
   FLOW_AUTO_STOP_PLATEAU_HOLD_S,
+  flowEndAutoStopDisplayEndS,
   flowEndAutoStopRecordedEndExtractionS,
   flowEndAutoStopShouldFreezeTimer,
   flowEndAutoStopShouldStop,
@@ -33,6 +34,17 @@ const baseInput = {
 
 function flowEndThreshold(peakSmoothedGs, legacyMode = false) {
   return flowEndThresholdForPeak(peakSmoothedGs, legacyMode);
+}
+
+/** Samples at most 0.4 s apart, so the confirm hold is observed time. */
+function observedHold(fromT, smoothedFlowGs, holdS = FLOW_AUTO_STOP_CONFIRM_S) {
+  const steps = [];
+  const endT = fromT + holdS;
+  for (let t = fromT; t < endT - 1e-9; t += 0.4) {
+    steps.push({ tExtractionS: Math.round(t * 1000) / 1000, smoothedFlowGs });
+  }
+  steps.push({ tExtractionS: Math.round(endT * 1000) / 1000, smoothedFlowGs });
+  return steps;
 }
 
 function runSeries(steps, legacyMode = false) {
@@ -99,14 +111,11 @@ describe('flowEndAutoStop', () => {
   it('stops at flow end with end time at first threshold cross', () => {
     const peak = 4;
     const dropT = 30;
+    const below = flowEndThreshold(peak) - 0.01;
     const state = runSeries([
       { tExtractionS: 5, smoothedFlowGs: FLOW_AUTO_STOP_ARM_MIN_GS },
       { tExtractionS: 15, smoothedFlowGs: peak },
-      { tExtractionS: dropT, smoothedFlowGs: flowEndThreshold(peak) - 0.01 },
-      {
-        tExtractionS: dropT + FLOW_AUTO_STOP_CONFIRM_S,
-        smoothedFlowGs: flowEndThreshold(peak) - 0.01,
-      },
+      ...observedHold(dropT, below),
     ]);
     expect(flowEndAutoStopShouldStop(state)).toBe(true);
     expect(flowEndAutoStopRecordedEndExtractionS(state)).toBe(dropT);
@@ -115,11 +124,12 @@ describe('flowEndAutoStop', () => {
   it('does not extend shot time for late drips after stop armed', () => {
     const peak = 3;
     const dropT = 20;
+    const below = flowEndThreshold(peak) - 0.01;
     const state = runSeries([
       { tExtractionS: 2, smoothedFlowGs: FLOW_AUTO_STOP_ARM_MIN_GS },
       { tExtractionS: 10, smoothedFlowGs: peak },
-      { tExtractionS: dropT, smoothedFlowGs: flowEndThreshold(peak) - 0.01 },
-      { tExtractionS: dropT + FLOW_AUTO_STOP_CONFIRM_S, smoothedFlowGs: 0.2 },
+      ...observedHold(dropT, below),
+      { tExtractionS: dropT + FLOW_AUTO_STOP_CONFIRM_S + 0.4, smoothedFlowGs: 0.2 },
       { tExtractionS: dropT + FLOW_AUTO_STOP_CONFIRM_S + 5, smoothedFlowGs: 0.05 },
     ]);
     expect(flowEndAutoStopShouldStop(state)).toBe(true);
@@ -176,11 +186,7 @@ describe('flowEndAutoStop', () => {
     const state = runSeries([
       { tExtractionS: 5, smoothedFlowGs: FLOW_AUTO_STOP_ARM_MIN_GS },
       { tExtractionS: 15, smoothedFlowGs: peak },
-      { tExtractionS: dropT, smoothedFlowGs: betweenCapAndFraction },
-      {
-        tExtractionS: dropT + FLOW_AUTO_STOP_CONFIRM_S,
-        smoothedFlowGs: betweenCapAndFraction,
-      },
+      ...observedHold(dropT, betweenCapAndFraction),
     ]);
     expect(betweenCapAndFraction).toBeLessThan(peak * FLOW_AUTO_STOP_PEAK_END_FRACTION);
     expect(flowEndAutoStopShouldStop(state)).toBe(true);
@@ -199,11 +205,11 @@ describe('flowEndAutoStop', () => {
   it('does not mutate state after stop is confirmed', () => {
     const peak = 3;
     const dropT = 20;
+    const below = flowEndThreshold(peak) - 0.01;
     let state = runSeries([
       { tExtractionS: 2, smoothedFlowGs: FLOW_AUTO_STOP_ARM_MIN_GS },
       { tExtractionS: 10, smoothedFlowGs: peak },
-      { tExtractionS: dropT, smoothedFlowGs: flowEndThreshold(peak) - 0.01 },
-      { tExtractionS: dropT + FLOW_AUTO_STOP_CONFIRM_S, smoothedFlowGs: 0.05 },
+      ...observedHold(dropT, below),
     ]);
     expect(flowEndAutoStopShouldStop(state)).toBe(true);
     const endS = flowEndAutoStopRecordedEndExtractionS(state);
@@ -450,5 +456,120 @@ describe('flow end backdates to when weight stopped rising', () => {
     expect(displayedS - withPre.savedExtractionS).toBeGreaterThan(preInfusionSeconds - 0.5);
     expect(displayedS - withPre.savedExtractionS).toBeLessThan(preInfusionSeconds + 0.5);
     expect(displayedS).toBeGreaterThan(withPre.savedExtractionS + preInfusionSeconds - 0.5);
+  });
+
+  it('a 0.1 g quantized resume after a short flat does not keep the early plateau', () => {
+    const dtS = 0.1;
+    const samples = [{ tS: 0, weightG: 0 }];
+    let t = 0;
+    let w = 0;
+    const push = (tS, weightG) => {
+      t = round3(tS);
+      w = round3(weightG);
+      samples.push({ tS: t, weightG: w });
+    };
+    while (t < 10 - 1e-9) {
+      const nextT = round3(t + dtS);
+      push(nextT, w + 2.5 * dtS);
+    }
+    while (t < 10.6 - 1e-9) push(round3(t + dtS), w);
+    while (t < 20 - 1e-9) push(round3(t + dtS), Math.round((w + 0.1) * 10) / 10);
+    while (t < 26 - 1e-9) push(round3(t + dtS), w);
+    const { confirmed } = replayWeightShot(samples);
+    expect(confirmed).not.toBeNull();
+    expect(Math.abs(confirmed.endS - 20)).toBeLessThanOrEqual(0.3);
+    expect(confirmed.endS).toBeGreaterThan(18);
+  });
+
+  it('an 8 s notify gap does not confirm until 1.5 s of samples after the gap', () => {
+    const peak = 4;
+    const below = flowEndThreshold(peak) - 0.05;
+    let state = createFlowEndAutoStopState();
+    const step = (tExtractionS, smoothedFlowGs, backdateFlowGs = smoothedFlowGs) => {
+      state = stepFlowEndAutoStop(state, {
+        ...baseInput,
+        tExtractionS,
+        smoothedFlowGs,
+        backdateFlowGs,
+      });
+    };
+    step(5, FLOW_AUTO_STOP_ARM_MIN_GS);
+    step(10, peak);
+    for (let t = 10.2; t <= 22.0001; t += 0.2) {
+      const flow = t + 1e-9 >= 21.8 ? below : peak;
+      const backdate = t + 1e-9 >= 20 ? below : peak;
+      step(round3(t), flow, backdate);
+    }
+    expect(flowEndAutoStopShouldStop(state)).toBe(false);
+    const candidateBeforeGap = state.backdateRecordedEndExtractionS;
+    expect(candidateBeforeGap).not.toBeNull();
+    expect(candidateBeforeGap).toBeLessThan(21);
+    step(30, below, below);
+    expect(flowEndAutoStopShouldStop(state)).toBe(false);
+    expect(state.belowThresholdSinceS).toBe(30);
+    expect(state.backdateRecordedEndExtractionS).toBe(candidateBeforeGap);
+    let confirmedAt = null;
+    for (let t = 30.1; t <= 32.0001; t += 0.1) {
+      step(round3(t), below, below);
+      if (confirmedAt == null && flowEndAutoStopShouldStop(state)) confirmedAt = round3(t);
+    }
+    expect(confirmedAt).not.toBeNull();
+    expect(confirmedAt).toBeGreaterThanOrEqual(round3(30 + FLOW_AUTO_STOP_CONFIRM_S));
+    expect(confirmedAt).toBeLessThanOrEqual(round3(30 + FLOW_AUTO_STOP_CONFIRM_S + 0.15));
+    expect(Math.abs(flowEndAutoStopRecordedEndExtractionS(state) - candidateBeforeGap)).toBeLessThanOrEqual(0.3);
+  });
+
+  it('freezes the display at the plateau within 0.4 s and does not jump backwards', () => {
+    const stopS = 20;
+    const { samples, plateauStartS } = buildWeightShot({ stopS, untilS: 26 });
+    let det = createFlowEndDetector();
+    let displayed = 0;
+    let frozen = false;
+    let maxBackJump = 0;
+    let firstFreeze = null;
+    for (let i = 1; i < samples.length; i += 1) {
+      const prev = samples[i - 1];
+      const next = samples[i];
+      const dt = next.tS - prev.tS;
+      const flowGs = dt > 0 ? (next.weightG - prev.weightG) / dt : 0;
+      det = stepFlowEndDetector(det, { tS: next.tS, flowGs, weightG: next.weightG });
+      const stopped = flowEndAutoStopShouldStop(det.auto);
+      const displayEnd = flowEndAutoStopDisplayEndS(det.auto);
+      let nextDisplayed = next.tS;
+      if (stopped) {
+        nextDisplayed = flowEndAutoStopRecordedEndExtractionS(det.auto);
+      } else if (flowEndAutoStopShouldFreezeTimer(det.auto) && displayEnd != null) {
+        if (firstFreeze == null) firstFreeze = { atS: next.tS, shownS: displayEnd };
+        nextDisplayed = displayEnd;
+        frozen = true;
+      } else if (frozen) {
+        nextDisplayed = next.tS;
+        frozen = false;
+      }
+      if (displayed - nextDisplayed > maxBackJump) maxBackJump = displayed - nextDisplayed;
+      displayed = nextDisplayed;
+    }
+    expect(firstFreeze).not.toBeNull();
+    expect(firstFreeze.atS - plateauStartS).toBeLessThanOrEqual(0.4);
+    expect(Math.abs(firstFreeze.shownS - plateauStartS)).toBeLessThanOrEqual(0.3);
+    expect(maxBackJump).toBeLessThanOrEqual(0.5);
+    expect(flowEndAutoStopShouldStop(det.auto)).toBe(true);
+    expect(Math.abs(displayed - plateauStartS)).toBeLessThanOrEqual(0.3);
+  });
+
+  it('legacy mode does not cap a notify gap in the detection EMA', () => {
+    const samples = [
+      { tS: 0, flowGs: 2, weightG: 0 },
+      { tS: 0.2, flowGs: 2, weightG: 0.4 },
+      { tS: 3, flowGs: 0, weightG: 0.4 },
+    ];
+    let legacy = createFlowEndDetector();
+    let current = createFlowEndDetector();
+    for (const sample of samples) {
+      legacy = stepFlowEndDetector(legacy, sample, { legacyMode: true });
+      current = stepFlowEndDetector(current, sample, { legacyMode: false });
+    }
+    expect(legacy.detectEma.ema).toBeLessThan(0.8);
+    expect(current.detectEma.ema).toBeGreaterThan(1.2);
   });
 });

@@ -162,6 +162,7 @@ import {
 import { SHOT_YIELD_SETTLE_MS } from './scales/scaleShotStopSettle.js';
 import {
   createFlowEndDetector,
+  flowEndAutoStopDisplayEndS,
   flowEndAutoStopRecordedEndExtractionS,
   flowEndAutoStopShouldFreezeTimer,
   flowEndAutoStopShouldStop,
@@ -992,7 +993,7 @@ export default function App() {
       preInfusionSeconds,
     });
     if (flowEndAutoStopShouldFreezeTimer(autoState)) {
-      const endExtractionS = flowEndAutoStopRecordedEndExtractionS(autoState);
+      const endExtractionS = flowEndAutoStopDisplayEndS(autoState);
       if (endExtractionS != null) {
         setFlowAutoStopTimerFrozen(true);
         setTimerTicks(timesFor(endExtractionS).displayedTicks);

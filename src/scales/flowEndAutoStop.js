@@ -51,8 +51,8 @@ export const FLOW_AUTO_STOP_PLATEAU_HOLD_S = 0.3;
 export const FLOW_AUTO_STOP_FAST_RESUME_S = 0.3;
 
 /**
- * Rising notifies in a row required before a weight increase cancels a
- * plateau. A post-stop drip is one blob and then flat.
+ * Rising notifies in a row, each above one scale count, that cancel a plateau.
+ * A post-stop drip is one blob and then flat, so it never reaches this.
  */
 export const FLOW_AUTO_STOP_RESUME_SAMPLES = 3;
 
@@ -79,6 +79,9 @@ export const FLOW_AUTO_STOP_RESUME_GAIN_G = 0.5;
  *   pendingRise: number,
  *   pendingGainG: number,
  *   fastAboveSinceS: number | null,
+ *   fastWasBelow: boolean,
+ *   lastFlowT: number | null,
+ *   slowFillGainG: number,
  * }} FlowEndAutoStopState
  */
 
@@ -99,6 +102,9 @@ export function createFlowEndAutoStopState() {
     pendingRise: 0,
     pendingGainG: 0,
     fastAboveSinceS: null,
+    fastWasBelow: false,
+    lastFlowT: null,
+    slowFillGainG: 0,
   };
 }
 
@@ -134,6 +140,18 @@ export function flowEndDisplayedAndSavedTimes(endExtractionS, opts = {}) {
   };
 }
 
+/** Drop every end candidate. A resumed pour must not keep an earlier stamp. */
+function clearAllEndCandidates(state) {
+  state.plateauHeld = false;
+  state.plateauStartS = null;
+  state.slowFillGainG = 0;
+  state.backdateRecordedEndExtractionS = null;
+  state.recordedEndExtractionS = null;
+  state.belowThresholdSinceS = null;
+  state.pendingRise = 0;
+  state.pendingGainG = 0;
+}
+
 /**
  * @param {FlowEndAutoStopState} state
  * @param {number} tS
@@ -158,6 +176,25 @@ function stepWeightPlateau(state, tS, weightG) {
     return false;
   }
 
+  // Scale-count steps (0.1 g) never pass the blob test below. A slow pour of
+  // those steps is still filling: accumulate them even when a flat notify
+  // sits in between, and retire the plateau once they add up to a real pour.
+  if (dw > 1e-6 && dw <= FLOW_AUTO_STOP_PLATEAU_NOISE_G + 1e-6) {
+    state.lastRiseT = tS;
+    state.flatInvalid = false;
+    state.pendingRise = 0;
+    state.pendingGainG = 0;
+    if (state.plateauHeld) {
+      state.slowFillGainG += dw;
+      if (state.slowFillGainG >= FLOW_AUTO_STOP_RESUME_GAIN_G - 1e-6) {
+        clearAllEndCandidates(state);
+        state.lastRiseT = tS;
+        return true;
+      }
+    }
+    return false;
+  }
+
   if (dw > FLOW_AUTO_STOP_PLATEAU_NOISE_G) {
     state.pendingRise += 1;
     state.pendingGainG += dw;
@@ -171,13 +208,8 @@ function stepWeightPlateau(state, tS, weightG) {
       || state.backdateRecordedEndExtractionS != null
       || state.recordedEndExtractionS != null
       || state.belowThresholdSinceS != null;
-    if (hadEndCandidate) {
-      state.plateauHeld = false;
-      state.plateauStartS = null;
-      state.backdateRecordedEndExtractionS = null;
-      state.recordedEndExtractionS = null;
-      state.belowThresholdSinceS = null;
-    }
+    if (hadEndCandidate) clearAllEndCandidates(state);
+    state.lastRiseT = tS;
     return true;
   }
 
@@ -187,26 +219,25 @@ function stepWeightPlateau(state, tS, weightG) {
   if (tS - state.lastRiseT >= FLOW_AUTO_STOP_PLATEAU_HOLD_S - 1e-6) {
     state.plateauHeld = true;
     state.plateauStartS = state.lastRiseT;
+    state.slowFillGainG = 0;
   }
   return false;
 }
 
-/**
- * Earlier of the fast-EMA crossing and a held weight plateau.
- * Falls back to the slow crossing when neither candidate exists.
- *
- * @param {FlowEndAutoStopState} state
- * @param {number} fallbackT
- */
-function earliestEndS(state, fallbackT) {
-  let best = fallbackT;
-  if (state.backdateRecordedEndExtractionS != null) {
-    best = Math.min(best, state.backdateRecordedEndExtractionS);
-  }
+/** Plateau or fast-EMA crossing, whichever is earlier. Null when neither is valid. */
+function candidateEndS(state) {
+  let best = null;
+  if (state.backdateRecordedEndExtractionS != null) best = state.backdateRecordedEndExtractionS;
   if (state.plateauHeld && state.plateauStartS != null) {
-    best = Math.min(best, state.plateauStartS);
+    best = best == null ? state.plateauStartS : Math.min(best, state.plateauStartS);
   }
   return best;
+}
+
+function earliestEndS(state, fallbackT) {
+  const candidate = candidateEndS(state);
+  if (candidate == null) return fallbackT;
+  return Math.min(candidate, fallbackT);
 }
 
 /**
@@ -307,6 +338,11 @@ function stepFlowEndAutoStopLegacy(state, input) {
 function stepFlowEndAutoStopCurrent(state, input) {
   const next = { ...state };
   const t = input.tExtractionS;
+  const prevFlowT = next.lastFlowT;
+  next.lastFlowT = Number.isFinite(t) ? t : next.lastFlowT;
+  const sampleGap = prevFlowT != null
+    && Number.isFinite(t)
+    && (t - prevFlowT) > FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S;
   const weightG = input.weightG;
   let pourRising = false;
   if (Number.isFinite(weightG)) {
@@ -332,11 +368,17 @@ function stepFlowEndAutoStopCurrent(state, input) {
 
   if (Number.isFinite(backdateFlow) && backdateFlow >= endThreshold) {
     if (next.fastAboveSinceS == null) next.fastAboveSinceS = t;
-    if (t - next.fastAboveSinceS >= FLOW_AUTO_STOP_FAST_RESUME_S - 1e-6) {
-      next.backdateRecordedEndExtractionS = null;
+    if (
+      next.fastWasBelow
+      && t - next.fastAboveSinceS >= FLOW_AUTO_STOP_FAST_RESUME_S - 1e-6
+    ) {
+      clearAllEndCandidates(next);
+      next.fastWasBelow = false;
+      next.fastAboveSinceS = t;
     }
   } else if (Number.isFinite(backdateFlow) && backdateFlow < endThreshold) {
     next.fastAboveSinceS = null;
+    next.fastWasBelow = true;
     if (!pourRising && next.backdateRecordedEndExtractionS == null) {
       next.backdateRecordedEndExtractionS = t;
     }
@@ -358,6 +400,14 @@ function stepFlowEndAutoStopCurrent(state, input) {
   if (next.belowThresholdSinceS == null) {
     next.belowThresholdSinceS = t;
     next.recordedEndExtractionS = endS;
+    return next;
+  }
+
+  if (sampleGap) {
+    next.belowThresholdSinceS = t;
+    if (next.recordedEndExtractionS == null || endS < next.recordedEndExtractionS) {
+      next.recordedEndExtractionS = endS;
+    }
     return next;
   }
 
@@ -402,11 +452,12 @@ export function createFlowEndDetector() {
 export function stepFlowEndDetector(detector, sample, input = {}) {
   const legacyMode = input.legacyMode === true;
   const flowSample = { tS: sample.tS, flowGs: sample.flowGs };
+  const emaMaxDtS = legacyMode ? Infinity : FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S;
   const detectEma = stepFlowEma(
     detector.detectEma,
     flowSample,
     FLOW_PLOT_SMOOTH_WINDOW_S,
-    FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S,
+    emaMaxDtS,
   );
   const backdateEma = legacyMode
     ? detectEma
@@ -414,7 +465,7 @@ export function stepFlowEndDetector(detector, sample, input = {}) {
       detector.backdateEma,
       flowSample,
       FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S,
-      FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S,
+      emaMaxDtS,
     );
   const auto = stepFlowEndAutoStop(detector.auto, {
     enabled: input.enabled !== false,
@@ -443,7 +494,21 @@ export function flowEndAutoStopRecordedEndExtractionS(state) {
   return state.recordedEndExtractionS;
 }
 
-/** Timer display should freeze at the backdated end while the slow EMA confirms. */
+/**
+ * Time to show while the timer is frozen: the plateau or fast-EMA candidate,
+ * otherwise the slow-EMA end once that crossing has been recorded.
+ *
+ * @param {FlowEndAutoStopState} state
+ * @returns {number | null}
+ */
+export function flowEndAutoStopDisplayEndS(state) {
+  const candidate = candidateEndS(state);
+  if (candidate != null) return candidate;
+  return state.recordedEndExtractionS;
+}
+
+/** Freeze as soon as a plateau or fast-EMA candidate exists, and while confirming. */
 export function flowEndAutoStopShouldFreezeTimer(state) {
-  return state.recordedEndExtractionS != null && !state.stopConfirmed;
+  if (state.stopConfirmed) return false;
+  return candidateEndS(state) != null || state.recordedEndExtractionS != null;
 }
