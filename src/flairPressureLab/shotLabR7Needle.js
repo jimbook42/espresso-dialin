@@ -24,5 +24,5 @@ export async function r5SampleFromTapFrame(image, read, calibration, capturedAtM
   const corroborated = tip != null && Math.abs(wrapDelta(tip.angleDeg, mapped.angleDeg)) <= 5;
   return { r5Bar: mapped.bar, r5Conf: prediction.confidence, r5Angle: mapped.angleDeg,
     r5Registered: true, r5Corroborated: corroborated, r5CapturedAtMs: capturedAtMs,
-    r5Pose: { hub: pose.hub, radius: pose.radius, shiftDeg: pose.shiftDeg } };
+    r5Pose: { hub: pose.hub, radius: pose.radius, shiftDeg: pose.shiftDeg, epoch: read.poseEpoch } };
 }

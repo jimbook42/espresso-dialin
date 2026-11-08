@@ -412,7 +412,7 @@ export function useShotLabPressure({
         if (image) {
           consumedFrame = presentedFrame;
           lastMediaTime = video.currentTime;
-          if (isRepeatedGaugeFrame(image, lastFrameRef.current, cal)) {
+          if (isRepeatedGaugeFrame(image, lastFrameRef.current, cal, trackerRef.current.pose)) {
             repeatedFrame = true;
             image = null;
           }
@@ -428,6 +428,7 @@ export function useShotLabPressure({
           // Repeated/absent camera pixels are gaps, not fresh measurements.
           read = { ...(lastRead ?? { hub: cal.hub, radius: cal.radius }),
             ok: false, bar: null, rawBar: null, fresh: false, needleDeg: null,
+            frameMissing: true, pointerVerified: false, poseVerified: false,
             lost: !video || video.readyState < 2 };
         }
         observePreShotDialPose(read, cal);
@@ -438,6 +439,7 @@ export function useShotLabPressure({
             calibratedHub: cal.hub,
             calibratedRadius: cal.radius,
             poseLost: read.lost,
+            poseVerified: read.poseVerified === true,
           });
           const hint = shotStartDialHintRef.current.observe(mismatch, nowMs);
           setDialRecalibrateHint(hint.showHint);
@@ -601,7 +603,7 @@ export function useShotLabPressure({
         const image = grabSourceImage(video);
         if (!image) return;
         const cal = trackerRef.current.calibration;
-        const repeated = isRepeatedGaugeFrame(image, lastImage, cal);
+        const repeated = isRepeatedGaugeFrame(image, lastImage, cal, trackerRef.current.pose);
         const read = readCalibratedFrame(image, trackerRef.current);
         observePreShotDialPose(read, cal, nowMs);
         if (repeated) {

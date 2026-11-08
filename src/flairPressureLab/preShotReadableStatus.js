@@ -149,6 +149,7 @@ export function samplePreShotDialPose({
     calibratedHub: calibration?.hub,
     calibratedRadius: calibration?.radius,
     poseLost: Boolean(read?.lost),
+    poseVerified: read?.poseVerified === true,
   });
   const verdict = sampler.observe(mismatch, nowMs);
   const snap = readable.snapshot(nowMs);

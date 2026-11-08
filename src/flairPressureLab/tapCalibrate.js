@@ -32,6 +32,7 @@ import {
 } from './dialRegistration.js';
 import { getOpenCvSync } from './opencvRuntime.js';
 import { isRepeatedGaugeFrame } from './cameraFrameFreshness.js';
+import { locateGauge, probeGaugeDiscoveryCandidates } from './gaugeTrack.js';
 
 /** Clockwise travel from the printed 5 to the printed 10. */
 export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
@@ -1191,6 +1192,9 @@ export function createCalibratedTracker(calibration, options = {}) {
     registration: createDialRegistration(calibration),
     previousFrame: null,
     lastRead: null,
+    poseEpoch: 0,
+    reacquirePending: null,
+    reacquireWait: 0,
   };
 }
 
@@ -1209,7 +1213,7 @@ function trackPose(image, tracker) {
   // The measurement radius is distinct from the candidate-size check.
   // rimMeasure reports 0.9 * the outer crossing radius. Its sampling prior
   // is the outer radius, so do not feed the reported inner radius back as-is.
-  const measureRadius = tracker.calibration.radius / 0.9;
+  const measureRadius = (tracker.legacyScale ? tracker.calibration.radius : prior.radius) / 0.9;
   const here = rimMeasure(image, prior.x, prior.y, 36, 1, measureRadius);
   let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius, 36, 1, false, measureRadius);
   // The near window is 10 px. The lever shifts the hub by ~25 px, and the old
@@ -1278,6 +1282,53 @@ function trackPose(image, tracker) {
   return found;
 }
 
+/** Existing whole-frame circle discovery proposes; the original face certifies.
+ * No reference means no safe wide reacquisition. Never learn a new dial here.
+ */
+function reacquirePose(image, tracker) {
+  if (tracker.reacquireWait > 0) { tracker.reacquireWait--; return null; }
+  const { candidates } = probeGaugeDiscoveryCandidates(image);
+  const matches = [];
+  let edges = null;
+  // Discovery returns coarse rim proposals in descending rim strength. Their
+  // downsampled centre/size is not yet a verified pose or a pressure reading.
+  for (const candidate of candidates.slice(0, 12)) {
+    const state = { ...tracker.registration, misses: Math.max(1, tracker.registration.misses) };
+    const pose = { x: candidate.cx, y: candidate.cy, radius: candidate.radius };
+    let registered = registerDialFrame(image, tracker.calibration, pose, state, { verifyIdentity: true });
+    // A radial profile can alias repeated ticks. Retry bounded initial flow
+    // orientations; none can pass without the same printed-pixel verification.
+    const last = tracker.registration.last?.matrix;
+    const rotation = last ? Math.atan2(last[2] - last[1], last[0] + last[3]) * 180 / Math.PI : 0;
+    for (const offset of [0, -15, 15, -30, 30]) {
+      if (registered) break;
+      registered = registerDialFrame(image, tracker.calibration, pose, state,
+        { verifyIdentity: true, initialRotationDeg: rotation + offset });
+    }
+    if (!registered) continue;
+    const rim = locateGauge(image, { cx: registered.x, cy: registered.y, radius: registered.radius / 0.9 },
+      { priorOnly: true, edges });
+    edges = rim.edges;
+    if (!rim.ok) continue;
+    if (matches.some(item => pointDist(item.registered, registered) < registered.radius * 0.3)) continue;
+    matches.push({ registered, state });
+  }
+  // Multiple matching faces are ambiguous, even if one is nearer the old hub.
+  if (matches.length !== 1) {
+    tracker.reacquirePending = null;
+    tracker.reacquireWait = 2;
+    return null;
+  }
+  const match = matches[0], previous = tracker.reacquirePending;
+  tracker.reacquirePending = match.registered;
+  if (!previous || pointDist(previous, match.registered) > match.registered.radius * 0.08
+    || Math.abs(previous.radius / match.registered.radius - 1) > 0.08
+    || Math.abs(wrapDelta(previous.shiftDeg, match.registered.shiftDeg)) > 3) return null;
+  tracker.registration = match.state;
+  tracker.reacquirePending = null;
+  return match.registered;
+}
+
 /**
  * Follow the calibrated dial and read the needle against the rest→10 scale.
  * A weak bezel or colour match does not move the pose.
@@ -1287,7 +1338,7 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
   const needleTrackingReset = tracker.pointerTrack != null
     && tracker.pointerTrack.referenceAngleDeg == null;
   if (!tracker.legacyScale && tracker.lastRead
-    && isRepeatedGaugeFrame(image, tracker.previousFrame, tracker.calibration)) {
+    && isRepeatedGaugeFrame(image, tracker.previousFrame, tracker.calibration, tracker.pose)) {
     if (tracker.pointerTrack) missNeedleTrack(tracker.pointerTrack);
     return { ...tracker.lastRead, ok: false, bar: null, rawBar: null,
       fresh: false, needleDeg: null, pointerVerified: false, duplicate: true };
@@ -1304,14 +1355,22 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
     ? registerDialFrame(image, tracker.calibration, pose, tracker.registration) : null;
   if (registered && pointDist(registered, tracker.pose) <= TRACK_LEAP_PX) {
     pose = { ...pose, ...registered };
+    tracker.reacquirePending = null;
+    tracker.reacquireWait = 0;
   } else if (registrationExpected) {
     // A round rim alone cannot certify that the printed face still matches.
     tracker.registration.misses += 1;
     bezelOk = false;
     pose = tracker.pose;
-    registered = null;
     tracker.registration.last = previousRegistrationPose;
+    registered = reacquirePose(image, tracker);
+    if (registered) {
+      pose = { ...registered, score: registered.quality };
+      bezelOk = true;
+      tracker.poseEpoch++;
+    }
   }
+  if (!bezelOk && !tracker.lastRead?.lost) tracker.poseEpoch++;
   const matrix = registered?.matrix ?? tracker.pose.matrix ?? null;
   const scale = tracker.calibration.radius > 1 ? pose.radius / tracker.calibration.radius : 1;
   const colorRadius = tracker.calibration.colorRadius * scale;
@@ -1432,7 +1491,7 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
     } else tracker.registration.pendingSeed = shiftDeg;
   } else if (!tracker.registration.reference) tracker.registration.pendingSeed = null;
   const match = redShift.corr;
-  const score = (bezelOk ? found.score : 0) * (0.35 + 0.65 * Math.max(0, match));
+  const score = (bezelOk ? pose.score : 0) * (0.35 + 0.65 * Math.max(0, match));
   const lost = !bezelOk;
   if (bezelOk) {
     tracker.pose = {
@@ -1509,6 +1568,8 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
     tenDeg: ten,
     registration: registered ? { inliers: registered.inliers, residual: registered.residual } : null,
     poseMatrix: matrix,
+    poseVerified: Boolean(registered),
+    poseEpoch: tracker.poseEpoch,
   };
   tracker.previousFrame = image;
   tracker.lastRead = result;

@@ -23,4 +23,14 @@ describe('camera pixel freshness', () => {
     expect(isRepeatedGaugeFrame(background, image, cal)).toBe(true);
     expect(isRepeatedGaugeFrame({ ...image, width: 100 }, image, cal)).toBe(false);
   });
+
+  it('observes needle changes at a recovered hub outside the calibration window', () => {
+    const image = { width: 800, height: 200, data: new Uint8ClampedArray(800 * 200 * 4).fill(120) };
+    const changed = { ...image, data: image.data.slice() };
+    changed.data[(100 * 800 + 600) * 4] += 1;
+    const pose = { x: 600, y: 100, radius: 30 };
+    expect(isRepeatedGaugeFrame(changed, image, cal)).toBe(true);
+    expect(isRepeatedGaugeFrame(changed, image, cal, pose)).toBe(false);
+    expect(isRepeatedGaugeFrame(image, image, cal, pose)).toBe(true);
+  });
 });

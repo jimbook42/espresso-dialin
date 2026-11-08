@@ -25,9 +25,12 @@ export function dialPoseMismatchWarning(input) {
     calibratedHub,
     calibratedRadius,
     poseLost = false,
+    poseVerified = false,
     distanceFactor = 0.6,
   } = input;
   if (poseLost || !trackedHub) return true;
+  // Printed-face registration certifies the original taps at the new hub.
+  if (poseVerified) return false;
   if (!calibratedHub || !(calibratedRadius > 0)) return false;
   return hubDistancePx(trackedHub, calibratedHub) > distanceFactor * calibratedRadius;
 }

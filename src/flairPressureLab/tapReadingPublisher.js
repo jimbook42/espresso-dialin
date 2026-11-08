@@ -10,7 +10,8 @@ export function currentTapModel(frame, shotT0) {
   if (!frame.r5Registered || !frame.r5Corroborated || frame.r5Bar == null
     || !Number.isFinite(frame.r5Bar) || !(frame.r5Conf >= 0.6)
     || !Number.isFinite(captured) || captured < shotT0 || captured > nowMs
-    || nowMs - captured > TAP_MODEL_MAX_AGE_MS || read.lost || !pose?.hub || !read.hub) return null;
+    || nowMs - captured > TAP_MODEL_MAX_AGE_MS || read.lost || read.duplicate || read.frameMissing
+    || !pose?.hub || !read.hub || pose.epoch !== read.poseEpoch) return null;
   const shift = Math.abs(wrapDelta(pose.shiftDeg ?? 0, read.shiftDeg ?? 0));
   const distance = Math.hypot(pose.hub.x - read.hub.x, pose.hub.y - read.hub.y);
   const ratio = pose.radius / read.radius;

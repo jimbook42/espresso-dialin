@@ -33,4 +33,13 @@ describe('shotStartDialPoseCheck', () => {
       }),
     ).toBe(true);
   });
+
+  it('accepts displacement only with a current verified face, and still rejects loss', () => {
+    const input = { trackedHub: { x: 300, y: 200 }, calibratedHub: calHub,
+      calibratedRadius: calRadius, poseVerified: true };
+    expect(dialPoseMismatchWarning(input)).toBe(false);
+    expect(dialPoseMismatchWarning({ ...input, poseVerified: false })).toBe(true);
+    expect(dialPoseMismatchWarning({ ...input, poseLost: true })).toBe(true);
+    expect(dialPoseMismatchWarning({ ...input, trackedHub: null })).toBe(true);
+  });
 });

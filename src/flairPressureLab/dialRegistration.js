@@ -1,5 +1,6 @@
 import { getOpenCvSync } from './opencvRuntime.js';
 import { wrap360, wrapDelta } from './gaugeConfig.js';
+import { matchGaugeRotation } from './gaugeTrack.js';
 
 // Only transient image patches. Nothing here is added to a saved calibration.
 const references = new Map();
@@ -50,6 +51,20 @@ function patch(image, pose) {
     data[i] = Math.max(0, Math.min(255, Math.round(128 + (data[i] - mean) * gain)));
   }
   return data;
+}
+
+// Only an initial-flow proposal. The original forward/backward, RANSAC and
+// printed-pixel gates still have to verify the complete affine transform.
+function printedProfile(data) {
+  return Float32Array.from({ length: 72 }, (_, bin) => {
+    const angle = bin * Math.PI / 36;
+    let sum = 0, count = 0;
+    for (let r = FACE_RADIUS * 0.48; r <= FACE_RADIUS * 0.82; r++) {
+      sum += data[Math.round(CENTRE + r * Math.sin(angle)) * SIZE + Math.round(CENTRE + r * Math.cos(angle))];
+      count++;
+    }
+    return sum / count;
+  });
 }
 
 // Distributed corners on the printed face, excluding the pivot and needle ray.
@@ -121,7 +136,7 @@ export function inverseDialAngle(angle, matrix) {
 }
 
 /** Match static printed features to the calibration frame, never to the needle. */
-export function registerDialFrame(image, _cal, pose, state) {
+export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = false, initialRotationDeg = null } = {}) {
   const cv = getOpenCvSync();
   if (!cv?.calcOpticalFlowPyrLK || !cv?.estimateAffine2D || !state.reference) return null;
   const owned = [];
@@ -129,17 +144,33 @@ export function registerDialFrame(image, _cal, pose, state) {
   try {
     const ref = state.reference;
     const previous = own(cv.matFromArray(SIZE, SIZE, cv.CV_8UC1, ref.data));
-    const current = own(cv.matFromArray(SIZE, SIZE, cv.CV_8UC1, patch(image, pose)));
+    const currentData = patch(image, pose);
+    const current = own(cv.matFromArray(SIZE, SIZE, cv.CV_8UC1, currentData));
     const source = own(cv.matFromArray(ref.points.length, 1, cv.CV_32FC2, ref.points.flatMap(p => [p.x, p.y])));
-    const seed = state.last ? ref.points.flatMap(p => {
+    const rotationProposal = initialRotationDeg ?? (verifyIdentity ? matchGaugeRotation(
+      ref.profile ??= printedProfile(ref.data), printedProfile(currentData),
+      { maxShiftDeg: 40, referenceNeedleDeg: _cal.zeroAngleDeg },
+    ).estimateDeg : null);
+    const proposalRad = (rotationProposal ?? 0) * Math.PI / 180;
+    const seed = rotationProposal != null ? ref.points.flatMap(p => {
+      const dx = p.x - CENTRE, dy = p.y - CENTRE;
+      return [CENTRE + Math.cos(proposalRad) * dx - Math.sin(proposalRad) * dy,
+        CENTRE + Math.sin(proposalRad) * dx + Math.cos(proposalRad) * dy];
+    }) : state.last ? ref.points.flatMap(p => {
       const dx = p.x - CENTRE, dy = p.y - CENTRE, last = state.last;
       // After loss, the old translation is no longer a useful prediction.
       // Use the current rim as a search seed; only matching face pixels can
       // certify the recovered hub and transform through the original taps.
       const anchorX = state.misses > 0 ? pose.x : last.x;
       const anchorY = state.misses > 0 ? pose.y : last.y;
-      return [CENTRE + (anchorX - pose.x + last.scale * (last.matrix[0] * dx + last.matrix[1] * dy)) * FACE_RADIUS / pose.radius,
-        CENTRE + (anchorY - pose.y + last.scale * (last.matrix[2] * dx + last.matrix[3] * dy)) * FACE_RADIUS / pose.radius];
+      // Both patches are already normalized to the candidate radius. After
+      // loss, retaining the old *pixel* scale sends LK towards the wrong glyphs
+      // when the lever changes apparent size. Retain orientation/tilt only.
+      const scale = state.misses > 0
+        ? 1 / Math.sqrt(last.matrix[0] * last.matrix[3] - last.matrix[1] * last.matrix[2])
+        : last.scale * FACE_RADIUS / pose.radius;
+      return [CENTRE + (anchorX - pose.x) * FACE_RADIUS / pose.radius + scale * (last.matrix[0] * dx + last.matrix[1] * dy),
+        CENTRE + (anchorY - pose.y) * FACE_RADIUS / pose.radius + scale * (last.matrix[2] * dx + last.matrix[3] * dy)];
     }) : null;
     const target = own(seed ? cv.matFromArray(ref.points.length, 1, cv.CV_32FC2, seed) : new cv.Mat());
     const status = own(new cv.Mat()), error = own(new cv.Mat());
@@ -189,6 +220,9 @@ export function registerDialFrame(image, _cal, pose, state) {
     if (count < 8 || count < a.length / 4 || sectors.size < 3 || residual / count > 1.5
       || det < 0.65 || det > 1.5 || minScale < 0.65 || maxScale > 1.5
       || maxScale / minScale > 1.8 || Math.abs(rotation) > 40 || Math.hypot(x - CENTRE, y - CENTRE) > 18) return null;
+    // Whole-frame reacquisition needs matching printed pixels as well as a
+    // coherent flow field. A circle or repeated glyph pattern is not identity.
+    if (verifyIdentity && printedPixelAgreement(ref.data, currentData, _cal.zeroAngleDeg, m) < 0.85) return null;
     const scale = pose.radius / FACE_RADIUS;
     state.matrix = matrix;
     state.misses = 0;
@@ -202,4 +236,23 @@ export function registerDialFrame(image, _cal, pose, state) {
   } finally {
     owned.reverse().forEach(mat => mat.delete());
   }
+}
+
+function printedPixelAgreement(reference, current, needleDeg, m) {
+  let n = 0, sumA = 0, sumB = 0, aa = 0, bb = 0, ab = 0;
+  for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+      const dx = x - CENTRE, dy = y - CENTRE, radius = Math.hypot(dx, dy);
+      if (radius < FACE_RADIUS * 0.48 || radius > FACE_RADIUS * 0.82) continue;
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      if (Math.abs(wrapDelta(angle, needleDeg)) < 18 || Math.abs(wrapDelta(angle, needleDeg + 180)) < 18) continue;
+      const u = m[0] * x + m[1] * y + m[2], v = m[3] * x + m[4] * y + m[5];
+      if (u < 0 || v < 0 || u >= SIZE - 1 || v >= SIZE - 1) continue;
+      const ix = Math.floor(u), iy = Math.floor(v), fx = u - ix, fy = v - iy;
+      const a = reference[y * SIZE + x];
+      const b = (current[iy * SIZE + ix] * (1 - fx) + current[iy * SIZE + ix + 1] * fx) * (1 - fy)
+        + (current[(iy + 1) * SIZE + ix] * (1 - fx) + current[(iy + 1) * SIZE + ix + 1] * fx) * fy;
+      n++; sumA += a; sumB += b; aa += a * a; bb += b * b; ab += a * b;
+  }
+  const variance = (aa - sumA * sumA / n) * (bb - sumB * sumB / n);
+  return n >= 200 && variance > 0 ? (ab - sumA * sumB / n) / Math.sqrt(variance) : 0;
 }

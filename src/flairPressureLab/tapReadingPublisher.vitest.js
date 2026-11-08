@@ -86,6 +86,25 @@ describe('fresh tap observations and held display pressure', () => {
     expect(pub.rejectionCounts.byReason['needle-missing']).toBe(1);
   });
 
+  it('cannot reuse an asynchronous result across a lost/reacquired pose, even at identical coordinates', () => {
+    const frame = modelFrame();
+    frame.read.poseEpoch = 4;
+    frame.r5Pose.epoch = 4;
+    expect(currentTapModel(frame, 1000)).not.toBeNull();
+    for (const change of [
+      { poseEpoch: 5 }, { duplicate: true }, { frameMissing: true },
+      { radius: 80 }, { lost: true },
+    ]) {
+      const publisher = createShotLabR7Publisher(calibration);
+      publisher.beginShot(1000);
+      const stale = { ...frame, read: { ...frame.read, ...change } };
+      expect(currentTapModel(stale, 1000)).toBeNull();
+      expect(publisher.stepFrame(stale)).toMatchObject({ bar: null, fresh: false });
+    }
+    // Old callers with no epoch cannot certify a new production pose.
+    expect(currentTapModel({ ...frame, r5Pose: { ...frame.r5Pose, epoch: undefined } }, 1000)).toBeNull();
+  });
+
   it('does not treat a suppressed top-of-scale hold as a measurement', () => {
     const pub = createShotLabR7Publisher(calibration);
     pub.beginShot(1000);
