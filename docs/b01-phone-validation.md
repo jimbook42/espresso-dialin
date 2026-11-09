@@ -1,6 +1,6 @@
 # B01 phone validation checklist
 
-Run the same checks on **Android Chrome**, **iPhone Safari**, and the **iPhone Home Screen app**. Open Espresso Dial-In at https://dialin-app.vercel.app and check that the footer says **v4.14.8 · 6f165ef**. Use a test shot you are happy to keep. Keep the phone fixed and the gauge well lit. Leave any connected scale and reader settings as you normally use them.
+Run the same checks on **Android Chrome**, **iPhone Safari**, and the **iPhone Home Screen app**. Open Espresso Dial-In at https://dialin-app.vercel.app and check that the footer says **v4.14.9**. Use a test shot you are happy to keep. Keep the phone fixed and the gauge well lit. Leave any connected scale and reader settings as you normally use them.
 
 In **Settings → Lab**, turn on **Pressure from camera (beta)**. Open **Run gauge setup (3 taps)**, or **Re-run gauge setup (3 taps)** if it was set up before. Allow camera access. With the lever down and the needle at rest, follow the prompts for the centre, 5 and 10 marks, then accept the setup. Use the Dial-In shot timer. If asked to confirm the gauge reads zero, check the real gauge before tapping **Yes, start shot**.
 
