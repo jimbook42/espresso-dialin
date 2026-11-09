@@ -15,7 +15,7 @@ const number = (value, places = 1) => value != null && Number.isFinite(value) ? 
 function LiveShotChart({ pressure = [], flow = [], gauge, scale, grow = false }) {
   // Reuse the pressure display's gap semantics. Missing samples remain gaps.
   const bars = gauge ? pressureChartPointsForDisplay(pressure) : [];
-  const flows = scale ? flow.filter((p) => Number.isFinite(p.tS) && Number.isFinite(p.flowGs)) : [];
+  const flows = scale ? flow.filter((p) => !p.gap && Number.isFinite(p.tS) && Number.isFinite(p.flowGs)) : [];
   const end = Math.max(10, ...bars.map((p) => p.tS), ...flows.map((p) => p.tS));
   const flowMax = Math.max(2, ...flows.map((p) => p.flowGs));
   const barMax = Math.max(10, ...bars.map((p) => p.bar));

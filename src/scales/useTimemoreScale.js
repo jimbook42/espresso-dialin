@@ -63,7 +63,9 @@ export function useTimemoreScale({
 
   const transportRef = useRef(null);
   const sessionRef = useRef(null);
-  const recordingExtractionRef = useRef(false);
+  const shotSessionRef = useRef(null);
+  const interruptedMetricsRef = useRef(null);
+  const unsubscribeDisconnectRef = useRef(null);
   const connectStatusRef = useRef(connectStatus);
   connectStatusRef.current = connectStatus;
   const liveWeightRef = useRef(0);
@@ -99,10 +101,11 @@ export function useTimemoreScale({
   const disposeSession = useCallback(() => {
     sessionRef.current?.dispose();
     sessionRef.current = null;
-    recordingExtractionRef.current = false;
   }, []);
 
   const disposeTransport = useCallback(async () => {
+    unsubscribeDisconnectRef.current?.();
+    unsubscribeDisconnectRef.current = null;
     disposeSession();
     const t = transportRef.current;
     transportRef.current = null;
@@ -115,6 +118,19 @@ export function useTimemoreScale({
     setWeightTriggersPrimed(false);
     publishWeightSnapshot(liveWeightRef.current, 0, false);
   }, [publishWeightSnapshot]);
+
+  const disconnect = useCallback(async () => {
+    if (sessionRef.current && sessionRef.current === shotSessionRef.current) {
+      interruptedMetricsRef.current = sessionRef.current.getShotMetrics();
+    }
+    setConnectStatus('idle');
+    setInstantFlowGs(null);
+    setLiveFlowSeries([]);
+    setFlowSeriesEpoch((epoch) => epoch + 1);
+    setBatteryPercent(null);
+    resetShotWeightTracking();
+    await disposeTransport();
+  }, [disposeTransport, resetShotWeightTracking]);
 
   useEffect(() => {
     if (!enabled) {
@@ -183,6 +199,9 @@ export function useTimemoreScale({
       transportRef.current = transport;
       await transport.connect();
       attachSession(transport);
+      unsubscribeDisconnectRef.current = transport.onDisconnect?.(() => {
+        if (transportRef.current === transport) void disconnect();
+      });
       setConnectStatus('connected');
       liveWeightRef.current = 0;
       resetShotWeightTracking();
@@ -194,7 +213,7 @@ export function useTimemoreScale({
       setConnectStatus('error');
       transportRef.current = null;
     }
-  }, [enabled, disposeTransport, buildTransport, attachSession, resetShotWeightTracking]);
+  }, [enabled, disposeTransport, buildTransport, attachSession, disconnect, resetShotWeightTracking]);
 
   const devUrlAutoConnectRef = useRef(false);
   useEffect(() => {
@@ -203,13 +222,6 @@ export function useTimemoreScale({
     setTransportKind('sim');
     void connect();
   }, [devUrlSim, connect]);
-
-  const disconnect = useCallback(async () => {
-    setConnectStatus('idle');
-    setInstantFlowGs(null);
-    setBatteryPercent(null);
-    await disposeTransport();
-  }, [disposeTransport]);
 
   const tare = useCallback(async () => {
     await transportRef.current?.tare();
@@ -222,7 +234,6 @@ export function useTimemoreScale({
     setLiveFlowSeries([]);
     setFlowSeriesEpoch((epoch) => epoch + 1);
     sessionRef.current?.resetRecording();
-    recordingExtractionRef.current = false;
 
     const weightAtStart = liveWeightRef.current;
     beginShotWeightTracking(shotWeightTrackingRef.current, weightAtStart);
@@ -249,16 +260,20 @@ export function useTimemoreScale({
   }, [prepareShotWeightBaseline]);
 
   const notifyShotStarted = useCallback(async ({ tareAlreadyDone = false } = {}) => {
+    interruptedMetricsRef.current = null;
+    shotSessionRef.current = null;
     const transport = transportRef.current;
+    const session = sessionRef.current;
     if (!enabled || !transport || connectStatus !== 'connected') return;
     if (!tareAlreadyDone) {
       await prepareShotWeightBaseline();
     }
 
     await transport.startTimer();
+    if (sessionRef.current !== session) return;
+    shotSessionRef.current = session;
     if (!usePreInfusion) {
-      sessionRef.current?.beginExtractionTiming();
-      recordingExtractionRef.current = true;
+      session?.beginExtractionTiming();
     }
   }, [enabled, connectStatus, usePreInfusion, prepareShotWeightBaseline]);
 
@@ -271,8 +286,13 @@ export function useTimemoreScale({
 
   const finalizeShotStop = useCallback(() => {
     const transport = transportRef.current;
-    if (!enabled || !transport || connectStatus !== 'connected') {
-      return { yieldG: null, metrics: null };
+    const interruptedMetrics = interruptedMetricsRef.current;
+    interruptedMetricsRef.current = null;
+    const sameSession = sessionRef.current === shotSessionRef.current;
+    shotSessionRef.current = null;
+    if (!enabled || !transport || connectStatus !== 'connected' || !sameSession) {
+      yieldSettleSnapshotRef.current = null;
+      return { yieldG: null, metrics: interruptedMetrics?.scaleFlowCurve.length ? interruptedMetrics : null };
     }
     sessionRef.current?.stopRecording();
     const metrics = sessionRef.current?.getShotMetrics() ?? null;
@@ -282,7 +302,6 @@ export function useTimemoreScale({
       ? resolveSettledYieldG(snap.atStopG, snap.peakG, relativeNow)
       : roundYieldG(relativeNow);
     yieldSettleSnapshotRef.current = null;
-    recordingExtractionRef.current = false;
     resetShotWeightTracking();
     setInstantFlowGs(null);
     setLiveFlowSeries([]);
@@ -299,7 +318,7 @@ export function useTimemoreScale({
 
   const notifyShotYieldSettleBegin = useCallback(() => {
     const transport = transportRef.current;
-    if (!enabled || !transport || connectStatus !== 'connected') {
+    if (!enabled || !transport || connectStatus !== 'connected' || sessionRef.current !== shotSessionRef.current) {
       return false;
     }
     const atStopG = readRelativeShotWeightG();
@@ -311,8 +330,8 @@ export function useTimemoreScale({
   const notifyPreInfusionEnded = useCallback(async () => {
     const transport = transportRef.current;
     if (!enabled || !transport || connectStatus !== 'connected') return;
+    if (sessionRef.current !== shotSessionRef.current) return;
     sessionRef.current?.beginExtractionTiming();
-    recordingExtractionRef.current = true;
     if (
       resolveEffectiveTransportKind(transportKind, simAllowed) === 'sim' &&
       typeof transport.endPreinfusion === 'function'
@@ -327,11 +346,12 @@ export function useTimemoreScale({
   }, [notifyShotYieldSettleBegin, finalizeShotStop]);
 
   const notifyShotCancelled = useCallback(async () => {
+    shotSessionRef.current = null;
+    interruptedMetricsRef.current = null;
     const transport = transportRef.current;
     if (!enabled || !transport || connectStatus !== 'connected') return;
     await transport.stopTimer().catch(() => {});
     sessionRef.current?.resetRecording();
-    recordingExtractionRef.current = false;
     resetShotWeightTracking();
     yieldSettleSnapshotRef.current = null;
     setInstantFlowGs(null);

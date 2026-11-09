@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createFlowEmaState,
   FLOW_PLOT_SMOOTH_WINDOW_S,
+  SCALE_FLOW_MAX_SAMPLE_GAP_S,
   flowRateSeriesFromWeightCurve,
   smoothFlowSeriesForPlot,
   stepFlowEma,
@@ -9,6 +10,18 @@ import {
 } from './flowMetrics.js';
 
 describe('flow plot smoothing', () => {
+  it('breaks the plot across a gap without deriving flow from the missing interval', () => {
+    expect(flowRateSeriesFromWeightCurve([
+      { tS: 0, weightG: 0 },
+      { tS: 0.1, weightG: 0.2 },
+      { tS: 3, weightG: 4 },
+      { tS: 3.125, weightG: 4.5 },
+    ], FLOW_PLOT_SMOOTH_WINDOW_S, SCALE_FLOW_MAX_SAMPLE_GAP_S)).toEqual([
+      { tS: 0.1, flowGs: 2 },
+      { tS: 3.125, flowGs: 4, breakBefore: true },
+    ]);
+  });
+
   it('leaves average flow from weight curve unchanged', () => {
     const samples = [
       { tS: 0, weightG: 0 },

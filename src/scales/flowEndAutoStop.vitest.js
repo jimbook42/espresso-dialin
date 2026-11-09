@@ -100,6 +100,32 @@ function syntheticLeverLiftFlowSeries() {
 }
 
 describe('flowEndAutoStop', () => {
+  it('requires observed confirmation after a notify gap in legacy mode', () => {
+    const beforeGap = [
+      { tExtractionS: 9.9, smoothedFlowGs: 3 },
+      { tExtractionS: 10, smoothedFlowGs: 0.1 },
+    ];
+    const afterGap = { tExtractionS: 13, smoothedFlowGs: 0.1 };
+    expect(flowEndAutoStopShouldStop(runSeries([...beforeGap, afterGap], true))).toBe(false);
+    const confirmed = runSeries([...beforeGap, ...observedHold(13, 0.1)], true);
+    expect(flowEndAutoStopShouldStop(confirmed)).toBe(true);
+    expect(flowEndAutoStopRecordedEndExtractionS(confirmed)).toBe(10);
+  });
+
+  it('does not backdate to a plateau contradicted by weight gain across a notify gap', () => {
+    const beforeGap = [
+      { tExtractionS: 9.9, smoothedFlowGs: 3, weightG: 29.7 },
+      { tExtractionS: 10, smoothedFlowGs: 0.1, weightG: 30 },
+      { tExtractionS: 10.4, smoothedFlowGs: 0.1, weightG: 30 },
+    ];
+    const afterGap = observedHold(13, 0.1, 2).map((step) => ({ ...step, weightG: 34 }));
+    const confirmed = runSeries([...beforeGap, ...afterGap]);
+    expect(flowEndAutoStopShouldStop(confirmed)).toBe(true);
+    expect(flowEndAutoStopRecordedEndExtractionS(confirmed)).toBe(13);
+    const dripTail = afterGap.map((step) => ({ ...step, weightG: 30.6 }));
+    expect(flowEndAutoStopRecordedEndExtractionS(runSeries([...beforeGap, ...dripTail]))).toBe(10);
+  });
+
   it('does not stop during pre-infusion', () => {
     const state = runSeries([
       { preinfusionActive: true, extractionActive: false, tExtractionS: 5, smoothedFlowGs: 3 },

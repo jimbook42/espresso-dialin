@@ -1,6 +1,6 @@
 import { pressureGapBridges } from './pressureGapBridges.js';
 import { useId } from 'react';
-import { flowRateSeriesFromWeightCurve } from '../scales/flowMetrics.js';
+import { flowRateSeriesFromWeightCurve, FLOW_PLOT_SMOOTH_WINDOW_S, SCALE_FLOW_MAX_SAMPLE_GAP_S } from '../scales/flowMetrics.js';
 import { pressureChartPointsForDisplay, labPressureCurvePlotTimeS } from '../flairPressureLab/pressureDisplaySmoothing.js';
 import { shotPressureChartY } from '../flairPressureLab/shotPressureChartLayout.js';
 import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js';
@@ -36,11 +36,10 @@ export function ScaleFlowChart({
   const labelId = useId();
   if (!flowCurve?.length) return null;
 
-  const flowSeries = flowRateSeriesFromWeightCurve(flowCurve).map((point) => ({
+  const flowSeries = flowRateSeriesFromWeightCurve(flowCurve, FLOW_PLOT_SMOOTH_WINDOW_S, SCALE_FLOW_MAX_SAMPLE_GAP_S).map((point) => ({
     ...point,
     tS: point.tS + flowTimeOffsetSec,
   }));
-  if (!flowSeries.length) return null;
 
   const pressurePoints = pressureSamples?.length
     ? pressureChartPointsForDisplay(pressureSamples)
@@ -59,7 +58,7 @@ export function ScaleFlowChart({
   const chartH = h - padT - padB;
 
   const maxT = Math.max(
-    ...flowSeries.map((p) => p.tS),
+    ...flowCurve.map((p) => p.tS + flowTimeOffsetSec),
     ...(showPressure ? pressurePoints.map((p) => labPressureCurvePlotTimeS(p.tS)) : []),
     1,
   );
@@ -70,7 +69,7 @@ export function ScaleFlowChart({
   const yFlow = (flow) => padT + chartH - (flow / flowAxisMax) * chartH;
 
   const flowPath = flowSeries
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.tS).toFixed(1)} ${yFlow(p.flowGs).toFixed(1)}`)
+    .map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'} ${x(p.tS).toFixed(1)} ${yFlow(p.flowGs).toFixed(1)}`)
     .join(' ');
 
   const pressureYMax = showPressure

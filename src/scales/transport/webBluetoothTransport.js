@@ -139,10 +139,11 @@ export function createWebBluetoothTransport() {
       });
 
       device.addEventListener('gattserverdisconnected', () => {
+        notifyChar?.removeEventListener('characteristicvaluechanged', handleNotification);
         notifyChar = null;
         writeChar = null;
         disconnectHandlers.forEach((h) => h('gatt disconnected'));
-      });
+      }, { once: true });
 
       const server = await device.gatt.connect();
       await attachStandardBleBatteryService(server, emitBatteryPercent);
