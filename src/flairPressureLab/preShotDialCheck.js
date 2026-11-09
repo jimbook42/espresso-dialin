@@ -1,8 +1,8 @@
 import { dialPoseMismatchWarning } from './shotStartDialPoseCheck.js';
 
-export const PRE_SHOT_DIAL_FOUND_LABEL = 'Dial found';
+export const PRE_SHOT_DIAL_FOUND_LABEL = 'Ready to track';
 export const PRE_SHOT_DIAL_NOT_FOUND_LABEL =
-  'Dial not found. Check the phone hasn\'t moved, or recalibrate.';
+  'Tracking lost. Bring the calibrated gauge back into view.';
 
 /** ~3 Hz pose samples before Start, until the first lock. Checks continue after that. */
 export const PRE_SHOT_DIAL_SAMPLE_MS = 333;

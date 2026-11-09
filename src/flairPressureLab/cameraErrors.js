@@ -17,6 +17,8 @@ export function cameraErrorMessage(err) {
       return 'This browser does not support camera access.';
     case 'RearCameraError':
       return 'Only the front camera is used for this test. The rear camera was not started.';
+    case 'UnexpectedCameraError':
+      return 'The selected camera is unavailable. Check camera access, then try again.';
     default:
       return 'The camera could not be started. Check permission and that no other app is using it.';
   }

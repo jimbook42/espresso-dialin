@@ -2,12 +2,14 @@
  * @vitest-environment happy-dom
  */
 import { describe, expect, it } from 'vitest';
-import React, { createElement } from 'react';
+import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { PreShotDialStatus } from './PreShotDialStatus.jsx';
 import { PRE_SHOT_DIAL_FOUND_LABEL, PRE_SHOT_DIAL_NOT_FOUND_LABEL } from '../flairPressureLab/preShotDialCheck.js';
 import { PRE_SHOT_GAUGE_NOT_READABLE_LABEL } from '../flairPressureLab/preShotReadableStatus.js';
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 function renderStatus(status) {
   const container = document.createElement('div');
@@ -20,12 +22,12 @@ function renderStatus(status) {
 }
 
 describe('PreShotDialStatus', () => {
-  it('renders nothing while checking', () => {
+  it('shows the gauge search while checking', () => {
     const el = renderStatus('checking');
-    expect(el.textContent).toBe('');
+    expect(el.textContent).toBe('Searching for gauge…');
   });
 
-  it('shows dial found copy before Start', () => {
+  it('shows readiness copy before Start', () => {
     const el = renderStatus('found');
     expect(el.querySelector('[data-testid="pre-shot-dial-status"]').textContent).toBe(
       PRE_SHOT_DIAL_FOUND_LABEL,
@@ -39,7 +41,7 @@ describe('PreShotDialStatus', () => {
     );
   });
 
-  it('shows amber recalibrate copy when locked but not readable', () => {
+  it('shows amber waiting copy when locked but not readable', () => {
     const el = renderStatus('unreadable');
     const node = el.querySelector('[data-testid="pre-shot-dial-status"]');
     expect(node.textContent).toBe(PRE_SHOT_GAUGE_NOT_READABLE_LABEL);

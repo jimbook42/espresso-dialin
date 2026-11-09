@@ -57,11 +57,12 @@ export function LabGaugeTapCalibrateSheet({
   legacyScale = false,
   sourceCamera,
 }) {
-  const { videoRef, start: localStart, stop: localStop, status: localStatus, error: localError } = useFrontCameraStream();
+  const { videoRef, start: localStart, stop: localStop, retry: localRetry, status: localStatus, error: localError } = useFrontCameraStream();
   const start = sourceCamera ? NO_CAMERA_ACTION : localStart;
   const stop = sourceCamera ? NO_CAMERA_ACTION : localStop;
   const status = sourceCamera ? sourceCamera.cameraStatus : localStatus;
   const error = sourceCamera ? sourceCamera.cameraError : localError;
+  const retryCamera = sourceCamera ? sourceCamera.retryCamera : localRetry;
   const [tapPhase, setTapPhase] = useState('aim');
   const [tapNote, setTapNote] = useState('');
   const [reviewPose, setReviewPose] = useState(null);
@@ -460,6 +461,9 @@ export function LabGaugeTapCalibrateSheet({
           <p className={`text-xs ${muted}`} data-testid="gauge-calibration-lever-hint">{CALIBRATION_LEVER_HINT}</p>
           {tapNote && <p className={`text-[11px] ${text}`} data-testid="gauge-tap-note">{tapNote}</p>}
           {error && !fixtureSrc && <p className="text-[11px] text-rose-400">{error}</p>}
+          {!fixtureSrc && (status === 'error' || status === 'interrupted') && retryCamera && (
+            <button type="button" onClick={retryCamera} className="min-h-9 text-xs underline">Retry camera</button>
+          )}
           {!opencvReady && status === 'live' && (
             <p className={`text-[10px] ${muted}`}>Loading vision helpers…</p>
           )}

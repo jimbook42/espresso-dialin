@@ -34,7 +34,7 @@ describe('pre-shot readable status', () => {
 
   it('locked and a recent confident reading gives green', () => {
     const readable = createPreShotReadableWindow();
-    readable.note(CONFIDENT, 5000);
+    readable.note({ ...CONFIDENT, measuredAtMs: 5000 }, 5000);
     expect(viewAt(readable, 'found', 5000 + PRE_SHOT_READABLE_WINDOW_MS)).toEqual({
       tone: 'green',
       label: PRE_SHOT_DIAL_FOUND_LABEL,
@@ -45,14 +45,23 @@ describe('pre-shot readable status', () => {
       lastConfidentMs: 5000,
     }))).toEqual({ tone: 'amber', label: PRE_SHOT_DIAL_NOT_FOUND_LABEL });
     expect(preShotDialStatusView(preShotDialDisplayStatus({ poseStatus: 'checking', nowMs: 0 }))).toEqual({
-      tone: 'hidden',
-      label: null,
+      tone: 'amber',
+      label: 'Searching for gauge…',
     });
   });
 
-  it('locked with no recent confident reading gives amber with the recalibrate message', () => {
+  it('accepts measured zero and uses capture time rather than publisher time for freshness', () => {
     const readable = createPreShotReadableWindow();
-    readable.note(CONFIDENT, 0);
+    readable.note({ bar: 0, fresh: true, measuredAtMs: 1000 }, 1100);
+    expect(viewAt(readable, 'found', 1100).tone).toBe('green');
+    expect(viewAt(readable, 'found', 1001 + PRE_SHOT_READABLE_WINDOW_MS).tone).toBe('amber');
+    readable.note({ ...CONFIDENT, measuredAtMs: 3100 }, 3100, { frameMissing: true });
+    expect(viewAt(readable, 'found', 3100).tone).toBe('amber');
+  });
+
+  it('locked with no recent confident reading waits for reliable pressure', () => {
+    const readable = createPreShotReadableWindow();
+    readable.note({ ...CONFIDENT, measuredAtMs: 0 }, 0);
     expect(viewAt(readable, 'found', PRE_SHOT_READABLE_WINDOW_MS + 1)).toEqual({
       tone: 'amber',
       label: PRE_SHOT_GAUGE_NOT_READABLE_LABEL,
@@ -65,17 +74,17 @@ describe('pre-shot readable status', () => {
 
   it('pose-lost-dominated gives amber even when a confident reading is still in the window', () => {
     const readable = createPreShotReadableWindow();
-    readable.note(CONFIDENT, 1000);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1000 }, 1000);
     readable.note(LOST, 1100);
     readable.note({ bar: null, fresh: false, reason: 'held:pose-lost' }, 1200);
     readable.note(LOST, 1250);
     expect(viewAt(readable, 'found', 1300)).toEqual({
       tone: 'amber',
-      label: PRE_SHOT_GAUGE_NOT_READABLE_LABEL,
+      label: PRE_SHOT_DIAL_NOT_FOUND_LABEL,
     });
 
     const mixed = createPreShotReadableWindow();
-    mixed.note(CONFIDENT, 1000);
+    mixed.note({ ...CONFIDENT, measuredAtMs: 1000 }, 1000);
     mixed.note(LOST, 1100);
     mixed.note({ bar: null, fresh: false, reason: 'needle-missing' }, 1200);
     expect(viewAt(mixed, 'found', 1300).tone).toBe('green');
@@ -83,34 +92,34 @@ describe('pre-shot readable status', () => {
 
   it('one pose-lost rejection among confident readings stays found', () => {
     const readable = createPreShotReadableWindow();
-    readable.note(CONFIDENT, 1000);
-    readable.note(CONFIDENT, 1100);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1000 }, 1000);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1100 }, 1100);
     readable.note(LOST, 1200);
-    readable.note(CONFIDENT, 1300);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1300 }, 1300);
     expect(viewAt(readable, 'found', 1400)).toEqual({
       tone: 'green',
       label: PRE_SHOT_DIAL_FOUND_LABEL,
     });
   });
 
-  it('three or more pose-lost rejections that are the majority show the recalibrate message', () => {
+  it('three or more pose-lost rejections that are the majority show tracking loss', () => {
     const readable = createPreShotReadableWindow();
-    readable.note(CONFIDENT, 1000);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1000 }, 1000);
     readable.note(LOST, 1100);
     readable.note(LOST, 1200);
     readable.note(LOST, 1300);
     expect(viewAt(readable, 'found', 1400)).toEqual({
       tone: 'amber',
-      label: PRE_SHOT_GAUGE_NOT_READABLE_LABEL,
+      label: PRE_SHOT_DIAL_NOT_FOUND_LABEL,
     });
   });
 
   it('three or more pose-lost rejections that are still a minority stay found', () => {
     const readable = createPreShotReadableWindow();
-    readable.note(CONFIDENT, 1000);
-    readable.note(CONFIDENT, 1050);
-    readable.note(CONFIDENT, 1100);
-    readable.note(CONFIDENT, 1150);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1000 }, 1000);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1050 }, 1050);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1100 }, 1100);
+    readable.note({ ...CONFIDENT, measuredAtMs: 1150 }, 1150);
     readable.note(LOST, 1200);
     readable.note(LOST, 1250);
     readable.note(LOST, 1300);
@@ -127,10 +136,10 @@ describe('pre-shot readable status', () => {
     readable.note(LOST, 800);
     expect(viewAt(readable, 'found', 800)).toEqual({
       tone: 'amber',
-      label: PRE_SHOT_GAUGE_NOT_READABLE_LABEL,
+      label: PRE_SHOT_DIAL_NOT_FOUND_LABEL,
     });
-    readable.note(CONFIDENT, 2400);
-    readable.note(CONFIDENT, 2700);
+    readable.note({ ...CONFIDENT, measuredAtMs: 2400 }, 2400);
+    readable.note({ ...CONFIDENT, measuredAtMs: 2700 }, 2700);
     expect(viewAt(readable, 'found', 2700)).toEqual({
       tone: 'green',
       label: PRE_SHOT_DIAL_FOUND_LABEL,

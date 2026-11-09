@@ -45,7 +45,7 @@ function push(state, hub, nowMs) {
     calibration: state.calibration,
     nowMs,
   });
-  state.readable.note(CONFIDENT, nowMs, read);
+  state.readable.note({ ...CONFIDENT, measuredAtMs: nowMs }, nowMs, read);
   const snap = state.readable.snapshot(nowMs);
   return {
     locked: step.locked,

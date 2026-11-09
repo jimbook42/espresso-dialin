@@ -26,9 +26,10 @@ function mediaFixture() {
     active++;
     maximum = Math.max(maximum, active);
     let stopped = false;
-    const track = { getSettings: () => ({ facingMode }), stop: vi.fn(() => {
+    const track = Object.assign(new EventTarget(), { readyState: 'live', muted: false,
+      getSettings: () => ({ facingMode, deviceId: `device-${facingMode}` }), stop: vi.fn(() => {
       if (!stopped) { stopped = true; active--; events.push(`stop:${facingMode}`); }
-    }) };
+    }) });
     const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
     streams.push(stream);
     return stream;
@@ -79,6 +80,56 @@ describe('camera track diagnostics', () => {
 });
 
 describe('single camera facingMode switching', () => {
+  it('reconnects the same device once, then requires a retry after another interruption', async () => {
+    const fixture = mediaFixture();
+    const getUserMedia = vi.fn(async () => fixture.makeStream('user'));
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    await act(async () => root.render(createElement(Camera)));
+    const end = (index) => {
+      const track = fixture.streams[index].getVideoTracks()[0];
+      track.readyState = 'ended';
+      track.dispatchEvent(new Event('ended'));
+      track.dispatchEvent(new Event('ended'));
+    };
+    await act(async () => end(0));
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(getUserMedia.mock.calls[1][0].video.deviceId).toEqual({ exact: 'device-user' });
+    expect(current.status).toBe('live');
+    await act(async () => end(1));
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(current.status).toBe('error');
+    expect(current.error).toMatch(/Retry camera/);
+    expect(current.videoRef.current.srcObject).toBeNull();
+    await act(async () => current.retry());
+    expect(getUserMedia).toHaveBeenCalledTimes(3);
+    expect(current.status).toBe('live');
+    expect(fixture.maximum()).toBe(1);
+  });
+
+  it('waits through mute and visibility changes without opening a second stream', async () => {
+    const fixture = mediaFixture();
+    const getUserMedia = vi.fn(async () => fixture.makeStream('user'));
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    await act(async () => root.render(createElement(Camera)));
+    const track = fixture.streams[0].getVideoTracks()[0];
+    const update = (event, muted) => act(() => {
+      track.muted = muted;
+      track.dispatchEvent(new Event(event));
+    });
+    update('mute', true);
+    expect(current.status).toBe('interrupted');
+    update('unmute', false);
+    expect(current.status).toBe('live');
+    hidden.mockReturnValue(true);
+    act(() => document.dispatchEvent(new Event('visibilitychange')));
+    expect(current.status).toBe('interrupted');
+    hidden.mockReturnValue(false);
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    expect(current.status).toBe('live');
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
   it('defaults to user and releases the old tracks before opening environment', async () => {
     const fixture = mediaFixture();
     const getUserMedia = vi.fn(async ({ video }) => {

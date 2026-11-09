@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cameraErrorMessage } from '../cameraErrors.js';
 import { isPressureReplayBuild } from '../../config/pressureReplayFlag.js';
 
-async function openCamera(facingMode) {
+async function openCamera(facingMode, deviceId, recovering) {
   if (!navigator.mediaDevices?.getUserMedia) {
     const error = new Error('unsupported');
     error.name = 'UnsupportedError';
@@ -18,13 +18,19 @@ async function openCamera(facingMode) {
     return navigator.mediaDevices.getUserMedia({ audio: false, video: true });
   }
 
+  if (deviceId) {
+    return navigator.mediaDevices.getUserMedia({
+      audio: false, video: { ...video, deviceId: { exact: deviceId } },
+    });
+  }
+
   try {
     return await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { ...video, facingMode: { exact: facingMode } },
     });
   } catch (err) {
-    if (err?.name !== 'OverconstrainedError') throw err;
+    if (recovering || err?.name !== 'OverconstrainedError') throw err;
     return navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { ...video, facingMode },
@@ -86,6 +92,9 @@ export function useFrontCameraStream({ facingMode = 'user' } = {}) {
   const pendingOpenRef = useRef(Promise.resolve());
   const trackDiagnosticsRef = useRef(createCameraTrackLog());
   const unbindTrackRef = useRef(() => {});
+  const deviceIdRef = useRef(null);
+  const recoveryUsedRef = useRef(false);
+  const [revision, setRevision] = useState(0);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [trackInfo, setTrackInfo] = useState(null);
@@ -98,16 +107,18 @@ export function useFrontCameraStream({ facingMode = 'user' } = {}) {
 
   const stop = useCallback(() => {
     generationRef.current += 1;
+    deviceIdRef.current = null;
     releaseCamera();
     setTrackInfo(null);
     setError('');
     setStatus('idle');
   }, [releaseCamera]);
 
-  const start = useCallback(async () => {
+  const open = useCallback(async function open(recovering = false) {
     const generation = ++generationRef.current;
     setError('');
     setStatus('requesting');
+    setRevision((value) => value + 1);
     releaseCamera();
     const previous = pendingOpenRef.current;
     const opening = (async () => {
@@ -116,22 +127,70 @@ export function useFrontCameraStream({ facingMode = 'user' } = {}) {
       await previous;
       if (!mountedRef.current || generation !== generationRef.current) return;
       try {
-        const stream = await openCamera(requestedFacingMode);
+        const stream = await openCamera(requestedFacingMode, deviceIdRef.current, recovering);
         if (!mountedRef.current || generation !== generationRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
         const track = stream.getVideoTracks()[0];
         const settings = track?.getSettings?.() || {};
-        if (!isPressureReplayBuild() && requestedFacingMode === 'user' && settings.facingMode === 'environment') {
+        if (!isPressureReplayBuild() && settings.facingMode && settings.facingMode !== requestedFacingMode) {
           stream.getTracks().forEach((item) => item.stop());
           const rear = new Error('rear');
-          rear.name = 'RearCameraError';
+          rear.name = 'UnexpectedCameraError';
           throw rear;
         }
         streamRef.current = stream;
-        unbindTrackRef.current = bindCameraTrackEvents(track, trackDiagnosticsRef.current);
+        deviceIdRef.current = settings.deviceId ?? deviceIdRef.current;
         const video = videoRef.current;
+        const unbindDiagnostics = bindCameraTrackEvents(track, trackDiagnosticsRef.current);
+        const current = () => mountedRef.current && generation === generationRef.current;
+        const syncAvailability = () => {
+          if (!current()) return;
+          setRevision((value) => value + 1);
+          setStatus(document.hidden || track?.muted ? 'interrupted' : 'live');
+        };
+        const onEnded = () => {
+          if (!current()) return;
+          if (!document.hidden && !recoveryUsedRef.current && (deviceIdRef.current || isPressureReplayBuild())) {
+            recoveryUsedRef.current = true;
+            void open(true);
+            return;
+          }
+          generationRef.current += 1;
+          releaseCamera();
+          setTrackInfo(null);
+          setError('Camera disconnected. Tap Retry camera to reconnect.');
+          setStatus('error');
+        };
+        const onVisibility = () => {
+          if (!current()) return;
+          if (track?.readyState === 'ended') {
+            onEnded();
+            return;
+          }
+          if (!document.hidden && video?.paused) {
+            void video.play().then(syncAvailability).catch(() => {
+              if (!current()) return;
+              generationRef.current += 1;
+              releaseCamera();
+              setTrackInfo(null);
+              setError('Camera playback was interrupted. Tap Retry camera to reconnect.');
+              setStatus('error');
+            });
+          } else syncAvailability();
+        };
+        track?.addEventListener?.('ended', onEnded);
+        track?.addEventListener?.('mute', syncAvailability);
+        track?.addEventListener?.('unmute', syncAvailability);
+        document.addEventListener('visibilitychange', onVisibility);
+        unbindTrackRef.current = () => {
+          unbindDiagnostics();
+          track?.removeEventListener?.('ended', onEnded);
+          track?.removeEventListener?.('mute', syncAvailability);
+          track?.removeEventListener?.('unmute', syncAvailability);
+          document.removeEventListener('visibilitychange', onVisibility);
+        };
         if (video) {
           video.srcObject = stream;
           video.playsInline = true;
@@ -148,7 +207,8 @@ export function useFrontCameraStream({ facingMode = 'user' } = {}) {
           width: settings.width || video?.videoWidth,
           height: settings.height || video?.videoHeight,
         });
-        setStatus('live');
+        if (!track || track.readyState === 'ended') onEnded();
+        else syncAvailability();
       } catch (err) {
         if (!mountedRef.current || generation !== generationRef.current) return;
         releaseCamera();
@@ -161,6 +221,16 @@ export function useFrontCameraStream({ facingMode = 'user' } = {}) {
     await opening;
   }, [requestedFacingMode, releaseCamera]);
 
+  const start = useCallback(() => {
+    recoveryUsedRef.current = false;
+    return open();
+  }, [open]);
+
+  const retry = useCallback(() => {
+    recoveryUsedRef.current = false;
+    return open(true);
+  }, [open]);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -170,5 +240,5 @@ export function useFrontCameraStream({ facingMode = 'user' } = {}) {
     };
   }, [releaseCamera]);
 
-  return { videoRef, start, stop, status, error, trackInfo, trackDiagnosticsRef };
+  return { videoRef, start, stop, retry, status, error, revision, trackInfo, trackDiagnosticsRef };
 }

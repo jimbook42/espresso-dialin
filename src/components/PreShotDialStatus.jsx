@@ -3,21 +3,23 @@ import { preShotDialStatusView } from '../flairPressureLab/preShotReadableStatus
 /**
  * Pre-shot dial verdict (informational; does not block Start).
  * Green requires the pose lock and a recent confident reading.
- * @param {{ status: 'checking' | 'found' | 'not_found' | 'unreadable' | null }} props
  */
-export function PreShotDialStatus({ status }) {
+export function PreShotDialStatus({ status, cameraError, retryCamera }) {
   const view = preShotDialStatusView(status);
   if (view.tone === 'hidden') return null;
   const found = view.tone === 'green';
   return (
-    <p
+    <div
       className={`text-[10px] leading-snug ${
         found ? 'text-[#6d7a5c]' : 'text-amber-700/90'
       }`}
       data-testid="pre-shot-dial-status"
       data-dial-found={found ? 'true' : 'false'}
     >
-      {view.label}
-    </p>
+      <span role="status">{status === 'unavailable' && cameraError ? cameraError : view.label}</span>
+      {['unavailable', 'interrupted'].includes(status) && retryCamera && (
+        <button type="button" onClick={retryCamera} className="ml-2 min-h-9 underline">Retry camera</button>
+      )}
+    </div>
   );
 }

@@ -14,7 +14,7 @@ export const PRE_SHOT_POSE_LOST_MIN_COUNT = 3;
 export const PRE_SHOT_POSE_LOST_FRAME_SHARE = 0.5;
 
 export const PRE_SHOT_GAUGE_NOT_READABLE_LABEL =
-  'Gauge not found – recalibrate in shot position';
+  'Gauge found. Waiting for a reliable pressure reading.';
 
 export const CALIBRATION_LEVER_HINT =
   "Set the lever where it'll be when you press Start.";
@@ -26,7 +26,7 @@ export const CALIBRATION_LEVER_HINT =
  * @param {{ bar?: number | null, fresh?: boolean } | null | undefined} gated
  */
 export function isRecordedSampleConfident(gated) {
-  return gated?.bar != null && gated.fresh === true;
+  return Number.isFinite(gated?.bar) && gated.fresh === true;
 }
 
 /**
@@ -104,8 +104,10 @@ export function createPreShotReadableWindow({
      * @param {{ lost?: boolean } | null | undefined} [read]
      */
     note(gated, nowMs, read) {
-      if (isRecordedSampleConfident(gated)) {
-        lastConfidentMs = nowMs;
+      if (isRecordedSampleConfident(gated) && !read?.lost && !read?.frameMissing && !read?.duplicate
+        && Number.isFinite(gated.measuredAtMs)
+        && gated.measuredAtMs <= nowMs && nowMs - gated.measuredAtMs <= windowMs) {
+        lastConfidentMs = gated.measuredAtMs;
         confidentAt.push(nowMs);
         prune(nowMs);
         return;
@@ -196,7 +198,8 @@ export function preShotDialDisplayStatus({
     windowMs,
     confidentAt,
   );
-  if (readable && !poseLostDominated) return 'found';
+  if (poseLostDominated) return 'not_found';
+  if (readable) return 'found';
   return 'unreadable';
 }
 
@@ -205,8 +208,13 @@ export function preShotDialDisplayStatus({
  * @returns {{ tone: 'hidden' | 'green' | 'amber', label: string | null }}
  */
 export function preShotDialStatusView(status) {
-  if (!status || status === 'checking') return { tone: 'hidden', label: null };
+  if (!status) return { tone: 'hidden', label: null };
   if (status === 'found') return { tone: 'green', label: PRE_SHOT_DIAL_FOUND_LABEL };
+  if (status === 'starting') return { tone: 'amber', label: 'Starting camera…' };
+  if (status === 'checking') return { tone: 'amber', label: 'Searching for gauge…' };
+  if (status === 'interrupted') return { tone: 'amber', label: 'Camera interrupted. Waiting for video.' };
+  if (status === 'paused') return { tone: 'amber', label: 'Pressure reader paused. Waiting for a new reading.' };
+  if (status === 'unavailable') return { tone: 'amber', label: 'Camera unavailable.' };
   if (status === 'unreadable') {
     return { tone: 'amber', label: PRE_SHOT_GAUGE_NOT_READABLE_LABEL };
   }

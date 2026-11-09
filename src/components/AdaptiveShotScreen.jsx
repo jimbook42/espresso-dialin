@@ -97,6 +97,10 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
         title={pressure?.facingMode === 'environment' ? 'Switch to front camera' : 'Switch to rear camera'}>
         <SwitchCamera size={20} aria-hidden="true" />
       </button>}
+      {!preview && ['error', 'interrupted'].includes(pressure?.cameraStatus) && pressure.retryCamera && (
+        <button type="button" className="shot-gauge-toggle min-h-9 px-3 text-xs text-[#c88a4b]"
+          onClick={pressure.retryCamera}>Retry camera</button>
+      )}
     </div>}
     {options.minimal ? <button type="button" aria-label="Cycle big number" onClick={() => setSelected(cycleShotMetric(selectedMetric, options.available))}
       className="shot-minimal-center">
@@ -121,7 +125,9 @@ export function AdaptiveShotScreen({ settings, seconds, targetYieldG, targetTime
   const weight = resolveShotWeightReadout({ ...snapshot, timerRunning: true, yieldSettleActive, frozenYieldG });
   const equipment = shotEquipment(settings);
   const weightReady = scaleEnabled && snapshot.isConnected && ['shot', 'settling', 'frozen'].includes(weight.mode);
-  const statusText = pressure?.noPressureReadingWarning
+  const statusText = pressure?.cameraError
+    || (pressure?.cameraStatus === 'interrupted' ? 'Camera interrupted. Waiting for video.' : '')
+    || pressure?.noPressureReadingWarning
     || pressure?.readerError
     || (!pressure?.calibrated ? 'Set up gauge in Settings before using pressure.'
       : pressure.readerUncertain ? 'Pressure uncertain — compare with the gauge.'

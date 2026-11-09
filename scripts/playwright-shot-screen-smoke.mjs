@@ -12,6 +12,16 @@ try {
   await waitForServer(server.url);
   browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, permissions: ['camera'] });
+  await page.addInitScript(() => {
+    const devices = navigator.mediaDevices;
+    const open = devices.getUserMedia.bind(devices);
+    window.cameraSmokeTracks = [];
+    devices.getUserMedia = async (constraints) => {
+      const stream = await open(constraints);
+      window.cameraSmokeTracks.push(...stream.getVideoTracks());
+      return stream;
+    };
+  });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(server.url);
@@ -140,6 +150,27 @@ try {
     assert.ok(hide && hide.top >= measurement.headerTop && hide.bottom <= measurement.headerBottom);
     await page.screenshot({ path: path.join(tmpdir(), `shot-screen-portrait-${viewport.width}x${viewport.height}.png`) });
   }
+  const timerValue = live.locator('[data-metric="time"] .shot-metric-value');
+  const timeBeforeCameraLoss = Number.parseFloat(await timerValue.textContent());
+  await page.waitForFunction(() => document.querySelector('[data-testid="shot-reader-video"]')?.srcObject?.active);
+  const beforeRecovery = await page.evaluate(() => {
+    const track = document.querySelector('[data-testid="shot-reader-video"]').srcObject.getVideoTracks()[0];
+    const count = window.cameraSmokeTracks.length;
+    track.stop();
+    // Explicit stop does not emit ended. Simulate an external disconnect.
+    track.dispatchEvent(new Event('ended'));
+    return count;
+  });
+  await page.waitForFunction((count) => window.cameraSmokeTracks.length === count + 1
+    && document.querySelector('[data-testid="shot-reader-video"]')?.srcObject?.active, beforeRecovery);
+  assert.equal(await page.evaluate(() => window.cameraSmokeTracks.filter((track) => track.readyState === 'live').length), 1);
+  await page.waitForFunction((before) => {
+    const value = document.querySelector('[data-testid="adaptive-shot-screen"] [data-metric="time"] .shot-metric-value');
+    return Number.parseFloat(value.textContent) >= before + 1;
+  }, timeBeforeCameraLoss);
+  assert.equal(await page.getByRole('button', { name: 'Stop shot', exact: true }).isVisible(), true);
+  passed++;
+  console.log('PASS simulated camera disconnect: one replacement track, shot timer continues');
   assert.equal(await liveToolbar.getByRole('button', { name: 'Hide gauge', exact: true }).count(), 1);
   await liveToolbar.getByRole('button', { name: 'Hide gauge', exact: true }).click();
   await live.locator('.shot-trust-camera').waitFor({ state: 'detached' });
@@ -151,7 +182,6 @@ try {
   passed++;
   console.log('PASS portrait trust: 390x844 and 375x667, no scroll, tall camera, visible controls, fixed Aim slot');
 
-  const timerValue = live.locator('[data-metric="time"] .shot-metric-value');
   const timeBeforeStall = Number.parseFloat(await timerValue.textContent());
   await page.evaluate(() => {
     const resumeAt = performance.now() + 1500;

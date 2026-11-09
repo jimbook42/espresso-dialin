@@ -84,7 +84,7 @@ export function useShotLabPressure({
   legacyScale = false,
 }) {
   const {
-    videoRef, start, stop, status, error: cameraError, trackDiagnosticsRef: cameraTrackLogRef,
+    videoRef, start, stop, retry, status, revision, error: cameraError, trackDiagnosticsRef: cameraTrackLogRef,
   } = useFrontCameraStream({ facingMode: cameraFacingMode });
   const fallbackTrackLogRef = useRef(null);
   if (!cameraTrackLogRef && !fallbackTrackLogRef.current) {
@@ -114,6 +114,7 @@ export function useShotLabPressure({
   const [peakBar, setPeakBar] = useState(null);
   const [calibrated, setCalibrated] = useState(Boolean(storedCalibration));
   const [readerError, setReaderError] = useState('');
+  const readerFailedRef = useRef(false);
   const [readerUncertain, setReaderUncertain] = useState(false);
   const [readerReady, setReaderReady] = useState(false);
   const [cornerPreviewPose, setCornerPreviewPose] = useState(null);
@@ -121,7 +122,7 @@ export function useShotLabPressure({
   const [dialRecalibrateHint, setDialRecalibrateHint] = useState(false);
   const shotStartDialHintRef = useRef(createShotStartDialHintTracker());
   const shotStartHintDoneRef = useRef(false);
-  const [preShotDialStatus, setPreShotDialStatus] = useState(null);
+  const [dialVerdict, setDialVerdict] = useState(null);
   const [noPressureReadingWarning, setNoPressureReadingWarning] = useState('');
   const preShotDialSamplerRef = useRef(createPreShotDialVerdictSampler());
   const preShotDialSamplerLockedRef = useRef(false);
@@ -206,6 +207,7 @@ export function useShotLabPressure({
     setHold({ held: false, gap: true });
     setPeakBar(null);
     setReaderError('');
+    readerFailedRef.current = false;
     setReaderUncertain(false);
     setCornerPreviewPose(null);
     lastCornerPosePublishRef.current = 0;
@@ -216,7 +218,7 @@ export function useShotLabPressure({
     preShotDialSamplerLockedRef.current = false;
     preShotReadableRef.current.reset();
     preShotPoseStatusRef.current = null;
-    setPreShotDialStatus(null);
+    setDialVerdict(null);
     warningOnRef.current = false;
     setNoPressureReadingWarning('');
     r7Ref.current?.reset();
@@ -253,19 +255,22 @@ export function useShotLabPressure({
 
   const syncPreShotDialStatus = useCallback((nowMs = Date.now()) => {
     const snap = preShotReadableRef.current.snapshot(nowMs);
-    setPreShotDialStatus(preShotDialDisplayStatus({
+    const next = preShotDialDisplayStatus({
       poseStatus: preShotPoseStatusRef.current,
       nowMs,
       lastConfidentMs: snap.lastConfidentMs,
       confidentAt: snap.confidentAt,
       rejections: snap.rejections,
-    }));
-  }, []);
+    });
+    setDialVerdict((current) => current?.revision === revision
+      && current?.calibration === storedCalibration && current?.status === next
+      ? current : { revision, calibration: storedCalibration, status: next });
+  }, [revision, storedCalibration]);
 
   const observePreShotDialPose = useCallback((read, cal, nowMs = Date.now()) => {
     // The first lock only switches the sample cadence. Keep feeding the sampler
     // so movement, mismatch and recovery keep updating the pose verdict.
-    if (!preShotDialCheckActive) return;
+    if (!preShotDialCheckActive || read.frameMissing || read.duplicate) return;
     const step = samplePreShotDialPose({
       sampler: preShotDialSamplerRef.current,
       readable: preShotReadableRef.current,
@@ -275,24 +280,49 @@ export function useShotLabPressure({
     });
     if (step.locked) preShotDialSamplerLockedRef.current = true;
     preShotPoseStatusRef.current = step.poseStatus;
-    syncPreShotDialStatus(nowMs);
-  }, [preShotDialCheckActive, syncPreShotDialStatus]);
+  }, [preShotDialCheckActive]);
 
   const notePreShotReadable = useCallback((gated, nowMs, read) => {
+    if (readerFailedRef.current && isRecordedSampleConfident(gated)
+      && !read.lost && !read.frameMissing && !read.duplicate) {
+      readerFailedRef.current = false;
+      setReaderError('');
+    }
     if (!preShotDialCheckActive) return;
-    preShotReadableRef.current.note(gated, nowMs, read);
+    const calibration = trackerRef.current?.calibration;
+    const mismatch = preShotDialMismatch({
+      trackedHub: read.hub,
+      calibratedHub: calibration?.hub,
+      calibratedRadius: calibration?.radius,
+      poseLost: read.lost,
+      poseVerified: read.poseVerified === true,
+    });
+    preShotReadableRef.current.note(gated, nowMs, mismatch ? { ...read, lost: true } : read);
     syncPreShotDialStatus(nowMs);
   }, [preShotDialCheckActive, syncPreShotDialStatus]);
 
+  const onReaderError = useCallback((error) => {
+    try { stallRef.current?.error(error); } catch { /* observation only */ }
+    if (readerFailedRef.current) return;
+    readerFailedRef.current = true;
+    preShotReadableRef.current.reset();
+    r5GenerationRef.current += 1;
+    lastR5Ref.current = {};
+    setDialVerdict(null);
+    setReaderError('Pressure reader paused');
+    setReaderUncertain(true);
+    setHold({ held: false, gap: true });
+    setDisplayBar(null);
+  }, []);
+
   useEffect(() => {
-    if (!preShotDialCheckActive) {
-      preShotDialSamplerRef.current.reset();
-      preShotDialSamplerLockedRef.current = false;
-      preShotReadableRef.current.reset();
-      preShotPoseStatusRef.current = null;
-      setPreShotDialStatus(null);
-    }
-  }, [preShotDialCheckActive]);
+    preShotDialSamplerRef.current.reset();
+    preShotDialSamplerLockedRef.current = false;
+    preShotReadableRef.current.reset();
+    preShotPoseStatusRef.current = null;
+    r5GenerationRef.current += 1;
+    lastR5Ref.current = {};
+  }, [preShotDialCheckActive, revision, status, storedCalibration]);
 
   useEffect(() => {
     if (timerRunning) {
@@ -388,7 +418,8 @@ export function useShotLabPressure({
     let lastMediaTime = -1;
     let videoFrameCallback = 0;
     const sourceVideo = videoRef.current;
-    const useVideoFrames = typeof sourceVideo?.requestVideoFrameCallback === 'function';
+    const sourceStream = sourceVideo?.srcObject;
+    const useVideoFrames = status === 'live' && typeof sourceVideo?.requestVideoFrameCallback === 'function';
     const observeVideoFrame = (_now, metadata) => {
       presentedFrame = metadata.presentedFrames ?? presentedFrame + 1;
       presentedAtMs = Date.now();
@@ -398,6 +429,7 @@ export function useShotLabPressure({
     if (useVideoFrames) videoFrameCallback = sourceVideo.requestVideoFrameCallback(observeVideoFrame);
     const loop = () => {
       raf = requestAnimationFrame(loop);
+      if (document.hidden || sourceVideo?.srcObject !== sourceStream) return;
       const wallNow = performance.now();
       if (wallNow - last < PROCESS_INTERVAL_MS) return;
       last = wallNow;
@@ -470,7 +502,7 @@ export function useShotLabPressure({
           read,
         });
         const rawBar = gated.bar;
-        const confident = isRecordedSampleConfident(gated);
+        const confident = hadImage && !read.lost && !read.duplicate && isRecordedSampleConfident(gated);
         notePreShotReadable(gated, nowMs, read);
         const epoch = shotEpochRef.current;
         try {
@@ -491,7 +523,8 @@ export function useShotLabPressure({
         if (confident && rawBar != null && epoch) {
           sessionRef.current.pushRaw(rawBar, true, gated.measuredAtMs);
           // In-memory display boundary only; getShotMetrics saves just tS/bar.
-          if (read.needleTrackingReset) sessionRef.current.getSamples().at(-1).reset = true;
+          const lastSample = sessionRef.current.getSamples().at(-1);
+          if (read.needleTrackingReset && lastSample) lastSample.reset = true;
           if (image) gaugeSnapshotRef.current = gaugeSnapshotJpegFromImageData(image);
         }
         const all = sessionRef.current.getSamples();
@@ -535,9 +568,7 @@ export function useShotLabPressure({
           });
         }
       } catch (error) {
-        try { stallRef.current?.error(error); } catch { /* observation only */ }
-        setReaderError('Pressure reader paused');
-        setReaderUncertain(true);
+        onReaderError(error);
       }
     };
     const watch = window.setInterval(() => {
@@ -558,7 +589,7 @@ export function useShotLabPressure({
         setNoPressureReadingWarning(show ? NO_PRESSURE_READING_WARNING : '');
       } catch { /* observation only */ }
     }, 500);
-    raf = requestAnimationFrame(loop);
+    if (status === 'live') raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
       window.clearInterval(watch);
@@ -569,21 +600,28 @@ export function useShotLabPressure({
     enabled,
     displaySurfaceActive,
     calibrated,
+    status,
+    revision,
     simMode,
     grabSourceImage,
     videoRef,
     observePreShotDialPose,
     notePreShotReadable,
+    onReaderError,
+    replayFrameObserverRef,
+    trackDiagnosticsRef,
   ]);
 
   useEffect(() => {
-    if (!preShotDialCheckActive || !trackerRef.current) return undefined;
+    if (!preShotDialCheckActive || status !== 'live' || !trackerRef.current) return undefined;
     if (displaySurfaceActive) return undefined;
     let raf = 0;
     let last = 0;
-    let lastImage = null;
+    let lastMediaTime = -1;
+    const sourceStream = videoRef.current?.srcObject;
     const loop = () => {
       raf = requestAnimationFrame(loop);
+      if (document.hidden || videoRef.current?.srcObject !== sourceStream) return;
       const wallNow = performance.now();
       // Slower pose cadence until the first lock, then the shot interval so the
       // freshness gate sees the same spacing it uses for recorded samples.
@@ -596,31 +634,29 @@ export function useShotLabPressure({
       try {
         const nowMs = Date.now();
         const video = videoRef.current;
-        if (!video || video.readyState < 2) {
+        if (!video || video.readyState < 2 || video.currentTime === lastMediaTime) {
           syncPreShotDialStatus(nowMs);
           return;
         }
+        lastMediaTime = video.currentTime;
         const image = grabSourceImage(video);
-        if (!image) return;
         const cal = trackerRef.current.calibration;
-        const repeated = isRepeatedGaugeFrame(image, lastImage, cal, trackerRef.current.pose);
+        if (!image || isRepeatedGaugeFrame(image, lastFrameRef.current, cal, trackerRef.current.pose)) {
+          syncPreShotDialStatus(nowMs);
+          return;
+        }
+        lastFrameRef.current = image;
         const read = readCalibratedFrame(image, trackerRef.current);
         observePreShotDialPose(read, cal, nowMs);
-        if (repeated) {
-          syncPreShotDialStatus(nowMs);
-          return;
-        }
-        lastImage = image;
         const gated = r7Ref.current?.stepFrame({
-          ...lastR5Ref.current,
           read,
           nowMs,
           capturedAtMs: nowMs,
         });
         if (gated) notePreShotReadable(gated, nowMs, read);
         else syncPreShotDialStatus(nowMs);
-      } catch {
-        // informational only — does not block Start
+      } catch (error) {
+        onReaderError(error);
       }
     };
     raf = requestAnimationFrame(loop);
@@ -633,6 +669,9 @@ export function useShotLabPressure({
     observePreShotDialPose,
     notePreShotReadable,
     syncPreShotDialStatus,
+    onReaderError,
+    status,
+    revision,
   ]);
 
   const acceptCalibration = useCallback(
@@ -645,7 +684,7 @@ export function useShotLabPressure({
       preShotDialSamplerLockedRef.current = false;
       preShotReadableRef.current.reset();
       preShotPoseStatusRef.current = 'checking';
-      setPreShotDialStatus('checking');
+      setDialVerdict(null);
       setCalibrated(true);
       setReaderReady(isNeedleModelReady());
       onCalibrationSaved?.(calibration);
@@ -674,11 +713,22 @@ export function useShotLabPressure({
     cameraStatus: status,
   });
 
+  let preShotDialStatus = null;
+  if (preShotDialCheckActive) {
+    if (status === 'error') preShotDialStatus = 'unavailable';
+    else if (status === 'interrupted') preShotDialStatus = 'interrupted';
+    else if (status !== 'live') preShotDialStatus = 'starting';
+    else if (readerError) preShotDialStatus = 'paused';
+    else if (dialVerdict?.revision === revision && dialVerdict?.calibration === storedCalibration) {
+      preShotDialStatus = dialVerdict.status ?? 'checking';
+    } else preShotDialStatus = 'checking';
+  }
+
   return {
     videoRef,
     samples,
-    displayBar,
-    hold,
+    displayBar: simMode || status === 'live' ? displayBar : null,
+    hold: simMode || status === 'live' ? hold : { held: false, gap: true },
     peakBar,
     calibrated,
     readoutVisible,
@@ -692,6 +742,7 @@ export function useShotLabPressure({
     cameraStatus: status,
     cornerPreviewPose,
     cameraError,
+    retryCamera: retry,
     dialRecalibrateHint,
     preShotDialStatus,
     noPressureReadingWarning,
