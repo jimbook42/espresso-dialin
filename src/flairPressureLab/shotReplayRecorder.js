@@ -31,66 +31,71 @@ export function pickShotReplayMimeType() {
  * }}
  */
 export function createShotReplayRecorder() {
-  /** @type {MediaRecorder | null} */
-  let recorder = null;
-  /** @type {Blob[]} */
-  let chunks = [];
-  let mimeType = '';
-  let videoW = 0;
-  let videoH = 0;
-  let startedAtMs = 0;
-  let maxStopTimer = 0;
-
-  const clearMaxTimer = () => {
-    if (maxStopTimer) {
-      window.clearTimeout(maxStopTimer);
-      maxStopTimer = 0;
-    }
-  };
+  let capture = null;
 
   const abortInternal = () => {
-    clearMaxTimer();
-    if (recorder) {
-      try {
-        if (recorder.state !== 'inactive') recorder.stop();
-      } catch {
-        // ignore
-      }
-    }
-    recorder = null;
-    chunks = [];
-    mimeType = '';
-    videoW = 0;
-    videoH = 0;
-    startedAtMs = 0;
+    const current = capture;
+    capture = null;
+    current?.abort();
   };
 
   return {
-    start(stream, w, h) {
+    start(stream, videoW, videoH) {
       abortInternal();
-      const mime = pickShotReplayMimeType();
-      if (!mime || !stream?.getVideoTracks?.().length) return false;
+      const mimeType = pickShotReplayMimeType();
+      if (!mimeType || !stream?.getVideoTracks?.().length) return false;
       try {
-        chunks = [];
-        mimeType = mime;
-        videoW = w;
-        videoH = h;
-        startedAtMs = Date.now();
-        recorder = new MediaRecorder(stream, {
+        const startedAtMs = Date.now();
+        const recorder = new MediaRecorder(stream, {
           mimeType,
           videoBitsPerSecond: SHOT_REPLAY_TARGET_BITRATE,
         });
+        const chunks = [];
+        let stoppedAtMs = null;
+        let maxStopTimer;
+        let resolveResult;
+        const result = new Promise((resolve) => { resolveResult = resolve; });
+        const finish = (value) => {
+          window.clearTimeout(maxStopTimer);
+          recorder.ondataavailable = null;
+          recorder.onstop = null;
+          recorder.onerror = null;
+          chunks.length = 0;
+          resolveResult(value);
+        };
+        const stopRecording = () => {
+          if (recorder.state === 'inactive') return;
+          stoppedAtMs = Date.now();
+          try {
+            recorder.stop();
+          } catch {
+            finish(null);
+          }
+        };
+
         recorder.ondataavailable = (ev) => {
           if (ev.data?.size > 0) chunks.push(ev.data);
         };
+        // Finalize even when the duration cap fires before the shot ends.
+        recorder.onstop = () => {
+          const durationS = Math.min(
+            SHOT_REPLAY_MAX_DURATION_S,
+            ((stoppedAtMs ?? Date.now()) - startedAtMs) / 1000,
+          );
+          const blob = chunks.length ? new Blob(chunks, { type: mimeType }) : null;
+          finish(blob ? { blob, mimeType, videoW, videoH, durationS } : null);
+        };
+        recorder.onerror = () => finish(null);
+        capture = {
+          result,
+          stop: stopRecording,
+          abort() {
+            finish(null);
+            stopRecording();
+          },
+        };
         recorder.start(1000);
-        maxStopTimer = window.setTimeout(() => {
-          try {
-            if (recorder?.state === 'recording') recorder.stop();
-          } catch {
-            // ignore
-          }
-        }, SHOT_REPLAY_MAX_DURATION_S * 1000);
+        maxStopTimer = window.setTimeout(stopRecording, SHOT_REPLAY_MAX_DURATION_S * 1000);
         return true;
       } catch {
         abortInternal();
@@ -98,46 +103,10 @@ export function createShotReplayRecorder() {
       }
     },
     stop() {
-      clearMaxTimer();
-      if (!recorder) return Promise.resolve(null);
-      const rec = recorder;
-      recorder = null;
-      if (rec.state === 'inactive') {
-        chunks = [];
-        return Promise.resolve(null);
-      }
-      return new Promise((resolve) => {
-        const finish = () => {
-          const durationS = Math.min(
-            SHOT_REPLAY_MAX_DURATION_S,
-            (Date.now() - startedAtMs) / 1000,
-          );
-          if (!chunks.length) {
-            resolve(null);
-            return;
-          }
-          const blob = new Blob(chunks, { type: mimeType });
-          chunks = [];
-          resolve({
-            blob,
-            mimeType,
-            videoW,
-            videoH,
-            durationS,
-          });
-        };
-        rec.onstop = finish;
-        rec.onerror = () => {
-          chunks = [];
-          resolve(null);
-        };
-        try {
-          rec.stop();
-        } catch {
-          chunks = [];
-          resolve(null);
-        }
-      });
+      const current = capture;
+      capture = null;
+      current?.stop();
+      return current?.result ?? Promise.resolve(null);
     },
     abort: abortInternal,
   };
