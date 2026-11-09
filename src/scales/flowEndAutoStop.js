@@ -203,6 +203,15 @@ function stepWeightPlateau(state, tS, weightG) {
   const dw = weightG - prevW;
 
   if (dt > FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S) {
+    // A gap cannot confirm a plateau. A pour-sized net gain also rules out
+    // reusing the old candidate, even though its exact end was not observed.
+    if (dw >= FLOW_AUTO_STOP_RESUME_GAIN_G && dw / dt >= FLOW_AUTO_STOP_ARM_MIN_GS) {
+      clearAllEndCandidates(state);
+      state.lastRiseT = tS;
+      state.flatInvalid = false;
+      rememberWeight(state, tS, weightG);
+      return true;
+    }
     state.flatInvalid = true;
     rememberWeight(state, tS, weightG);
     return false;
