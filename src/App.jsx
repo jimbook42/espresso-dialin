@@ -732,8 +732,13 @@ export default function App() {
   // Timer Logic (0.1s resolution for mobile fullscreen display)
   useEffect(() => {
     if (!timerRunning || flowAutoStopTimerFrozen) return undefined;
+    const startedAt = performance.now();
+    let elapsedTicks = 0;
     const interval = setInterval(() => {
-      setTimerTicks((t) => t + 1);
+      const nextElapsedTicks = Math.floor((performance.now() - startedAt) / 100);
+      const ticksToAdd = nextElapsedTicks - elapsedTicks;
+      elapsedTicks = nextElapsedTicks;
+      if (ticksToAdd > 0) setTimerTicks((t) => t + ticksToAdd);
     }, 100);
     return () => clearInterval(interval);
   }, [timerRunning, flowAutoStopTimerFrozen]);

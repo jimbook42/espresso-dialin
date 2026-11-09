@@ -1,0 +1,17 @@
+# B01 phone validation checklist
+
+Run the same checks on **Android Chrome**, **iPhone Safari**, and the **iPhone Home Screen app**. Open Espresso Dial-In at https://dialin-app.vercel.app and check that the footer says **v4.14.8 · 6f165ef**. Use a test shot you are happy to keep. Keep the phone fixed and the gauge well lit. Leave any connected scale and reader settings as you normally use them.
+
+In **Settings → Lab**, turn on **Pressure from camera (beta)**. Open **Run gauge setup (3 taps)**, or **Re-run gauge setup (3 taps)** if it was set up before. Allow camera access. With the lever down and the needle at rest, follow the prompts for the centre, 5 and 10 marks, then accept the setup. Use the Dial-In shot timer. If asked to confirm the gauge reads zero, check the real gauge before tapping **Yes, start shot**.
+
+| Check | What to do and what to look for |
+| --- | --- |
+| A. Raise before Start | Calibrate with the lever down. Raise it without moving the phone. Wait three seconds before tapping **Start**. Look for **Dial found** if the pre-shot status is visible. Once the timer starts, the app should read near zero while the real gauge is at rest and follow it when pressure rises. |
+| B. Raise after Start | Calibrate with the lever down. Tap **Start** and wait for the timer to count. Raise the lever with the phone still. The timer should keep counting. Look for pressure to resume on its own and follow the real gauge. Note roughly how many seconds it took. |
+| C. Cover and uncover | While recording, briefly block the phone's view of the dial with your hand for about two seconds. Remove your hand. Repeat with the dial briefly out of view if you can do so safely. The timer should keep counting. The pressure may briefly show as held or waiting. It should return on its own, without a false spike or a 10-bar reading while the real gauge is at zero. Note roughly how long it takes after the dial returns. |
+| D. Save and reopen | Stop and save the shot. Open the new shot in **History**. Check that its pressure graph shows the rise and fall at roughly the times you saw them on the timer. Look for a gap or a dotted connection where the dial was hidden long enough. A continuous solid trace across a clear loss of several seconds is worth reporting. Export any failure evidence before reloading, then reopen History and check that the graph is still there. |
+| E. Repeat on each phone | Run A–D in Android Chrome, iPhone Safari, and from the iPhone Home Screen icon. Record a separate result for each. Report if the camera permission prompt or preview behaves differently. |
+
+If a check fails, save that shot and open it in **History** before starting another shot, reloading, or closing the app. Tap **Export replay** if shown and keep both downloads, the video and the file ending in **-pressure.json**. If you see **Export diagnostics** instead, download that file. If camera setup fails before you can save, use **Copy diagnostic report** in the **Pressure lab** if you can reproduce the problem there. Copy it while the camera is still running. If you cannot export anything, take a screenshot of the message, camera preview, or graph.
+
+With the files, include the phone model, software version, Chrome/Safari/Home Screen, test letter, and roughly when the failure happened on the timer. Say what the real needle and the app displayed, how long the app took to recover, and whether the timer kept counting.

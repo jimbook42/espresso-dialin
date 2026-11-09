@@ -151,6 +151,18 @@ try {
   passed++;
   console.log('PASS portrait trust: 390x844 and 375x667, no scroll, tall camera, visible controls, fixed Aim slot');
 
+  const timerValue = live.locator('[data-metric="time"] .shot-metric-value');
+  const timeBeforeStall = Number.parseFloat(await timerValue.textContent());
+  await page.evaluate(() => {
+    const resumeAt = performance.now() + 1500;
+    while (performance.now() < resumeAt) { /* emulate a long reader task */ }
+  });
+  await page.waitForTimeout(250);
+  const elapsedDuringStall = Number.parseFloat(await timerValue.textContent()) - timeBeforeStall;
+  assert.ok(elapsedDuringStall >= 1.4, `Timer advanced ${elapsedDuringStall.toFixed(1)} s across a 1.5 s main-thread stall`);
+  passed++;
+  console.log(`PASS timer catch-up: advanced ${elapsedDuringStall.toFixed(1)} s across the 1.5 s stall and 0.25 s recovery wait`);
+
   await page.getByRole('button', { name: 'Stop shot', exact: true }).click();
   assert.ok(Number(await page.getByTestId('dial-time-tile').locator('input').inputValue()) > 0);
   assert.equal(await page.getByTestId('dial-bean-select').inputValue(), originalBean);
