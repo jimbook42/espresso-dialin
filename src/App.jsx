@@ -1915,6 +1915,7 @@ export default function App() {
 
   const handleLogShot = async (e) => {
     e.preventDefault();
+    if (yieldSettleActive) return;
     setValidationError('');
 
     const parsedTime = parseInt(actualTimeS, 10);
@@ -3473,7 +3474,8 @@ export default function App() {
                     <div className="max-w-xl mx-auto">
                       <button
                         type="submit"
-                        className="w-full bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-black py-4 rounded-xl shadow-lg transition-colors text-sm tracking-wide"
+                        disabled={yieldSettleActive}
+                        className="w-full bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-black py-4 rounded-xl shadow-lg transition-colors text-sm tracking-wide disabled:opacity-60"
                       >
                         Log shot & calculate grind adjustment
                       </button>

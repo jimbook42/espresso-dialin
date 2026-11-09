@@ -7,6 +7,18 @@ const server = startPreviewServer(4182);
 let browser;
 let failures = 0;
 
+function readShots(page) {
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    const db = indexedDB.open('EspressoDialDB');
+    db.onerror = () => reject(db.error);
+    db.onsuccess = () => {
+      const query = db.result.transaction('shots').objectStore('shots').getAll();
+      query.onsuccess = () => { db.result.close(); resolve(query.result); };
+      query.onerror = () => reject(query.error);
+    };
+  }));
+}
+
 async function seed(page, settings) {
   await page.goto(server.url);
   await page.waitForFunction(() => document.body.textContent.includes('grinder'));
@@ -164,15 +176,7 @@ try {
     await page.getByRole('button', { name: 'Log shot & calculate grind adjustment', exact: true }).click();
     await page.getByRole('button', { name: 'History', exact: true }).click();
     await page.getByTestId('history-shot-card').waitFor();
-    const shots = await page.evaluate(() => new Promise((resolve, reject) => {
-      const db = indexedDB.open('EspressoDialDB');
-      db.onerror = () => reject(db.error);
-      db.onsuccess = () => {
-        const query = db.result.transaction('shots').objectStore('shots').getAll();
-        query.onsuccess = () => { db.result.close(); resolve(query.result); };
-        query.onerror = () => reject(query.error);
-      };
-    }));
+    const shots = await readShots(page);
     assert.equal(shots.length, 1);
     assert.equal(shots[0].actualTimeS, saved);
     const curve = shots[0].scaleFlowCurve;
@@ -180,6 +184,32 @@ try {
     assert.equal(curve.at(-1).weightG, 36);
     assert.ok(curve.at(-1).tS < elapsed, 'reconnected weights are not appended to the interrupted shot');
     return { candidate, elapsed, reconnectOffered, saved, originalSamples: curve.length };
+  });
+  await run('saving waits for final scale metrics and keeps the recorded curve', async ({ page, notify, stop, savedTime }) => {
+    const pauseAt = await page.evaluate(() => Date.now() + 500);
+    await page.clock.pauseAt(new Date(pauseAt));
+    await stop.evaluate((button) => button.click());
+    const saved = await savedTime();
+    const yieldTile = page.getByTestId('dial-yield-tile');
+    const settling = yieldTile.getByRole('status').filter({ hasText: 'Reading final weight' });
+    const log = page.getByRole('button', { name: 'Log shot & calculate grind adjustment', exact: true });
+    await settling.waitFor();
+    assert.equal(await log.isDisabled(), true);
+    await yieldTile.locator('input').fill('35.5');
+    await page.getByRole('button', { name: 'Balanced', exact: true }).evaluate((button) => button.click());
+    await log.evaluate((button) => button.form.requestSubmit());
+    assert.deepEqual(await readShots(page), []);
+    for (let i = 0; i < 12; i++) await notify(36);
+    await settling.waitFor({ state: 'hidden' });
+    await page.clock.resume();
+    await log.click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
+    await page.getByTestId('history-shot-card').waitFor();
+    const shots = await readShots(page);
+    assert.equal(shots.length, 1);
+    assert.equal(shots[0].actualTimeS, saved);
+    assert.equal(shots[0].actualYieldG, 35.5);
+    assert.ok(shots[0].scaleFlowCurve.length > 45);
   });
   await run('countdown is excluded and manual pre-infusion is separate from extraction', async ({ page, start, stop, readTime, savedTime }) => {
     const ready = page.getByText('Get ready', { exact: true });
