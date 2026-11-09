@@ -1213,7 +1213,10 @@ function trackPose(image, tracker) {
   // The measurement radius is distinct from the candidate-size check.
   // rimMeasure reports 0.9 * the outer crossing radius. Its sampling prior
   // is the outer radius, so do not feed the reported inner radius back as-is.
-  const measureRadius = (tracker.legacyScale ? tracker.calibration.radius : prior.radius) / 0.9;
+  // Keep the established local sampling band. The registered radius scales
+  // the original tapped patch and feeding it back can move the band when a
+  // tap is offset from the bezel. Wide discovery supplies changed sizes.
+  const measureRadius = tracker.calibration.radius / 0.9;
   const here = rimMeasure(image, prior.x, prior.y, 36, 1, measureRadius);
   let found = searchRim(image, prior, TRACK_NEAR_PX, 2, prior.radius, 36, 1, false, measureRadius);
   // The near window is 10 px. The lever shifts the hub by ~25 px, and the old

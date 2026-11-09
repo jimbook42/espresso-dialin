@@ -142,7 +142,14 @@ export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = f
   const owned = [];
   const own = value => { owned.push(value); return value; };
   try {
-    const ref = state.reference;
+    // Wide recovery uses the printed detail inside the circular bezel.
+    // Keep that fit after recovery: returning to the broad LK window can pull
+    // a verified rotation back towards the rotationally invariant surround.
+    const printedFaceFlow = verifyIdentity || state.printedFaceFlow === true;
+    const ref = printedFaceFlow ? { ...state.reference,
+      points: state.reference.points.filter(p => Math.hypot(p.x - CENTRE, p.y - CENTRE) <= FACE_RADIUS * 0.82),
+    } : state.reference;
+    if (ref.points.length < 10) return null;
     const previous = own(cv.matFromArray(SIZE, SIZE, cv.CV_8UC1, ref.data));
     const currentData = patch(image, pose);
     const current = own(cv.matFromArray(SIZE, SIZE, cv.CV_8UC1, currentData));
@@ -174,14 +181,16 @@ export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = f
     }) : null;
     const target = own(seed ? cv.matFromArray(ref.points.length, 1, cv.CV_32FC2, seed) : new cv.Mat());
     const status = own(new cv.Mat()), error = own(new cv.Mat());
-    cv.calcOpticalFlowPyrLK(previous, current, source, target, status, error, new cv.Size(19, 19), FLOW_PYRAMID_LEVEL,
+    const windowSize = printedFaceFlow ? 11 : 19;
+    const pyramidLevel = printedFaceFlow ? 0 : FLOW_PYRAMID_LEVEL;
+    cv.calcOpticalFlowPyrLK(previous, current, source, target, status, error, new cv.Size(windowSize, windowSize), pyramidLevel,
       new cv.TermCriteria(cv.TermCriteria_COUNT | cv.TermCriteria_EPS, 30, 0.01),
       seed ? cv.OPTFLOW_USE_INITIAL_FLOW : 0);
     // Reverse tracking has a known starting estimate too. An unseeded reverse
     // search can converge on another glyph even when forward tracking is right.
     // LK must still refine the estimate from pixels and pass the same 1 px check.
     const back = own(source.clone()), backStatus = own(new cv.Mat()), backError = own(new cv.Mat());
-    cv.calcOpticalFlowPyrLK(current, previous, target, back, backStatus, backError, new cv.Size(19, 19), FLOW_PYRAMID_LEVEL,
+    cv.calcOpticalFlowPyrLK(current, previous, target, back, backStatus, backError, new cv.Size(windowSize, windowSize), pyramidLevel,
       new cv.TermCriteria(cv.TermCriteria_COUNT | cv.TermCriteria_EPS, 30, 0.01), cv.OPTFLOW_USE_INITIAL_FLOW);
     const a = [], b = [];
     for (let i = 0; i < ref.points.length; i += 1) {
@@ -223,6 +232,7 @@ export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = f
     // Whole-frame reacquisition needs matching printed pixels as well as a
     // coherent flow field. A circle or repeated glyph pattern is not identity.
     if (verifyIdentity && printedPixelAgreement(ref.data, currentData, _cal.zeroAngleDeg, m) < 0.85) return null;
+    if (verifyIdentity) state.printedFaceFlow = true;
     const scale = pose.radius / FACE_RADIUS;
     state.matrix = matrix;
     state.misses = 0;

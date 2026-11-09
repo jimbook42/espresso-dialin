@@ -1,5 +1,7 @@
 # Ticket 1 — gauge reacquisition investigation
 
+The original investigation below describes `26e09a3`. See the follow-up at the end for the repaired branch.
+
 Date: 9 November 2026 (Pacific/Auckland).
 Base: `main` / `origin/main` verified by fetch at `bd74b383b9f66d395aa0dad62959ff07c6ca54c8`, version 4.14.7.
 Branch: `fix/lab-pose-reacquire-lever-raised`.
@@ -212,3 +214,37 @@ phone beneath the Flair 58, using front camera and rear camera separately.
 This branch is a reviewable partial result with intentionally retained failing
 tests, not a production-ready fix. Further implementation requires Isaac's next
 instruction after the two-round stop.
+
+## Follow-up repair from `26e09a3`
+
+The November 2–3 and `new` replay exports contain shot video and pressure curves. The older screen recordings were made by feeding existing clips into a browser. The app starts its replay recorder and diagnostic timeline when the shot timer runs. None of the reviewed files establishes the original frozen calibration frame and continuous lever raise before Start with the phone stationary. The real-frame regression remains useful for checking ordinary tracking against `main`.
+
+The combined synthetic case found the gauge but rejected every candidate at affine validation. For example, 12 inliers out of 32 surviving matches fell short of the existing 50% requirement. Several fits estimated about 9–10° for the 12° input. Excluding bezel corners alone left the printed-pixel agreement below 0.85. Restricting the flow window to local printed detail produced a verified fit. The tracker now keeps that fit method after wide recovery. The affine, identity, rim and needle acceptance gates are preserved.
+
+For `hub-x-10`, frame `c005` changed from fresh on `main` to `pose-lost` at `26e09a3`. A temporary reader that reverted only local rim sampling reproduced `main`'s scores and recovered the missing frame. Reverting the lost-flow seed alone did not. Local rim sampling uses the calibrated radius again. Wide discovery supplies the changed geometry when local tracking loses the dial. All three real-frame cases recover 5/5 designated frames. The correctly placed calibration has zero false rests. The deliberately perturbed `hub-x-10` and `hub-y-10` cases retain `main`'s 1 and 4 false rests respectively. The previous revision happened to report 1 for `hub-y-10`.
+
+All seven synthetic movement cases recover on the second captured frame. The complete 80-frame matrix publishes 73 fresh readings with a maximum absolute 5-bar error of 0.101 bar. The four invalid-scene tests produce zero fresh readings across 32 frames. The separate continuation test observes zero whole-frame searches over ten fresh frames after the combined transform locks.
+
+Back-to-back desktop timings used the same 480×480 synthetic images and instrumented copies in one Node process. Times cover `readCalibratedFrame` and exclude image generation, browser capture and ONNX inference.
+
+| Frame path | Starting commit median / P95 / max | Repair median / P95 / max |
+| --- | ---: | ---: |
+| Normal tracking | 47 / 61 / 77 ms (72 frames) | 44 / 60 / 118 ms (82 frames) |
+| Whole-frame search | 518 / 620 / 720 ms (16 frames) | 172 / 213 / 221 ms (14 frames) |
+
+The earlier loaded desktop run reached 2.54 s per frame. Registration took about 86% of search-frame processing time in the paired starting-commit run. Its retries ran forward/backward optical flow and sometimes an affine fit for up to 12 circle proposals with six seeds each. The smaller window and single pyramid level cut the cost of those attempts. Full discovery ran twice per repaired movement case and zero times in the 82 normal tracking frames. These desktop measurements and the nominal 125 ms sample spacing leave the one-second phone target unverified. Local traces are in `scripts/needle-reader/out/ticket1-followup/paired-reader-study.json` and `real-ablation.json`.
+
+| Validation | Result |
+| --- | --- |
+| Focused Vitest | 28 passed, 0 failed, one worker RPC timeout |
+| Full Vitest | 586 passed, 0 failed, 4 existing skips |
+| Legacy suite | Local-time CSV assertion and UTC legacy gauge assertion both reproduce earlier failures |
+| Lint | Generated OpenCV asset causes an ESLint stack overflow. The three changed source and test files lint cleanly. |
+| Build | Passed |
+| Playwright shot-screen smoke | 5 passed, 0 failed |
+
+The single stock exam completed on the repair with 12 clips, 3,961 frames and 57 scored labels. Stream coverage went from 95.25% to 94.62%. Standard-clip fresh coverage went from 2,750/3,114 (88.31%) to 2,740/3,114 (87.99%). Median absolute error went from 0.075 to 0.099 bar and P90 went from 0.264 to 0.255 bar. The worst hand-labelled error was 0.40 bar at 49.375 s. The stock report does not export the overall maximum. False-10 count was zero. The stock model-angle flip metric was 37.5%. The median of clip processing medians was 75.3 ms on this run. Saved output from `26e09a3` is in the local follow-up output directory for comparison.
+
+A frame-level trace of `20261015_225307` matches `main` on all 121 published outcomes, including 56 fresh and 34 held readings. The starting commit had 58 fresh and 43 held readings on that clip. `20261018_094151` exposes an unresolved regression after the smaller fit takes over. The repair has 287 fresh readings and 7 pose losses versus 286 fresh readings and 2 pose losses on `main`. Six full searches occur after the initial recovery. The round-two attempt to retry the original local fit with pose agreement bounds produced identical counts on all 336 frames and was removed. The retained code and exam results are from round one. Keep release on hold for real-device evidence and review of those extra losses.
+
+For device evidence, start the phone's screen recorder before calibration in the installed PWA. Calibrate with the lever down and return to the Dial screen. Raise the lever with the phone fixed, leave it settled for three seconds, then Start. Stop and save the shot, then use **History → Export replay** before reload or the next shot. Keep the original recording and export files and note the phone, OS, camera and app version. If available, a second camera framing the lever and Dial screen together can establish pre-Start timing. A separate run with the shot timer already running for two seconds before the lever raise puts the transition in the native replay for pixel analysis and fresh-reading timing during a shot. Capture Android Chrome first and repeat on the installed iPhone PWA for compatibility verification.

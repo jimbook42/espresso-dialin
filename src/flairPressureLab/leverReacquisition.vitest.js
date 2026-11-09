@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import { setOpenCvForTests } from './opencvRuntime.js';
 import { calibrateFromTaps, createCalibratedTracker, readCalibratedFrame } from './tapCalibrate.js';
@@ -6,6 +6,7 @@ import { createShotLabR7Publisher } from './shotLabR7Live.js';
 import { PROCESS_INTERVAL_MS, wrap360 } from './gaugeConfig.js';
 import { createPreShotDialVerdictSampler } from './preShotDialCheck.js';
 import { createPreShotReadableWindow, samplePreShotDialPose } from './preShotReadableStatus.js';
+import * as discovery from './gaugeTrack.js';
 
 beforeAll(async () => {
   let cv = createRequire(import.meta.url)('@techstark/opencv-js');
@@ -180,5 +181,29 @@ describe('lever movement through the production tap reader and R7 publisher', { 
     const first = readCalibratedFrame(image, state.tracker);
     expect(first.ok).toBe(true);
     expect(readCalibratedFrame(image, state.tracker)).toMatchObject({ duplicate: true, fresh: false, bar: null });
+  });
+
+  it('keeps the recovered rotated face tracking without repeating whole-frame searches', () => {
+    const state = setup();
+    const search = vi.spyOn(discovery, 'probeGaugeDiscoveryCandidates');
+    try {
+      for (let i = 0; i < 5; i++) expect(step(state).gated.fresh).toBe(true);
+      expect(search).not.toHaveBeenCalled();
+      const scene = { x: 320, y: 170, radius: 49, rotation: 12 };
+      let frame;
+      for (let i = 0; i < 8; i++) {
+        frame = step(state, scene);
+        if (frame.gated.fresh) break;
+      }
+      expect(frame.gated.fresh).toBe(true);
+      const callsAtRecovery = search.mock.calls.length;
+      expect(callsAtRecovery).toBeGreaterThan(0);
+      for (let i = 0; i < 10; i++) {
+        frame = step(state, scene);
+        expect(frame.gated.fresh, frame.gated.reason).toBe(true);
+        expect(Math.abs(frame.gated.bar - 5)).toBeLessThan(0.3);
+      }
+      expect(search).toHaveBeenCalledTimes(callsAtRecovery);
+    } finally { search.mockRestore(); }
   });
 });
