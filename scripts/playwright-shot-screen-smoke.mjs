@@ -71,7 +71,7 @@ try {
   assert.equal(await preview.locator('[data-size="big"]').getAttribute('data-metric'), 'time');
   await customiser.getByRole('button', { name: 'Recommended for my setup' }).click();
   await layout('gauge');
-  await page.getByRole('button', { name: '✕', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   // Dial keeps its calibration guard. Verify a cancelled setup can acquire the
   // shared stream again on a second Start, without any layout-test bypass.
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -97,7 +97,7 @@ try {
   await page.reload();
   await page.getByTitle('Settings', { exact: true }).click();
   assert.equal(await customiser.getByRole('switch', { name: 'Minimal mode' }).getAttribute('aria-checked'), 'true');
-  await page.getByRole('button', { name: '✕', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   const live = page.getByTestId('adaptive-shot-screen');
   await live.waitFor();
@@ -110,7 +110,7 @@ try {
   // calibration anchors or pressure readings, and without a test-mode bypass.
   await page.getByTitle('Settings', { exact: true }).evaluate((node) => node.click());
   await customiser.getByRole('switch', { name: 'Pressure gauge via camera' }).evaluate((node) => node.click());
-  await page.getByRole('button', { name: '✕', exact: true }).evaluate((node) => node.click());
+  await page.getByRole('button', { name: 'Close settings', exact: true }).evaluate((node) => node.click());
   const liveToolbar = live.locator('.shot-camera-toolbar');
   assert.equal(await liveToolbar.count(), 1);
   await liveToolbar.getByRole('button', { name: 'Show gauge', exact: true }).click();
@@ -178,7 +178,7 @@ try {
   await page.getByTitle('Settings', { exact: true }).evaluate((node) => node.click());
   await customiser.getByRole('switch', { name: 'Timer only', exact: true }).evaluate((node) => node.click());
   await customiser.getByRole('switch', { name: 'Minimal mode' }).evaluate((node) => node.click());
-  await page.getByRole('button', { name: '✕', exact: true }).evaluate((node) => node.click());
+  await page.getByRole('button', { name: 'Close settings', exact: true }).evaluate((node) => node.click());
   passed++;
   console.log('PASS portrait trust: 390x844 and 375x667, no scroll, tall camera, visible controls, fixed Aim slot');
 

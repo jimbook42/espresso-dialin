@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { SettingsToggle } from './SettingsToggle.jsx';
 import { CustomGrinderForm } from './CustomGrinderForm.jsx';
+import { ExperienceChoices } from './ExperienceChoices.jsx';
 import { isCustomGrinderFormValid } from '../grinders/customGrinder.js';
 import { listGrinderPickerOptions, CUSTOM_GRINDER_PICKER_ID } from '../grinders/grinderRegistry.js';
 import {
@@ -9,7 +10,7 @@ import {
   SMART_SCALE_NOT_LISTED_ID,
 } from '../settings/scalePreference.js';
 
-const STEPS = ['grinder', 'scale', 'extras'];
+const STEPS = ['experience', 'grinder', 'scale', 'extras'];
 
 export function FirstLaunchWizard({
   ui,
@@ -30,6 +31,9 @@ export function FirstLaunchWizard({
   onComplete,
 }) {
   const [stepIndex, setStepIndex] = useState(0);
+  const [experience, setExperience] = useState('brew');
+  const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const step = STEPS[stepIndex];
   const pickerOptions = listGrinderPickerOptions();
   const scaleOptions = listSmartScalePickerOptions();
@@ -40,9 +44,21 @@ export function FirstLaunchWizard({
 
   const canNext = step !== 'grinder' || grinderReady;
 
+  const finish = async (configureEquipment) => {
+    setSaving(true);
+    setSaveFailed(false);
+    try {
+      await onComplete(experience, { configureEquipment });
+    } catch {
+      setSaveFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const goNext = () => {
     if (stepIndex < STEPS.length - 1) setStepIndex((i) => i + 1);
-    else onComplete();
+    else void finish(true);
   };
 
   const goBack = () => {
@@ -51,27 +67,37 @@ export function FirstLaunchWizard({
 
   return (
     <div className={`min-h-screen ${ui.page} flex items-center justify-center p-6`}>
-      <div className={`${ui.card} p-8 rounded-2xl max-w-md w-full space-y-6 shadow-2xl`}>
+      <div className={`${ui.card} p-5 sm:p-8 rounded-2xl max-w-md w-full space-y-5 shadow-2xl`}>
         <div className="flex flex-col items-center gap-3">
           <img src="/logo-header-dark.svg" alt="Espresso Dial-In" width={64} height={64} className="w-16 h-16" />
           <div className="text-center">
             <h1 className="text-xl font-bold text-[#f5f2eb] tracking-tight">Welcome</h1>
-            <p className="text-xs text-[#6b6457] mt-1">Set up grinder, scale, and optional features</p>
+            <p className={`text-xs ${ui.sub} mt-1`}>{step === 'experience'
+              ? 'Choose how you want to use Espresso Dial-In.'
+              : 'Set up your grinder, scale and optional features.'}</p>
           </div>
-          <div className="flex gap-2 pt-1" aria-label="Progress">
-            {STEPS.map((s, idx) => (
+          {step !== 'experience' && <div className="flex gap-2 pt-1" aria-label="Equipment setup progress">
+            {STEPS.slice(1).map((s, idx) => (
               <span
                 key={s}
-                className={`w-2 h-2 rounded-full ${idx === stepIndex ? 'bg-[#c88a4b]' : idx < stepIndex ? 'bg-[#8a9d72]' : 'bg-[#2e2b26]'}`}
+                className={`w-2 h-2 rounded-full ${idx + 1 === stepIndex ? 'bg-[#c88a4b]' : idx + 1 < stepIndex ? 'bg-[#8a9d72]' : 'bg-[#2e2b26]'}`}
               />
             ))}
-          </div>
+          </div>}
         </div>
+
+        {step === 'experience' && (
+          <>
+            <ExperienceChoices value={experience} onChange={setExperience} ui={ui} legend="Your experience" disabled={saving} />
+            <p className={`text-xs ${ui.sub}`}>Change your experience anytime in Settings.</p>
+          </>
+        )}
 
         {step === 'grinder' && (
           <div className="space-y-3">
-            <label className="text-[10px] uppercase tracking-widest text-[#6b6457] font-bold">Primary grinder</label>
+            <label htmlFor="first-launch-grinder" className="text-[10px] uppercase tracking-widest text-[#6b6457] font-bold">Primary grinder</label>
             <select
+              id="first-launch-grinder"
               value={grinderPickerValue || ''}
               onChange={(e) => onGrinderPickerChange(e.target.value)}
               className="w-full bg-[#211e1a] border border-[#2e2b26] text-[#f5f2eb] rounded-lg p-2.5 text-sm font-semibold"
@@ -171,10 +197,22 @@ export function FirstLaunchWizard({
           </p>
         )}
 
-        <div className="flex gap-2 pt-2">
+        {saveFailed && <p role="alert" className={`text-sm ${ui.text}`}>Couldn’t save your setup. Please try again.</p>}
+        {step === 'experience' ? <div className="space-y-2">
+          <button type="button" disabled={saving} onClick={() => void finish(false)}
+            className="w-full py-3 rounded-xl font-bold text-sm bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] disabled:opacity-40">
+            Continue
+          </button>
+          {experience !== 'pressure' && (
+            <button type="button" disabled={saving} onClick={goNext} className={`w-full py-3 rounded-xl font-bold text-sm ${ui.secondaryBtn}`}>
+              Set up equipment first
+            </button>
+          )}
+        </div> : <div className="flex gap-2 pt-2">
           {stepIndex > 0 && (
             <button
               type="button"
+              disabled={saving}
               onClick={goBack}
               className="flex-1 py-3 rounded-xl font-bold text-sm bg-[#211e1a] border border-[#2e2b26] text-[#f5f2eb]"
             >
@@ -183,13 +221,13 @@ export function FirstLaunchWizard({
           )}
           <button
             type="button"
-            disabled={!canNext}
+            disabled={saving || !canNext}
             onClick={goNext}
             className="flex-1 py-3 rounded-xl font-bold text-sm bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] disabled:opacity-40"
           >
             {stepIndex === STEPS.length - 1 ? 'Finish' : 'Next'}
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -129,12 +129,12 @@ async function openSettings(page) {
 }
 
 async function closeSettings(page) {
-  await page.getByRole('button', { name: '✕' }).click();
+  await page.getByRole('button', { name: 'Close settings' }).click();
   await delay(200);
 }
 
 async function selectPrimaryGrinder(page, grinderId) {
-  const closeBtn = page.getByRole('button', { name: '✕' });
+  const closeBtn = page.getByRole('button', { name: 'Close settings' });
   if (await closeBtn.isVisible().catch(() => false)) {
     await closeBtn.click();
     await delay(200);

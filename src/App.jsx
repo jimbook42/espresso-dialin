@@ -27,7 +27,7 @@ import {
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag, Gauge } from 'lucide-react';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { FinishBeanToast, TOAST_DURATION_MS } from './components/FinishBeanToast.jsx';
 import {
@@ -97,6 +97,8 @@ import {
   normalizeCustomGrinderProfile,
 } from './grinders/customGrinder.js';
 import { FirstLaunchWizard } from './components/FirstLaunchWizard.jsx';
+import { ExperienceChoices } from './components/ExperienceChoices.jsx';
+import { preferredExperience, savedExperience } from './settings/experiencePreference.js';
 import { CustomGrinderForm } from './components/CustomGrinderForm.jsx';
 import {
   shouldDeferMainShellForFirstLaunch,
@@ -358,9 +360,12 @@ function shotFieldAttentionClass(active) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dial');
+  const [selectedTab, setActiveTab] = useState(null);
   const [darkMode, setDarkMode] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [experienceDraft, setExperienceDraft] = useState(null);
+  const [savingExperience, setSavingExperience] = useState(false);
+  const [experienceSaveFailed, setExperienceSaveFailed] = useState(false);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [expandedShotStatsIds, setExpandedShotStatsIds] = useState(() => new Set());
 
@@ -372,12 +377,20 @@ export default function App() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [leaderboardFilter, setLeaderboardFilter] = useState('All');
 
-  const beans = useLiveQuery(() => db.beans.toArray(), []) || [];
+  const beansQuery = useLiveQuery(() => db.beans.toArray(), []);
+  const beans = beansQuery || [];
   const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
-  const shots = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []) || [];
+  const shotsQuery = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []);
+  const shots = shotsQuery || [];
   const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), [], SETTINGS_QUERY_PENDING);
   const settingsSetting =
     settingsQueryResult === SETTINGS_QUERY_PENDING ? null : (settingsQueryResult ?? null);
+  const explicitExperience = savedExperience(settingsSetting);
+  const experience = preferredExperience(settingsSetting);
+  const showPressureTab = experience !== 'brew';
+  const activeTab = selectedTab === 'pressure' && !showPressureTab
+    ? 'history'
+    : selectedTab ?? (experience === 'pressure' ? 'pressure' : 'dial');
   const brewGuideEnabled = Boolean(settingsSetting?.brewGuideEnabled);
   const brewGuideSetupComplete = Boolean(settingsSetting?.brewGuideSetupComplete);
   const brewGuideAccessories = normalizeBrewAccessories(settingsSetting?.brewGuideAccessories);
@@ -1289,6 +1302,7 @@ export default function App() {
       preInfusionEnabled: preInfusionChoice,
       customGrinder: customGrinderChoice,
       smartScaleDeviceId: smartScaleChoice,
+      experiencePreference,
     } = options;
 
     let model = modelOrPicker;
@@ -1343,6 +1357,7 @@ export default function App() {
             ? customGrinderChoice ?? row.customGrinderSetupDraft
             : undefined,
         ...customGrinderPatch,
+        ...(experiencePreference ? { experiencePreference } : {}),
         ...(typeof brewGuideChoice === 'boolean' ? { brewGuideEnabled: brewGuideChoice } : {}),
         ...(typeof flairChoice === 'boolean' ? { flairEnabled: flairChoice } : {}),
         ...(typeof preInfusionChoice === 'boolean' ? { preInfusionEnabled: preInfusionChoice } : {}),
@@ -1354,17 +1369,55 @@ export default function App() {
     });
   };
 
-  const handleFinishFirstLaunch = async () => {
+  const handleFinishFirstLaunch = async (experiencePreference, { configureEquipment = false } = {}) => {
+    if (!configureEquipment) {
+      await patchGlobalSettings(db, (row) => ({
+        experiencePreference,
+        ...(experiencePreference !== 'pressure' && row.brewGuideEnabled === undefined
+          ? { brewGuideEnabled: setupBrewGuideEnabled }
+          : {}),
+      }));
+      return;
+    }
     const scaleId = setupUseSmartScale
       ? normalizeSmartScaleDeviceId(setupSmartScaleDeviceId)
       : SMART_SCALE_MANUAL_ID;
     await handleSaveGrinderSetup(setupGrinderPickerValue || CUSTOM_GRINDER_PICKER_ID, {
+      experiencePreference,
       brewGuideEnabled: setupBrewGuideEnabled,
       flairEnabled: setupFlairEnabled,
       preInfusionEnabled: setupPreInfusionEnabled,
       customGrinder: setupCustomGrinderDraft,
       smartScaleDeviceId: scaleId,
     });
+  };
+
+  const openSettings = () => {
+    setExperienceDraft(null);
+    setExperienceSaveFailed(false);
+    setIsSettingsOpen(true);
+  };
+
+  const saveAndCloseSettings = async () => {
+    setExperienceSaveFailed(false);
+    if (experienceDraft && experienceDraft !== experience) {
+      setSavingExperience(true);
+      try {
+        await patchGlobalSettings(db, { experiencePreference: experienceDraft });
+        if (experienceDraft === 'pressure') setActiveTab('pressure');
+        else if (experienceDraft === 'brew' && activeTab === 'pressure') setActiveTab('history');
+      } catch {
+        setExperienceSaveFailed(true);
+        return;
+      } finally {
+        setSavingExperience(false);
+      }
+    }
+    if (settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID
+      && isCustomGrinderFormValid(settingsCustomGrinderDraft)) {
+      void handleSaveCustomGrinderFromSettings();
+    }
+    setIsSettingsOpen(false);
   };
 
   const persistCustomGrinderSetupDraft = async (draft) => {
@@ -1675,6 +1728,7 @@ export default function App() {
     await db.beans.clear();
     await db.settings.clear();
     setShowResetConfirm(false);
+    setActiveTab(null);
     setSelectedBeanId('');
     setGrinderModel('');
     setFlairEnabled(false);
@@ -2625,6 +2679,7 @@ export default function App() {
   if (shouldRenderFirstLaunchWizard(settingsQueryResult, {
     hasExistingUserData,
   })) {
+    if (beansQuery === undefined || shotsQuery === undefined) return null;
     return (
       <FirstLaunchWizard
         ui={ui}
@@ -2642,7 +2697,7 @@ export default function App() {
         onSetupPreInfusionChange={setSetupPreInfusionEnabled}
         setupBrewGuideEnabled={setupBrewGuideEnabled}
         onSetupBrewGuideChange={setSetupBrewGuideEnabled}
-        onComplete={() => { void handleFinishFirstLaunch(); }}
+        onComplete={(next, options) => handleFinishFirstLaunch(next, options)}
       />
     );
   }
@@ -2846,7 +2901,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={openSettings}
               className={`p-2 ${ui.ghostBtn} hover:text-[#c88a4b] transition-colors`}
               title="Settings"
             >
@@ -2856,6 +2911,30 @@ export default function App() {
         </header>
 
         {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
+
+        {activeTab === 'pressure' && (
+          <section aria-labelledby="pressure-title" className={`${ui.card} rounded-2xl p-5 space-y-4`}>
+            <div className="flex items-center gap-3">
+              <Gauge className={`w-6 h-6 ${ui.accentText}`} aria-hidden="true" />
+              <h2 id="pressure-title" className={ui.pageTitle}>Pressure Tracker</h2>
+            </div>
+            <p className={`text-sm ${ui.sub}`}>
+              Use a camera to read a supported Flair gauge during a bean-linked shot in Dial.
+              Recorded pressure stays with that shot in History.
+            </p>
+            <p className={`${ui.cardInset} rounded-xl p-3 text-sm ${ui.sub}`}>
+              Standalone pressure recording and analysis without a bean profile are coming.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={openSettings} className={`${ui.primary} px-4 py-3 rounded-xl text-sm font-bold`}>
+                Pressure settings
+              </button>
+              <button type="button" onClick={() => setActiveTab('history')} className={`${ui.secondaryBtn} px-4 py-3 rounded-xl text-sm font-bold`}>
+                View shot history
+              </button>
+            </div>
+          </section>
+        )}
 
         {activeTab === 'dial' && (
           <div className="space-y-4">
@@ -4317,17 +4396,84 @@ export default function App() {
 
         {isSettingsOpen && (
           <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center p-4 pb-24 sm:pb-4 z-50">
-            <div className={`${ui.card} rounded-2xl max-w-sm w-full shadow-xl max-h-[min(85dvh,calc(100dvh-7rem))] flex flex-col overflow-hidden`}>
+            <div role="dialog" aria-labelledby="preferences-title" className={`${ui.card} rounded-2xl max-w-sm w-full shadow-xl max-h-[min(85dvh,calc(100dvh-7rem))] flex flex-col overflow-hidden`}>
               <div className={`flex items-center justify-between border-b p-6 pb-3 shrink-0 ${ui.modalDivider}`}>
                 <div className="flex items-center gap-2">
                   <Sliders className={`w-5 h-5 ${ui.accentText}`} />
-                  <h3 className={`text-base font-bold ${ui.text}`}>Preferences & Settings</h3>
+                  <h3 id="preferences-title" className={`text-base font-bold ${ui.text}`}>Preferences & Settings</h3>
                 </div>
-                <button type="button" onClick={() => setIsSettingsOpen(false)} className={`${ui.ghostBtn} text-sm font-bold`}>✕</button>
+                <button type="button" aria-label="Close settings" disabled={savingExperience} onClick={() => setIsSettingsOpen(false)} className={`${ui.ghostBtn} text-sm font-bold`}>✕</button>
               </div>
 
               <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
-                <ShotScreenCustomizer settings={settingsSetting} ui={ui} onPatch={(patch) => { void patchGlobalSettings(db, patch); }} />
+                <ExperienceChoices value={experienceDraft ?? experience} onChange={setExperienceDraft} ui={ui} legend="Preferred experience" disabled={savingExperience} />
+                <details className={`${ui.cardInset} rounded-xl p-3 space-y-3`} open={explicitExperience !== 'brew' || labCameraPressureEnabled}>
+                  <summary className={`cursor-pointer min-h-8 font-bold ${ui.text}`}>Advanced camera pressure</summary>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Pressure from camera (beta)</span>
+                      <span className={`text-[10px] ${ui.muted}`}>
+                        Experimental camera-only Flair gauge reading on the shot screen. Display smoothing only; raw
+                        samples are stored with logged shots.
+                      </span>
+                      {labCameraPressureEnabled && (
+                        <div className="mt-2">
+                          <ShotLabPressureIntegration variant="settings-hint" ui={ui} />
+                        </div>
+                      )}
+                    </div>
+                    <SettingsToggle
+                      checked={labCameraPressureEnabled}
+                      onChange={handleToggleLabCameraPressure}
+                      label="Pressure from camera (beta)"
+                    />
+                  </div>
+                  {labCameraPressureEnabled && (
+                    <>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <span className={`font-bold block ${ui.text}`}>Gauge setup camera preview</span>
+                        <span className={`text-[10px] ${ui.muted}`}>
+                          Preview during calibration and weighing. Customise the live shot camera above.
+                        </span>
+                      </div>
+                      <SettingsToggle
+                        checked={settingsSetting?.[LAB_PRESSURE_CAMERA_PREVIEW_KEY] === true}
+                        onChange={handleToggleLabPressurePreview}
+                        label="Gauge setup camera preview"
+                      />
+                    </div>
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Pressure reader</span>
+                      <span className={`text-[10px] ${ui.muted}`}>
+                        Current trusts the 5 and 10 taps. v4.13.21 is the previous scale. v4.13.20 withholds a frame when the needle model disagrees. v4.13.17 is the previous tracker.
+                      </span>
+                      <select
+                        value={
+                          settingsSetting?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_LEGACY
+                          || settingsSetting?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_BLOCKER
+                          || settingsSetting?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_SCALE
+                            ? settingsSetting[LAB_PRESSURE_READER_KEY]
+                            : 'current'
+                        }
+                        onChange={(e) => handleLabPressureReader(e.target.value)}
+                        className={`mt-2 w-full ${inputClass} border rounded-lg p-2.5 font-semibold text-xs`}
+                      >
+                        <option value="current">Current</option>
+                        <option value={LAB_PRESSURE_READER_SCALE}>v4.13.21</option>
+                        <option value={LAB_PRESSURE_READER_BLOCKER}>v4.13.20</option>
+                        <option value={LAB_PRESSURE_READER_LEGACY}>v4.13.17</option>
+                      </select>
+                    </div>
+                    </>
+                  )}
+                </details>
+                <details className={`${ui.cardInset} rounded-xl p-3`} open={explicitExperience !== 'brew' || labCameraPressureEnabled}>
+                  <summary className={`cursor-pointer min-h-8 font-bold ${ui.text}`}>Shot screen customisation</summary>
+                  <div className="pt-2">
+                    <ShotScreenCustomizer settings={settingsSetting} ui={ui} onPatch={(patch) => { void patchGlobalSettings(db, patch); }} />
+                  </div>
+                </details>
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <label className={`block ${ui.fieldLabel}`}>Primary grinder</label>
                   <select
@@ -4559,68 +4705,6 @@ export default function App() {
                   )}
                 </div>
 
-                <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
-                  <p className={`text-[10px] font-bold uppercase tracking-wider ${ui.muted}`}>Lab</p>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <span className={`font-bold block ${ui.text}`}>Pressure from camera (beta)</span>
-                      <span className={`text-[10px] ${ui.muted}`}>
-                        Experimental camera-only Flair gauge reading on the shot screen. Display smoothing only; raw
-                        samples are stored with logged shots.
-                      </span>
-                      {labCameraPressureEnabled && (
-                        <div className="mt-2">
-                          <ShotLabPressureIntegration variant="settings-hint" ui={ui} />
-                        </div>
-                      )}
-                    </div>
-                    <SettingsToggle
-                      checked={labCameraPressureEnabled}
-                      onChange={handleToggleLabCameraPressure}
-                      label="Pressure from camera (beta)"
-                    />
-                  </div>
-                  {labCameraPressureEnabled && (
-                    <>
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <span className={`font-bold block ${ui.text}`}>Gauge setup camera preview</span>
-                        <span className={`text-[10px] ${ui.muted}`}>
-                          Preview during calibration and weighing. Customise the live shot camera above.
-                        </span>
-                      </div>
-                      <SettingsToggle
-                        checked={settingsSetting?.[LAB_PRESSURE_CAMERA_PREVIEW_KEY] === true}
-                        onChange={handleToggleLabPressurePreview}
-                        label="Gauge setup camera preview"
-                      />
-                    </div>
-                    <div>
-                      <span className={`font-bold block ${ui.text}`}>Pressure reader</span>
-                      <span className={`text-[10px] ${ui.muted}`}>
-                        Current trusts the 5 and 10 taps. v4.13.21 is the previous scale. v4.13.20 withholds a frame when the needle model disagrees. v4.13.17 is the previous tracker.
-                      </span>
-                      <select
-                        value={
-                          settingsSetting?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_LEGACY
-                          || settingsSetting?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_BLOCKER
-                          || settingsSetting?.[LAB_PRESSURE_READER_KEY] === LAB_PRESSURE_READER_SCALE
-                            ? settingsSetting[LAB_PRESSURE_READER_KEY]
-                            : 'current'
-                        }
-                        onChange={(e) => handleLabPressureReader(e.target.value)}
-                        className={`mt-2 w-full ${inputClass} border rounded-lg p-2.5 font-semibold text-xs`}
-                      >
-                        <option value="current">Current</option>
-                        <option value={LAB_PRESSURE_READER_SCALE}>v4.13.21</option>
-                        <option value={LAB_PRESSURE_READER_BLOCKER}>v4.13.20</option>
-                        <option value={LAB_PRESSURE_READER_LEGACY}>v4.13.17</option>
-                      </select>
-                    </div>
-                    </>
-                  )}
-                </div>
-
                 <div className={`flex items-center justify-between pt-2 border-t ${ui.modalDivider}`}>
                   <div>
                     <span className={`font-bold block ${labelClass}`}>Interface appearance</span>
@@ -4695,17 +4779,11 @@ export default function App() {
               </div>
 
               <div className={`shrink-0 p-6 pt-3 border-t ${ui.modalDivider} ${ui.card}`}>
+                {experienceSaveFailed && <p role="alert" className={`mb-2 text-xs ${ui.text}`}>Couldn’t save your experience. Please try again.</p>}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (
-                      settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID
-                      && isCustomGrinderFormValid(settingsCustomGrinderDraft)
-                    ) {
-                      void handleSaveCustomGrinderFromSettings();
-                    }
-                    setIsSettingsOpen(false);
-                  }}
+                  onClick={() => { void saveAndCloseSettings(); }}
+                  disabled={savingExperience}
                   className={`w-full ${currentTheme.primary} font-bold py-3 rounded-xl text-sm shadow`}
                 >
                   Save & Close
@@ -4760,10 +4838,16 @@ export default function App() {
       )}
 
       {/* Fixed bottom tab bar */}
-      <nav className={`fixed bottom-0 left-0 right-0 z-50 ${ui.nav} backdrop-blur safe-area-pb`}>
+      <nav aria-label="Main navigation" className={`fixed bottom-0 left-0 right-0 z-50 ${ui.nav} backdrop-blur safe-area-pb`}>
         <div className="max-w-xl mx-auto flex items-stretch gap-1 p-1.5">
           {[
+            ...(experience === 'pressure'
+              ? [{ id: 'pressure', label: 'Pressure', icon: Gauge, onClick: () => setActiveTab('pressure') }]
+              : []),
             { id: 'dial', label: 'Dial', icon: Coffee, onClick: () => setActiveTab('dial') },
+            ...(experience === 'combined'
+              ? [{ id: 'pressure', label: 'Pressure', icon: Gauge, onClick: () => setActiveTab('pressure') }]
+              : []),
             ...(brewGuideEnabled
               ? [{ id: 'brew', label: 'Brew Guide', icon: ClipboardList, onClick: () => setActiveTab('brew') }]
               : []),
@@ -4777,8 +4861,9 @@ export default function App() {
               <button
                 key={tab.id}
                 type="button"
+                aria-current={isActive ? 'page' : undefined}
                 onClick={tab.onClick}
-                className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] rounded-xl transition-colors ${
+                className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] rounded-xl transition-colors ${
                   isActive ? ui.tabActive : ui.muted
                 }`}
               >
@@ -4786,7 +4871,7 @@ export default function App() {
                   <span className="absolute top-1.5 left-3 w-1.5 h-1.5 rounded-full bg-[#c88a4b]" aria-hidden />
                 )}
                 <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5px]' : ''}`} />
-                <span className={brewGuideEnabled ? 'text-[9px] font-bold uppercase tracking-wide text-center leading-tight' : 'text-[10px] font-bold uppercase tracking-wide'}>{tab.label}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wide text-center leading-tight">{tab.label}</span>
               </button>
             );
           })}
