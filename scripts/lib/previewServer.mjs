@@ -24,11 +24,12 @@ export async function waitForServer(url, attempts = 60) {
 /**
  * Start vite preview; returns kill() that tears down the whole process group.
  */
-export function startPreviewServer(port) {
+export function startPreviewServer(port, outDir = process.env.DIALIN_PREVIEW_OUT_DIR) {
   const url = `http://127.0.0.1:${port}/`;
   const child = spawn(
     process.execPath,
-    [VITE_PREVIEW, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+    [VITE_PREVIEW, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort',
+      ...(outDir ? ['--outDir', outDir] : [])],
     {
       cwd: ROOT,
       stdio: 'pipe',

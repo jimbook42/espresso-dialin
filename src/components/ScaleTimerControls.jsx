@@ -83,13 +83,15 @@ export function ScaleTimerControls({
               {formatScaleLiveWeightLabel(liveWeightG)}
             </span>
           )}
-          <button
-            type="button"
-            onClick={onTare}
-            className={`text-[10px] font-bold px-2 py-1 rounded-lg ${ui.chip} ${ui.muted}`}
-          >
-            Tare
-          </button>
+          {onTare && (
+            <button
+              type="button"
+              onClick={onTare}
+              className={`text-[10px] font-bold px-2 py-1 rounded-lg ${ui.chip} ${ui.muted}`}
+            >
+              Tare
+            </button>
+          )}
           <button
             type="button"
             onClick={onDisconnect}

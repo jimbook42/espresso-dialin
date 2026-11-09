@@ -2,6 +2,9 @@
  * Download-only export of the last Lab replay video and that shot's saved curve.
  * Does not change stored shot or bean records.
  */
+import {
+  diagnosticsBuild, DIAGNOSTICS_UNAVAILABLE, shotDeviceDiagnosticsForShot,
+} from '../scales/shotDeviceDiagnostics.js';
 import { replayDiagnosticsForShot } from './labReplayDiagnostics.js';
 import { readerStallDiagnosticsForShot } from './readerStallDiagnostics.js';
 
@@ -59,18 +62,33 @@ export function downloadBlobFile(filename, blob) {
   URL.revokeObjectURL(url);
 }
 
-/**
- * @param {{ shot: object, blob: Blob, mimeType?: string }} input
- * @returns {{ shotId: string | null, labPressureCurve: { tS: number, bar: number }[] } | null}
- */
-export function exportLabShotReplayDownloads({ shot, blob, mimeType }) {
-  if (!shot?.id) return null;
+export function buildShotDiagnosticDocument(shot, exportedAt = new Date().toISOString()) {
   const documentJson = labPressureCurveExportDocument(shot);
-  documentJson.readerDiagnostics = replayDiagnosticsForShot(shot.id);
+  const trace = shotDeviceDiagnosticsForShot(shot?.id);
+  documentJson.readerDiagnostics = replayDiagnosticsForShot(shot?.id);
   documentJson.readerDiagnosticsAvailability = documentJson.readerDiagnostics
     ? 'current-session' : 'unavailable: replay predates capture or page was reloaded';
-  documentJson.readerStallDiagnostics = readerStallDiagnosticsForShot(shot.id);
-  if (documentJson.shotId !== String(shot.id)) return null;
+  documentJson.readerStallDiagnostics = readerStallDiagnosticsForShot(shot?.id);
+  return {
+    ...documentJson,
+    diagnosticsVersion: 2,
+    exportBuild: diagnosticsBuild,
+    exportedAt,
+    pressureDiagnosticsAvailability: documentJson.readerDiagnostics || documentJson.readerStallDiagnostics
+      ? 'current-session' : documentJson.labPressureCurve.length ? 'saved-curve-only' : 'unavailable',
+    timeline: { origin: null, units: 'ms', pressureOffsetMs: null, extractionOffsetMs: null },
+    recordingBuild: null,
+    scaleDiagnostics: { availability: 'unavailable', reason: DIAGNOSTICS_UNAVAILABLE },
+    stopDiagnosticsAvailability: trace ? 'current-session' : DIAGNOSTICS_UNAVAILABLE,
+    ...trace,
+    pressureSource: documentJson.labPressureCurve.length || documentJson.readerDiagnostics || documentJson.readerStallDiagnostics
+      ? trace?.pressureSource ?? null : null,
+  };
+}
+
+export function exportLabShotReplayDownloads({ shot, blob, mimeType }) {
+  if (!shot?.id) return null;
+  const documentJson = buildShotDiagnosticDocument(shot);
   const names = labReplayExportFilenames(shot.id, mimeType || blob?.type);
   if (blob) downloadBlobFile(names.video, blob);
   downloadBlobFile(

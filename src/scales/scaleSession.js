@@ -35,9 +35,11 @@ export function createScaleSession(transport, handlers = {}) {
     lastSample = null;
     flowGap = false;
     recording = true;
+    handlers.onExtractionStart?.(extractionEpochMs);
   };
 
   const offWeight = transport.onWeight((evt) => {
+    handlers.onWeightObservation?.(evt);
     handlers.onLiveWeight?.(evt.weightG);
     if (!recording || extractionEpochMs == null) return;
     const tS = (evt.timestampMs - extractionEpochMs) / 1000;

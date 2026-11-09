@@ -19,6 +19,17 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 const vercelSha = (process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
 const appCommitSha = vercelSha ? vercelSha.slice(0, 7) : (pressureLabBuild === 'unknown' ? '' : pressureLabBuild);
 
+// A local build has commit provenance only when its tracked inputs match HEAD.
+function diagnosticsBuildSha() {
+  if (/^[a-f0-9]{40}$/i.test(vercelSha)) return vercelSha;
+  try {
+    if (execSync('git status --porcelain --untracked-files=no', { encoding: 'utf8' }).trim()) return null;
+    return execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return null;
+  }
+}
+
 const pwaManifest = {
   name: 'Espresso Dial-In',
   short_name: 'EspressoDial',
@@ -52,6 +63,7 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_PRESSURE_ALLOW_SIM': JSON.stringify(
       process.env.VITE_PRESSURE_ALLOW_SIM === 'true' ? 'true' : 'false'
     ),
+    'import.meta.env.VITE_APP_FULL_COMMIT_SHA': JSON.stringify(diagnosticsBuildSha()),
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
     'import.meta.env.VITE_APP_COMMIT_SHA': JSON.stringify(appCommitSha),
   },

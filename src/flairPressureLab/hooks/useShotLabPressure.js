@@ -79,6 +79,7 @@ export function useShotLabPressure({
   cameraPreviewActive = false,
   cameraFacingMode = 'user',
   replayFrameObserverRef,
+  shotDiagnosticsRef,
   leapCap = true,
   modelTiebreak = true,
   legacyScale = false,
@@ -330,6 +331,7 @@ export function useShotLabPressure({
       lastR5Ref.current = { r5Bar: null, r5Conf: null, r5Angle: null };
       stoppedShotMetricsRef.current = null;
       const epoch = Date.now();
+      shotDiagnosticsRef?.current?.pressureStart(epoch, simMode);
       if (!simMode) beginReaderStall(epoch);
       sessionRef.current.begin(epoch);
       shotEpochRef.current = epoch;
@@ -372,7 +374,7 @@ export function useShotLabPressure({
     warningOnRef.current = false;
     setNoPressureReadingWarning('');
     resetShotSession();
-  }, [timerRunning, weighingViewOpen, simMode, resetShotSession, metricsFromLiveSession, beginReaderStall, finishReaderStall]);
+  }, [timerRunning, weighingViewOpen, simMode, resetShotSession, metricsFromLiveSession, beginReaderStall, finishReaderStall, shotDiagnosticsRef]);
 
   const grabSourceImage = useCallback((source) => {
     const width = source.videoWidth || source.width;

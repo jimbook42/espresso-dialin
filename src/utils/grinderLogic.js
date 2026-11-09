@@ -1,3 +1,4 @@
+import { isStandalonePressureShot } from '../flairPressureLab/standalonePressureShot.js';
 import Dexie from 'dexie';
 import { installSettingsLocalCacheHook } from '../settings/settingsLocalCache.js';
 import { formatRecentRecipeShotEvidence } from './shotCountDisplay.js';
@@ -110,6 +111,7 @@ export function beanIsDecaf(bean) {
 
 /** Shots marked with a known non-grind issue stay in history but are omitted from learning. */
 export function shotEligibleForLearning(shot) {
+  if (isStandalonePressureShot(shot)) return false;
   return shot?.excludeFromLearning !== true;
 }
 

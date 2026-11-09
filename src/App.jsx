@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import {
   db,
   generateId,
@@ -43,6 +43,10 @@ import {
 } from './utils/beansFinishedSectionPrefs.js';
 import { PastBeansList } from './components/PastBeansList.jsx';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
+import { StandalonePressureRecorder } from './components/StandalonePressureRecorder.jsx';
+import { buildStandalonePressureShot, isStandalonePressureShot } from './flairPressureLab/standalonePressureShot.js';
+import { createShotDeviceDiagnostics, shotDeviceDiagnosticsForShot } from './scales/shotDeviceDiagnostics.js';
+import { isPressureLabEnabled } from './config/pressureLabFlag.js';
 import { PressureProfileChart } from './components/PressureProfileChart';
 import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx';
 import { GrinderGrindControls } from './components/GrindControls';
@@ -166,6 +170,8 @@ import {
   createFlowEndDetector,
   flowEndAutoStopDisplayEndS,
   FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S,
+  flowAutoStopSettings,
+  flowAutoStopWinningRule,
   flowEndAutoStopRecordedEndExtractionS,
   flowEndAutoStopShouldFreezeTimer,
   flowEndAutoStopShouldStop,
@@ -228,7 +234,6 @@ import {
   loadLastLabShotReplayMeta,
   loadLastLabShotReplayWithBlob,
 } from './flairPressureLab/labShotReplayDb.js';
-import { shouldShowLabShotReplayPlay } from './flairPressureLab/historyLabShotReplay.js';
 import { exportLabShotReplayDownloads } from './flairPressureLab/labShotReplayExport.js';
 import { readerStallDiagnosticsForShot } from './flairPressureLab/readerStallDiagnostics.js';
 import { LabPressureStartPanel } from './components/LabPressureStartPanel.jsx';
@@ -381,7 +386,8 @@ export default function App() {
   const beans = beansQuery || [];
   const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
   const shotsQuery = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []);
-  const shots = shotsQuery || [];
+  const historyShots = useMemo(() => shotsQuery || [], [shotsQuery]);
+  const shots = useMemo(() => historyShots.filter((shot) => !isStandalonePressureShot(shot)), [historyShots]);
   const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), [], SETTINGS_QUERY_PENDING);
   const settingsSetting =
     settingsQueryResult === SETTINGS_QUERY_PENDING ? null : (settingsQueryResult ?? null);
@@ -404,6 +410,14 @@ export default function App() {
   const shotScreenWeightGoalsEnabled = isShotScreenWeightGoalsEnabled(settingsSetting);
   const devUrlSimScaleActive = isDevUrlSimScaleActive();
   const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
+  const shotDiagnosticsRef = useRef(null);
+  const timerStartingRef = useRef(false);
+  const standaloneCaptureRef = useRef(null);
+  const standaloneSaveRef = useRef(false);
+  const [pressureState, setPressureState] = useState('idle');
+  const [pressureDetails, setPressureDetails] = useState({ name: '', dose: '', yield: '', rating: '', notes: '' });
+  const [pressureSaving, setPressureSaving] = useState(false);
+  const [pressureError, setPressureError] = useState('');
   const [scaleShotMetrics, setScaleShotMetrics] = useState(null);
   const [labPressureShotMetrics, setLabPressureShotMetrics] = useState(null);
   const labPressureMetricsGetterRef = useRef(() => ({}));
@@ -678,8 +692,9 @@ export default function App() {
   const timemoreScale = useTimemoreScale({
     enabled: scaleFeatureEnabled,
     scaleDeviceId: normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId),
-    targetYieldG: activeRecipe?.targetYieldG || 36,
-    usePreInfusion: hookUsePreInfusion,
+    targetYieldG: activeTab === 'pressure' ? null : activeRecipe?.targetYieldG || 36,
+    usePreInfusion: hookUsePreInfusion && activeTab !== 'pressure',
+    diagnosticsRef: shotDiagnosticsRef,
     preInfusionDurationS: hookUsePreInfusion
       ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12
       : 0,
@@ -692,9 +707,9 @@ export default function App() {
   const flairTimedPreinfusionAuto =
     recipeUsesTimedPreinfusionAutoEnd(activeRecipe?.flairProfile, flairEnabled, preinfusionScaleCtx);
   const timerUsePreInfusion =
-    usePreInfusion
+    activeTab !== 'pressure' && (usePreInfusion
     || (timemoreScale.isConnected && scaleRecipePreinfusion)
-    || flairTimedPreinfusionAuto;
+    || flairTimedPreinfusionAuto);
   const scaleAutoEndPreinfusionRef = useRef(false);
   const flowAutoStopDetectorRef = useRef(createFlowEndDetector());
   const flowAutoStopAppliedRef = useRef(0);
@@ -703,10 +718,10 @@ export default function App() {
   const [flowAutoStopTimerFrozen, setFlowAutoStopTimerFrozen] = useState(false);
   const [brewGuideTimerActive, setBrewGuideTimerActive] = useState(false);
   const brewGuideTimerActiveRef = useRef(false);
-  const syncBrewGuideTimerActive = (active) => {
+  const syncBrewGuideTimerActive = useCallback((active) => {
     brewGuideTimerActiveRef.current = active;
     setBrewGuideTimerActive(active);
-  };
+  }, []);
   const profilePreinfusionTimeS = Number(activeRecipe?.flairProfile?.preinfusionTime) || 0;
   const flowChartTimeOffsetSec = timerUsePreInfusion ? Math.max(profilePreinfusionTimeS, 4) : 0;
   const scaleLiveFlowOnProfile =
@@ -787,6 +802,7 @@ export default function App() {
       return;
     }
     scaleAutoEndPreinfusionRef.current = true;
+    shotDiagnosticsRef.current?.extractionPhaseStart();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- auto end at recipe time/weight
     setPreInfusionSeconds(timerSeconds);
     setPreInfusionPhase(false);
@@ -826,6 +842,7 @@ export default function App() {
 
   const releaseBrewGuideTimer = useCallback(() => {
     if (!brewGuideTimerActiveRef.current) return;
+    shotDiagnosticsRef.current = null;
     syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
     shotStartedAtRef.current = null;
@@ -836,9 +853,22 @@ export default function App() {
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
     }
-  }, [timemoreScale]);
+  }, [timemoreScale, syncBrewGuideTimerActive]);
 
-  const handleStartTimer = async ({ fromBrewGuide = false, tareAlreadyDone = false } = {}) => {
+  const prepareShotDiagnostics = useCallback(() => {
+    const trace = createShotDeviceDiagnostics(flowAutoStopSettings(
+      normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled),
+      scaleFlowAutoStopLegacyAlgorithm(settingsSetting),
+    ));
+    shotDiagnosticsRef.current = trace;
+    timemoreScale.recordScaleConnection();
+    return trace;
+  }, [settingsSetting, timemoreScale]);
+
+  const handleStartTimer = useCallback(async ({ fromBrewGuide = false, tareAlreadyDone = false, standalone = false } = {}) => {
+    if (timerStartingRef.current || shotStartedAtRef.current != null || yieldSettleTimerRef.current) return;
+    timerStartingRef.current = true;
+    if (!tareAlreadyDone || !shotDiagnosticsRef.current) prepareShotDiagnostics();
     setWeighingViewOpen(false);
     if (fromBrewGuide) syncBrewGuideTimerActive(true);
     else syncBrewGuideTimerActive(false);
@@ -848,19 +878,32 @@ export default function App() {
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     setScaleShotMetrics(null);
-    await timemoreScale.notifyShotStarted({ tareAlreadyDone });
+    try {
+      await timemoreScale.notifyShotStarted({ tareAlreadyDone, skipPreInfusion: standalone });
+    } catch {
+      shotDiagnosticsRef.current?.event('scale-timer-start-failed');
+    }
+    timerStartingRef.current = false;
     setLabPressureShotMetrics(null);
     if (timerUsePreInfusion) setPreInfusionPhase(true);
     else setPreInfusionPhase(false);
     shotStartedAtRef.current = performance.now();
+    const wallMs = Date.now();
+    shotDiagnosticsRef.current?.start(wallMs, shotStartedAtRef.current);
+    if (!timerUsePreInfusion) shotDiagnosticsRef.current?.extractionPhaseStart(wallMs);
+    if (standalone) {
+      standaloneCaptureRef.current = { id: crypto.randomUUID(), timestamp: new Date(wallMs).toISOString() };
+      setPressureState('recording');
+    }
     setTimerRunning(true);
-  };
+  }, [prepareShotDiagnostics, resetFlowAutoStop, syncBrewGuideTimerActive, timerUsePreInfusion, timemoreScale]);
 
   const cancelShotCountdown = useCallback(() => {
     const opts = shotCountdownStartOptsRef.current;
     setShotCountdownValue(null);
     setCountdownHandoffPending(false);
     shotCountdownStartOptsRef.current = null;
+    if (opts) shotDiagnosticsRef.current = null;
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
     }
@@ -872,7 +915,7 @@ export default function App() {
       setPreInfusionSeconds(0);
       setPreInfusionPhase(false);
     }
-  }, [timemoreScale]);
+  }, [timemoreScale, syncBrewGuideTimerActive]);
 
   const requestStartTimer = useCallback(
     (opts = {}) => {
@@ -893,13 +936,15 @@ export default function App() {
         setPreInfusionSeconds(0);
         setPreInfusionPhase(false);
       }
+      prepareShotDiagnostics().event('countdown-started');
       shotCountdownStartOptsRef.current = opts;
       setShotCountdownValue(3);
       if (timemoreScale.isConnected) {
         void timemoreScale.notifyShotCountdownPrepare();
       }
     },
-    [shotCountdownValue, timerRunning, appSettings?.shotStartCountdown, flairEnabled, timemoreScale]
+    [shotCountdownValue, timerRunning, appSettings?.shotStartCountdown, flairEnabled, timemoreScale,
+      handleStartTimer, prepareShotDiagnostics, syncBrewGuideTimerActive]
   );
 
   useEffect(() => {
@@ -925,6 +970,7 @@ export default function App() {
   }, [timerRunning, countdownHandoffPending]);
 
   const handleEndPreInfusion = () => {
+    shotDiagnosticsRef.current?.extractionPhaseStart();
     setPreInfusionSeconds(elapsedShotTicks() / 10);
     setPreInfusionPhase(false);
     if (timemoreScale.isConnected) {
@@ -939,25 +985,52 @@ export default function App() {
     }
   }, []);
 
+  const applyMeasuredShotYield = useCallback((yieldG) => {
+    if (standaloneCaptureRef.current) {
+      if (yieldG != null) setPressureDetails((details) => ({ ...details, yield: details.yield || String(yieldG) }));
+    } else if (yieldG != null && yieldG > 0) {
+      setActualYieldG(String(yieldG));
+    }
+  }, []);
+
   const finalizeYieldSettle = useCallback(() => {
     clearYieldSettleTimer();
     setYieldSettleActive(false);
     const { yieldG, metrics } = timemoreScale.finalizeShotYieldSettle();
+    shotDiagnosticsRef.current?.event('yield-settlement-completed', { measuredYieldG: yieldG });
+    shotDiagnosticsRef.current?.freeze({ settled: true, yieldG });
+    if (standaloneCaptureRef.current) applyMeasuredShotYield(yieldG);
     if (!yieldSettleUserEditedRef.current && yieldG != null && yieldG > 0) {
-      setActualYieldG(String(yieldG));
+      if (!standaloneCaptureRef.current) setActualYieldG(String(yieldG));
       setFrozenShotWeightG(yieldG);
     } else {
       setFrozenShotWeightG(null);
     }
     setScaleShotMetrics(metrics);
     yieldSettleUserEditedRef.current = false;
-  }, [clearYieldSettleTimer, timemoreScale]);
+  }, [clearYieldSettleTimer, timemoreScale, applyMeasuredShotYield]);
+
+  const settleShot = useCallback(() => {
+    clearYieldSettleTimer();
+    yieldSettleUserEditedRef.current = false;
+    const began = timemoreScale.notifyShotYieldSettleBegin();
+    if (began) {
+      setYieldSettleActive(true);
+      yieldSettleTimerRef.current = window.setTimeout(finalizeYieldSettle, SHOT_YIELD_SETTLE_MS);
+    } else {
+      const { yieldG, metrics } = timemoreScale.notifyShotStopped();
+      applyMeasuredShotYield(yieldG);
+      setScaleShotMetrics(metrics);
+      shotDiagnosticsRef.current?.freeze({ settled: false, yieldG });
+    }
+  }, [clearYieldSettleTimer, timemoreScale, finalizeYieldSettle, applyMeasuredShotYield]);
 
   // A candidate can hold the display only while the scale is still sending samples.
   useEffect(() => {
     if (!timerRunning || !flowAutoStopTimerFrozen) return undefined;
     const release = () => {
       if (shotStartedAtRef.current == null) return;
+      shotDiagnosticsRef.current?.event('display-timer-resumed');
       setTimerTicks(elapsedShotTicks());
       setFlowAutoStopTimerFrozen(false);
     };
@@ -1013,6 +1086,7 @@ export default function App() {
         legacyMode,
         preinfusionActive: preInfusionPhase,
         extractionActive: !preInfusionPhase,
+        observe: shotDiagnosticsRef.current?.detector,
       });
     }
     flowAutoStopDetectorRef.current = detector;
@@ -1027,10 +1101,12 @@ export default function App() {
     if (flowEndAutoStopShouldFreezeTimer(autoState)) {
       const endExtractionS = flowEndAutoStopDisplayEndS(autoState);
       if (endExtractionS != null) {
+        if (!flowAutoStopTimerFrozen) shotDiagnosticsRef.current?.event('display-timer-frozen');
         setFlowAutoStopTimerFrozen(true);
         setTimerTicks(timesFor(endExtractionS).displayedTicks);
       }
     } else if (flowAutoStopTimerFrozen && !flowEndAutoStopShouldStop(autoState)) {
+      shotDiagnosticsRef.current?.event('display-timer-resumed');
       setFlowAutoStopTimerFrozen(false);
       setTimerTicks(elapsedShotTicks());
     }
@@ -1039,6 +1115,10 @@ export default function App() {
 
     const endExtractionS = flowEndAutoStopRecordedEndExtractionS(autoState);
     if (endExtractionS == null) return;
+    shotDiagnosticsRef.current?.stop({
+      mode: 'automatic', rule: flowAutoStopWinningRule(autoState),
+      endExtractionS, monotonicMs: performance.now(),
+    });
     shotStartedAtRef.current = null;
     resetFlowAutoStop();
 
@@ -1059,21 +1139,8 @@ export default function App() {
     });
     setActualTimeS(shotTimes.savedExtractionS);
     setTimerTicks(shotTimes.displayedTicks);
-    clearYieldSettleTimer();
-    yieldSettleUserEditedRef.current = false;
-    const began = timemoreScale.notifyShotYieldSettleBegin();
-    if (began) {
-      setYieldSettleActive(true);
-      yieldSettleTimerRef.current = window.setTimeout(() => {
-        finalizeYieldSettle();
-      }, SHOT_YIELD_SETTLE_MS);
-    } else {
-      const { yieldG, metrics } = timemoreScale.notifyShotStopped();
-      if (yieldG != null && yieldG > 0) {
-        setActualYieldG(String(yieldG));
-      }
-      setScaleShotMetrics(metrics);
-    }
+    if (standaloneCaptureRef.current) setPressureState('review');
+    settleShot();
   }, [
     timerRunning,
     preInfusionPhase,
@@ -1087,15 +1154,22 @@ export default function App() {
     settingsSetting?.scaleFlowAutoStopAlgorithm,
     timemoreScale,
     resetFlowAutoStop,
-    clearYieldSettleTimer,
-    finalizeYieldSettle,
+    settleShot,
     labCameraPressureEnabled,
     elapsedShotTicks,
   ]);
 
   const handleStopTimer = () => {
     if (shotStartedAtRef.current == null) return null;
+    const stoppedAt = performance.now();
     const stoppedTicks = elapsedShotTicks();
+    const pendingEndS = timemoreScale.isConnected
+      ? flowEndAutoStopDisplayEndS(flowAutoStopDetectorRef.current.auto) : null;
+    shotDiagnosticsRef.current?.stop({
+      mode: 'manual', rule: 'manual', monotonicMs: stoppedAt,
+      pendingCandidate: pendingEndS == null ? 'none' : 'rejected',
+      pendingEndExtractionS: pendingEndS,
+    });
     shotStartedAtRef.current = null;
     resetFlowAutoStop();
     if (labCameraPressureEnabled) {
@@ -1116,25 +1190,8 @@ export default function App() {
     }
     const rounded = Math.round(extractionTicks / 10);
     setActualTimeS(rounded);
-    if (timemoreScale.isConnected) {
-      clearYieldSettleTimer();
-      yieldSettleUserEditedRef.current = false;
-      const began = timemoreScale.notifyShotYieldSettleBegin();
-      if (began) {
-        setYieldSettleActive(true);
-        yieldSettleTimerRef.current = window.setTimeout(() => {
-          finalizeYieldSettle();
-        }, SHOT_YIELD_SETTLE_MS);
-      } else {
-        const { yieldG, metrics } = timemoreScale.notifyShotStopped();
-        if (yieldG != null && yieldG > 0) {
-          setActualYieldG(String(yieldG));
-        }
-        setScaleShotMetrics(metrics);
-      }
-    } else {
-      setScaleShotMetrics(timemoreScale.notifyShotStopped().metrics);
-    }
+    if (standaloneCaptureRef.current) setPressureState('review');
+    settleShot();
     return rounded;
   };
 
@@ -1146,6 +1203,7 @@ export default function App() {
   }, [yieldSettleActive, timemoreScale.liveRelativeWeightG, timemoreScale]);
 
   const handleCancelTimer = () => {
+    shotDiagnosticsRef.current = null;
     cancelShotCountdown();
     clearYieldSettleTimer();
     setYieldSettleActive(false);
@@ -1166,6 +1224,7 @@ export default function App() {
   };
 
   const handleResetTimer = () => {
+    shotDiagnosticsRef.current = null;
     cancelShotCountdown();
     setFrozenShotWeightG(null);
     resetFlowAutoStop();
@@ -1393,6 +1452,7 @@ export default function App() {
   };
 
   const openSettings = () => {
+    if (pressureState !== 'idle') return;
     setExperienceDraft(null);
     setExperienceSaveFailed(false);
     setIsSettingsOpen(true);
@@ -1549,29 +1609,28 @@ export default function App() {
     await patchGlobalSettings(db, { [LAB_PRESSURE_READER_KEY]: next });
   };
 
-  const labShotsWithPressureLogged = shots.filter((s) => s.labPressureCurve?.length > 0).length;
+  const labShotsWithPressureLogged = historyShots.filter((s) => s.labPressureCurve?.length > 0).length;
 
   const refreshLabReplayShotId = useCallback(() => {
     void loadLastLabShotReplayMeta().then((meta) => {
       setLabReplayShotId(meta?.shotId ?? null);
-    });
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
     refreshLabReplayShotId();
-  }, [refreshLabReplayShotId, shots.length]);
+  }, [refreshLabReplayShotId, historyShots.length]);
 
-  const openLabShotReplay = useCallback(async () => {
-    const data = await loadLastLabShotReplayWithBlob();
-    if (!data) return;
+  const openLabShotReplay = useCallback(async (shotId) => {
+    const data = await loadLastLabShotReplayWithBlob().catch(() => null);
+    if (data?.meta.shotId !== shotId) return;
     setLabReplayPayload(data);
     setLabReplayOpen(true);
   }, []);
 
-  const exportLabShotReplay = useCallback(async (shot) => {
-    const data = await loadLastLabShotReplayWithBlob();
+  const exportLabShotReplay = useCallback(async (shot, includeVideo = true) => {
+    const data = includeVideo ? await loadLastLabShotReplayWithBlob().catch(() => null) : null;
     const same = Boolean(data && data.meta.shotId === shot?.id);
-    if (!same && !readerStallDiagnosticsForShot(shot?.id)) return;
     exportLabShotReplayDownloads({
       shot,
       blob: same ? data.blob : null,
@@ -1614,6 +1673,60 @@ export default function App() {
       return labPressureMetricsGetterRef.current?.() ?? {};
     } catch {
       return {};
+    }
+  };
+
+  const startStandalonePressure = () => {
+    if (pressureState !== 'idle' || timerRunning || timerStartingRef.current || yieldSettleTimerRef.current || shotCountdownValue != null) return;
+    setPressureDetails({ name: '', dose: '', yield: '', rating: '', notes: '' });
+    setPressureError('');
+    setPressureState('starting');
+    void handleStartTimer({ standalone: true });
+  };
+
+  const finishStandaloneReview = () => {
+    standaloneCaptureRef.current = null;
+    shotDiagnosticsRef.current = null;
+    setPressureState('idle');
+    setLabPressureShotMetrics(null);
+    setScaleShotMetrics(null);
+    setPressureError('');
+    setActualTimeS('');
+  };
+
+  const saveStandalonePressure = async (event) => {
+    event.preventDefault();
+    if (standaloneSaveRef.current || yieldSettleTimerRef.current || !standaloneCaptureRef.current) return;
+    const shot = buildStandalonePressureShot({
+      ...standaloneCaptureRef.current,
+      durationS: actualTimeS,
+      pressure: labPressureShotMetrics,
+      scale: scaleShotMetrics,
+      details: pressureDetails,
+    });
+    if (!shot) return;
+    const trace = shotDiagnosticsRef.current;
+    const commitReplay = labShotReplayCommitRef.current?.capture();
+    standaloneSaveRef.current = true;
+    setPressureSaving(true);
+    setPressureError('');
+    try {
+      await db.shots.add(shot);
+    } catch {
+      setPressureError('Recording could not be saved. Try saving again.');
+      setPressureSaving(false);
+      standaloneSaveRef.current = false;
+      return;
+    }
+    trace?.save(shot);
+    try {
+      await commitReplay?.(shot.id);
+    } finally {
+      finishStandaloneReview();
+      standaloneSaveRef.current = false;
+      setPressureSaving(false);
+      setHistoryFilterBeanId('all');
+      setActiveTab('history');
     }
   };
 
@@ -1954,7 +2067,7 @@ export default function App() {
   };
 
   const handleDeleteShot = async (id) => {
-    if (window.confirm("Are you sure you want to delete this shot? It will be permanently removed from history and recommendation learning calculations.")) {
+    if (window.confirm("Delete this shot from History?")) {
       await db.shots.delete(id);
     }
   };
@@ -2151,11 +2264,14 @@ export default function App() {
       ...labPressureSave.fields,
     };
 
+    const trace = shotDiagnosticsRef.current;
+    const commitReplay = labShotReplayCommitRef.current?.capture();
     try {
       await db.shots.add(shotRecord);
+      trace?.save(shotRecord);
       if (labCameraPressureEnabled) {
         try {
-          await labShotReplayCommitRef.current?.(shotRecord.id);
+          await commitReplay?.(shotRecord.id);
         } catch (err) {
           console.warn('[lab-pressure] replay commit failed (shot curve kept):', err);
         }
@@ -2501,7 +2617,7 @@ export default function App() {
       db.beans.toArray(),
       db.recipes.toArray(),
     ]);
-    const rows = buildShotsCsvRows(allShots, {
+    const rows = buildShotsCsvRows(allShots.filter((shot) => !isStandalonePressureShot(shot)), {
       beans: allBeans,
       recipes: allRecipes,
       formatShotGrindForHistory: (shot) => formatShotGrindForHistory(shot, appSettings),
@@ -2545,8 +2661,9 @@ export default function App() {
   };
 
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, null) : null;
-  const filteredShots = historyFilterBeanId === 'all' ? shots : shots.filter(s => s.beanId === historyFilterBeanId);
-  const newestShotId = shots[0]?.id ?? null;
+  const filteredShots = historyFilterBeanId === 'all' ? historyShots
+    : historyFilterBeanId === 'standalone-pressure' ? historyShots.filter(isStandalonePressureShot)
+      : shots.filter((shot) => shot.beanId === historyFilterBeanId);
 
   const totalShots = shots.length;
   const compliantShots = shots.filter(s => {
@@ -2670,7 +2787,7 @@ export default function App() {
     }, 200);
   };
 
-  const hasExistingUserData = shots.length > 0 || beans.length > 0;
+  const hasExistingUserData = historyShots.length > 0 || beans.length > 0;
 
   if (shouldDeferMainShellForFirstLaunch(settingsQueryResult, { hasExistingUserData })) {
     return null;
@@ -2710,21 +2827,23 @@ export default function App() {
       timerSeconds={timerSeconds}
       weighingViewOpen={weighingViewOpen}
       metricsGetterRef={labPressureMetricsGetterRef}
+      shotDiagnosticsRef={shotDiagnosticsRef}
       ui={ui}
-      flairProfile={activeRecipe?.flairProfile}
+      flairProfile={activeTab === 'pressure' ? undefined : activeRecipe?.flairProfile}
       timerUsePreInfusion={timerUsePreInfusion}
       preInfusionPhase={preInfusionPhase}
       extractionElapsedS={scaleExtractionElapsedS}
       liveRelativeWeightG={timemoreScale.liveRelativeWeightG}
       scaleConnected={timemoreScale.isConnected}
-      targetTimeMaxS={activeRecipe?.targetTimeMaxS}
+      targetTimeMaxS={activeTab === 'pressure' ? undefined : activeRecipe?.targetTimeMaxS}
       labShotsLogged={labShotsWithPressureLogged}
       calibrateRequest={labCalibrateRequest}
       registerOpenCalibrate={(fn) => {
         labPressureOpenCalibrateRef.current = fn;
       }}
       preShotDialCheckSurface={
-        (activeTab === 'dial' && activeBeansList.length > 0 && !timerRunning) || weighingViewOpen
+        (activeTab === 'pressure' && pressureState === 'idle' && !timerRunning)
+        || (activeTab === 'dial' && activeBeansList.length > 0 && !timerRunning) || weighingViewOpen
       }
       shotReplayCommitRef={labShotReplayCommitRef}
       shotReplayDiscardRef={labShotReplayDiscardRef}
@@ -2786,7 +2905,7 @@ export default function App() {
       )}
 
       {/* Adaptive live shot screen; explicit controls keep metric/camera taps safe. */}
-      {timerRunning && !brewTimerHost && !brewGuideTimerActive && (
+      {timerRunning && pressureState !== 'recording' && !brewTimerHost && !brewGuideTimerActive && (
         <div
           className="fixed inset-0 z-[60] flex flex-col bg-[#121110] select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
         >
@@ -2913,27 +3032,30 @@ export default function App() {
         {/* ── TAB CONTENT ─────────────────────────────────────────────────── */}
 
         {activeTab === 'pressure' && (
-          <section aria-labelledby="pressure-title" className={`${ui.card} rounded-2xl p-5 space-y-4`}>
-            <div className="flex items-center gap-3">
-              <Gauge className={`w-6 h-6 ${ui.accentText}`} aria-hidden="true" />
-              <h2 id="pressure-title" className={ui.pageTitle}>Pressure Tracker</h2>
-            </div>
-            <p className={`text-sm ${ui.sub}`}>
-              Use a camera to read a supported Flair gauge during a bean-linked shot in Dial.
-              Recorded pressure stays with that shot in History.
-            </p>
-            <p className={`${ui.cardInset} rounded-xl p-3 text-sm ${ui.sub}`}>
-              Standalone pressure recording and analysis without a bean profile are coming.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={openSettings} className={`${ui.primary} px-4 py-3 rounded-xl text-sm font-bold`}>
-                Pressure settings
-              </button>
-              <button type="button" onClick={() => setActiveTab('history')} className={`${ui.secondaryBtn} px-4 py-3 rounded-xl text-sm font-bold`}>
-                View shot history
-              </button>
-            </div>
-          </section>
+          <StandalonePressureRecorder
+            ui={ui}
+            state={pressureState}
+            cameraAvailable={isPressureLabEnabled()}
+            simulatedPressure={isPressureSimAllowed()}
+            onEnableCamera={() => void handleToggleLabCameraPressure(true)}
+            onStart={startStandalonePressure}
+            onStop={handleStopTimer}
+            onDiscard={() => {
+              labShotReplayDiscardRef.current?.();
+              finishStandaloneReview();
+            }}
+            onSave={saveStandalonePressure}
+            onSettings={openSettings}
+            onHistory={() => { setHistoryFilterBeanId('all'); setActiveTab('history'); }}
+            elapsed={formatTimerLive(pressureState === 'review' ? actualTimeS : timerSeconds)}
+            pressure={labPressureShotMetrics}
+            details={pressureDetails}
+            setDetails={setPressureDetails}
+            saving={pressureSaving}
+            settling={yieldSettleActive}
+            error={pressureError}
+            scale={scaleFeatureEnabled ? timemoreScale : null}
+          />
         )}
 
         {activeTab === 'dial' && (
@@ -3999,7 +4121,8 @@ export default function App() {
                 onChange={(e) => setHistoryFilterBeanId(e.target.value)}
                 className={`${inputClass} border rounded-lg px-3 py-1.5 text-xs font-semibold min-w-[8.5rem]`}
               >
-                <option value="all">All Coffees</option>
+                <option value="all">All shots</option>
+                {historyShots.some(isStandalonePressureShot) && <option value="standalone-pressure">Pressure recordings</option>}
                 {beans.map(b => (
                   <option key={b.id} value={b.id}>{formatBeanDisplayName(b)} {b.isFinished ? '(Finished)' : ''}</option>
                 ))}
@@ -4010,21 +4133,23 @@ export default function App() {
               <p className={`text-sm ${subTextClass}`}>No shots logged yet.</p>
             ) : (
               filteredShots.map(s => {
+                const standalone = isStandalonePressureShot(s);
+                const hasReplay = s.id === labReplayShotId;
                 const bean = beans.find(b => b.id === s.beanId);
-                const grindStr = formatShotGrindForHistory(s, appSettings);
+                const grindStr = standalone ? null : formatShotGrindForHistory(s, appSettings);
                 const recipeForShot = recipes.find(r => r.beanId === s.beanId);
                 const minT = recipeForShot?.targetTimeMinS || 27;
                 const maxT = recipeForShot?.targetTimeMaxS || 32;
-                const preSec = preInfusionFromNotes(s.notes);
+                const preSec = standalone ? null : preInfusionFromNotes(s.notes);
                 const peakBar = s.flairProfile?.peakPressure;
-                const shotOutcome = classifyShotOutcome(s, recipeContextForShot(s, recipeForShot || {}));
-                const historyUserNote = formatHistoryShotUserNoteLine(s.notes);
+                const shotOutcome = standalone ? {} : classifyShotOutcome(s, recipeContextForShot(s, recipeForShot || {}));
+                const historyUserNote = standalone ? s.notes : formatHistoryShotUserNoteLine(s.notes);
                 return (
                   <div key={s.id} className={`${ui.card} p-4 rounded-2xl space-y-3`} data-testid="history-shot-card">
                     <div className="flex justify-between items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <span className={`text-sm font-bold ${ui.accentText}`}>
-                          {bean ? `${formatBeanDisplayName(bean)} [${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown bean'}
+                          {standalone ? (s.shotName || 'Pressure recording') : bean ? `${formatBeanDisplayName(bean)} [${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown bean'}
                         </span>
                         {shotOutcome.statusLabel && (
                           <span className={`ml-2 text-[9px] font-bold uppercase tracking-wide ${shotOutcome.isDialledIn ? ui.accentText : ui.muted}`}>
@@ -4034,7 +4159,7 @@ export default function App() {
                         <p className={`text-[10px] ${ui.muted} mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5`}>
                           <span className="whitespace-nowrap">{formatShotWhen(s.timestamp)}</span>
                           <span aria-hidden="true">•</span>
-                          <span className={`${ui.strong} font-mono whitespace-nowrap`}>{grindStr}</span>
+                          <span className={`${ui.strong} font-mono whitespace-nowrap`}>{standalone ? 'Pressure Tracker' : grindStr}</span>
                           {s.recommendationFollowed === false && (
                             <span className="text-rose-400 font-bold whitespace-nowrap">Rec not followed</span>
                           )}
@@ -4064,7 +4189,7 @@ export default function App() {
                             <Star className="w-3.5 h-3.5 fill-current" /> {s.shotRating}
                           </div>
                         )}
-                        <button
+                        {!standalone && <button
                           type="button"
                           onClick={() => handleToggleShotLearningExclusion(s)}
                           aria-pressed={s.excludeFromLearning ? 'true' : 'false'}
@@ -4087,80 +4212,64 @@ export default function App() {
                               Mark as known issue
                             </>
                           )}
-                        </button>
-                        <button type="button" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
+                        </button>}
+                        <button type="button" aria-label="Delete shot" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-4 gap-2 text-xs" data-testid="history-shot-metric-tiles">
-                      {[
-                        { label: 'Grind', value: grindStr, tone: ui.text, compact: false },
-                        { label: 'Dose/Yield', value: `${s.actualDoseG || 0}/${s.actualYieldG || 0}g`, tone: ui.text, compact: false },
-                        { label: 'Time', value: `${s.actualTimeS || 0}s`, tone: shotTimeTone(s.actualTimeS, minT, maxT), compact: false },
-                        { label: 'Taste', value: tasteProfileDisplayLabel(s.tasteProfile), tone: `${ui.sub} capitalize`, compact: true },
-                      ].map((cell) => (
-                        <div
-                          key={cell.label}
-                          className={`${ui.metricCell} flex flex-col items-center justify-center text-center px-1.5 py-2 min-h-[3.25rem]`}
-                        >
-                          <span className={`block text-[8px] uppercase tracking-wider ${ui.muted} mb-1 w-full`}>{cell.label}</span>
-                          <strong
-                            className={`font-black leading-tight max-w-full break-words ${cell.compact ? 'text-[10px]' : 'text-sm'} ${cell.tone}`}
+                    {standalone ? (
+                      <p className={`flex flex-wrap gap-2 text-xs ${ui.text}`}>
+                        <span>{s.actualTimeS}s</span>
+                        {s.actualDoseG != null && <span>{s.actualDoseG} g dose</span>}
+                        {s.actualYieldG != null && <span>{s.actualYieldG} g yield</span>}
+                        {s.brewRatio && <span>{s.brewRatio}</span>}
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-2 text-xs" data-testid="history-shot-metric-tiles">
+                        {[
+                          { label: 'Grind', value: grindStr, tone: ui.text, compact: false },
+                          { label: 'Dose/Yield', value: `${s.actualDoseG || 0}/${s.actualYieldG || 0}g`, tone: ui.text, compact: false },
+                          { label: 'Time', value: `${s.actualTimeS || 0}s`, tone: shotTimeTone(s.actualTimeS, minT, maxT), compact: false },
+                          { label: 'Taste', value: tasteProfileDisplayLabel(s.tasteProfile), tone: `${ui.sub} capitalize`, compact: true },
+                        ].map((cell) => (
+                          <div
+                            key={cell.label}
+                            className={`${ui.metricCell} flex flex-col items-center justify-center text-center px-1.5 py-2 min-h-[3.25rem]`}
                           >
-                            {cell.value}
-                          </strong>
-                        </div>
-                      ))}
-                    </div>
-
-                    {shouldShowLabShotReplayPlay({
-                      shotId: s.id,
-                      newestShotId,
-                      labReplayShotId,
-                    }) && (
-                      <div className="flex justify-end gap-3 -mb-1">
-                        <button
-                          type="button"
-                          onClick={() => void openLabShotReplay()}
-                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${ui.accentText} hover:opacity-90`}
-                          data-testid="history-lab-shot-replay-play"
-                          aria-label="Play shot replay"
-                        >
-                          <Play className="w-4 h-4 fill-current" />
-                          Replay
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void exportLabShotReplay(s)}
-                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${ui.accentText} hover:opacity-90`}
-                          data-testid="history-lab-shot-replay-export"
-                          aria-label="Export shot replay"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Export replay
-                        </button>
+                            <span className={`block text-[8px] uppercase tracking-wider ${ui.muted} mb-1 w-full`}>{cell.label}</span>
+                            <strong
+                              className={`font-black leading-tight max-w-full break-words ${cell.compact ? 'text-[10px]' : 'text-sm'} ${cell.tone}`}
+                            >
+                              {cell.value}
+                            </strong>
+                          </div>
+                        ))}
                       </div>
                     )}
-                    {s.id === newestShotId
-                      && !shouldShowLabShotReplayPlay({
-                        shotId: s.id,
-                        newestShotId,
-                        labReplayShotId,
-                      })
-                      && readerStallDiagnosticsForShot(s.id) && (
-                      <div className="flex justify-end gap-3 -mb-1">
-                        <button
-                          type="button"
-                          onClick={() => void exportLabShotReplay(s)}
-                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${ui.accentText} hover:opacity-90`}
-                          data-testid="history-lab-reader-stall-export"
-                          aria-label="Export reader diagnostics"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Export diagnostics
+                    {(hasReplay || Number.isFinite(s.actualTimeS) || s.labPressureCurve?.length > 0 || s.scaleFlowCurve?.length > 0
+                      || readerStallDiagnosticsForShot(s.id) || shotDeviceDiagnosticsForShot(s.id)) && (
+                      <div className="flex flex-wrap justify-end gap-3">
+                        {hasReplay && (
+                          <button type="button" onClick={() => void openLabShotReplay(s.id)}
+                            className={`inline-flex items-center gap-1 min-h-11 text-xs font-bold ${ui.accentText}`}
+                            data-testid="history-lab-shot-replay-play" aria-label="Play shot replay">
+                            <Play className="w-4 h-4 fill-current" /> Replay
+                          </button>
+                        )}
+                        <button type="button" onClick={() => void exportLabShotReplay(s, false)}
+                          className={`inline-flex items-center gap-1 min-h-11 text-xs font-bold ${ui.accentText}`}
+                          data-testid="history-shot-diagnostics-export">
+                          <Download className="w-3.5 h-3.5" /> Export diagnostics
                         </button>
+                        {hasReplay && (
+                          <button type="button" onClick={() => void exportLabShotReplay(s)}
+                            className={`inline-flex items-center gap-1 min-h-11 text-xs font-bold ${ui.accentText}`}
+                            data-testid="history-lab-shot-replay-export" aria-label="Export shot replay">
+                            <Download className="w-3.5 h-3.5" /> Export replay
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -4171,7 +4280,7 @@ export default function App() {
                         averageFlowRateGs={s.scaleFlowRateGs}
                         flairProfile={s.flairProfile ?? null}
                         compact
-                        {...(s.labPressureCurve?.length > 0
+                        {...(!standalone && s.labPressureCurve?.length > 0
                           ? {
                               pressureSamples: s.labPressureCurve.map((p) => ({
                                 tS: p.tS,
@@ -4183,12 +4292,12 @@ export default function App() {
                           : {})}
                       />
                     )}
-                    {s.labPressureCurve?.length > 0 && !s.scaleFlowCurve?.length && (
+                    {s.labPressureCurve?.length > 0 && (standalone || !s.scaleFlowCurve?.length) && (
                       <ShotPressureChart
                         samples={s.labPressureCurve.map((p) => ({ tS: p.tS, bar: p.bar, confident: true }))}
                         compact
                         peakBar={s.labPressurePeakBar ?? null}
-                        savedCurve
+                        savedCurve={!standalone}
                       />
                     )}
 
@@ -4862,6 +4971,7 @@ export default function App() {
                 key={tab.id}
                 type="button"
                 aria-current={isActive ? 'page' : undefined}
+                disabled={pressureState !== 'idle' && tab.id !== 'pressure'}
                 onClick={tab.onClick}
                 className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] rounded-xl transition-colors ${
                   isActive ? ui.tabActive : ui.muted

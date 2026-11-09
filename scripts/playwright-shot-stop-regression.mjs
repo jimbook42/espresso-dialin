@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { encodeTimemoreFrame } from '../src/scales/protocols/timemoreFramed.js';
 import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
@@ -6,6 +7,7 @@ import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
 const server = startPreviewServer(4182);
 let browser;
 let failures = 0;
+const withPressurePreview = process.argv.includes('--pressure-preview');
 
 function readShots(page) {
   return page.evaluate(() => new Promise((resolve, reject) => {
@@ -17,6 +19,20 @@ function readShots(page) {
       query.onerror = () => reject(query.error);
     };
   }));
+}
+
+async function readDiagnostics(page) {
+  const pending = page.waitForEvent('download');
+  await page.getByTestId('history-shot-diagnostics-export').click();
+  const download = await pending;
+  return JSON.parse(await readFile(await download.path(), 'utf8'));
+}
+
+async function logShot(page) {
+  await page.getByRole('button', { name: 'Balanced', exact: true }).click();
+  await page.getByRole('button', { name: 'Log shot & calculate grind adjustment', exact: true }).click();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await page.getByTestId('history-shot-card').waitFor();
 }
 
 async function seed(page, settings) {
@@ -130,8 +146,27 @@ try {
     await stop.waitFor({ state: 'hidden' });
     assert.equal(await savedTime(), Math.round(candidate));
     assert.equal(await page.evaluate(() => window.scaleStopCommands), 1);
-    return { candidate, saved: await savedTime() };
-  });
+    await logShot(page);
+    const [shot] = await readShots(page);
+    const exported = await readDiagnostics(page);
+    assert.equal(exported.shotId, shot.id);
+    assert.equal(exported.final.rule, 'plateau');
+    assert.equal(exported.final.actualTimeS, shot.actualTimeS);
+    assert.ok(exported.final.confirmationMs > exported.final.backdatedEndMs);
+    assert.equal(exported.final.displayTimerFrozen, true);
+    assert.equal(exported.final.yieldSettlementCompleted, true);
+    assert.equal(exported.scaleDiagnostics.gapCount, 0);
+    assert.equal(shot.diagnosticsVersion, undefined);
+    if (withPressurePreview) {
+      assert.equal(exported.pressureSource, 'simulated');
+      assert.ok(exported.labPressureCurve.length > 0);
+      assert.ok(Number.isFinite(exported.timeline.pressureOffsetMs));
+    }
+    if (process.env.B06_SIMULATED_DIAGNOSTICS_EXAMPLE) {
+      await writeFile(process.env.B06_SIMULATED_DIAGNOSTICS_EXAMPLE, JSON.stringify(exported, null, 2));
+    }
+    return { candidate, ...exported.final };
+  }, { settings: { labCameraPressureEnabled: withPressurePreview } });
   await run('missing notifications release the frozen display', async ({ page, stop, readTime, candidate }) => {
     await page.clock.runFor(750);
     await page.waitForFunction((before) => {
@@ -183,7 +218,16 @@ try {
     assert.ok(curve.length > 45);
     assert.equal(curve.at(-1).weightG, 36);
     assert.ok(curve.at(-1).tS < elapsed, 'reconnected weights are not appended to the interrupted shot');
-    return { candidate, elapsed, reconnectOffered, saved, originalSamples: curve.length };
+    const exported = await readDiagnostics(page);
+    assert.equal(exported.shotId, shots[0].id);
+    const gaps = exported.scaleDiagnostics.gaps;
+    const reconnectGap = gaps.find(({ connectionEvents }) =>
+      connectionEvents.some(({ type }) => type === 'disconnect')
+      && connectionEvents.some(({ type }) => type === 'reconnect'));
+    assert.ok(reconnectGap?.durationMs >= 2000);
+    assert.ok(exported.scaleDiagnostics.rawWeightSamples.some(({ weightG }) => weightG === 80));
+    assert.equal(exported.final.rule, 'manual');
+    return { candidate, elapsed, reconnectOffered, saved, originalSamples: curve.length, gapMs: reconnectGap.durationMs };
   });
   await run('saving waits for final scale metrics and keeps the recorded curve', async ({ page, notify, stop, savedTime }) => {
     const pauseAt = await page.evaluate(() => Date.now() + 500);
@@ -210,6 +254,11 @@ try {
     assert.equal(shots[0].actualTimeS, saved);
     assert.equal(shots[0].actualYieldG, 35.5);
     assert.ok(shots[0].scaleFlowCurve.length > 45);
+    const exported = await readDiagnostics(page);
+    assert.equal(exported.final.pendingCandidate, 'rejected');
+    assert.equal(exported.final.confirmationMs, null);
+    assert.equal(exported.final.savedYieldG, 35.5);
+    assert.equal(exported.final.yieldSettlementCompleted, true);
   });
   await run('countdown is excluded and manual pre-infusion is separate from extraction', async ({ page, start, stop, readTime, savedTime }) => {
     const ready = page.getByText('Get ready', { exact: true });

@@ -165,7 +165,9 @@ try {
       await pressure.getByRole('button', { name: 'Continue', exact: true }).click();
     }
     await current(pressure, 'Pressure');
-    await pressure.getByText('Standalone pressure recording and analysis without a bean profile are coming.').waitFor();
+    const start = pressure.getByRole('button', { name: 'Start recording', exact: true });
+    await start.waitFor();
+    assert.equal(await start.isEnabled(), false);
     await pressure.getByRole('button', { name: 'Pressure settings' }).click();
     assert.equal(await pressure.getByRole('switch', { name: 'Pressure from camera (beta)' }).isChecked(), false);
     assert.deepEqual(await pressure.evaluate(() => window.mediaRequests), []);

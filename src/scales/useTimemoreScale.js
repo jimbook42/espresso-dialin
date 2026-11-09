@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isScaleSimPickerEnabled } from '../config/scaleFlag.js';
 import { isDevUrlSimScaleActive } from '../config/devUrlSimScale.js';
+import { SCALE_DEVICES } from './scaleRegistry.js';
 import { createScaleSession } from './scaleSession.js';
 import {
   addedMassSinceStartG,
@@ -46,6 +47,7 @@ export function useTimemoreScale({
   targetYieldG = 36,
   usePreInfusion = false,
   preInfusionDurationS = 8,
+  diagnosticsRef,
 }) {
   const devUrlSim = enabled && isDevUrlSimScaleActive();
   const simAllowed = enabled && (isScaleSimPickerEnabled() || devUrlSim);
@@ -62,6 +64,7 @@ export function useTimemoreScale({
   const [batteryPercent, setBatteryPercent] = useState(null);
 
   const transportRef = useRef(null);
+  const connectionRef = useRef(null);
   const sessionRef = useRef(null);
   const shotSessionRef = useRef(null);
   const interruptedMetricsRef = useRef(null);
@@ -107,10 +110,12 @@ export function useTimemoreScale({
     unsubscribeDisconnectRef.current?.();
     unsubscribeDisconnectRef.current = null;
     disposeSession();
+    if (connectionRef.current) diagnosticsRef?.current?.disconnect();
+    connectionRef.current = null;
     const t = transportRef.current;
     transportRef.current = null;
     if (t) await t.disconnect().catch(() => {});
-  }, [disposeSession]);
+  }, [disposeSession, diagnosticsRef]);
 
   const resetShotWeightTracking = useCallback(() => {
     shotWeightTrackingRef.current = createShotWeightTracking();
@@ -153,6 +158,8 @@ export function useTimemoreScale({
   const attachSession = useCallback((transport) => {
     disposeSession();
     sessionRef.current = createScaleSession(transport, {
+      onWeightObservation: (evt) => diagnosticsRef?.current?.weight(evt),
+      onExtractionStart: (epoch) => diagnosticsRef?.current?.extractionStart(epoch),
       onLiveWeight: (g) => {
         liveWeightRef.current = g;
         setLiveWeightG(g);
@@ -168,7 +175,7 @@ export function useTimemoreScale({
       },
       onBatteryPercent: (pct) => setBatteryPercent(pct),
     });
-  }, [disposeSession, syncRelativeFromLive]);
+  }, [disposeSession, syncRelativeFromLive, diagnosticsRef]);
 
   useEffect(() => {
     if (!simAllowed && transportKind === 'sim') {
@@ -198,6 +205,15 @@ export function useTimemoreScale({
       const transport = buildTransport();
       transportRef.current = transport;
       await transport.connect();
+      const simulated = resolveEffectiveTransportKind(transportKind, simAllowed) === 'sim';
+      const identity = {
+        model: simulated ? 'Simulated Timemore Dot'
+          : SCALE_DEVICES.find(({ id }) => id === scaleDeviceId)?.label ?? 'Compatible scale',
+        transport: simulated ? 'simulated' : 'web-bluetooth',
+        simulated,
+      };
+      connectionRef.current = { identity, wallMs: Date.now() };
+      diagnosticsRef?.current?.connect(identity, connectionRef.current.wallMs);
       attachSession(transport);
       unsubscribeDisconnectRef.current = transport.onDisconnect?.(() => {
         if (transportRef.current === transport) void disconnect();
@@ -213,7 +229,8 @@ export function useTimemoreScale({
       setConnectStatus('error');
       transportRef.current = null;
     }
-  }, [enabled, disposeTransport, buildTransport, attachSession, disconnect, resetShotWeightTracking]);
+  }, [enabled, disposeTransport, buildTransport, attachSession, disconnect, resetShotWeightTracking,
+    transportKind, simAllowed, scaleDeviceId, diagnosticsRef]);
 
   const devUrlAutoConnectRef = useRef(false);
   useEffect(() => {
@@ -223,9 +240,28 @@ export function useTimemoreScale({
     void connect();
   }, [devUrlSim, connect]);
 
+  const recordScaleConnection = () => {
+    const connection = connectionRef.current;
+    if (connection) diagnosticsRef?.current?.connect(connection.identity, connection.wallMs);
+  };
+
+  const issueTare = useCallback(async (transport, command = () => transport.tare()) => {
+    const trace = diagnosticsRef?.current;
+    const evidence = connectionRef.current?.identity.simulated
+      ? 'simulator command' : 'transport command result; physical tare acknowledgement unavailable';
+    trace?.tare('requested', evidence);
+    try {
+      await command();
+      trace?.tare('succeeded', evidence);
+    } catch (error) {
+      trace?.tare('failed', evidence);
+      throw error;
+    }
+  }, [diagnosticsRef]);
+
   const tare = useCallback(async () => {
-    await transportRef.current?.tare();
-  }, []);
+    if (transportRef.current) await issueTare(transportRef.current);
+  }, [issueTare]);
 
   const prepareShotWeightBaseline = useCallback(async () => {
     const transport = transportRef.current;
@@ -242,7 +278,7 @@ export function useTimemoreScale({
 
     let tareSucceeded = true;
     try {
-      await transport.tare();
+      await issueTare(transport);
     } catch {
       tareSucceeded = false;
     }
@@ -253,13 +289,13 @@ export function useTimemoreScale({
       liveWeightRef.current = weightAtStart;
     }
     syncRelativeFromLive(liveWeightRef.current);
-  }, [enabled, connectStatus, syncRelativeFromLive]);
+  }, [enabled, connectStatus, syncRelativeFromLive, issueTare]);
 
   const notifyShotCountdownPrepare = useCallback(async () => {
     await prepareShotWeightBaseline();
   }, [prepareShotWeightBaseline]);
 
-  const notifyShotStarted = useCallback(async ({ tareAlreadyDone = false } = {}) => {
+  const notifyShotStarted = useCallback(async ({ tareAlreadyDone = false, skipPreInfusion = false } = {}) => {
     interruptedMetricsRef.current = null;
     shotSessionRef.current = null;
     const transport = transportRef.current;
@@ -269,13 +305,17 @@ export function useTimemoreScale({
       await prepareShotWeightBaseline();
     }
 
-    await transport.startTimer();
+    if (connectionRef.current?.identity.model === 'Bookoo Themis') {
+      await issueTare(transport, () => transport.startTimer());
+    } else {
+      await transport.startTimer();
+    }
     if (sessionRef.current !== session) return;
     shotSessionRef.current = session;
-    if (!usePreInfusion) {
+    if (skipPreInfusion || !usePreInfusion) {
       session?.beginExtractionTiming();
     }
-  }, [enabled, connectStatus, usePreInfusion, prepareShotWeightBaseline]);
+  }, [enabled, connectStatus, usePreInfusion, prepareShotWeightBaseline, issueTare]);
 
   const recordYieldSettleSample = useCallback(() => {
     const snap = yieldSettleSnapshotRef.current;
@@ -323,9 +363,10 @@ export function useTimemoreScale({
     }
     const atStopG = readRelativeShotWeightG();
     yieldSettleSnapshotRef.current = { atStopG, peakG: atStopG };
+    diagnosticsRef?.current?.event('yield-settlement-started', { weightG: atStopG });
     transport.stopTimer().catch(() => {});
     return true;
-  }, [enabled, connectStatus, readRelativeShotWeightG]);
+  }, [enabled, connectStatus, readRelativeShotWeightG, diagnosticsRef]);
 
   const notifyPreInfusionEnded = useCallback(async () => {
     const transport = transportRef.current;
@@ -377,6 +418,7 @@ export function useTimemoreScale({
       connect: noopAsync,
       disconnect: noopAsync,
       tare: noopAsync,
+      recordScaleConnection: () => {},
       notifyShotCountdownPrepare: noopAsync,
       notifyShotStarted: noopAsync,
       notifyPreInfusionEnded: noopAsync,
@@ -405,6 +447,7 @@ export function useTimemoreScale({
     connect,
     disconnect,
     tare,
+    recordScaleConnection,
     notifyShotCountdownPrepare,
     notifyShotStarted,
     notifyPreInfusionEnded,

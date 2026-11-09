@@ -24,6 +24,7 @@ export function useLabShotReplay({
   const loggerRef = useRef(createShotReplaySampleLogger());
   const diagnosticsRef = useRef(createLabReplayDiagnostics());
   const pendingRef = useRef(null);
+  const claimedRef = useRef(new WeakSet());
   const recorderStartedRef = useRef(false);
   const wasTimerRunningRef = useRef(false);
 
@@ -70,6 +71,7 @@ export function useLabShotReplay({
     }
     if (timerRunning) {
       if (!wasTimerRunningRef.current) {
+        recorderRef.current = createShotReplayRecorder();
         loggerRef.current.begin(Date.now());
         diagnosticsRef.current.reset();
         pendingRef.current = null;
@@ -83,64 +85,48 @@ export function useLabShotReplay({
     if (!wasTimerRunningRef.current) return;
     wasTimerRunningRef.current = false;
 
-    let cancelled = false;
-    void (async () => {
-      const captured = await recorderRef.current.stop();
-      recorderStartedRef.current = false;
-      if (cancelled) return;
-      const samples = loggerRef.current.getSamples();
-      loggerRef.current.reset();
-      const replayDiagnostics = diagnosticsRef.current.snapshot();
-      const readerStall = readerStallSnapshotRef?.current ?? null;
-      if (!captured || !samples.length) {
-        pendingRef.current = readerStall
-          ? { blob: null, samples: [], diagnostics: replayDiagnostics, readerStall }
-          : null;
-        return;
-      }
-      pendingRef.current = {
-        blob: captured.blob,
-        mimeType: captured.mimeType,
-        videoW: captured.videoW,
-        videoH: captured.videoH,
-        durationS: Math.min(captured.durationS, SHOT_REPLAY_MAX_DURATION_S),
-        samples,
-        diagnostics: replayDiagnostics,
-        readerStall,
-      };
-    })();
+    const samples = loggerRef.current.getSamples();
+    const diagnostics = diagnosticsRef.current.snapshot();
+    const readerStall = readerStallSnapshotRef?.current ?? null;
+    loggerRef.current.reset();
+    const captured = recorderRef.current.stop();
+    recorderStartedRef.current = false;
+    pendingRef.current = captured.then((video) => ({ video, samples, diagnostics, readerStall }));
+  }, [enabled, timerRunning, discardPending, tryStartRecorder, readerStallSnapshotRef]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, timerRunning, discardPending, tryStartRecorder]);
-
-  const commitToShot = useCallback(async (shotId) => {
-    const pending = pendingRef.current;
-    if (!pending || !shotId) return;
+  const commitToShot = useCallback(async (shotId, finalising = pendingRef.current) => {
+    if (!finalising || !shotId || claimedRef.current.has(finalising)) return;
+    // Claim this capture before awaiting MediaRecorder so a duplicate save cannot attach it again.
+    claimedRef.current.add(finalising);
+    if (pendingRef.current === finalising) pendingRef.current = null;
     try {
-      if (pending.readerStall) commitReaderStallDiagnostics(shotId, pending.readerStall);
-      if (pending.blob && pending.samples?.length) {
+      const { video, samples, diagnostics, readerStall } = await finalising;
+      if (readerStall) commitReaderStallDiagnostics(shotId, readerStall);
+      if (diagnostics.frames.length) commitReplayDiagnostics(shotId, diagnostics);
+      if (video && samples.length) {
         await saveLastLabShotReplay({
           shotId,
-          blob: pending.blob,
-          mimeType: pending.mimeType,
-          videoW: pending.videoW,
-          videoH: pending.videoH,
-          durationS: pending.durationS,
-          samples: pending.samples,
+          blob: video.blob,
+          mimeType: video.mimeType,
+          videoW: video.videoW,
+          videoH: video.videoH,
+          durationS: Math.min(video.durationS, SHOT_REPLAY_MAX_DURATION_S),
+          samples,
         });
-        commitReplayDiagnostics(shotId, pending.diagnostics);
         onReplayStored?.();
       }
-      pendingRef.current = null;
     } catch {
-      // silent
+      // The saved pressure curve remains available if the video cannot be stored.
     }
   }, [onReplayStored]);
 
   useEffect(() => {
-    shotReplayCommitRef.current = enabled ? commitToShot : null;
+    const commitCurrent = (shotId) => commitToShot(shotId);
+    commitCurrent.capture = () => {
+      const finalising = pendingRef.current;
+      return finalising ? (shotId) => commitToShot(shotId, finalising) : null;
+    };
+    shotReplayCommitRef.current = enabled ? commitCurrent : null;
     return () => {
       shotReplayCommitRef.current = null;
     };

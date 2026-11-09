@@ -36,6 +36,9 @@ export const FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S = SCALE_FLOW_MAX_SAMPLE_GAP_S;
  */
 export const FLOW_AUTO_STOP_PLATEAU_NOISE_G = 0.1;
 
+// The active detector checks for any positive rise above floating-point noise.
+const PLATEAU_RISE_EPSILON_G = 1e-6;
+
 /**
  * How long (s) weight must stay within noise before that flat region can
  * backdate the shot. The recorded time is the start of the flat region.
@@ -68,11 +71,40 @@ export const FLOW_AUTO_STOP_RESUME_GAIN_G = 0.5;
  */
 export const FLOW_AUTO_STOP_RESUME_WINDOW_S = 0.5;
 
+export function flowAutoStopSettings(enabled, legacyMode) {
+  return {
+    enabled, mode: legacyMode ? 'legacy' : 'current',
+    armMinGs: FLOW_AUTO_STOP_ARM_MIN_GS,
+    endPeakFraction: legacyMode ? FLOW_AUTO_STOP_PEAK_END_FRACTION_LEGACY : FLOW_AUTO_STOP_PEAK_END_FRACTION,
+    endCapGs: legacyMode ? FLOW_AUTO_STOP_END_ABS_MAX_GS : null,
+    confirmationMs: FLOW_AUTO_STOP_CONFIRM_S * 1000,
+    plateauRiseToleranceG: legacyMode ? null : PLATEAU_RISE_EPSILON_G,
+    nominalScaleStepG: FLOW_AUTO_STOP_PLATEAU_NOISE_G,
+    plateauHoldMs: FLOW_AUTO_STOP_PLATEAU_HOLD_S * 1000,
+    fastEmaWindowMs: FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S * 1000,
+    fastResumeMs: FLOW_AUTO_STOP_FAST_RESUME_S * 1000,
+    resumeGainG: FLOW_AUTO_STOP_RESUME_GAIN_G,
+    resumeWindowMs: FLOW_AUTO_STOP_RESUME_WINDOW_S * 1000,
+    maxNotificationGapMs: FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S * 1000,
+    detectEmaWindowMs: FLOW_PLOT_SMOOTH_WINDOW_S * 1000,
+  };
+}
+
+function noteCandidateClear(state, observe, reason, netGainG = null) {
+  const candidateS = candidateEndS(state) ?? state.recordedEndExtractionS;
+  if (candidateS != null) observe?.('candidate-cleared', { candidateS, reason, netGainG });
+}
+
+export function flowAutoStopWinningRule(state) {
+  return state.recordedEndRule ?? null;
+}
+
 /**
  * @typedef {{
  *   armed: boolean,
  *   peakSmoothedGs: number,
  *   recordedEndExtractionS: number | null,
+ *   recordedEndRule: string | null,
  *   belowThresholdSinceS: number | null,
  *   backdateRecordedEndExtractionS: number | null,
  *   stopConfirmed: boolean,
@@ -94,6 +126,7 @@ export function createFlowEndAutoStopState() {
     armed: false,
     peakSmoothedGs: 0,
     recordedEndExtractionS: null,
+    recordedEndRule: null,
     belowThresholdSinceS: null,
     backdateRecordedEndExtractionS: null,
     stopConfirmed: false,
@@ -148,6 +181,7 @@ function clearAllEndCandidates(state) {
   state.plateauStartS = null;
   state.backdateRecordedEndExtractionS = null;
   state.recordedEndExtractionS = null;
+  state.recordedEndRule = null;
   state.belowThresholdSinceS = null;
 }
 
@@ -188,7 +222,7 @@ function weightAtResumeWindowStart(samples, tS) {
  * @param {number} weightG
  * @returns {boolean} true when this sample is an ongoing pour, not a drip
  */
-function stepWeightPlateau(state, tS, weightG) {
+function stepWeightPlateau(state, tS, weightG, observe) {
   const prevT = state.lastWeightT;
   const prevW = state.lastWeightG;
   state.lastWeightT = tS;
@@ -206,6 +240,7 @@ function stepWeightPlateau(state, tS, weightG) {
     // A gap cannot confirm a plateau. A pour-sized net gain also rules out
     // reusing the old candidate, even though its exact end was not observed.
     if (dw >= FLOW_AUTO_STOP_RESUME_GAIN_G && dw / dt >= FLOW_AUTO_STOP_ARM_MIN_GS) {
+      noteCandidateClear(state, observe, 'resumed-weight-across-gap', dw);
       clearAllEndCandidates(state);
       state.lastRiseT = tS;
       state.flatInvalid = false;
@@ -224,14 +259,15 @@ function stepWeightPlateau(state, tS, weightG) {
   // a few notifies after the cup stops, and that must not erase the stop.
   const baseline = weightAtResumeWindowStart(state.recentWeights, tS);
   const net = baseline == null ? 0 : weightG - baseline;
-  if (dw > 1e-6 && net >= FLOW_AUTO_STOP_RESUME_GAIN_G - 1e-6) {
+  if (dw > PLATEAU_RISE_EPSILON_G && net >= FLOW_AUTO_STOP_RESUME_GAIN_G - PLATEAU_RISE_EPSILON_G) {
+    noteCandidateClear(state, observe, 'resumed-weight', net);
     clearAllEndCandidates(state);
     state.lastRiseT = tS;
     state.flatInvalid = false;
     return true;
   }
 
-  if (dw > 1e-6) {
+  if (dw > PLATEAU_RISE_EPSILON_G) {
     if (!state.plateauHeld) {
       state.lastRiseT = tS;
       state.flatInvalid = false;
@@ -332,7 +368,9 @@ function stepFlowEndAutoStopLegacy(state, input) {
   }
 
   if (flow >= endThreshold) {
+    noteCandidateClear(next, input.observe, 'legacy-flow-resumed');
     next.recordedEndExtractionS = null;
+    next.recordedEndRule = null;
     next.belowThresholdSinceS = null;
     next.backdateRecordedEndExtractionS = null;
     return next;
@@ -340,6 +378,7 @@ function stepFlowEndAutoStopLegacy(state, input) {
 
   if (next.recordedEndExtractionS == null) {
     next.recordedEndExtractionS = next.backdateRecordedEndExtractionS ?? t;
+    next.recordedEndRule = 'legacy-fallback';
     next.belowThresholdSinceS = t;
     return next;
   }
@@ -375,7 +414,7 @@ function stepFlowEndAutoStopCurrent(state, input) {
   const weightG = input.weightG;
   let pourRising = false;
   if (Number.isFinite(weightG)) {
-    pourRising = stepWeightPlateau(next, t, weightG);
+    pourRising = stepWeightPlateau(next, t, weightG, input.observe);
   }
 
   const flow = input.smoothedFlowGs;
@@ -401,6 +440,9 @@ function stepFlowEndAutoStopCurrent(state, input) {
       next.fastWasBelow
       && t - next.fastAboveSinceS >= FLOW_AUTO_STOP_FAST_RESUME_S - 1e-6
     ) {
+      const baseline = weightAtResumeWindowStart(next.recentWeights, t);
+      noteCandidateClear(next, input.observe, 'fast-ema-resumed',
+        baseline == null || !Number.isFinite(weightG) ? null : weightG - baseline);
       clearAllEndCandidates(next);
       next.fastWasBelow = false;
       next.fastAboveSinceS = t;
@@ -415,20 +457,31 @@ function stepFlowEndAutoStopCurrent(state, input) {
 
   if (pourRising) {
     next.recordedEndExtractionS = null;
+    next.recordedEndRule = null;
     next.belowThresholdSinceS = null;
     return next;
   }
 
   if (flow >= endThreshold) {
+    if (next.recordedEndExtractionS != null) {
+      input.observe?.('confirmation-cleared', {
+        reason: 'slow-ema-above-threshold', candidateS: next.belowThresholdSinceS,
+        selectedEndS: next.recordedEndExtractionS, endThresholdGs: endThreshold,
+      });
+    }
     next.recordedEndExtractionS = null;
+    next.recordedEndRule = null;
     next.belowThresholdSinceS = null;
     return next;
   }
 
   const endS = earliestEndS(next, t);
+  const endRule = next.plateauHeld && next.plateauStartS === endS ? 'plateau'
+    : next.backdateRecordedEndExtractionS === endS ? 'fast-ema' : 'slow-ema-fallback';
   if (next.belowThresholdSinceS == null) {
     next.belowThresholdSinceS = t;
     next.recordedEndExtractionS = endS;
+    next.recordedEndRule = endRule;
     return next;
   }
 
@@ -436,12 +489,14 @@ function stepFlowEndAutoStopCurrent(state, input) {
     next.belowThresholdSinceS = t;
     if (next.recordedEndExtractionS == null || endS < next.recordedEndExtractionS) {
       next.recordedEndExtractionS = endS;
+      next.recordedEndRule = endRule;
     }
     return next;
   }
 
   if (next.recordedEndExtractionS == null || endS < next.recordedEndExtractionS) {
     next.recordedEndExtractionS = endS;
+    next.recordedEndRule = endRule;
   }
   if (t - next.belowThresholdSinceS >= FLOW_AUTO_STOP_CONFIRM_S) {
     next.stopConfirmed = true;
@@ -496,7 +551,18 @@ export function stepFlowEndDetector(detector, sample, input = {}) {
       FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S,
       emaMaxDtS,
     );
-  const auto = stepFlowEndAutoStop(detector.auto, {
+  const observe = input.observe && ((type, fields = {}) => input.observe({
+    type,
+    tExtractionS: sample.tS,
+    weightG: sample.weightG ?? null,
+    flowGs: sample.flowGs,
+    smoothedFlowGs: detectEma.ema,
+    fastFlowGs: backdateEma.ema,
+    ...fields,
+  }));
+  const previous = detector.auto;
+  const auto = stepFlowEndAutoStop(previous, {
+    observe,
     enabled: input.enabled !== false,
     legacyMode,
     preinfusionActive: input.preinfusionActive === true,
@@ -506,6 +572,30 @@ export function stepFlowEndDetector(detector, sample, input = {}) {
     backdateFlowGs: backdateEma.ema,
     weightG: sample.weightG,
   });
+  if (observe) {
+    const endThresholdGs = flowEndThresholdForPeak(auto.peakSmoothedGs, legacyMode);
+    if (!previous.armed && auto.armed) observe('flow-armed', { endThresholdGs });
+    if (!previous.plateauHeld && auto.plateauHeld) {
+      observe('plateau-candidate-started', { candidateS: auto.plateauStartS, endThresholdGs });
+    }
+    if (auto.backdateRecordedEndExtractionS != null
+        && auto.backdateRecordedEndExtractionS !== previous.backdateRecordedEndExtractionS) {
+      observe(legacyMode ? 'legacy-candidate-started' : 'fast-ema-candidate-started', {
+        candidateS: auto.backdateRecordedEndExtractionS, endThresholdGs,
+      });
+    }
+    if (auto.belowThresholdSinceS != null && auto.belowThresholdSinceS !== previous.belowThresholdSinceS) {
+      observe(previous.belowThresholdSinceS == null ? 'confirmation-started' : 'confirmation-restarted', {
+        candidateS: auto.belowThresholdSinceS, selectedEndS: auto.recordedEndExtractionS,
+        endThresholdGs, requiredMs: FLOW_AUTO_STOP_CONFIRM_S * 1000,
+      });
+    }
+    if (!previous.stopConfirmed && auto.stopConfirmed) {
+      observe('stop-confirmed', {
+        selectedEndS: auto.recordedEndExtractionS, rule: flowAutoStopWinningRule(auto), endThresholdGs,
+      });
+    }
+  }
   return {
     auto,
     detectEma,
