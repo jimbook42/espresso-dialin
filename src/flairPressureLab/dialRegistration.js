@@ -11,6 +11,10 @@ const FACE_RADIUS = 48;
 // That mixes printed corners with moving bezel/background pixels. Rim search
 // supplies coarse translation; one octave keeps LK local to the printed face.
 const FLOW_PYRAMID_LEVEL = 1;
+const PRINTED_FLOW_WINDOW = 11;
+// Only use broad flow as a retry when rotation moves the rim by at most
+// half the printed-flow window in the normalized patch.
+const BROAD_RETRY_ROTATION_DEG = Math.asin((PRINTED_FLOW_WINDOW - 1) / (2 * FACE_RADIUS)) * 180 / Math.PI;
 
 function key(cal) {
   return [cal.hub.x, cal.hub.y, cal.radius, cal.zeroAngleDeg, cal.fiveAngleDeg, cal.tenAngleDeg].join('/');
@@ -136,7 +140,21 @@ export function inverseDialAngle(angle, matrix) {
 }
 
 /** Match static printed features to the calibration frame, never to the needle. */
-export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = false, initialRotationDeg = null } = {}) {
+export function registerDialFrame(image, cal, pose, state, options = {}) {
+  const fit = fitDialFrame(image, cal, pose, state, options);
+  if (fit || options.verifyIdentity || !state.printedFaceFlow || state.misses !== 0 || !state.matrix) return fit;
+
+  // A short motion or partial obstruction can leave too few inner corners.
+  // Retry the same local rim with the broader window before searching the frame.
+  const [a, b, c, d] = state.matrix;
+  const previousRotation = Math.atan2(c - b, a + d) * 180 / Math.PI;
+  if (Math.abs(previousRotation) > BROAD_RETRY_ROTATION_DEG) return null;
+  return fitDialFrame(image, cal, pose, state, { broadRetry: true });
+}
+
+function fitDialFrame(image, cal, pose, state, {
+  verifyIdentity = false, initialRotationDeg = null, broadRetry = false,
+}) {
   const cv = getOpenCvSync();
   if (!cv?.calcOpticalFlowPyrLK || !cv?.estimateAffine2D || !state.reference) return null;
   const owned = [];
@@ -145,7 +163,7 @@ export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = f
     // Wide recovery uses the printed detail inside the circular bezel.
     // Keep that fit after recovery: returning to the broad LK window can pull
     // a verified rotation back towards the rotationally invariant surround.
-    const printedFaceFlow = verifyIdentity || state.printedFaceFlow === true;
+    const printedFaceFlow = verifyIdentity || (state.printedFaceFlow === true && !broadRetry);
     const ref = printedFaceFlow ? { ...state.reference,
       points: state.reference.points.filter(p => Math.hypot(p.x - CENTRE, p.y - CENTRE) <= FACE_RADIUS * 0.82),
     } : state.reference;
@@ -156,7 +174,7 @@ export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = f
     const source = own(cv.matFromArray(ref.points.length, 1, cv.CV_32FC2, ref.points.flatMap(p => [p.x, p.y])));
     const rotationProposal = initialRotationDeg ?? (verifyIdentity ? matchGaugeRotation(
       ref.profile ??= printedProfile(ref.data), printedProfile(currentData),
-      { maxShiftDeg: 40, referenceNeedleDeg: _cal.zeroAngleDeg },
+      { maxShiftDeg: 40, referenceNeedleDeg: cal.zeroAngleDeg },
     ).estimateDeg : null);
     const proposalRad = (rotationProposal ?? 0) * Math.PI / 180;
     const seed = rotationProposal != null ? ref.points.flatMap(p => {
@@ -181,7 +199,7 @@ export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = f
     }) : null;
     const target = own(seed ? cv.matFromArray(ref.points.length, 1, cv.CV_32FC2, seed) : new cv.Mat());
     const status = own(new cv.Mat()), error = own(new cv.Mat());
-    const windowSize = printedFaceFlow ? 11 : 19;
+    const windowSize = printedFaceFlow ? PRINTED_FLOW_WINDOW : 19;
     const pyramidLevel = printedFaceFlow ? 0 : FLOW_PYRAMID_LEVEL;
     cv.calcOpticalFlowPyrLK(previous, current, source, target, status, error, new cv.Size(windowSize, windowSize), pyramidLevel,
       new cv.TermCriteria(cv.TermCriteria_COUNT | cv.TermCriteria_EPS, 30, 0.01),
@@ -231,7 +249,8 @@ export function registerDialFrame(image, _cal, pose, state, { verifyIdentity = f
       || maxScale / minScale > 1.8 || Math.abs(rotation) > 40 || Math.hypot(x - CENTRE, y - CENTRE) > 18) return null;
     // Whole-frame reacquisition needs matching printed pixels as well as a
     // coherent flow field. A circle or repeated glyph pattern is not identity.
-    if (verifyIdentity && printedPixelAgreement(ref.data, currentData, _cal.zeroAngleDeg, m) < 0.85) return null;
+    if (broadRetry && Math.abs(rotation) > BROAD_RETRY_ROTATION_DEG) return null;
+    if ((verifyIdentity || broadRetry) && printedPixelAgreement(ref.data, currentData, cal.zeroAngleDeg, m) < 0.85) return null;
     if (verifyIdentity) state.printedFaceFlow = true;
     const scale = pose.radius / FACE_RADIUS;
     state.matrix = matrix;

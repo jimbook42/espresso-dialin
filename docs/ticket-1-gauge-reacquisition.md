@@ -248,3 +248,37 @@ The single stock exam completed on the repair with 12 clips, 3,961 frames and 57
 A frame-level trace of `20261015_225307` matches `main` on all 121 published outcomes, including 56 fresh and 34 held readings. The starting commit had 58 fresh and 43 held readings on that clip. `20261018_094151` exposes an unresolved regression after the smaller fit takes over. The repair has 287 fresh readings and 7 pose losses versus 286 fresh readings and 2 pose losses on `main`. Six full searches occur after the initial recovery. The round-two attempt to retry the original local fit with pose agreement bounds produced identical counts on all 336 frames and was removed. The retained code and exam results are from round one. Keep release on hold for real-device evidence and review of those extra losses.
 
 For device evidence, start the phone's screen recorder before calibration in the installed PWA. Calibrate with the lever down and return to the Dial screen. Raise the lever with the phone fixed, leave it settled for three seconds, then Start. Stop and save the shot, then use **History → Export replay** before reload or the next shot. Keep the original recording and export files and note the phone, OS, camera and app version. If available, a second camera framing the lever and Dial screen together can establish pre-Start timing. A separate run with the shot timer already running for two seconds before the lever raise puts the transition in the native replay for pixel analysis and fresh-reading timing during a shot. Capture Android Chrome first and repeat on the installed iPhone PWA for compatibility verification.
+
+## Ticket 1C tracking stability
+
+The 336-frame replay of `20261018_094151` used the same decoded frames, stored taps and 125 ms sampling for all three readers. The branch at `3993b3c` found the dial at 15.750 s and confirmed it at 15.875 s, one sample before main could read it. The verified rotation was under one degree. That recovery switched local tracking to the small-window fit over the inner face. Six later frames had too few forward/backward matches or affine inliers in that fit. Four searches identified a single matching gauge without the second confirmation needed to publish. Two found no verified gauge. The local fit resumed on the next frame after each loss.
+
+Main produced fresh measurements at 18.625, 21.125, 24.375 and 39.250 s and display holds at 24.625 and 31.500 s. The branch emitted a pressure gap at each of those timestamps. The sampled video shows repeated lever movement and a clear pressurized dial at 21.125 s. It does not establish the app's Start time or extraction phase.
+
+The repair retains the inner-face fit as the first attempt. When it fails on a locally tracked, nearly upright face after a verified recovery, the reader tries the same rim with the established broader flow window. This retry needs fresh affine evidence and the same printed-pixel agreement as full recovery. Both rotations must be within the local retry bound. The four restored measurements were within 0.048 bar of main on those frames. Those timestamps are between labels. Synthetic validation, labelled examination and the exact frame traces serve separate purposes.
+
+| Same-clip replay | Main | `3993b3c` | Ticket 1C |
+| --- | ---: | ---: | ---: |
+| Pose losses | 2 | 7 | 1 |
+| Whole-frame searches | 0 | 8 | 2 |
+| Fresh readings | 286/336 | 287/336 | 292/336 |
+| Median / P90 absolute error, three labels | 0.200 / 0.255 bar | 0.226 / 0.229 bar | 0.224 / 0.226 bar |
+| Worst of the three labelled errors | 0.268 bar | 0.229 bar | 0.227 bar |
+| Median normal frame | 62.7 ms | 60.7 ms | 60.4 ms |
+| Median whole-frame search frame | — | 307.9 ms (8) | 317.9 ms (2) |
+| Median frame for the two common searches | — | 312.7 ms | 317.9 ms |
+
+Desktop reader timings came from one interleaved replay. Total time in whole-frame search fell from 2.20 to 0.55 seconds on this clip. The 125 ms interval from loss to recovery is replay sample spacing. Phone recovery latency still requires a recording of the fixed phone and lever through calibration and movement. The local frame trace and per-label errors are in `scripts/needle-reader/out/ticket1c/`.
+
+The unchanged live exam completed with 12 clips, 3,961 frames and 57 scored labels per revision.
+
+| Live exam | Main | `3993b3c` | Ticket 1C |
+| --- | ---: | ---: | ---: |
+| Standard-clip fresh readings | 2,741/3,114 | 2,740/3,114 | 2,745/3,114 |
+| Standard-clip pose losses | 5 | 10 | 4 |
+| Overall display coverage | 94.98% | 94.62% | 94.93% |
+| Median / P90 absolute error | 0.098 / 0.271 bar | 0.099 / 0.255 bar | 0.099 / 0.255 bar |
+| Worst error printed for hand-labelled clips | 0.40 bar | 0.40 bar | 0.40 bar |
+| False 10-bar readings | 0 | 0 | 0 |
+
+All seven synthetic movement cases and the stationary case passed with 73/80 fresh readings and a maximum absolute error of 0.101 bar. The five designated real frames passed in each existing calibration case. No invalid scene produced a fresh reading, including the new case that replaces the dial immediately after recovery. Final validation recorded 53 focused passes, 587 full-suite passes with four existing skips, a successful build and five passing browser smoke checks.

@@ -183,6 +183,19 @@ describe('lever movement through the production tap reader and R7 publisher', { 
     expect(readCalibratedFrame(image, state.tracker)).toMatchObject({ duplicate: true, fresh: false, bar: null });
   });
 
+  it('rejects a different printed face at the last verified recovery position', () => {
+    const state = setup();
+    expect(step(state).gated.fresh).toBe(true);
+    const scene = { x: 320 };
+    for (let i = 0; i < 3; i++) expect(step(state, scene).read.lost).toBe(i === 0);
+    expect(state.tracker.registration.printedFaceFlow).toBe(true);
+    expect(state.tracker.registration.misses).toBe(0);
+
+    const replacement = step(state, { ...scene, identity: 3 });
+    expect(replacement.read.lost).toBe(true);
+    expect(replacement.gated).toMatchObject({ bar: null, fresh: false });
+  });
+
   it('keeps the recovered rotated face tracking without repeating whole-frame searches', () => {
     const state = setup();
     const search = vi.spyOn(discovery, 'probeGaugeDiscoveryCandidates');
