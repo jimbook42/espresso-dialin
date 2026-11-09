@@ -1,4 +1,4 @@
-import { instantaneousFlowGs, summarizeScaleFlow } from './flowMetrics.js';
+import { instantaneousFlowGs, SCALE_FLOW_MAX_SAMPLE_GAP_S, summarizeScaleFlow } from './flowMetrics.js';
 import { normalizeBatteryPercent } from './scaleBattery.js';
 
 /**
@@ -18,12 +18,14 @@ export function createScaleSession(transport, handlers = {}) {
   let extractionSamples = [];
   let extractionEpochMs = null;
   let lastSample = null;
+  let flowGap = false;
   let recording = false;
 
   const resetRecording = () => {
     extractionSamples = [];
     extractionEpochMs = null;
     lastSample = null;
+    flowGap = false;
     recording = false;
   };
 
@@ -31,6 +33,7 @@ export function createScaleSession(transport, handlers = {}) {
     extractionEpochMs = Date.now();
     extractionSamples = [];
     lastSample = null;
+    flowGap = false;
     recording = true;
   };
 
@@ -41,8 +44,11 @@ export function createScaleSession(transport, handlers = {}) {
     const sample = { tS, weightG: evt.weightG };
     const flow = instantaneousFlowGs(lastSample, sample);
     if (flow != null) {
-      handlers.onInstantFlowGs?.(flow);
-      handlers.onFlowSample?.({ tS: sample.tS, flowGs: flow, weightG: sample.weightG });
+      const gap = tS - lastSample.tS > SCALE_FLOW_MAX_SAMPLE_GAP_S;
+      handlers.onInstantFlowGs?.(gap ? null : flow);
+      handlers.onFlowSample?.({ tS, flowGs: flow, weightG: sample.weightG,
+        ...(gap ? { gap } : flowGap ? { breakBefore: true } : {}) });
+      flowGap = gap;
     }
     lastSample = sample;
     extractionSamples.push(sample);

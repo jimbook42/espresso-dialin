@@ -24,6 +24,7 @@
  * @property {(handler: (event: ScaleWeightEvent) => void) => () => void} onWeight
  * @property {(handler: (event: ScaleTimerEvent) => void) => () => void} onTimer
  * @property {(handler: (event: ScaleBatteryEvent) => void) => () => void} [onBattery]
+ * @property {(handler: (reason: string) => void) => () => void} [onDisconnect]
  * @property {() => Promise<void>} tare
  * @property {() => Promise<void>} startTimer
  * @property {() => Promise<void>} stopTimer

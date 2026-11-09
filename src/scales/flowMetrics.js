@@ -4,6 +4,7 @@
 
 /** ~1–1.5 s time constant for plotted flow curves (live + history). */
 export const FLOW_PLOT_SMOOTH_WINDOW_S = 1.75;
+export const SCALE_FLOW_MAX_SAMPLE_GAP_S = 0.5;
 
 /**
  * @typedef {{ tS: number, weightG: number }} ScaleFlowSample
@@ -51,16 +52,22 @@ export function instantaneousFlowGs(prev, next) {
  */
 export function smoothFlowSeriesForPlot(series, windowS = FLOW_PLOT_SMOOTH_WINDOW_S) {
   if (!series?.length) return [];
-  if (windowS <= 0) return series.map((p) => ({ tS: p.tS, flowGs: p.flowGs }));
+  if (windowS <= 0) return series.map((p) => ({ ...p }));
 
   const out = [];
   let ema = series[0].flowGs;
   out.push({ tS: series[0].tS, flowGs: ema });
   for (let i = 1; i < series.length; i += 1) {
-    const dt = Math.max(0, series[i].tS - series[i - 1].tS);
+    const { tS, flowGs, breakBefore } = series[i];
+    if (breakBefore) {
+      ema = flowGs;
+      out.push({ tS, flowGs, breakBefore });
+      continue;
+    }
+    const dt = Math.max(0, tS - series[i - 1].tS);
     const alpha = 1 - Math.exp(-dt / windowS);
-    ema = alpha * series[i].flowGs + (1 - alpha) * ema;
-    out.push({ tS: series[i].tS, flowGs: ema });
+    ema = alpha * flowGs + (1 - alpha) * ema;
+    out.push({ tS, flowGs: ema });
   }
   return out;
 }
@@ -104,17 +111,24 @@ export function stepFlowEma(state, sample, windowS, maxDtS = Infinity) {
  *
  * @param {{ tS: number, weightG: number }[]} weightCurve
  * @param {number} [windowS]
+ * @param {number} [maxGapS]
  * @returns {{ tS: number, flowGs: number }[]}
  */
-export function flowRateSeriesFromWeightCurve(weightCurve, windowS = FLOW_PLOT_SMOOTH_WINDOW_S) {
+export function flowRateSeriesFromWeightCurve(weightCurve, windowS = FLOW_PLOT_SMOOTH_WINDOW_S, maxGapS = Infinity) {
   if (!weightCurve?.length) return [];
   const raw = [];
+  let breakBefore = false;
   for (let i = 1; i < weightCurve.length; i += 1) {
     const prev = weightCurve[i - 1];
     const next = weightCurve[i];
+    if (next.tS - prev.tS > maxGapS) {
+      breakBefore = raw.length > 0;
+      continue;
+    }
     const flow = instantaneousFlowGs(prev, next);
     if (flow == null || !Number.isFinite(flow)) continue;
-    raw.push({ tS: next.tS, flowGs: Math.max(0, flow) });
+    raw.push({ tS: next.tS, flowGs: Math.max(0, flow), ...(breakBefore ? { breakBefore } : {}) });
+    breakBefore = false;
   }
   return smoothFlowSeriesForPlot(raw, windowS);
 }

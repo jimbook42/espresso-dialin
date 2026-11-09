@@ -100,6 +100,18 @@ function syntheticLeverLiftFlowSeries() {
 }
 
 describe('flowEndAutoStop', () => {
+  it('requires observed confirmation after a notify gap in legacy mode', () => {
+    const beforeGap = [
+      { tExtractionS: 9.9, smoothedFlowGs: 3 },
+      { tExtractionS: 10, smoothedFlowGs: 0.1 },
+    ];
+    const afterGap = { tExtractionS: 13, smoothedFlowGs: 0.1 };
+    expect(flowEndAutoStopShouldStop(runSeries([...beforeGap, afterGap], true))).toBe(false);
+    const confirmed = runSeries([...beforeGap, ...observedHold(13, 0.1)], true);
+    expect(flowEndAutoStopShouldStop(confirmed)).toBe(true);
+    expect(flowEndAutoStopRecordedEndExtractionS(confirmed)).toBe(10);
+  });
+
   it('does not stop during pre-infusion', () => {
     const state = runSeries([
       { preinfusionActive: true, extractionActive: false, tExtractionS: 5, smoothedFlowGs: 3 },

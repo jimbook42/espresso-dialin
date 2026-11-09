@@ -1,0 +1,217 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { encodeTimemoreFrame } from '../src/scales/protocols/timemoreFramed.js';
+import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
+
+const server = startPreviewServer(4182);
+let browser;
+let failures = 0;
+
+async function seed(page, settings) {
+  await page.goto(server.url);
+  await page.waitForFunction(() => document.body.textContent.includes('grinder'));
+  await page.evaluate(async (settings) => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('EspressoDialDB');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(['settings', 'beans', 'recipes'], 'readwrite');
+      tx.objectStore('settings').put({
+        id: 'global', grinderModel: 'Sette 270Wi', lastSelectedBeanId: 'audit-bean',
+        smartScaleDeviceId: 'timemore-dot', preInfusionEnabled: false, shotStartCountdown: 0,
+        ...settings,
+      });
+      tx.objectStore('beans').put({ id: 'audit-bean', name: 'Timing audit coffee', roastType: 'Medium' });
+      tx.objectStore('recipes').put({
+        id: 'audit-recipe', beanId: 'audit-bean', targetTimeMinS: 27, targetTimeMaxS: 32,
+        targetDoseG: 18, targetYieldG: 36,
+      });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, settings);
+  await page.reload();
+}
+
+async function run(name, check, { settings = {}, withPlateau = true } = {}) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await page.addInitScript(() => {
+      const device = new EventTarget();
+      const notifications = new EventTarget();
+      notifications.startNotifications = async () => {};
+      notifications.stopNotifications = async () => {};
+      window.scaleStopCommands = 0;
+      const writer = {
+        writeValueWithoutResponse: async (bytes) => {
+          if (bytes[3] === 2 && bytes[6] === 2) window.scaleStopCommands++;
+        },
+      };
+      device.gatt = {
+        async connect() { this.connected = true; return this; },
+        async getPrimaryService(uuid) {
+          if (!String(uuid).includes('fff0')) throw new Error('No battery service');
+          return { getCharacteristic: async (id) => id.includes('fff1') ? notifications : writer };
+        },
+        disconnect() {
+          this.connected = false;
+          device.dispatchEvent(new Event('gattserverdisconnected'));
+        },
+      };
+      Object.defineProperty(navigator, 'bluetooth', { value: { requestDevice: async () => device } });
+      window.scaleNotify = (bytes) => {
+        notifications.value = new DataView(Uint8Array.from(bytes).buffer);
+        notifications.dispatchEvent(new Event('characteristicvaluechanged'));
+      };
+      window.scaleDrop = () => device.gatt.disconnect();
+    });
+    await seed(page, settings);
+    const connect = page.getByRole('button', { name: 'Connect scale', exact: true });
+    await connect.click();
+    await page.getByRole('button', { name: 'Disconnect', exact: true }).waitFor();
+    await page.clock.install();
+    const start = page.getByRole('button', { name: 'Start', exact: true });
+    const stop = page.getByRole('button', { name: 'Stop shot', exact: true });
+    const time = page.locator('[data-testid="adaptive-shot-screen"] [data-metric="time"] .shot-metric-value');
+    const readTime = async () => Number.parseFloat(await time.textContent());
+    const savedTime = async () => Number(await page.getByTestId('dial-time-tile').locator('input').inputValue());
+    async function notify(weightG, advanceMs = 100) {
+      const payload = new DataView(new ArrayBuffer(4));
+      payload.setInt32(0, Math.round(weightG * 10));
+      await page.clock.runFor(advanceMs);
+      await page.evaluate((bytes) => window.scaleNotify(bytes), [...encodeTimemoreFrame(2, 1, new Uint8Array(payload.buffer))]);
+    }
+    let candidate;
+    if (withPlateau) {
+      await start.click();
+      await page.clock.runFor(250);
+      await stop.waitFor();
+      await notify(0);
+      await notify(0);
+      for (let i = 1; i <= 45; i++) await notify(i * 0.8);
+      await page.clock.runFor(100);
+      assert.equal(await stop.isVisible(), true, 'reaching the 36 g target alone leaves extraction running');
+      const atEnd = await readTime();
+      for (let i = 0; i < 5; i++) await notify(36);
+      await page.clock.runFor(100);
+      candidate = await readTime();
+      assert.ok(Math.abs(candidate - atEnd) <= 0.3, 'observed plateau holds the candidate time');
+    }
+    const result = await check({ page, start, notify, stop, readTime, savedTime, candidate, connect });
+    console.log('PASS', name, result ?? '');
+  } catch (error) {
+    failures++;
+    console.error('FAIL', name, error.message);
+  } finally {
+    await page.close();
+  }
+}
+
+try {
+  await waitForServer(server.url);
+  browser = await chromium.launch();
+  await run('continuous plateau confirms and saves the backdated time once', async ({ page, notify, stop, savedTime, candidate }) => {
+    for (let i = 0; i < 38; i++) await notify(36);
+    await stop.waitFor({ state: 'hidden' });
+    assert.equal(await savedTime(), Math.round(candidate));
+    assert.equal(await page.evaluate(() => window.scaleStopCommands), 1);
+    return { candidate, saved: await savedTime() };
+  });
+  await run('missing notifications release the frozen display', async ({ page, stop, readTime, candidate }) => {
+    await page.clock.runFor(750);
+    await page.waitForFunction((before) => {
+      const timer = document.querySelector('[data-testid="adaptive-shot-screen"] [data-metric="time"] .shot-metric-value');
+      return Number.parseFloat(timer?.textContent) > before;
+    }, candidate, { timeout: 1500 });
+    await page.clock.runFor(1250);
+    await page.waitForFunction((before) => {
+      const timer = document.querySelector('[data-testid="adaptive-shot-screen"] [data-metric="time"] .shot-metric-value');
+      return Number.parseFloat(timer?.textContent) >= before + 2;
+    }, candidate, { timeout: 1500 });
+    assert.equal(await stop.isVisible(), true, 'silence never confirms a stop');
+    const elapsed = await readTime();
+    assert.ok(elapsed >= candidate + 2, `candidate ${candidate}s, elapsed ${elapsed}s after 2s of silence`);
+    return { candidate, elapsed };
+  });
+  await run('manual Stop during pending confirmation saves the tap time once', async ({ page, notify, stop, savedTime, candidate }) => {
+    for (let i = 0; i < 10; i++) await notify(36);
+    await stop.evaluate((button) => { button.click(); button.click(); });
+    for (let i = 0; i < 28; i++) await notify(36);
+    const saved = await savedTime();
+    assert.ok(saved >= Math.round(candidate + 1.5), `candidate ${candidate}s, saved ${saved}s after a 1.5s wait`);
+    assert.equal(await page.evaluate(() => window.scaleStopCommands), 1);
+    return { candidate, saved };
+  });
+  await run('GATT drop releases the timer and reconnect preserves the recorded segment', async ({ page, readTime, stop, candidate, connect, notify, savedTime }) => {
+    await page.evaluate(() => window.scaleDrop());
+    await page.clock.runFor(2000);
+    const elapsed = await readTime();
+    const reconnectOffered = await connect.count() > 0;
+    assert.ok(elapsed >= candidate + 2 && reconnectOffered,
+      `candidate ${candidate}s, elapsed ${elapsed}s, reconnect offered ${reconnectOffered}`);
+    await connect.evaluate((button) => button.click());
+    await page.clock.runFor(1500);
+    await page.getByRole('button', { name: 'Disconnect', exact: true }).waitFor();
+    for (let i = 0; i < 18; i++) await notify(80);
+    assert.equal(await stop.isVisible(), true);
+    await stop.click();
+    const saved = await savedTime();
+    await page.getByTestId('dial-yield-tile').locator('input').fill('36');
+    await page.getByRole('button', { name: 'Balanced', exact: true }).click();
+    await page.getByRole('button', { name: 'Log shot & calculate grind adjustment', exact: true }).click();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
+    await page.getByTestId('history-shot-card').waitFor();
+    const shots = await page.evaluate(() => new Promise((resolve, reject) => {
+      const db = indexedDB.open('EspressoDialDB');
+      db.onerror = () => reject(db.error);
+      db.onsuccess = () => {
+        const query = db.result.transaction('shots').objectStore('shots').getAll();
+        query.onsuccess = () => { db.result.close(); resolve(query.result); };
+        query.onerror = () => reject(query.error);
+      };
+    }));
+    assert.equal(shots.length, 1);
+    assert.equal(shots[0].actualTimeS, saved);
+    const curve = shots[0].scaleFlowCurve;
+    assert.ok(curve.length > 45);
+    assert.equal(curve.at(-1).weightG, 36);
+    assert.ok(curve.at(-1).tS < elapsed, 'reconnected weights are not appended to the interrupted shot');
+    return { candidate, elapsed, reconnectOffered, saved, originalSamples: curve.length };
+  });
+  await run('countdown is excluded and manual pre-infusion is separate from extraction', async ({ page, start, stop, readTime, savedTime }) => {
+    const ready = page.getByText('Get ready', { exact: true });
+    await start.click();
+    await ready.waitFor();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await ready.waitFor({ state: 'hidden' });
+    await page.clock.runFor(4000);
+    assert.equal(await stop.isVisible(), false, 'cancelled countdown never starts the shot');
+    await start.click();
+    await ready.waitFor();
+    for (const second of ['2', '1']) {
+      await page.clock.runFor(1050);
+      await ready.locator('..').getByText(second, { exact: true }).waitFor();
+    }
+    await page.clock.runFor(1050);
+    await ready.waitFor({ state: 'hidden' });
+    await page.clock.runFor(200);
+    const endPreinfusion = page.getByRole('button', { name: 'End pre-infusion', exact: true });
+    await endPreinfusion.waitFor();
+    assert.ok(await readTime() < 0.6, 'the countdown does not advance the shot clock');
+    await page.clock.runFor(2250);
+    await endPreinfusion.click();
+    await stop.waitFor();
+    assert.ok(await readTime() < 0.4, 'extraction display begins at zero');
+    await page.clock.runFor(2250);
+    await stop.click();
+    assert.equal(await savedTime(), 2);
+    return { savedExtraction: await savedTime() };
+  }, { withPlateau: false, settings: { shotStartCountdown: 'on', preInfusionEnabled: true } });
+} finally {
+  await browser?.close();
+  await server.kill();
+}
+if (failures) process.exitCode = 1;

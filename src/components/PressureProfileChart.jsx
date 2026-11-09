@@ -104,7 +104,8 @@ const FLOW_GREEN = '#8a9d72';
  */
 function buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec) {
   if (!liveFlowSamples?.length || !built) return null;
-  const plotted = smoothFlowSeriesForPlot(liveFlowSamples);
+  const plotted = smoothFlowSeriesForPlot(liveFlowSamples.filter((p) => !p.gap));
+  if (!plotted.length) return null;
   const maxFlow = Math.max(...plotted.map((p) => p.flowGs), 0.5);
   const { padL, padT, chartH, chartW, totalSec } = built;
   const xFor = (tSec) => padL + (Math.min(tSec, totalSec) / totalSec) * chartW;
@@ -112,7 +113,7 @@ function buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec) {
   const path = plotted
     .map((p, i) => {
       const tSec = flowTimeOffsetSec + p.tS;
-      return `${i === 0 ? 'M' : 'L'} ${xFor(tSec).toFixed(1)} ${yForFlow(p.flowGs).toFixed(1)}`;
+      return `${i === 0 || p.breakBefore ? 'M' : 'L'} ${xFor(tSec).toFixed(1)} ${yForFlow(p.flowGs).toFixed(1)}`;
     })
     .join(' ');
   return { path, maxFlow };

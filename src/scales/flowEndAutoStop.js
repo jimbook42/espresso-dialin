@@ -1,6 +1,7 @@
 import {
   createFlowEmaState,
   FLOW_PLOT_SMOOTH_WINDOW_S,
+  SCALE_FLOW_MAX_SAMPLE_GAP_S,
   stepFlowEma,
 } from './flowMetrics.js';
 
@@ -27,7 +28,7 @@ export const FLOW_AUTO_STOP_BACKDATE_SMOOTH_WINDOW_S = 0.45;
  * long stretch of zero flow. Live and sim scales notify near 10 Hz; 0.5 s is
  * several dropped packets, while normal jitter stays under it.
  */
-export const FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S = 0.5;
+export const FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S = SCALE_FLOW_MAX_SAMPLE_GAP_S;
 
 /**
  * Weight gain (g) at or below one scale count. Timemore, Bookoo, and Acaia
@@ -299,7 +300,8 @@ function stepFlowEndAutoStopLegacy(state, input) {
 
   const backdateFlow = input.backdateFlowGs ?? flow;
   const t = input.tExtractionS;
-  const next = { ...state };
+  const sampleGap = state.lastFlowT != null && t - state.lastFlowT > FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S;
+  const next = { ...state, lastFlowT: t };
 
   if (!next.armed) {
     if (flow >= FLOW_AUTO_STOP_ARM_MIN_GS) {
@@ -329,6 +331,11 @@ function stepFlowEndAutoStopLegacy(state, input) {
 
   if (next.recordedEndExtractionS == null) {
     next.recordedEndExtractionS = next.backdateRecordedEndExtractionS ?? t;
+    next.belowThresholdSinceS = t;
+    return next;
+  }
+
+  if (sampleGap) {
     next.belowThresholdSinceS = t;
     return next;
   }

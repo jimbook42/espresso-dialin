@@ -61,10 +61,11 @@ export function createAcaiaTransport() {
 
       device.addEventListener('gattserverdisconnected', () => {
         stopHeartbeat();
+        notifyChar?.removeEventListener('characteristicvaluechanged', handleNotification);
         notifyChar = null;
         writeChar = null;
         disconnectHandlers.forEach((h) => h('gatt disconnected'));
-      });
+      }, { once: true });
 
       const server = await device.gatt.connect();
       let service;

@@ -163,6 +163,7 @@ import { SHOT_YIELD_SETTLE_MS } from './scales/scaleShotStopSettle.js';
 import {
   createFlowEndDetector,
   flowEndAutoStopDisplayEndS,
+  FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S,
   flowEndAutoStopRecordedEndExtractionS,
   flowEndAutoStopShouldFreezeTimer,
   flowEndAutoStopShouldStop,
@@ -435,6 +436,7 @@ export default function App() {
   
   // Timer State
   const [timerRunning, setTimerRunning] = useState(false);
+  const shotStartedAtRef = useRef(null);
   const [brewTimerHost, setBrewTimerHost] = useState(false);
   const [timerTicks, setTimerTicks] = useState(0);
   const timerSeconds = timerTicks / 10;
@@ -730,18 +732,16 @@ export default function App() {
     : `1:${brewRatio}`;
 
   // Timer Logic (0.1s resolution for mobile fullscreen display)
+  const elapsedShotTicks = useCallback(() => shotStartedAtRef.current == null
+    ? 0 : Math.floor((performance.now() - shotStartedAtRef.current) / 100), []);
+
   useEffect(() => {
     if (!timerRunning || flowAutoStopTimerFrozen) return undefined;
-    const startedAt = performance.now();
-    let elapsedTicks = 0;
     const interval = setInterval(() => {
-      const nextElapsedTicks = Math.floor((performance.now() - startedAt) / 100);
-      const ticksToAdd = nextElapsedTicks - elapsedTicks;
-      elapsedTicks = nextElapsedTicks;
-      if (ticksToAdd > 0) setTimerTicks((t) => t + ticksToAdd);
+      if (shotStartedAtRef.current != null) setTimerTicks(elapsedShotTicks());
     }, 100);
     return () => clearInterval(interval);
-  }, [timerRunning, flowAutoStopTimerFrozen]);
+  }, [timerRunning, flowAutoStopTimerFrozen, elapsedShotTicks]);
 
   const resetFlowAutoStop = useCallback(() => {
     const series = timemoreScale.liveFlowSeries;
@@ -815,6 +815,7 @@ export default function App() {
     if (!brewGuideTimerActiveRef.current) return;
     syncBrewGuideTimerActive(false);
     scaleAutoEndPreinfusionRef.current = false;
+    shotStartedAtRef.current = null;
     setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -833,13 +834,12 @@ export default function App() {
     setFrozenShotWeightG(null);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
-    if (timemoreScale.isConnected) {
-      setScaleShotMetrics(null);
-      await timemoreScale.notifyShotStarted({ tareAlreadyDone });
-    }
+    setScaleShotMetrics(null);
+    await timemoreScale.notifyShotStarted({ tareAlreadyDone });
     setLabPressureShotMetrics(null);
     if (timerUsePreInfusion) setPreInfusionPhase(true);
     else setPreInfusionPhase(false);
+    shotStartedAtRef.current = performance.now();
     setTimerRunning(true);
   };
 
@@ -912,7 +912,7 @@ export default function App() {
   }, [timerRunning, countdownHandoffPending]);
 
   const handleEndPreInfusion = () => {
-    setPreInfusionSeconds(timerSeconds);
+    setPreInfusionSeconds(elapsedShotTicks() / 10);
     setPreInfusionPhase(false);
     if (timemoreScale.isConnected) {
       void timemoreScale.notifyPreInfusionEnded();
@@ -929,24 +929,38 @@ export default function App() {
   const finalizeYieldSettle = useCallback(() => {
     clearYieldSettleTimer();
     setYieldSettleActive(false);
-    if (timemoreScale.isConnected) {
-      const { yieldG, metrics } = timemoreScale.finalizeShotYieldSettle();
-      if (!yieldSettleUserEditedRef.current && yieldG != null && yieldG > 0) {
-        setActualYieldG(String(yieldG));
-        setFrozenShotWeightG(yieldG);
-      } else {
-        setFrozenShotWeightG(null);
-      }
-      setScaleShotMetrics(metrics);
+    const { yieldG, metrics } = timemoreScale.finalizeShotYieldSettle();
+    if (!yieldSettleUserEditedRef.current && yieldG != null && yieldG > 0) {
+      setActualYieldG(String(yieldG));
+      setFrozenShotWeightG(yieldG);
     } else {
       setFrozenShotWeightG(null);
     }
+    setScaleShotMetrics(metrics);
     yieldSettleUserEditedRef.current = false;
   }, [clearYieldSettleTimer, timemoreScale]);
+
+  // A candidate can hold the display only while the scale is still sending samples.
+  useEffect(() => {
+    if (!timerRunning || !flowAutoStopTimerFrozen) return undefined;
+    const release = () => {
+      if (shotStartedAtRef.current == null) return;
+      setTimerTicks(elapsedShotTicks());
+      setFlowAutoStopTimerFrozen(false);
+    };
+    if (!timemoreScale.isConnected || !normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled)) {
+      release();
+      return undefined;
+    }
+    const timeout = window.setTimeout(release, FLOW_AUTO_STOP_MAX_SAMPLE_GAP_S * 1000);
+    return () => window.clearTimeout(timeout);
+  }, [timerRunning, flowAutoStopTimerFrozen, timemoreScale.isConnected,
+    timemoreScale.liveFlowSeries, settingsSetting?.scaleFlowAutoStopEnabled, elapsedShotTicks]);
 
   useEffect(() => {
     if (
       !timerRunning
+      || shotStartedAtRef.current == null
       || !timemoreScale.isConnected
       || !normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled)
     ) {
@@ -979,6 +993,7 @@ export default function App() {
       detector = createFlowEndDetector();
       applied = 0;
     }
+    if (applied === series.length) return;
     for (let i = applied; i < series.length; i += 1) {
       detector = stepFlowEndDetector(detector, series[i], {
         enabled: true,
@@ -992,7 +1007,6 @@ export default function App() {
     flowAutoStopLastTRef.current = series[series.length - 1].tS;
 
     const autoState = detector.auto;
-    const last = series[series.length - 1];
     const timesFor = (endS) => flowEndDisplayedAndSavedTimes(endS, {
       includePreInfusion: timerUsePreInfusion,
       preInfusionSeconds,
@@ -1005,14 +1019,15 @@ export default function App() {
       }
     } else if (flowAutoStopTimerFrozen && !flowEndAutoStopShouldStop(autoState)) {
       setFlowAutoStopTimerFrozen(false);
-      setTimerTicks(timesFor(last.tS).displayedTicks);
+      setTimerTicks(elapsedShotTicks());
     }
 
     if (!flowEndAutoStopShouldStop(autoState)) return;
 
     const endExtractionS = flowEndAutoStopRecordedEndExtractionS(autoState);
-    resetFlowAutoStop();
     if (endExtractionS == null) return;
+    shotStartedAtRef.current = null;
+    resetFlowAutoStop();
 
     if (labCameraPressureEnabled) {
       try {
@@ -1062,9 +1077,13 @@ export default function App() {
     clearYieldSettleTimer,
     finalizeYieldSettle,
     labCameraPressureEnabled,
+    elapsedShotTicks,
   ]);
 
   const handleStopTimer = () => {
+    if (shotStartedAtRef.current == null) return null;
+    const stoppedTicks = elapsedShotTicks();
+    shotStartedAtRef.current = null;
     resetFlowAutoStop();
     if (labCameraPressureEnabled) {
       try {
@@ -1077,11 +1096,12 @@ export default function App() {
       }
     }
     setTimerRunning(false);
-    let finalExtractionTime = timerSeconds;
+    setTimerTicks(stoppedTicks);
+    let extractionTicks = stoppedTicks;
     if (timerUsePreInfusion && !preInfusionPhase) {
-      finalExtractionTime = Math.max(0, timerSeconds - preInfusionSeconds);
+      extractionTicks = Math.max(0, stoppedTicks - Math.round(preInfusionSeconds * 10));
     }
-    const rounded = Math.round(finalExtractionTime);
+    const rounded = Math.round(extractionTicks / 10);
     setActualTimeS(rounded);
     if (timemoreScale.isConnected) {
       clearYieldSettleTimer();
@@ -1099,6 +1119,8 @@ export default function App() {
         }
         setScaleShotMetrics(metrics);
       }
+    } else {
+      setScaleShotMetrics(timemoreScale.notifyShotStopped().metrics);
     }
     return rounded;
   };
@@ -1118,6 +1140,7 @@ export default function App() {
     yieldSettleUserEditedRef.current = false;
     scaleAutoEndPreinfusionRef.current = false;
     resetFlowAutoStop();
+    shotStartedAtRef.current = null;
     setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);
@@ -1134,6 +1157,7 @@ export default function App() {
     setFrozenShotWeightG(null);
     resetFlowAutoStop();
     scaleAutoEndPreinfusionRef.current = false;
+    shotStartedAtRef.current = null;
     setTimerRunning(false);
     setTimerTicks(0);
     setPreInfusionSeconds(0);

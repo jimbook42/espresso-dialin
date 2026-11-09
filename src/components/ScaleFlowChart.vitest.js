@@ -8,8 +8,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ScaleFlowChart } from './ScaleFlowChart.jsx';
 
 const FLOW = [
-  { tS: 0, weightG: 0 },
+  { tS: 4.75, weightG: 14.25 },
   { tS: 5, weightG: 15 },
+  { tS: 9.75, weightG: 29.25 },
   { tS: 10, weightG: 30 },
 ];
 
@@ -48,6 +49,13 @@ function renderChart(props) {
 }
 
 describe('ScaleFlowChart history pressure overlay', () => {
+  it('draws separate flow segments around missing notifications', () => {
+    renderChart({});
+    const path = container.querySelector('[data-testid="history-flow"]').getAttribute('d');
+    expect(path.match(/M /g)).toHaveLength(2);
+    expect(path.match(/L /g)).toBeNull();
+  });
+
   it('flow-only card has no pressure overlay', () => {
     renderChart({});
     const svg = container.querySelector('svg');
@@ -99,9 +107,11 @@ describe('ScaleFlowChart history pressure overlay', () => {
 
   it('shows compact shot-start time, flow, and pressure axes with seconds and units', () => {
     const longFlow = [
-      { tS: 0, weightG: 0 },
+      { tS: 9.75, weightG: 58.5 },
       { tS: 10, weightG: 60 },
+      { tS: 19.75, weightG: 118.5 },
       { tS: 20, weightG: 120 },
+      { tS: 29.75, weightG: 178.5 },
       { tS: 30, weightG: 180 },
     ];
     const longPressure = [
