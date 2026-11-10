@@ -223,6 +223,8 @@ try {
     assert.ok(curve.at(-1).tS < elapsed, 'reconnected weights are not appended to the interrupted shot');
     assert.equal(shots[0].shotProfileTiming.scaleInterrupted, true);
     const card = page.getByTestId('history-shot-card');
+    await card.getByTestId('history-share-shot').waitFor();
+    await card.getByRole('button', { name: 'Delete shot', exact: true }).waitFor();
     await card.getByText('Shot profile', { exact: true }).click();
     await card.getByText('Scale recording interrupted', { exact: true }).waitFor();
     const insights = card.getByTestId('shot-insights');
@@ -243,7 +245,8 @@ try {
       await page.setViewportSize(viewport);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         `History insights overflow at ${viewport.width}px`);
-      await insights.screenshot({ path: path.join(tmpdir(), `b09-shot-insights-${viewport.width}x${viewport.height}.png`) });
+      await insights.evaluate((element) => element.scrollIntoView({ block: 'start', inline: 'nearest' }));
+      await page.screenshot({ path: path.join(tmpdir(), `b09-shot-insights-${viewport.width}x${viewport.height}.png`) });
       await card.getByRole('button', { name: 'Weight', exact: true }).click();
       await card.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -256,7 +259,9 @@ try {
     assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
     assert.ok((await insights.textContent()).includes('Shot insights'));
     await page.setViewportSize({ width: 412, height: 915 });
-    await insights.screenshot({ path: path.join(tmpdir(), 'b09-shot-insights-light-412x915.png') });
+    await insights.evaluate((element) => element.scrollIntoView({ block: 'start', inline: 'nearest' }));
+    await page.screenshot({ path: path.join(tmpdir(), 'b09-shot-insights-light-412x915.png') });
+    assert.deepEqual(await readShots(page), shots, 'viewing insights does not mutate the saved shot');
     const exported = await readDiagnostics(page);
     assert.equal(exported.shotId, shots[0].id);
     const gaps = exported.scaleDiagnostics.gaps;
@@ -266,6 +271,12 @@ try {
     assert.ok(reconnectGap?.durationMs >= 2000);
     assert.ok(exported.scaleDiagnostics.rawWeightSamples.some(({ weightG }) => weightG === 80));
     assert.equal(exported.final.rule, 'manual');
+    await page.reload();
+    await page.getByRole('button', { name: 'History', exact: true }).click();
+    const reopenedCard = page.getByTestId('history-shot-card');
+    await reopenedCard.getByText('Shot profile', { exact: true }).click();
+    await reopenedCard.getByTestId('shot-insights').getByText('Shot insights', { exact: true }).waitFor();
+    assert.deepEqual(await readShots(page), shots, 'reopening History preserves the stored shot');
     return { candidate, elapsed, reconnectOffered, saved, originalSamples: curve.length, gapMs: reconnectGap.durationMs };
   });
   await run('saving waits for final scale metrics and keeps the recorded curve', async ({ page, notify, stop, savedTime }) => {

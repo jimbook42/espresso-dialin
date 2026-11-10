@@ -6,7 +6,7 @@
 
 - Base `origin/main`: `95faa345d6ba9a69a43b7e373ab528b87043f503` (v4.14.17).
 - Branch: `b09/per-shot-insights`.
-- Latest pushed SHA: `f4e955a70426ed67a6624e439f14fc0af49dc52e` (saved recommendation reason formatting; latest UI refinements pending).
+- Latest pushed SHA: `c0654ac002a8a73259c69a91bcf50be91ef1a63e` (latest UI/refinement checkpoint; v4.14.18 candidate pending).
 - Production provenance: Vercel project `espresso-dialin` reports latest deployment `dpl_JD9n99iVtgXXcv8hxvS4zNzhUvDE` as READY/production but exposes no Git metadata and lists no project domains. The supplied expected production SHA could not be verified; no project settings or deployments were changed.
 
 ## Audit findings
@@ -24,8 +24,8 @@
 - `docs/b09-handoff.md` — this continuity record.
 - `src/utils/shotInsights.js` and focused Vitest file — pure deterministic insight generation.
 - `src/components/ShotInsights.jsx` and `src/components/ShotProfile.jsx` — present insights inside B08’s expandable profile.
-- `src/App.jsx` — pass only per-shot data to the expanded profile (and avoid computing on collapsed cards).
-- `package.json` — set v4.14.18 only at final candidate checkpoint.
+- `scripts/playwright-shot-stop-regression.mjs` — validate insights, mobile layouts, theme, restart retention, and shot immutability.
+- `package.json` and `package-lock.json` — target version v4.14.18 at final candidate checkpoint.
 
 ## Minimal implementation plan
 
@@ -36,8 +36,8 @@
 
 ## Completed / incomplete
 
-- Completed: baseline `main` SHA verified; `AGENTS.md` read from main; recommendation, save, taste, history, profile, and standalone pressure paths audited; B09 branch created; Vercel auto-build exclusion added; pure insight function and 10 focused tests pass; insights integrated into expanded History Shot profile; mode-aware missing-data behavior, mobile widths, dark/light rendering, saved recommendation, and interruption status exercised. Calculation runs only when the profile is expanded.
-- Incomplete: final full regression after the latest wording cleanup; final build and screenshot inspection; final version bump and release-mode preflight with full SHA.
+- Completed: baseline `main` SHA verified; `AGENTS.md` read from main; recommendation, save, taste, history, profile, and standalone pressure paths audited; B09 branch created; Vercel auto-build exclusion added; pure insight function and 10 focused tests pass; insights integrated into expanded History Shot profile; missing-data behavior, mobile widths, dark/light rendering, saved recommendation, interruptions, browser restart, and no-record-mutation checks pass. Calculation runs only when the profile is expanded. Version is bumped locally to v4.14.18 for the final candidate.
+- Incomplete: push the versioned candidate; release-mode preflight with full SHA; record the preflight result and final handoff checkpoint.
 - Known uncertainty: current production Git SHA/version cannot be established from Vercel's deployment metadata available in this session.
 - Blockers requiring owner input: none for development. Production provenance uncertainty should be resolved before any release review.
 
@@ -50,6 +50,6 @@
 - Added `src/utils/shotInsights.js` and `src/utils/shotInsights.vitest.js`.
 - Test command: `npm run test:vitest -- --run src/utils/shotInsights.vitest.js` — 1 file passed, 10 tests passed (exit 0).
 - Focused lint: `npx eslint src/utils/shotInsights.js src/utils/shotInsights.vitest.js src/components/ShotInsights.jsx src/components/ShotProfile.jsx` — exit 0. `git diff --check` — exit 0.
-- Browser follow-up: shot-screen smoke passes 7/7 (exit 0). Stop regression passes 6/6 (exit 0), including 320×640/412×915 no-overflow checks and a light-theme render. Latest screenshot files are saved under `%TEMP%` as `b09-shot-insights-320x640.png`, `b09-shot-insights-412x915.png`, and `b09-shot-insights-light-412x915.png`. Saved Sette micro labels (including letters) render correctly; uppercase engine action tokens are removed from the detail because the recommended setting is already shown.
-- Full Vitest (before final minor wording cleanup): 111 files passed, 2 skipped; 659 passed, 4 skipped (the expected conditional skips). Legacy `npm test` passed with `TZ=UTC` and `TZ=Pacific/Auckland` (both exit 0). Full `npm run lint` hit ESLint stack overflow while traversing generated `public/flair-pressure-lab/opencv.js`; focused ESLint on every changed source/test/script file passed (exit 0). Recheck focused tests after final refinements.
-- Exact next steps: push current insight wording/fallback refinements; rebuild with `VITE_ENABLE_PRESSURE_LAB=true` and `VITE_SCALE_ALLOW_SIM=true`; rerun focused tests, stop regression and inspect fresh screenshots; then repeat full Vitest, both legacy timezones and changed-file lint. Bump to v4.14.18, push final candidate, and run the release-mode production build preflight with pressure/scale enabled, simulations/replay disabled, and the exact full candidate SHA. Do not deploy or merge.
+- Browser follow-up: shot-screen smoke passes 7/7 (exit 0). Stop regression passes 6/6 (exit 0), including 320×640/412×915 no-overflow checks, light theme, browser restart, and unchanged stored shots. Final viewport screenshots are saved under `C:\Users\Isaac\AppData\Local\Temp\` as `b09-shot-insights-320x640.png`, `b09-shot-insights-412x915.png`, and `b09-shot-insights-light-412x915.png`. Saved Sette micro labels (including letters) render correctly; reason text preserves the outlier context and removes duplicated uppercase grind commands.
+- Full Vitest: 111 files passed, 2 skipped; 659 passed, 4 skipped (the four expected conditional skips). Legacy `npm test` passed with `TZ=UTC` and `TZ=Pacific/Auckland` (both exit 0). Browser: stop regression 6/6 and shot screen smoke 7/7 (exit 0). Focused ESLint on all changed source/test/script files passed (exit 0). Full `npm run lint` failed with ESLint `RangeError: Maximum call stack size exceeded` while linting generated `public/flair-pressure-lab/opencv.js` line 23; no changed-file lint errors. Flagged build passed with the usual >500 kB bundle warning.
+- Exact next steps: run focused tests/lint on the final versioned tree; commit and push v4.14.18; run `npm run build:release` with pressure/scale enabled, simulations/replay disabled, `VITE_APP_VERSION=4.14.18`, and the exact full candidate SHA. Verify embedded SHA/version; then update this handoff and push a documentation-only readiness checkpoint if validation passes. Do not deploy or merge.

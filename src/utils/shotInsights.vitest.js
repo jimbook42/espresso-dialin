@@ -66,7 +66,7 @@ describe('generateShotInsights', () => {
       recommendedSetting: { macro: 13, micro: 'E' },
       reason: 'LIKELY OUTLIER — Shot time (11s) is unusually fast. GO 9 MICRO STEP(S) FINER — Shot was 18s off target midpoint.',
     } }).observations.find((item) => item.category === 'saved-recommendation');
-    expect(outlier.contextualDetail).toBe('Saved reason: Shot time (11s) is unusually fast. Shot was 18s off target midpoint.');
+    expect(outlier.contextualDetail).toBe('Saved reason: Possible outlier: Shot time (11s) is unusually fast. Shot was 18s off target midpoint.');
   });
 
   it('retains learning exclusion and known issue context', () => {

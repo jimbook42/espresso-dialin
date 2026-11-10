@@ -29,7 +29,7 @@ function savedGrindLabel(grinderModel, setting) {
 function savedRecommendationReason(reason) {
   if (typeof reason !== 'string' || !reason.trim()) return null;
   const plain = reason.trim()
-    .replace(/^LIKELY OUTLIER\s*—\s*/i, '')
+    .replace(/^LIKELY OUTLIER\s*—\s*/i, 'Possible outlier: ')
     .replace(/^KEEP GRIND\s*—\s*/i, '')
     .replace(/GO\s+\d+\s+(?:MICRO\s+)?(?:STEP|SETTING)(?:\(S\))?\s+(?:FINER|COARSER)\s*—\s*/gi, '')
     .replace(/\s+Go substantially (?:finer|coarser)\.?/gi, '')
