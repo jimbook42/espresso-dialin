@@ -52,15 +52,21 @@ describe('generateShotInsights', () => {
   });
 
   it('reports a saved recommendation as historical and does not invent one', () => {
-    const recommendation = { recommendedSetting: { macro: 15, micro: 'C' }, reason: 'Shot was faster than target.' };
+    const recommendation = { recommendedSetting: { macro: 15, micro: 'C' },
+      reason: 'GO 2 MICRO STEP(S) FINER — Shot was 4s off target midpoint.' };
     const generated = result({ recommendation });
     const savedRecommendation = generated.observations.find((item) => item.category === 'saved-recommendation');
     expect(savedRecommendation.message).toContain('At the time');
     expect(savedRecommendation.message).toContain('macro 15, micro C');
-    expect(savedRecommendation.message).toContain(recommendation.reason);
+    expect(savedRecommendation.contextualDetail).toContain('Saved reason: Shot was 4s off target midpoint.');
     expect(generated.nextStep.message).toContain('check the current Dial recommendation');
     expect(result({ recommendation: undefined }).nextStep).toBeNull();
     expect(result({ recordType: 'standalone-pressure', recommendation }).nextStep).toBeNull();
+    const outlier = result({ recommendation: {
+      recommendedSetting: { macro: 13, micro: 'E' },
+      reason: 'LIKELY OUTLIER — Shot time (11s) is unusually fast. GO 9 MICRO STEP(S) FINER — Shot was 18s off target midpoint.',
+    } }).observations.find((item) => item.category === 'saved-recommendation');
+    expect(outlier.contextualDetail).toBe('Saved reason: Shot time (11s) is unusually fast. Shot was 18s off target midpoint.');
   });
 
   it('retains learning exclusion and known issue context', () => {

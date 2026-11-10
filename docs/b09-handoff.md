@@ -6,7 +6,7 @@
 
 - Base `origin/main`: `95faa345d6ba9a69a43b7e373ab528b87043f503` (v4.14.17).
 - Branch: `b09/per-shot-insights`.
-- Latest pushed SHA: `7bb057c64508bbd6d41658a647b8a9c273181876` (UI checkpoint; Sette saved-setting rendering fix pending).
+- Latest pushed SHA: `b6c30879c7e71610a2e924f4a617dc8efbc5bc5c` (UI checkpoint with Sette setting fix; concise reason wording pending).
 - Production provenance: Vercel project `espresso-dialin` reports latest deployment `dpl_JD9n99iVtgXXcv8hxvS4zNzhUvDE` as READY/production but exposes no Git metadata and lists no project domains. The supplied expected production SHA could not be verified; no project settings or deployments were changed.
 
 ## Audit findings
@@ -50,5 +50,5 @@
 - Added `src/utils/shotInsights.js` and `src/utils/shotInsights.vitest.js`.
 - Test command: `npm run test:vitest -- --run src/utils/shotInsights.vitest.js` — 1 file passed, 10 tests passed (exit 0).
 - Focused lint: `npx eslint src/utils/shotInsights.js src/utils/shotInsights.vitest.js src/components/ShotInsights.jsx src/components/ShotProfile.jsx` — exit 0. `git diff --check` — exit 0.
-- Browser follow-up: stop regression exposed Sette micro settings stored as letters; the insight formatter now preserves string micro labels (including `C`). Focused tests pass with this case. The previous browser run had 1 failed assertion because the recommendation was not rendered; remaining scenarios passed. Rebuild before rerunning browser checks.
-- Exact next steps: commit/push the Sette setting fix; rebuild with `VITE_ENABLE_PRESSURE_LAB=true` and `VITE_SCALE_ALLOW_SIM=true`; rerun the stop regression, then shot-screen smoke; inspect generated 320×640 and 412×915 screenshots; then run the staged full regression and production build preflight. Keep failures and pre-existing baselines distinct.
+- Browser follow-up: stop regression passes (6/6 scenarios, exit 0). It exposed Sette micro settings stored as letters; the formatter now preserves string micro labels (including `C`). Screenshot review showed verbose uppercase engine reason tokens, now removed from the display when they duplicate the saved setting; the remaining saved rationale is presented as a secondary detail. Focused insight tests pass (10/10).
+- Exact next steps: push the saved-reason wording update; rebuild with `VITE_ENABLE_PRESSURE_LAB=true` and `VITE_SCALE_ALLOW_SIM=true`; rerun the stop regression and shot-screen smoke; inspect fresh 320×640 and 412×915 screenshots; then run the staged full regression and production build preflight. Keep failures and pre-existing baselines distinct.

@@ -26,6 +26,16 @@ function savedGrindLabel(grinderModel, setting) {
   return null;
 }
 
+function savedRecommendationReason(reason) {
+  if (typeof reason !== 'string' || !reason.trim()) return null;
+  const plain = reason.trim()
+    .replace(/^LIKELY OUTLIER\s*—\s*/i, '')
+    .replace(/GO\s+\d+\s+(?:MICRO\s+)?STEP(?:\(S\))?\s+(?:FINER|COARSER)\s*—\s*/gi, '')
+    .replace(/\s+Go substantially (?:finer|coarser)\.?/gi, '')
+    .trim();
+  return plain || null;
+}
+
 /**
  * Build concise, local explanations from persisted shot facts and the B08 profile.
  * Does not read storage, use the active recipe, or calculate recommendations.
@@ -100,11 +110,10 @@ export function generateShotInsights({
   if (!pressureOnly && recommendation?.recommendedSetting) {
     const setting = savedGrindLabel(shot.grinderModel, recommendation.recommendedSetting);
     if (setting) {
-      const reason = typeof recommendation.reason === 'string' && recommendation.reason.trim()
-        ? ` ${recommendation.reason.trim()}` : '';
-      findings.push(insight('saved-recommendation', 2,
-        `At the time, the app recommended ${setting}.${reason}`, 'saved-recommendation',
-        { contextualDetail: 'This is the recommendation saved with this shot; it may no longer fit if your bean, grinder, or recipe has changed.' }));
+      const reason = savedRecommendationReason(recommendation.reason);
+      findings.push(insight('saved-recommendation', 2, `At the time, the app recommended ${setting}.`, 'saved-recommendation', {
+        ...(reason ? { contextualDetail: `Saved reason: ${reason}` } : {}),
+      }));
     }
   }
 
