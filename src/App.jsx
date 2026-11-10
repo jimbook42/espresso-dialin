@@ -111,6 +111,7 @@ import {
 import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
 import { writeCachedGlobalSettings } from './settings/settingsLocalCache.js';
 import { patchGlobalSettings } from './settings/patchGlobalSettings.js';
+import { shotGaugeVisibilityPatch } from './settings/shotScreenLayout.js';
 import { grindSettingsRestoreDeps } from './settings/grindSettingsRestoreDeps.js';
 import { PwaInstallBanner } from './components/PwaInstallBanner.jsx';
 import {
@@ -1663,6 +1664,10 @@ export default function App() {
     await patchGlobalSettings(db, { [LAB_PRESSURE_CAMERA_PREVIEW_KEY]: val });
   };
 
+  const handleShotGaugeVisibility = (showGauge) => {
+    void patchGlobalSettings(db, (row) => shotGaugeVisibilityPatch(showGauge, row?.shotScreen));
+  };
+
   const handleLabPressureReader = async (value) => {
     const next = value === LAB_PRESSURE_READER_LEGACY
       || value === LAB_PRESSURE_READER_BLOCKER
@@ -3037,6 +3042,7 @@ export default function App() {
               flowSeries={scaleLiveFlowOnProfile?.map((point) => ({ ...point, tS: point.tS + flowChartTimeOffsetSec }))}
               yieldSettleActive={yieldSettleActive}
               frozenYieldG={frozenShotWeightG}
+              onGaugeVisibilityChange={handleShotGaugeVisibility}
             />
             <p className="text-center text-xs text-[#a09880] mt-2 h-4 shrink-0">Total {timerSeconds.toFixed(1)}s · {timerUsePreInfusion && preInfusionPhase ? 'pre-infusing' : 'extraction'}</p>
           </div>
@@ -3837,6 +3843,7 @@ export default function App() {
               flowSeries={scaleLiveFlowOnProfile?.map((point) => ({ ...point, tS: point.tS + flowChartTimeOffsetSec }))}
               yieldSettleActive={yieldSettleActive}
               frozenYieldG={frozenShotWeightG}
+              onGaugeVisibilityChange={handleShotGaugeVisibility}
             />
             }
             scaleLiveReadoutEnabled={

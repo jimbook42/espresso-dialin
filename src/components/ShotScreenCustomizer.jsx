@@ -62,7 +62,7 @@ export function ShotScreenCustomizer({ settings, onPatch, ui = defaultTheme }) {
     <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
       <h5 className={ui.fieldLabel}>Live preview · example values</h5>
       <div className={`${ui.inset} rounded-xl`}>
-        <ShotScreenPreview settings={settings} />
+        <ShotScreenPreview settings={settings} onGaugeVisibilityChange={(showGauge) => change({ showGauge })} />
       </div>
     </div>
   </section>;

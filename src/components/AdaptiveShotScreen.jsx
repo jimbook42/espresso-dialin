@@ -35,12 +35,24 @@ function LiveShotChart({ pressure = [], flow = [], gauge, scale, grow = false })
 }
 
 export function ShotScreenView({ settings, equipment = shotEquipment(settings), values, pressure,
-  flowSeries = [], targetYieldG, targetTimeS, preview = false }) {
+  flowSeries = [], targetYieldG, targetTimeS, preview = false, onGaugeVisibilityChange }) {
   const options = resolveShotScreen(settings, equipment);
   const [selected, setSelected] = useState(null);
   const [trustOverride, setTrustOverride] = useState(null);
+  const pendingGaugeVisibility = useRef(null);
   const selectedMetric = options.available.includes(selected) ? selected : options.bigNumber;
   const trust = equipment.gauge && (trustOverride ?? options.showGauge);
+  // Paint the toggle immediately, then follow the saved showGauge once it catches up.
+  useEffect(() => {
+    if (pendingGaugeVisibility.current == null || pendingGaugeVisibility.current !== options.showGauge) return;
+    pendingGaugeVisibility.current = null;
+    setTrustOverride(null);
+  }, [options.showGauge]);
+  const requestGaugeVisibility = (visible) => {
+    pendingGaugeVisibility.current = visible;
+    setTrustOverride(visible);
+    onGaugeVisibilityChange?.(visible);
+  };
   // Minimal remains interactive in the customiser, even with the gauge shown.
   const portraitTrust = trust && !(preview && options.minimal);
   const screenRef = useRef(null);
@@ -90,7 +102,7 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
     className={`shot-screen shot-screen--${options.minimal ? 'minimal' : options.layout} ${trust ? 'shot-screen--trust' : ''} ${portraitTrust ? 'shot-screen--portrait' : ''} ${preview ? 'shot-screen--preview' : ''} w-full flex-1 text-[#f5f2eb]`}
     onClick={(event) => event.stopPropagation()}>
     {equipment.gauge && <div className="shot-camera-toolbar self-end flex items-center gap-2">
-      <button type="button" aria-pressed={trust} onClick={() => setTrustOverride(!trust)}
+      <button type="button" aria-pressed={trust} onClick={() => requestGaugeVisibility(!trust)}
         className="shot-gauge-toggle min-h-9 px-3 rounded-lg border border-[#2e2b26] text-xs text-[#c88a4b]">{trust ? 'Hide gauge' : 'Show gauge'}</button>
       {trust && <button type="button" className="shot-camera-flip" onClick={pressure?.flipCamera} disabled={!pressure?.flipCamera}
         aria-label={pressure?.facingMode === 'environment' ? 'Switch to front camera' : 'Switch to rear camera'}
@@ -112,14 +124,14 @@ export function ShotScreenView({ settings, equipment = shotEquipment(settings), 
     {equipment.scale && values.weight == null && <p className="text-xs text-[#a09880] text-center">Connect your smart scale for weight and flow.</p>}
     </div>
     {(trust || cameraMounted) && <div className={`shot-trust-camera ${trust ? 'shot-trust-camera--open' : ''}`} aria-hidden={!trust} inert={!trust}>
-      <div className="shot-trust-camera-inner"><ShotGaugeCamera pressure={pressure} expanded active={trust} onToggle={() => setTrustOverride(false)} barText={pressureText} preview={preview} edgeMetrics={edgeMetrics} /></div>
+      <div className="shot-trust-camera-inner"><ShotGaugeCamera pressure={pressure} expanded active={trust} onToggle={() => requestGaugeVisibility(false)} barText={pressureText} preview={preview} edgeMetrics={edgeMetrics} /></div>
     </div>}
     {options.chart && !options.minimal && <LiveShotChart pressure={pressure?.samples} flow={flowSeries} gauge={equipment.gauge} scale={equipment.scale} grow={options.layout === 'scale'} />}
   </div>;
 }
 
 export function AdaptiveShotScreen({ settings, seconds, targetYieldG, targetTimeS, flowGs, flowSeries,
-  scaleEnabled, yieldSettleActive, frozenYieldG }) {
+  scaleEnabled, yieldSettleActive, frozenYieldG, onGaugeVisibilityChange }) {
   const pressure = useShotLabPressureContext();
   const snapshot = useSyncExternalStore(subscribeScaleLiveWeight, getScaleLiveWeightSnapshot);
   const weight = resolveShotWeightReadout({ ...snapshot, timerRunning: true, yieldSettleActive, frozenYieldG });
@@ -137,5 +149,5 @@ export function AdaptiveShotScreen({ settings, seconds, targetYieldG, targetTime
     values={{ pressure: pressure?.enabled ? pressure.displayBar : null, weight: weightReady ? weight.grams : null,
       time: seconds, flow: weightReady ? flowGs : null }}
     pressure={{ ...pressure, statusText }} flowSeries={weightReady ? flowSeries : []}
-    targetYieldG={targetYieldG} targetTimeS={targetTimeS} />;
+    targetYieldG={targetYieldG} targetTimeS={targetTimeS} onGaugeVisibilityChange={onGaugeVisibilityChange} />;
 }

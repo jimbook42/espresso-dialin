@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ShotScreenView } from './AdaptiveShotScreen.jsx';
 
 /** Lay out a whole phone first, then scale the phone, including its controls. */
-export function ShotScreenPreview({ settings }) {
+export function ShotScreenPreview({ settings, onGaugeVisibilityChange }) {
   const containerRef = useRef(null);
   const [scale, setScale] = useState(0);
   useEffect(() => {
@@ -24,6 +24,7 @@ export function ShotScreenPreview({ settings }) {
       <div className="h-14 shrink-0 border-b border-[#2e2b26] px-4 flex items-center text-xs text-[#a09880]">Extracting · example</div>
       <div className="flex flex-col flex-1 min-h-0 px-4 py-3">
         <ShotScreenView key={JSON.stringify(settings?.shotScreen)} settings={settings} preview
+          onGaugeVisibilityChange={onGaugeVisibilityChange}
           values={{ pressure: 8.4, weight: 24.6, time: 21.3, flow: 1.8 }} targetYieldG={36} targetTimeS={30} />
         <p className="text-center text-xs text-[#a09880] mt-2 h-4 shrink-0">Total 21.3s · extraction</p>
       </div>

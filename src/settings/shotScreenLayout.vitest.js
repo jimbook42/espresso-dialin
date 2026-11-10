@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { describe, expect, it } from 'vitest';
-import { availableShotMetrics, cycleShotMetric, resolveShotScreen, shotEquipmentPatch } from './shotScreenLayout.js';
+import { availableShotMetrics, cycleShotMetric, resolveShotScreen, shotEquipmentPatch, shotGaugeVisibilityPatch } from './shotScreenLayout.js';
 import { patchGlobalSettings } from './patchGlobalSettings.js';
 
 describe('shot screen setup', () => {
@@ -44,6 +44,43 @@ describe('shot screen setup', () => {
       expect(settings.grinderModel).toBe('existing grinder');
       expect(settings.lastSelectedBeanId).toBe('bean');
       expect(resolveShotScreen(settings)).toMatchObject({ layout: 'gauge-scale', minimal: true });
+      expect(await db.shots.toArray()).toEqual([shot]);
+    } finally {
+      await db.delete();
+    }
+  });
+
+  it('reopens a saved gauge choice and leaves the rest of an existing settings row alone', async () => {
+    const db = new Dexie('shot-gauge-visibility-test');
+    db.version(1).stores({ settings: 'id', shots: 'id' });
+    const shot = { id: 'existing', beanId: 'bean', actualDoseG: 18 };
+    const original = {
+      id: 'global',
+      grinderModel: 'existing grinder',
+      lastSelectedBeanId: 'bean',
+      labPressureCameraPreviewEnabled: true,
+      shotScreen: { cameraPreview: false, chart: true, bigNumber: 'time' },
+    };
+    try {
+      await db.settings.put(original);
+      await db.shots.put(shot);
+      const untouched = await db.settings.get('global');
+      expect(untouched.shotScreen.showGauge).toBeUndefined();
+      expect(resolveShotScreen(untouched, { gauge: true, scale: false }).showGauge).toBe(false);
+
+      await patchGlobalSettings(db, (row) => shotGaugeVisibilityPatch(true, row.shotScreen));
+      let settings = await db.settings.get('global');
+      expect(resolveShotScreen(settings, { gauge: true, scale: false }).showGauge).toBe(true);
+
+      await patchGlobalSettings(db, (row) => shotGaugeVisibilityPatch(false, row.shotScreen));
+      settings = await db.settings.get('global');
+      expect(settings.grinderModel).toBe('existing grinder');
+      expect(settings.lastSelectedBeanId).toBe('bean');
+      expect(settings.labPressureCameraPreviewEnabled).toBe(true);
+      expect(settings.shotScreen).toEqual({
+        cameraPreview: false, chart: true, bigNumber: 'time', showGauge: false,
+      });
+      expect(resolveShotScreen(settings, { gauge: true, scale: false }).showGauge).toBe(false);
       expect(await db.shots.toArray()).toEqual([shot]);
     } finally {
       await db.delete();

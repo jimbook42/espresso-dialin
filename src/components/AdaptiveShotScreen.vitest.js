@@ -340,6 +340,105 @@ describe('adaptive live shot screen', () => {
       .toBe(NO_PRESSURE_READING_WARNING);
   });
 
+  it('remembers show and hide for the next shot and keeps the pressure number', () => {
+    vi.useFakeTimers();
+    let current = {
+      labCameraPressureEnabled: true,
+      grinderModel: 'Sette 270Wi',
+      lastSelectedBeanId: 'bean',
+      labPressureCameraPreviewEnabled: true,
+      shotScreen: { cameraPreview: false, chart: true, bigNumber: 'time' },
+    };
+    function Shot() {
+      const [settings, setSettings] = useState(current);
+      return createElement(ShotScreenView, {
+        settings,
+        values,
+        preview: true,
+        onGaugeVisibilityChange: (showGauge) => {
+          current = { ...current, shotScreen: { ...current.shotScreen, showGauge } };
+          setSettings(current);
+        },
+      });
+    }
+    function Host() {
+      const [shot, setShot] = useState(1);
+      return createElement('div', null,
+        createElement('button', { type: 'button', onClick: () => setShot((next) => next + 1) }, 'next-shot'),
+        createElement(Shot, { key: shot }));
+    }
+    const container = render(Host);
+    const toggle = () => container.querySelector('.shot-camera-toolbar .shot-gauge-toggle');
+    const pressure = () => container.querySelector('[data-metric="pressure"]').textContent;
+    expect(current.shotScreen.showGauge).toBeUndefined();
+    expect(toggle().textContent).toBe('Show gauge');
+    expect(pressure()).toContain('8.4');
+    expect(container.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
+
+    click(toggle());
+    expect(toggle().textContent).toBe('Hide gauge');
+    expect(current.shotScreen.showGauge).toBe(true);
+    expect(current.shotScreen.cameraPreview).toBe(false);
+    expect(current.labPressureCameraPreviewEnabled).toBe(true);
+    expect(current.grinderModel).toBe('Sette 270Wi');
+    expect(pressure()).toContain('8.4');
+    click(container.querySelector('button'));
+    expect(toggle().textContent).toBe('Hide gauge');
+    expect(container.querySelector('.shot-trust-camera--open')).not.toBeNull();
+
+    click(container.querySelector('[data-testid="shot-gauge-camera"]'));
+    expect(toggle().textContent).toBe('Show gauge');
+    expect(current.shotScreen.showGauge).toBe(false);
+    expect(pressure()).toContain('8.4');
+    act(() => vi.advanceTimersByTime(200));
+    expect(container.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
+    click(container.querySelector('button'));
+    expect(toggle().textContent).toBe('Show gauge');
+    expect(container.querySelector('[data-testid="shot-gauge-camera"]')).toBeNull();
+    expect(pressure()).toContain('8.4');
+    expect(current.shotScreen).toEqual({
+      cameraPreview: false, chart: true, bigNumber: 'time', showGauge: false,
+    });
+
+    click(toggle());
+    expect(current.shotScreen.showGauge).toBe(true);
+    click(container.querySelector('button'));
+    expect(toggle().textContent).toBe('Hide gauge');
+    expect(container.querySelector('.shot-trust-camera--open')).not.toBeNull();
+    expect(pressure()).toContain('8.4');
+  });
+
+  it('follows a customiser change on the open shot once the saved choice updates', () => {
+    function Host() {
+      const [settings, setSettings] = useState({
+        labCameraPressureEnabled: true,
+        shotScreen: { showGauge: true, cameraPreview: false },
+      });
+      return createElement('div', null,
+        createElement('button', { type: 'button', onClick: () => setSettings((old) => ({
+          ...old, shotScreen: { ...old.shotScreen, showGauge: !old.shotScreen.showGauge },
+        })) }, 'customiser'),
+        createElement(ShotScreenView, {
+          settings,
+          values,
+          preview: true,
+          onGaugeVisibilityChange: (showGauge) => setSettings((old) => ({
+            ...old, shotScreen: { ...old.shotScreen, showGauge },
+          })),
+        }));
+    }
+    const container = render(Host);
+    const toggle = () => container.querySelector('.shot-camera-toolbar .shot-gauge-toggle');
+    expect(toggle().textContent).toBe('Hide gauge');
+    click(container.querySelector('button'));
+    expect(toggle().textContent).toBe('Show gauge');
+    expect(container.querySelector('[data-metric="pressure"]').textContent).toContain('8.4');
+    click(toggle());
+    expect(toggle().textContent).toBe('Hide gauge');
+    click(container.querySelector('button'));
+    expect(toggle().textContent).toBe('Show gauge');
+  });
+
   it('plots the provided pressure and flow series', () => {
     const container = render(ShotScreenView, { equipment: { gauge: true, scale: true }, values, preview: true,
       pressure: { samples: [{ tS: 1, bar: 2, confident: true }, { tS: 2, bar: 5, confident: true }] },
@@ -425,6 +524,35 @@ describe('customiser', () => {
     click(check('Timer only'));
     expect(bigMetrics(preview())).toEqual(['time']);
     expect(check('Camera preview').disabled).toBe(true);
+  });
+
+  it('reflects a saved choice and stays aligned when the preview toggle changes it', () => {
+    const saved = render(ShotScreenCustomizer, {
+      settings: {
+        labCameraPressureEnabled: true,
+        grinderModel: 'Sette 270Wi',
+        labPressureCameraPreviewEnabled: true,
+        shotScreen: { showGauge: false, cameraPreview: false },
+      },
+      onPatch: () => {},
+    });
+    const savedSwitch = (name) => saved.querySelector(`[role="switch"][aria-label="${name}"]`);
+    expect(savedSwitch('Show gauge').getAttribute('aria-checked')).toBe('false');
+    expect(savedSwitch('Camera preview').getAttribute('aria-checked')).toBe('false');
+
+    const container = render(Harness);
+    const toggle = (name) => container.querySelector(`[role="switch"][aria-label="${name}"]`);
+    click(toggle('Pressure gauge via camera'));
+    const previewToggle = () => container.querySelector('[data-testid="shot-screen-preview"] .shot-gauge-toggle');
+    expect(toggle('Show gauge').getAttribute('aria-checked')).toBe('false');
+    expect(previewToggle().textContent).toBe('Show gauge');
+    click(previewToggle());
+    expect(toggle('Show gauge').getAttribute('aria-checked')).toBe('true');
+    expect(previewToggle().textContent).toBe('Hide gauge');
+    click(previewToggle());
+    expect(toggle('Show gauge').getAttribute('aria-checked')).toBe('false');
+    expect(toggle('Camera preview').getAttribute('aria-checked')).toBe('true');
+    expect(previewToggle().textContent).toBe('Show gauge');
   });
 });
 

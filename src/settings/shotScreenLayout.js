@@ -44,6 +44,12 @@ export function cycleShotMetric(current, available) {
   return available[(available.indexOf(current) + 1) % available.length];
 }
 
+// Remember Show gauge / Hide gauge without touching the camera-preview choice.
+export function shotGaugeVisibilityPatch(showGauge, shotScreen) {
+  const current = shotScreen && typeof shotScreen === 'object' ? shotScreen : undefined;
+  return { shotScreen: { ...current, showGauge: Boolean(showGauge) } };
+}
+
 // Reset presentation choices when equipment changes; preserve all other settings.
 export function shotEquipmentPatch(equipment) {
   return {
