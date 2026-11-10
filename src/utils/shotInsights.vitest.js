@@ -52,11 +52,11 @@ describe('generateShotInsights', () => {
   });
 
   it('reports a saved recommendation as historical and does not invent one', () => {
-    const recommendation = { recommendedSetting: { nicheZeroSetting: 21 }, reason: 'Shot was faster than target.' };
+    const recommendation = { recommendedSetting: { macro: 15, micro: 'C' }, reason: 'Shot was faster than target.' };
     const generated = result({ recommendation });
     const savedRecommendation = generated.observations.find((item) => item.category === 'saved-recommendation');
     expect(savedRecommendation.message).toContain('At the time');
-    expect(savedRecommendation.message).toContain('Niche Zero 21');
+    expect(savedRecommendation.message).toContain('macro 15, micro C');
     expect(savedRecommendation.message).toContain(recommendation.reason);
     expect(generated.nextStep.message).toContain('check the current Dial recommendation');
     expect(result({ recommendation: undefined }).nextStep).toBeNull();

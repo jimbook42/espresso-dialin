@@ -3,6 +3,7 @@ import { tasteProfileDisplayLabel } from './tasteProfile.js';
 import { isStandalonePressureShot } from '../flairPressureLab/standalonePressureShot.js';
 
 const finite = (value) => Number.isFinite(value);
+const hasSettingValue = (value) => finite(value) || (typeof value === 'string' && value.trim() !== '');
 const numberOrNull = (value) => {
   const number = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(number) && value !== null && value !== '' ? number : null;
@@ -17,11 +18,11 @@ function insight(category, priority, message, evidenceSource, options = {}) {
 function savedGrindLabel(grinderModel, setting) {
   if (!setting || typeof setting !== 'object') return null;
   if (finite(setting.nicheZeroSetting)) return `Niche Zero ${setting.nicheZeroSetting}`;
-  if (finite(setting.setteMacro) && finite(setting.setteMicro)) return `macro ${setting.setteMacro}, micro ${setting.setteMicro}`;
-  if (finite(setting.macro) && finite(setting.micro)) return `macro ${setting.macro}, micro ${setting.micro}`;
+  if (hasSettingValue(setting.setteMacro) && hasSettingValue(setting.setteMicro)) return `macro ${setting.setteMacro}, micro ${setting.setteMicro}`;
+  if (hasSettingValue(setting.macro) && hasSettingValue(setting.micro)) return `macro ${setting.macro}, micro ${setting.micro}`;
   if (finite(setting.sunbeamSetting)) return `setting ${setting.sunbeamSetting}`;
   if (finite(setting.customGrindValue)) return `setting ${setting.customGrindValue}`;
-  if (finite(setting.setting)) return `${grinderModel || 'grinder'} ${setting.setting}`;
+  if (hasSettingValue(setting.setting)) return `${grinderModel || 'grinder'} ${setting.setting}`;
   return null;
 }
 
