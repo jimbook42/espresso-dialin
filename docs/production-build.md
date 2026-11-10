@@ -22,4 +22,5 @@ For a local release build, the clean worktree's HEAD supplies provenance.
 Before serving production traffic, stage a production deployment with
 `vercel deploy --prod --skip-domain`, then check the camera controls,
 calibration, both recording flows and the full SHA in a Diagnostics v2 export.
-Promote the staged deployment once verified.
+Git pushes to `main` and the B07 recovery branch skip automatic Vercel builds.
+Promote the staged production deployment once verified.

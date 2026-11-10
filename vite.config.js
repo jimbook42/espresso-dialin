@@ -33,6 +33,10 @@ function diagnosticsBuildSha() {
 }
 
 function verifyReleaseBuild(env) {
+  if (process.env.VERCEL_GIT_COMMIT_SHA !== undefined && !fullShaPattern.test(vercelSha)) {
+    throw new Error('Release preflight requires VERCEL_GIT_COMMIT_SHA to be a full Git SHA when supplied.');
+  }
+
   if (env.VITE_ENABLE_PRESSURE_LAB !== 'true' || env.VITE_ENABLE_SCALE !== 'true') {
     throw new Error('Release preflight requires camera pressure and scale support.');
   }
@@ -105,7 +109,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     mode === 'flairlab' ? basicSsl() : null,
-    mode === 'release' ? {
+    mode === 'release' || process.env.VERCEL_ENV === 'production' ? {
       name: 'release-preflight',
       configResolved(config) {
         const keys = [
@@ -115,6 +119,7 @@ export default defineConfig(({ mode }) => ({
         verifyReleaseBuild(Object.fromEntries(keys.map((key) => [
           key, JSON.parse(config.define[`import.meta.env.${key}`] ?? 'null'),
         ])));
+        config.logger.info('Release preflight passed for ' + diagnosticsBuildSha());
       },
     } : null,
     VitePWA({
