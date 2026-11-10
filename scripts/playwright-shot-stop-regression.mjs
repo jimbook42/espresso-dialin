@@ -229,7 +229,12 @@ try {
     await insights.getByText('Shot insights', { exact: true }).waitFor();
     await insights.getByText('Main takeaway', { exact: true }).waitFor();
     await insights.getByText('Supporting observations', { exact: true }).waitFor();
-    await insights.getByText('Next step', { exact: true }).waitFor();
+    if (shots[0].recommendation?.recommendedSetting) {
+      await insights.getByText('Next step', { exact: true }).waitFor();
+    } else {
+      assert.equal(await insights.getByText('Next step', { exact: true }).count(), 0,
+        'shots without a saved setting do not receive invented advice');
+    }
     const timeInsight = (await insights.textContent()).toLowerCase();
     const savedTimeRelation = shots[0].actualTimeS < 27 ? 'faster than the saved'
       : shots[0].actualTimeS > 32 ? 'slower than the saved' : 'within the saved';
@@ -238,13 +243,20 @@ try {
       await page.setViewportSize(viewport);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         `History insights overflow at ${viewport.width}px`);
-      await card.screenshot({ path: path.join(tmpdir(), `b09-shot-insights-${viewport.width}x${viewport.height}.png`) });
+      await insights.screenshot({ path: path.join(tmpdir(), `b09-shot-insights-${viewport.width}x${viewport.height}.png`) });
       await card.getByRole('button', { name: 'Weight', exact: true }).click();
       await card.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await card.getByRole('button', { name: 'Flow', exact: true }).click();
       await card.getByRole('img', { name: 'Flow rate (g/s)' }).waitFor();
     }
+    await page.getByTitle('Settings', { exact: true }).click();
+    await page.getByRole('button', { name: 'Dark', exact: true }).click();
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
+    assert.ok((await insights.textContent()).includes('Shot insights'));
+    await page.setViewportSize({ width: 412, height: 915 });
+    await insights.screenshot({ path: path.join(tmpdir(), 'b09-shot-insights-light-412x915.png') });
     const exported = await readDiagnostics(page);
     assert.equal(exported.shotId, shots[0].id);
     const gaps = exported.scaleDiagnostics.gaps;

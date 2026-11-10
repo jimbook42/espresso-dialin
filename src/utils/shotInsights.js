@@ -30,7 +30,8 @@ function savedRecommendationReason(reason) {
   if (typeof reason !== 'string' || !reason.trim()) return null;
   const plain = reason.trim()
     .replace(/^LIKELY OUTLIER\s*—\s*/i, '')
-    .replace(/GO\s+\d+\s+(?:MICRO\s+)?STEP(?:\(S\))?\s+(?:FINER|COARSER)\s*—\s*/gi, '')
+    .replace(/^KEEP GRIND\s*—\s*/i, '')
+    .replace(/GO\s+\d+\s+(?:MICRO\s+)?(?:STEP|SETTING)(?:\(S\))?\s+(?:FINER|COARSER)\s*—\s*/gi, '')
     .replace(/\s+Go substantially (?:finer|coarser)\.?/gi, '')
     .trim();
   return plain || null;
@@ -63,16 +64,13 @@ export function generateShotInsights({
   if (!pressureOnly && actualTime != null && targetMin != null && targetMax != null && targetMax >= targetMin) {
     if (actualTime < targetMin) {
       findings.push(insight('recipe-comparison', 1,
-        `Extraction time was faster than the saved ${seconds(targetMin)}–${seconds(targetMax)} range.`, 'saved-shot-target',
-        { contextualDetail: `Recorded time: ${seconds(actualTime)}.` }));
+        `Extraction time was faster than the saved ${seconds(targetMin)}–${seconds(targetMax)} range.`, 'saved-shot-target'));
     } else if (actualTime > targetMax) {
       findings.push(insight('recipe-comparison', 1,
-        `Extraction time was slower than the saved ${seconds(targetMin)}–${seconds(targetMax)} range.`, 'saved-shot-target',
-        { contextualDetail: `Recorded time: ${seconds(actualTime)}.` }));
+        `Extraction time was slower than the saved ${seconds(targetMin)}–${seconds(targetMax)} range.`, 'saved-shot-target'));
     } else {
       findings.push(insight('recipe-comparison', 1,
-        `Extraction finished within the saved ${seconds(targetMin)}–${seconds(targetMax)} time range.`, 'saved-shot-target',
-        { contextualDetail: `Recorded time: ${seconds(actualTime)}.` }));
+        `Extraction finished within the saved ${seconds(targetMin)}–${seconds(targetMax)} time range.`, 'saved-shot-target'));
     }
   } else if (!pressureOnly && actualTime != null) {
     findings.push(insight('shot-measurement', 2,
@@ -93,13 +91,6 @@ export function generateShotInsights({
     findings.push(insight('recipe-comparison', 2,
       `Recorded dose was ${grams(measurements.doseG)}; the saved target was ${grams(targetDose)}.`,
       'saved-shot-target'));
-  }
-
-  if (!pressureOnly && measurements.doseG != null && measurements.yieldG != null
-    && targetYield == null && targetMin == null && measurements.ratio != null) {
-    findings.push(insight('brew-ratio', 2,
-      `Recorded ${grams(measurements.doseG)} in and ${grams(measurements.yieldG)} out (1:${measurements.ratio.toFixed(1)}).`,
-      'saved-shot-measurement'));
   }
 
   if (!pressureOnly && shot.tasteProfile) {
@@ -172,14 +163,16 @@ export function generateShotInsights({
   const observations = recommendationInsight ? [...facts.slice(0, 1), recommendationInsight] : facts.slice(0, 2);
   const nextStep = recommendationInsight ? insight('next-step', 3,
     'If your setup has changed since this shot, check the current Dial recommendation before reusing this setting.',
-    'saved-recommendation', { contextualDetail: 'This reminder does not recalculate the saved recommendation.' }) : null;
+    'saved-recommendation') : null;
 
-  if (!main && observations.length === 0 && !nextStep) {
-    const fallback = pressureOnly
+  if (!main) {
+    const fallback = pressureOnly && !profile?.pressure?.length && !profile?.weight?.length
       ? insight('summary', 3, 'No pressure or scale measurements are available for this recording.', 'saved-shot-data')
-      : insight('summary', 3, 'No saved targets or measurements are available to compare for this shot.', 'saved-shot-data');
+      : pressureOnly
+        ? insight('summary', 3, 'This standalone pressure recording has no saved Dial target or taste feedback for comparison.', 'saved-shot-data')
+        : insight('summary', 3, 'No saved targets or measurements are available to compare for this shot.', 'saved-shot-data');
     findings.push(fallback);
-    return { mainTakeaway: fallback, observations: [], nextStep: null, insights: findings };
+    return { mainTakeaway: fallback, observations, nextStep, insights: findings };
   }
 
   return { mainTakeaway: main, observations, nextStep, insights: findings };

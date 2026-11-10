@@ -1,12 +1,12 @@
 # B09 handoff — Per-shot insights
 
-**Status: UI**
+**Status: TESTING**
 
 ## Checkpoint
 
 - Base `origin/main`: `95faa345d6ba9a69a43b7e373ab528b87043f503` (v4.14.17).
 - Branch: `b09/per-shot-insights`.
-- Latest pushed SHA: `b6c30879c7e71610a2e924f4a617dc8efbc5bc5c` (UI checkpoint with Sette setting fix; concise reason wording pending).
+- Latest pushed SHA: `f4e955a70426ed67a6624e439f14fc0af49dc52e` (saved recommendation reason formatting; latest UI refinements pending).
 - Production provenance: Vercel project `espresso-dialin` reports latest deployment `dpl_JD9n99iVtgXXcv8hxvS4zNzhUvDE` as READY/production but exposes no Git metadata and lists no project domains. The supplied expected production SHA could not be verified; no project settings or deployments were changed.
 
 ## Audit findings
@@ -36,8 +36,8 @@
 
 ## Completed / incomplete
 
-- Completed: baseline `main` SHA verified; `AGENTS.md` read from main; recommendation, save, taste, history, profile, and standalone pressure paths audited; B09 branch created; Vercel auto-build exclusion added; pure insight function and 10 focused tests pass; insights integrated into expanded History Shot profile; Playwright regression now asserts insights and checks 320/640 and 412/915 layout, with screenshots saved to the OS temp directory when run. Calculation runs only when the profile is expanded.
-- Incomplete: browser scripts and screenshot/layout validation; full regression; production build preflight; final version bump.
+- Completed: baseline `main` SHA verified; `AGENTS.md` read from main; recommendation, save, taste, history, profile, and standalone pressure paths audited; B09 branch created; Vercel auto-build exclusion added; pure insight function and 10 focused tests pass; insights integrated into expanded History Shot profile; mode-aware missing-data behavior, mobile widths, dark/light rendering, saved recommendation, and interruption status exercised. Calculation runs only when the profile is expanded.
+- Incomplete: final full regression after the latest wording cleanup; final build and screenshot inspection; final version bump and release-mode preflight with full SHA.
 - Known uncertainty: current production Git SHA/version cannot be established from Vercel's deployment metadata available in this session.
 - Blockers requiring owner input: none for development. Production provenance uncertainty should be resolved before any release review.
 
@@ -50,5 +50,6 @@
 - Added `src/utils/shotInsights.js` and `src/utils/shotInsights.vitest.js`.
 - Test command: `npm run test:vitest -- --run src/utils/shotInsights.vitest.js` — 1 file passed, 10 tests passed (exit 0).
 - Focused lint: `npx eslint src/utils/shotInsights.js src/utils/shotInsights.vitest.js src/components/ShotInsights.jsx src/components/ShotProfile.jsx` — exit 0. `git diff --check` — exit 0.
-- Browser follow-up: stop regression passes (6/6 scenarios, exit 0). It exposed Sette micro settings stored as letters; the formatter now preserves string micro labels (including `C`). Screenshot review showed verbose uppercase engine reason tokens, now removed from the display when they duplicate the saved setting; the remaining saved rationale is presented as a secondary detail. Focused insight tests pass (10/10).
-- Exact next steps: push the saved-reason wording update; rebuild with `VITE_ENABLE_PRESSURE_LAB=true` and `VITE_SCALE_ALLOW_SIM=true`; rerun the stop regression and shot-screen smoke; inspect fresh 320×640 and 412×915 screenshots; then run the staged full regression and production build preflight. Keep failures and pre-existing baselines distinct.
+- Browser follow-up: shot-screen smoke passes 7/7 (exit 0). Stop regression passes 6/6 (exit 0), including 320×640/412×915 no-overflow checks and a light-theme render. Latest screenshot files are saved under `%TEMP%` as `b09-shot-insights-320x640.png`, `b09-shot-insights-412x915.png`, and `b09-shot-insights-light-412x915.png`. Saved Sette micro labels (including letters) render correctly; uppercase engine action tokens are removed from the detail because the recommended setting is already shown.
+- Full Vitest (before final minor wording cleanup): 111 files passed, 2 skipped; 659 passed, 4 skipped (the expected conditional skips). Legacy `npm test` passed with `TZ=UTC` and `TZ=Pacific/Auckland` (both exit 0). Full `npm run lint` hit ESLint stack overflow while traversing generated `public/flair-pressure-lab/opencv.js`; focused ESLint on every changed source/test/script file passed (exit 0). Recheck focused tests after final refinements.
+- Exact next steps: push current insight wording/fallback refinements; rebuild with `VITE_ENABLE_PRESSURE_LAB=true` and `VITE_SCALE_ALLOW_SIM=true`; rerun focused tests, stop regression and inspect fresh screenshots; then repeat full Vitest, both legacy timezones and changed-file lint. Bump to v4.14.18, push final candidate, and run the release-mode production build preflight with pressure/scale enabled, simulations/replay disabled, and the exact full candidate SHA. Do not deploy or merge.

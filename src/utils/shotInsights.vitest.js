@@ -110,14 +110,18 @@ describe('generateShotInsights', () => {
       'sensor-availability', 'timing-context',
     ]));
     expect(generated.insights.find((item) => item.category === 'timing-context').message).toContain('approximately');
+    const interruptedOnly = result({ recordType: 'standalone-pressure' }, {
+      pressure: [{ tS: 0, bar: Number.NaN }], pressureInterrupted: true,
+    });
+    expect(interruptedOnly.mainTakeaway.message).toContain('no saved Dial target');
+    expect(interruptedOnly.observations.some((item) => item.category === 'sensor-availability')).toBe(true);
   });
 
   it('returns stable, bounded presentation slots for incomplete historical records', () => {
     const incomplete = generateShotInsights({ shot: {} });
     expect(incomplete.mainTakeaway.message).toContain('No saved targets or measurements');
     expect(incomplete.observations.length).toBeLessThanOrEqual(2);
-    expect(result({ actualTimeS: 0 }).insights.some((item) =>
-      item.message.includes('0 s') || item.contextualDetail?.includes('0 s'))).toBe(true);
+    expect(result({ actualTimeS: 0 }).mainTakeaway.message).toContain('faster than the saved');
     expect(generateShotInsights({ shot: shot({ targetTimeMinS: null, targetTimeMaxS: null }), profile: {} }))
       .toEqual(generateShotInsights({ shot: shot({ targetTimeMinS: null, targetTimeMaxS: null }), profile: {} }));
   });
