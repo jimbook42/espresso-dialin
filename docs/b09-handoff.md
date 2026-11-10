@@ -1,12 +1,12 @@
 # B09 handoff — Per-shot insights
 
-**Status: AUDIT**
+**Status: LOGIC**
 
 ## Checkpoint
 
 - Base `origin/main`: `95faa345d6ba9a69a43b7e373ab528b87043f503` (v4.14.17).
 - Branch: `b09/per-shot-insights`.
-- Latest pushed SHA: pending audit checkpoint.
+- Latest pushed SHA: `2e07c3bba8011a74ab85f52466f5c1a44177b636` (audit checkpoint; logic checkpoint pending).
 - Production provenance: Vercel project `espresso-dialin` reports latest deployment `dpl_JD9n99iVtgXXcv8hxvS4zNzhUvDE` as READY/production but exposes no Git metadata and lists no project domains. The supplied expected production SHA could not be verified; no project settings or deployments were changed.
 
 ## Audit findings
@@ -36,11 +36,18 @@
 
 ## Completed / incomplete
 
-- Completed: baseline `main` SHA verified; `AGENTS.md` read from main; recommendation, save, taste, history, profile, and standalone pressure paths audited; B09 branch created; Vercel auto-build exclusion added.
-- Incomplete: insight logic, unit tests, History UI, mobile/browser validation, regression, production build preflight, final version bump.
+- Completed: baseline `main` SHA verified; `AGENTS.md` read from main; recommendation, save, taste, history, profile, and standalone pressure paths audited; B09 branch created; Vercel auto-build exclusion added; pure insight function and 10 focused tests pass. It uses only shot-level targets, factual taste, a saved recommendation, saved learning metadata, and supplied B08 profile measurements. There are no recommendation-engine calls or storage access.
+- Incomplete: History UI checkpoint and interaction/browser validation; full regression; production build preflight; final version bump.
 - Known uncertainty: current production Git SHA/version cannot be established from Vercel's deployment metadata available in this session.
 - Blockers requiring owner input: none for development. Production provenance uncertainty should be resolved before any release review.
 
 ## Existing behavior deliberately preserved
 
 - No change to grinder recommendation generation, thresholds, sensitivities, saved recommendation objects, Dexie schema, historical records, exports, recording lifecycle, or Vercel project settings.
+
+## Logic checkpoint details
+
+- Added `src/utils/shotInsights.js` and `src/utils/shotInsights.vitest.js`.
+- Test command: `npm run test:vitest -- --run src/utils/shotInsights.vitest.js` — 1 file passed, 10 tests passed (exit 0).
+- Focused lint: `npx eslint src/utils/shotInsights.js src/utils/shotInsights.vitest.js src/components/ShotInsights.jsx src/components/ShotProfile.jsx` — exit 0. `git diff --check` — exit 0.
+- Exact next steps: push the logic checkpoint; then integrate `ShotInsights` inside expanded `ShotProfile`, verify target/recommendation and mode rendering, extend any missing test cases, and commit/push the UI checkpoint.
