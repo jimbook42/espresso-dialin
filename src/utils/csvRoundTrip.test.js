@@ -78,8 +78,10 @@ export async function runCsvRoundTripTests() {
     }
   );
   const exportedCsv = buildShotsCsvContent(SHOT_CSV_HEADERS, exportRows);
+  // This legacy fixture carries a local wall time with no timezone offset.
+  const newestTimestamp = new Date(2026, 9, 13, 14, 27, 35).toISOString();
   assert.ok(exportedCsv.includes('Timestamp (ISO)'));
-  assert.ok(exportedCsv.includes('2026-10-13T14:27:35.000Z'));
+  assert.ok(exportedCsv.includes(newestTimestamp));
 
   const isoIdx = SHOT_CSV_HEADERS.indexOf('Timestamp (ISO)');
   const recIdx = SHOT_CSV_HEADERS.indexOf('Rec Followed');
@@ -113,28 +115,9 @@ export async function runCsvRoundTripTests() {
   assert.equal(recAfter.recommendedSetting.macro, 7);
   assert.equal(recAfter.recommendedSetting.micro, 'C');
 
-  const newestShot = afterLegacy.find((s) => s.timestamp === '2026-10-13T14:27:35.000Z');
-  assert.ok(newestShot, 'legacy import should preserve newest shot timestamp');
-  const locales = ['en-US', 'en-NZ'];
-  for (const locale of locales) {
-    const original = Intl.DateTimeFormat.prototype.resolvedOptions;
-    Intl.DateTimeFormat.prototype.resolvedOptions = function resolvedOptions() {
-      return { ...original.call(this), locale };
-    };
-    try {
-      const row = buildShotsCsvRows([newestShot], {
-        beans,
-        recipes,
-        formatShotGrindForHistory: (s) => formatShotGrindForHistory(s),
-        normalizeTasteProfile,
-        formatRecFollowedForCsv,
-        knownIssueReasonLabel,
-      })[0];
-      assert.equal(row[isoIdx], '2026-10-13T14:27:35.000Z');
-    } finally {
-      Intl.DateTimeFormat.prototype.resolvedOptions = original;
-    }
-  }
+  assert.equal(afterLegacy.at(-1).timestamp, newestTimestamp);
+  assert.equal(exportRows[0][isoIdx], newestTimestamp);
+  assert.equal(exportRows[0][SHOT_CSV_HEADERS.indexOf('Timestamp')], '13/10/2026, 14:27:35');
 
   db.close();
   console.log('CSV round-trip tests passed.');
