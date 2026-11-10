@@ -2552,10 +2552,9 @@ function completeReading({
   }
   const settled = tracker.getPose() || center;
   const minDim = Math.min(videoWidth, videoHeight);
-  // A printed-face registration is the scale. The legacy rim search can stay
-  // `held` for the whole clip without ever accepting an orientation candidate.
-  // That hold must not veto a face the template has already accepted.
-  const printed = orientation.dialRegistered === true;
+  // Canonical scale registration can supersede a rim hold. A captured legacy
+  // reference only establishes the baseline and can still reject a new turn.
+  const printed = canonicalDial && orientation.dialRegistered === true;
   const pressureHold = printed ? false : Boolean(position.held || orientation.pressureHold);
   const publishedNeedle = pressureHold && orientation.stableNeedleDeg != null
     ? orientation.stableNeedleDeg

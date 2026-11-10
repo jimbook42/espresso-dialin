@@ -743,6 +743,10 @@ export function runFlairPressureLabTests() {
   assert.equal(falseRead.gauge.held, false);
   const falseAgain = analyzeGaugeImage(falseSpin, motionTracker);
   assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, falseAgain.gauge.rotationDeg)) < 1.5, `repeated false spin applied ${falseAgain.gauge.rotationDeg}`);
+  assert.equal(falseAgain.gauge.posePending, true);
+  assert.equal(falseAgain.gauge.pressureHold, true, 'repeated false spin became a pressure measurement');
+  assert.ok(Math.abs(wrapDelta(falseRead.relativeAngleDeg, falseAgain.relativeAngleDeg)) < 0.01,
+    'repeated false spin changed the held needle angle');
   const yanked = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 97, rotationDeg: 0 });
   const yankRead = analyzeGaugeImage(yanked, motionTracker);
   assert.ok(Math.abs(wrapDelta(settledMotion.gauge.rotationDeg, yankRead.gauge.rotationDeg)) < 2, `needle moved the gauge to ${yankRead.gauge.rotationDeg}`);

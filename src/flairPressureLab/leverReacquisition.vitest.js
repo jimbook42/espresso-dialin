@@ -5,7 +5,10 @@ import { calibrateFromTaps, createCalibratedTracker, readCalibratedFrame } from 
 import { createShotLabR7Publisher } from './shotLabR7Live.js';
 import { PROCESS_INTERVAL_MS, wrap360 } from './gaugeConfig.js';
 import { createPreShotDialVerdictSampler } from './preShotDialCheck.js';
-import { createPreShotReadableWindow, samplePreShotDialPose } from './preShotReadableStatus.js';
+import { createPreShotReadableWindow, isRecordedSampleConfident, samplePreShotDialPose } from './preShotReadableStatus.js';
+import { createShotLabPressureSession } from './shotLabPressureSession.js';
+import { buildLabPressureShotFields } from './labPressureShotFields.js';
+import { currentTapModel } from './tapReadingPublisher.js';
 import * as discovery from './gaugeTrack.js';
 
 beforeAll(async () => {
@@ -61,12 +64,12 @@ function setup() {
     sampler: createPreShotDialVerdictSampler(), readable: createPreShotReadableWindow() };
 }
 
-function step(state, scene = {}, interval = PROCESS_INTERVAL_MS) {
+function step(state, scene = {}, interval = PROCESS_INTERVAL_MS, model = {}) {
   const image = dial({ angle: 214, ...scene, serial: ++state.serial });
   const started = performance.now();
   const read = readCalibratedFrame(image, state.tracker);
   const processMs = performance.now() - started;
-  const gated = state.publisher.stepFrame({ read, nowMs: state.time, capturedAtMs: state.time });
+  const gated = state.publisher.stepFrame({ ...model, read, nowMs: state.time, capturedAtMs: state.time });
   const pose = samplePreShotDialPose({ ...state, read, nowMs: state.time });
   state.readable.note(gated, state.time, read);
   const result = { read, gated, pose, processMs, time: state.time };
@@ -161,6 +164,46 @@ describe('lever movement through the production tap reader and R7 publisher', { 
       // explicitly non-fresh display hold. Pose loss never retains a bar.
       if (frame.read.lost) expect(frame.gated.bar).toBeNull();
     }
+  });
+
+  it('keeps a rejected orientation out of the live display and saved curve, even with a recent model result', () => {
+    const state = setup();
+    const recording = createShotLabPressureSession();
+    state.publisher.beginShot(state.time);
+    recording.begin(state.time);
+    const capture = ({ read, gated }) => {
+      if (!read.lost && !read.duplicate && isRecordedSampleConfident(gated)) {
+        recording.pushRaw(gated.bar, true, gated.measuredAtMs);
+      }
+    };
+    const first = step(state);
+    expect(first.gated).toMatchObject({ fresh: true, displayBar: first.gated.bar });
+    expect(first.gated.bar).toBeCloseTo(5, 0);
+    capture(first);
+    // Simulate an inference completing for the last verified frame after the pose changes.
+    const model = {
+      r5Registered: true,
+      r5Corroborated: true,
+      r5Bar: first.read.bar,
+      r5Angle: first.read.needleDeg,
+      r5Conf: 0.9,
+      r5CapturedAtMs: first.time,
+      r5Pose: { hub: first.read.hub, radius: first.read.radius, shiftDeg: first.read.shiftDeg, epoch: first.read.poseEpoch },
+    };
+    expect(currentTapModel({ ...model, read: first.read, nowMs: first.time }, first.time)).not.toBeNull();
+    const scene = { x: 320, y: 170, radius: 49, rotation: 70 };
+    for (let i = 0; i < 4; i++) {
+      const rejected = step(state, scene, PROCESS_INTERVAL_MS, i === 0 ? {} : model);
+      expect(rejected.read.lost).toBe(true);
+      expect(rejected.gated).toMatchObject({ bar: null, displayBar: null, fresh: false, held: false, measuredAtMs: null });
+      capture(rejected);
+    }
+    const { fields } = buildLabPressureShotFields({
+      labCameraPressureEnabled: true,
+      labPressureShotMetrics: recording.getShotMetrics(),
+    });
+    expect(fields.labPressureCurve).toEqual([{ tS: 0, bar: first.gated.bar }]);
+    expect(fields.labPressurePeakBar).toBe(first.gated.bar);
   });
 
   it('recovers the pre-shot verdict at the raised-lever position and still reads after Start', () => {
