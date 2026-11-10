@@ -38,4 +38,20 @@ describe('buildLabPressureShotFields', () => {
     expect(fields.labPressureMissingReason).toBe('no_curve_after_filter');
     warn.mockRestore();
   });
+
+  it('keeps an empty stop snapshot from claiming a different capture', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const capture = vi.fn(() => ({ labPressureCurve: [{ tS: 1, bar: 6 }] }));
+      const { fields } = buildLabPressureShotFields({
+        labCameraPressureEnabled: true,
+        labPressureShotMetrics: { labPressureRawSampleCount: 4 },
+        captureLabPressureShotMetrics: capture,
+      });
+      expect(capture).not.toHaveBeenCalled();
+      expect(fields).toEqual({ labPressureMissingReason: 'no_curve_after_filter' });
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });

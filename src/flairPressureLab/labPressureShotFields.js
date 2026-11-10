@@ -14,7 +14,7 @@ export function labPressureMetricsHaveCurve(metrics) {
  * @param {{
  *   labCameraPressureEnabled: boolean,
  *   labPressureShotMetrics: object | null,
- *   captureLabPressureShotMetrics: () => object,
+ *   captureLabPressureShotMetrics?: () => object,
  * }} opts
  * @returns {{ fields: object, missingReason?: string }}
  */
@@ -27,13 +27,10 @@ export function buildLabPressureShotFields({
     return { fields: {} };
   }
 
-  let metrics = labPressureMetricsHaveCurve(labPressureShotMetrics)
-    ? labPressureShotMetrics
-    : null;
-  if (!metrics) {
+  let metrics = labPressureShotMetrics;
+  if (metrics == null && captureLabPressureShotMetrics) {
     try {
-      const captured = captureLabPressureShotMetrics();
-      if (labPressureMetricsHaveCurve(captured)) metrics = captured;
+      metrics = captureLabPressureShotMetrics();
     } catch {
       // ignore
     }
@@ -51,15 +48,7 @@ export function buildLabPressureShotFields({
     };
   }
 
-  let missingReason = 'no_samples';
-  try {
-    const retry = captureLabPressureShotMetrics();
-    if (retry?.labPressureRawSampleCount > 0) {
-      missingReason = 'no_curve_after_filter';
-    }
-  } catch {
-    // keep no_samples
-  }
+  const missingReason = metrics?.labPressureRawSampleCount > 0 ? 'no_curve_after_filter' : 'no_samples';
   console.warn('[lab-pressure] shot saved without pressure curve:', missingReason);
   return {
     fields: { labPressureMissingReason: missingReason },

@@ -48,6 +48,7 @@ async function seed(page, settings) {
       const tx = db.transaction(['settings', 'beans', 'recipes'], 'readwrite');
       tx.objectStore('settings').put({
         id: 'global', grinderModel: 'Sette 270Wi', lastSelectedBeanId: 'audit-bean',
+        experiencePreference: 'combined',
         smartScaleDeviceId: 'timemore-dot', preInfusionEnabled: false, shotStartCountdown: 0,
         ...settings,
       });
@@ -260,7 +261,7 @@ try {
     assert.equal(exported.final.savedYieldG, 35.5);
     assert.equal(exported.final.yieldSettlementCompleted, true);
   });
-  await run('countdown is excluded and manual pre-infusion is separate from extraction', async ({ page, start, stop, readTime, savedTime }) => {
+  await run('countdown is excluded and manual pre-infusion is separate from extraction', async ({ page, start, stop, readTime, savedTime, notify }) => {
     const ready = page.getByText('Get ready', { exact: true });
     await start.click();
     await ready.waitFor();
@@ -280,15 +281,41 @@ try {
     const endPreinfusion = page.getByRole('button', { name: 'End pre-infusion', exact: true });
     await endPreinfusion.waitFor();
     assert.ok(await readTime() < 0.6, 'the countdown does not advance the shot clock');
-    await page.clock.runFor(2250);
+    if (withPressurePreview) {
+      await notify(0, 1100);
+      await notify(0, 1150);
+    } else await page.clock.runFor(2250);
     await endPreinfusion.click();
     await stop.waitFor();
     assert.ok(await readTime() < 0.4, 'extraction display begins at zero');
-    await page.clock.runFor(2250);
+    if (withPressurePreview) {
+      for (let i = 0; i < 15; i++) await notify(i * 0.8, 150);
+    } else await page.clock.runFor(2250);
     await stop.click();
     assert.equal(await savedTime(), 2);
+    if (withPressurePreview) {
+      await page.clock.runFor(2000);
+      await logShot(page);
+      const [shot] = await readShots(page);
+      const exported = await readDiagnostics(page);
+      const { pressureOffsetMs, appExtractionOffsetMs, extractionOffsetMs } = exported.timeline;
+      assert.equal(exported.pressureSource, 'simulated');
+      assert.ok(Math.abs(pressureOffsetMs) < 250);
+      assert.ok(appExtractionOffsetMs > 2000 && appExtractionOffsetMs < 3000);
+      assert.ok(Math.abs(appExtractionOffsetMs - extractionOffsetMs) < 250);
+      const pressureTimes = shot.labPressureCurve.map(({ tS }) => tS * 1000 + pressureOffsetMs);
+      assert.ok(pressureTimes[0] < extractionOffsetMs && pressureTimes.at(-1) > extractionOffsetMs);
+      assert.ok(shot.scaleFlowCurve.length > 0);
+      const scaleTimes = shot.scaleFlowCurve.map(({ tS }) => tS * 1000 + extractionOffsetMs);
+      assert.ok(scaleTimes[0] >= extractionOffsetMs);
+      assert.ok(exported.scaleDiagnostics.rawWeightSamples.some(({ tMs }) => tMs < extractionOffsetMs));
+      assert.equal(exported.final.savedYieldG, shot.actualYieldG);
+      return { pressureOffsetMs, appExtractionOffsetMs, extractionOffsetMs, savedExtraction: shot.actualTimeS };
+    }
     return { savedExtraction: await savedTime() };
-  }, { withPlateau: false, settings: { shotStartCountdown: 'on', preInfusionEnabled: true } });
+  }, { withPlateau: false, settings: {
+    shotStartCountdown: 'on', preInfusionEnabled: true, labCameraPressureEnabled: withPressurePreview,
+  } });
 } finally {
   await browser?.close();
   await server.kill();

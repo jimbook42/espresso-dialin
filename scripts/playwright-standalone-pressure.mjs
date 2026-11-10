@@ -4,6 +4,8 @@ import { chromium } from 'playwright';
 import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
 
 const camera = process.argv.includes('--camera');
+const combined = process.argv.includes('--combined');
+if (combined && !camera) throw new Error('Use --camera with --combined.');
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const fixture = '/b06-local-gauge-fixture.mp4';
 const fixturePath = process.env.B06_CAMERA_CLIP;
@@ -41,8 +43,8 @@ async function diagnostics(page, card) {
   return JSON.parse(await readFile(await download.path(), 'utf8'));
 }
 
-async function calibrate(page) {
-  await page.getByRole('button', { name: 'Calibrate gauge', exact: true }).click();
+async function calibrate(page, { sheetOpen = false } = {}) {
+  if (!sheetOpen) await page.getByRole('button', { name: 'Calibrate gauge', exact: true }).click();
   await page.getByText(/Frame held.*centre marker/i).waitFor();
   const viewport = page.getByTestId('gauge-tap-viewport');
   for (const key of ['centre', 'five', 'ten']) {
@@ -56,6 +58,29 @@ async function calibrate(page) {
     await page.getByRole('button', { name: 'Confirm tap' }).click();
   }
   await page.getByRole('button', { name: 'Accept calibration' }).click();
+}
+
+async function interruptCamera(page) {
+  const interruptedTrackId = await page.getByTestId('shot-reader-video').evaluate((video) => {
+    const [track] = video.srcObject.getVideoTracks();
+    track.stop();
+    track.dispatchEvent(new Event('ended'));
+    return track.id;
+  });
+  const retry = page.getByRole('button', { name: 'Retry camera' });
+  await page.waitForFunction((oldTrackId) => {
+    const track = document.querySelector('[data-testid="shot-reader-video"]').srcObject?.getVideoTracks()[0];
+    return (track?.id !== oldTrackId && track?.readyState === 'live')
+      || [...document.querySelectorAll('button')].some((button) => button.textContent === 'Retry camera');
+  }, interruptedTrackId);
+  if (await retry.isVisible()) {
+    await page.waitForTimeout(500);
+    await retry.click();
+  }
+  await page.waitForFunction((oldTrackId) => {
+    const track = document.querySelector('[data-testid="shot-reader-video"]').srcObject?.getVideoTracks()[0];
+    return track?.id !== oldTrackId && track?.readyState === 'live';
+  }, interruptedTrackId);
 }
 
 async function setup(viewport) {
@@ -77,6 +102,16 @@ async function setup(viewport) {
         throw new DOMException('Injected write failure', 'QuotaExceededError');
       }
       return add.apply(this, args);
+    };
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args) {
+      if (this.name === 'lastReplay' && window.failReplayWrite) {
+        this.transaction.abort();
+        window.failReplayWrite = false;
+        window.replayWriteFailed = true;
+        throw new DOMException('Injected replay write failure', 'QuotaExceededError');
+      }
+      return put.apply(this, args);
     };
     if (!fixture) return;
     navigator.mediaDevices.getUserMedia = async () => {
@@ -116,6 +151,29 @@ async function setup(viewport) {
     };
   }, { fixture: camera ? fixture : null, calibration });
   await page.goto(server.url);
+  if (combined) {
+    await page.getByRole('radio', { name: 'Combined', exact: true }).waitFor();
+    await page.evaluate(() => new Promise((resolve, reject) => {
+      const open = indexedDB.open('EspressoDialDB');
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction(['settings', 'beans', 'recipes'], 'readwrite');
+        tx.objectStore('settings').put({
+          id: 'global', experiencePreference: 'combined', grinderModel: 'Sette 270Wi',
+          lastSelectedBeanId: 'camera-bean', preInfusionEnabled: false, shotStartCountdown: 0,
+        });
+        tx.objectStore('beans').put({ id: 'camera-bean', name: 'Camera coffee', roastType: 'Medium' });
+        tx.objectStore('recipes').put({ id: 'camera-recipe', beanId: 'camera-bean',
+          targetTimeMinS: 27, targetTimeMaxS: 32, targetDoseG: 18, targetYieldG: 36 });
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onabort = () => { db.close(); reject(tx.error); };
+      };
+    }));
+    await page.reload();
+    await page.getByRole('button', { name: 'Enable camera pressure (optional)' }).click();
+    return page;
+  }
   await page.getByRole('radio', { name: 'Pressure Tracker', exact: true }).check();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   const start = page.getByRole('button', { name: 'Start recording' });
@@ -136,11 +194,87 @@ async function setup(viewport) {
   return page;
 }
 
+async function checkCombinedCamera(page, verifyFailedReplay) {
+  const start = page.getByRole('button', { name: 'Start', exact: true });
+  await start.click();
+  await calibrate(page, { sheetOpen: true });
+  await page.getByText(/Camera pressure on · Gauge calibrated/).waitFor();
+  await page.locator('[data-dial-found="true"]').waitFor({ timeout: 20000 });
+  await start.click();
+  const stop = page.getByRole('button', { name: 'Stop shot', exact: true });
+  await stop.waitFor();
+  await page.waitForTimeout(1500);
+  await interruptCamera(page);
+  await page.waitForTimeout(1300);
+  await stop.click();
+  await page.getByText(/Peak pressure .* bar/).waitFor();
+  await page.getByTestId('dial-yield-tile').locator('input').fill('36');
+  await page.getByRole('button', { name: 'Balanced', exact: true }).click();
+  await page.getByRole('button', { name: 'Rate shot 4 out of 5' }).click();
+  const log = page.getByRole('button', { name: 'Log shot & calculate grind adjustment' });
+  await page.evaluate(() => { window.failShotWrite = true; });
+  await log.click();
+  await page.getByText(/Error saving to database/).waitFor();
+  assert.deepEqual((await readRows(page)).shots, []);
+  await log.evaluate((button) => { button.form.requestSubmit(); button.form.requestSubmit(); });
+  const history = page.getByRole('navigation').getByRole('button', { name: 'History', exact: true });
+  await history.click();
+  const card = page.getByTestId('history-shot-card').filter({ hasText: 'Camera coffee' });
+  await card.getByTestId('shot-pressure-chart').waitFor();
+  const { shots } = await readRows(page);
+  assert.equal(shots.length, 1);
+  const [shot] = shots;
+  assert.equal(shot.beanId, 'camera-bean');
+  assert.equal(shot.recordType, undefined);
+  assert.equal(shot.shotRating, 4);
+  assert.ok(shot.actualTimeS >= 2);
+  assert.ok(shot.labPressureCurve.length > 0);
+  const exported = await diagnostics(page, card);
+  assert.equal(exported.shotId, shot.id);
+  assert.equal(exported.pressureSource, 'camera');
+  assert.deepEqual(exported.labPressureCurve, shot.labPressureCurve);
+  for (let visit = 0; visit < 2; visit++) {
+    if (visit) {
+      await page.reload();
+      await history.click();
+      assert.deepEqual((await readRows(page)).shots, shots);
+      assert.match((await diagnostics(page, card)).stopDiagnosticsAvailability, /page reloaded/);
+    }
+    await card.getByRole('button', { name: 'Play shot replay' }).click();
+    await page.getByRole('dialog', { name: 'Shot replay' }).waitFor();
+    await page.getByRole('button', { name: 'Close replay' }).click();
+  }
+  if (!verifyFailedReplay) return;
+  await page.getByRole('navigation').getByRole('button', { name: 'Dial', exact: true }).click();
+  await page.locator('[data-dial-found="true"]').waitFor({ timeout: 20000 });
+  await start.click();
+  await page.getByRole('button', { name: 'Yes, start shot' }).click();
+  await stop.waitFor();
+  await page.waitForTimeout(2500);
+  await stop.click();
+  await page.getByTestId('dial-yield-tile').locator('input').fill('34');
+  await page.getByRole('button', { name: 'Balanced', exact: true }).click();
+  await page.evaluate(() => { window.failReplayWrite = true; });
+  await log.click();
+  await history.click();
+  const afterFailure = (await readRows(page)).shots;
+  assert.equal(afterFailure.length, 2);
+  assert.equal(await page.evaluate(() => window.replayWriteFailed), true);
+  assert.ok(afterFailure.find(({ id }) => id !== shot.id).labPressureCurve.length > 0);
+  await page.getByTestId('history-shot-card').getByRole('button', { name: 'Play shot replay' }).waitFor();
+}
+
 try {
   await waitForServer(server.url);
   browser = await chromium.launch();
   for (const [viewport, withScale] of [[{ width: 320, height: 640 }, false], [{ width: 412, height: 915 }, true]]) {
     const page = await setup(viewport);
+    if (combined) {
+      await checkCombinedCamera(page, withScale);
+      await page.close();
+      console.log(`PASS ${viewport.width}×${viewport.height} Combined recorded gauge, save retry, diagnostics and replay`);
+      continue;
+    }
     const start = page.getByRole('button', { name: 'Start recording' });
     if (camera) {
       assert.equal(await start.isDisabled(), true);
@@ -149,26 +283,7 @@ try {
       await start.click();
       await page.getByRole('button', { name: 'Stop recording' }).waitFor();
       await page.waitForTimeout(1500);
-      const interruptedTrackId = await page.getByTestId('shot-reader-video').evaluate((video) => {
-        const [track] = video.srcObject.getVideoTracks();
-        track.stop();
-        track.dispatchEvent(new Event('ended'));
-        return track.id;
-      });
-      const retry = page.getByRole('button', { name: 'Retry camera' });
-      await page.waitForFunction((oldTrackId) => {
-        const track = document.querySelector('[data-testid="shot-reader-video"]').srcObject?.getVideoTracks()[0];
-        return (track?.id !== oldTrackId && track?.readyState === 'live')
-          || [...document.querySelectorAll('button')].some((button) => button.textContent === 'Retry camera');
-      }, interruptedTrackId);
-      if (await retry.isVisible()) {
-        await page.waitForTimeout(500);
-        await retry.click();
-      }
-      await page.waitForFunction((oldTrackId) => {
-        const track = document.querySelector('[data-testid="shot-reader-video"]').srcObject?.getVideoTracks()[0];
-        return track?.id !== oldTrackId && track?.readyState === 'live';
-      }, interruptedTrackId);
+      await interruptCamera(page);
       await page.waitForTimeout(1300);
     } else {
       await page.getByText('Simulated pressure preview', { exact: true }).waitFor();

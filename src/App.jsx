@@ -412,6 +412,9 @@ export default function App() {
   const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
   const shotDiagnosticsRef = useRef(null);
   const timerStartingRef = useRef(false);
+  const dialSaveRef = useRef(false);
+  const [dialSaving, setDialSaving] = useState(false);
+  const [dialShotPending, setDialShotPending] = useState(false);
   const standaloneCaptureRef = useRef(null);
   const standaloneSaveRef = useRef(false);
   const [pressureState, setPressureState] = useState('idle');
@@ -868,6 +871,7 @@ export default function App() {
   const handleStartTimer = useCallback(async ({ fromBrewGuide = false, tareAlreadyDone = false, standalone = false } = {}) => {
     if (timerStartingRef.current || shotStartedAtRef.current != null || yieldSettleTimerRef.current) return;
     timerStartingRef.current = true;
+    if (!fromBrewGuide && !standalone) setDialShotPending(true);
     if (!tareAlreadyDone || !shotDiagnosticsRef.current) prepareShotDiagnostics();
     setWeighingViewOpen(false);
     if (fromBrewGuide) syncBrewGuideTimerActive(true);
@@ -1125,9 +1129,7 @@ export default function App() {
     if (labCameraPressureEnabled) {
       try {
         const labMetrics = labPressureMetricsGetterRef.current?.() ?? {};
-        setLabPressureShotMetrics(
-          labMetrics?.labPressureCurve?.length ? labMetrics : null
-        );
+        setLabPressureShotMetrics(labMetrics);
       } catch {
         setLabPressureShotMetrics(null);
       }
@@ -1175,9 +1177,7 @@ export default function App() {
     if (labCameraPressureEnabled) {
       try {
         const labMetrics = labPressureMetricsGetterRef.current?.() ?? {};
-        setLabPressureShotMetrics(
-          labMetrics?.labPressureCurve?.length ? labMetrics : null
-        );
+        setLabPressureShotMetrics(labMetrics);
       } catch {
         setLabPressureShotMetrics(null);
       }
@@ -1203,6 +1203,7 @@ export default function App() {
   }, [yieldSettleActive, timemoreScale.liveRelativeWeightG, timemoreScale]);
 
   const handleCancelTimer = () => {
+    setDialShotPending(false);
     shotDiagnosticsRef.current = null;
     cancelShotCountdown();
     clearYieldSettleTimer();
@@ -1224,6 +1225,7 @@ export default function App() {
   };
 
   const handleResetTimer = () => {
+    setDialShotPending(false);
     shotDiagnosticsRef.current = null;
     cancelShotCountdown();
     setFrozenShotWeightG(null);
@@ -1238,6 +1240,23 @@ export default function App() {
       void timemoreScale.notifyShotCancelled();
     }
     labShotReplayDiscardRef.current?.();
+  };
+
+  const discardDialShot = () => {
+    if (dialSaveRef.current || yieldSettleTimerRef.current) return;
+    if (dialShotPending && !window.confirm('Discard this unsaved shot?')) return;
+    handleResetTimer();
+    if (!dialShotPending) return;
+    setActualTimeS('');
+    setActualYieldG('');
+    setTasteProfile('');
+    setShotRating(null);
+    setNotes('');
+    setExcludeFromLearning(false);
+    setKnownIssueReason('puck_prep');
+    setValidationError('');
+    setScaleShotMetrics(null);
+    setLabPressureShotMetrics(null);
   };
 
   const stashPendingGrind = (model, beanId, grindFields) => {
@@ -1452,15 +1471,19 @@ export default function App() {
   };
 
   const openSettings = () => {
-    if (pressureState !== 'idle') return;
+    if (pressureState !== 'idle' || (dialShotPending && !timerRunning)) return;
     setExperienceDraft(null);
     setExperienceSaveFailed(false);
     setIsSettingsOpen(true);
   };
 
+  const experienceSwitchLocked = dialShotPending || pressureState !== 'idle'
+    || timerRunning || shotCountdownValue != null || countdownHandoffPending || yieldSettleActive;
+
   const saveAndCloseSettings = async () => {
     setExperienceSaveFailed(false);
     if (experienceDraft && experienceDraft !== experience) {
+      if (experienceSwitchLocked || timerStartingRef.current) return;
       setSavingExperience(true);
       try {
         await patchGlobalSettings(db, { experiencePreference: experienceDraft });
@@ -1640,7 +1663,7 @@ export default function App() {
 
   const requestStartTimerWithLab = useCallback(
     (opts = {}) => {
-      if (shotCountdownValue != null || timerRunning) return;
+      if (shotCountdownValue != null || timerRunning || dialShotPending || dialSaveRef.current) return;
       if (isShotScreenLayoutTest()) {
         requestStartTimer(opts);
         return;
@@ -1665,19 +1688,11 @@ export default function App() {
       }
       requestStartTimer(opts);
     },
-    [shotCountdownValue, timerRunning, settingsSetting, requestStartTimer],
+    [shotCountdownValue, timerRunning, dialShotPending, settingsSetting, requestStartTimer],
   );
 
-  const captureLabPressureShotMetrics = () => {
-    try {
-      return labPressureMetricsGetterRef.current?.() ?? {};
-    } catch {
-      return {};
-    }
-  };
-
   const startStandalonePressure = () => {
-    if (pressureState !== 'idle' || timerRunning || timerStartingRef.current || yieldSettleTimerRef.current || shotCountdownValue != null) return;
+    if (experienceSwitchLocked || dialSaveRef.current || timerStartingRef.current || yieldSettleTimerRef.current) return;
     setPressureDetails({ name: '', dose: '', yield: '', rating: '', notes: '' });
     setPressureError('');
     setPressureState('starting');
@@ -2082,7 +2097,8 @@ export default function App() {
 
   const handleLogShot = async (e) => {
     e.preventDefault();
-    if (yieldSettleActive) return;
+    if (dialSaveRef.current || timerStartingRef.current || shotStartedAtRef.current != null
+      || shotCountdownValue != null || countdownHandoffPending || yieldSettleTimerRef.current) return;
     setValidationError('');
 
     const parsedTime = parseInt(actualTimeS, 10);
@@ -2191,9 +2207,8 @@ export default function App() {
     const savedTasteProfile = tasteProfileForSave(tasteProfile);
 
     const labPressureSave = buildLabPressureShotFields({
-      labCameraPressureEnabled,
+      labCameraPressureEnabled: labPressureShotMetrics != null || (dialShotPending && labCameraPressureEnabled),
       labPressureShotMetrics,
-      captureLabPressureShotMetrics,
     });
 
     const rec = calculateRecommendation(
@@ -2265,7 +2280,10 @@ export default function App() {
     };
 
     const trace = shotDiagnosticsRef.current;
-    const commitReplay = labShotReplayCommitRef.current?.capture();
+    const commitReplay = (dialShotPending || labPressureShotMetrics != null)
+      ? labShotReplayCommitRef.current?.capture() : null;
+    dialSaveRef.current = true;
+    setDialSaving(true);
     try {
       await db.shots.add(shotRecord);
       trace?.save(shotRecord);
@@ -2276,24 +2294,28 @@ export default function App() {
           console.warn('[lab-pressure] replay commit failed (shot curve kept):', err);
         }
       }
-      const displayHoldClear = clearRecommendationCardDisplayHoldPatch(
-        appSettings,
-        activeBean.id,
-        logGrinderModel
-      );
-      if (Object.keys(displayHoldClear).length > 0) {
-        await patchGlobalSettings(db, displayHoldClear);
+      try {
+        const displayHoldClear = clearRecommendationCardDisplayHoldPatch(
+          appSettings,
+          activeBean.id,
+          logGrinderModel
+        );
+        if (Object.keys(displayHoldClear).length > 0) {
+          await patchGlobalSettings(db, displayHoldClear);
+        }
+        await persistGrindUiToSettings(
+          logGrinderModel,
+          grindUiSnapshotFromControls({
+            setteMacro: finalMacro,
+            setteMicro: finalMicro,
+            sunbeamSetting: finalSunbeam,
+            nicheZeroSetting: finalNicheZero,
+            customGrindValue: finalCustomGrind,
+          })
+        );
+      } catch (err) {
+        console.warn('Shot saved but grind preferences could not be updated:', err);
       }
-      await persistGrindUiToSettings(
-        logGrinderModel,
-        grindUiSnapshotFromControls({
-          setteMacro: finalMacro,
-          setteMicro: finalMicro,
-          sunbeamSetting: finalSunbeam,
-          nicheZeroSetting: finalNicheZero,
-          customGrindValue: finalCustomGrind,
-        })
-      );
       clearPendingGrind(activeBean.id, grinderModel);
       setApplyRecConfirmation('');
       setPendingBasketAdjustment(null);
@@ -2338,6 +2360,9 @@ export default function App() {
     } catch (err) {
       console.error("Database save failed:", err);
       setValidationError(`Error saving to database: ${err.message || 'Unknown IndexedDB Error.'}`);
+    } finally {
+      dialSaveRef.current = false;
+      setDialSaving(false);
     }
   };
 
@@ -3021,6 +3046,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <button
               onClick={openSettings}
+              disabled={pressureState !== 'idle' || (dialShotPending && !timerRunning) || dialSaving}
               className={`p-2 ${ui.ghostBtn} hover:text-[#c88a4b] transition-colors`}
               title="Settings"
             >
@@ -3073,6 +3099,7 @@ export default function App() {
                 <div className={`${ui.card} p-4 rounded-2xl space-y-3`} data-testid="dial-bean-card">
                   <select
                     data-testid="dial-bean-select"
+                    disabled={dialShotPending || dialSaving}
                     value={effectiveBeanId}
                     onChange={(e) => selectActiveBean(e.target.value)}
                     className={`bg-transparent ${ui.text} font-bold text-base focus:outline-none w-full truncate`}
@@ -3101,6 +3128,7 @@ export default function App() {
                     </div>
                     <button
                       type="button"
+                      disabled={dialShotPending || dialSaving}
                       onClick={() => handleToggleFinished(activeBean.id, activeBean.isFinished)}
                       data-testid="mark-bean-finished"
                       className={`text-[11px] font-semibold px-3 py-2 rounded-lg border min-h-[40px] shrink-0 ${
@@ -3149,7 +3177,7 @@ export default function App() {
                     <div className={`pt-3 border-t ${ui.headerBorder} space-y-3`}>
                       <div className="flex items-end justify-between gap-2">
                         <p className={`text-[10px] uppercase tracking-wider ${ui.muted}`}>Pressure profile</p>
-                        <button type="button" onClick={handleEditOnBeansFromDial} className={`text-[10px] ${ui.accentText} font-semibold`}>
+                        <button type="button" disabled={dialShotPending || dialSaving} onClick={handleEditOnBeansFromDial} className={`text-[10px] ${ui.accentText} font-semibold`}>
                           Edit on Beans
                         </button>
                       </div>
@@ -3398,23 +3426,37 @@ export default function App() {
                         )}
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        <button type="button" onClick={() => requestStartTimerWithLab()} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors">
+                        <button type="button" disabled={dialShotPending || dialSaving} onClick={() => requestStartTimerWithLab()} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors disabled:opacity-60">
                           <Play className="w-4 h-4 fill-current" /> Start
                         </button>
-                        <button type="button" onClick={handleResetTimer} className={`p-3.5 min-h-[48px] min-w-[48px] ${ui.secondaryBtn} rounded-xl`}>
+                        <button type="button" aria-label={dialShotPending ? 'Discard shot' : 'Reset timer'} disabled={yieldSettleActive || dialSaving} onClick={discardDialShot} className={`p-3.5 min-h-[48px] min-w-[48px] ${ui.secondaryBtn} rounded-xl`}>
                           <RotateCcw className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
-                    {labCameraPressureEnabled && (
+                    {dialShotPending && !timerRunning && (
+                      <div role="status" className={`text-xs ${ui.sub}`}>
+                        <p>Save or discard this shot before switching workflows.</p>
+                        {Number.isFinite(labPressureShotMetrics?.labPressurePeakBar) && (
+                          <p>Peak pressure {labPressureShotMetrics.labPressurePeakBar.toFixed(1)} bar</p>
+                        )}
+                      </div>
+                    )}
+                    {!dialShotPending && labCameraPressureEnabled && (
                       <LabPressureStartPanel
                         enabled={labCameraPressureEnabled}
                         calibrated={Boolean(labGaugeTapCalibrationFromSettings(settingsSetting))}
                         viewMoved={settingsSetting?.labGaugeTapCalibration?.viewMoved === true}
-                        readerReady={true}
                         onRecalibrate={() => setLabCalibrateRequest((n) => n + 1)}
+                        onDisable={experience === 'combined' ? () => void handleToggleLabCameraPressure(false) : undefined}
                         ui={ui}
                       />
+                    )}
+                    {experience === 'combined' && isPressureLabEnabled() && !labCameraPressureEnabled && !dialShotPending && (
+                      <button type="button" onClick={() => void handleToggleLabCameraPressure(true)}
+                        className={`min-h-11 text-xs font-semibold ${ui.accentText}`}>
+                        Enable camera pressure (optional)
+                      </button>
                     )}
                     {scaleFeatureEnabled && !devUrlSimScaleActive && (
                       <ScaleTimerControls
@@ -3438,7 +3480,7 @@ export default function App() {
                         scaleDebugLines={scaleDebugLines}
                       />
                     )}
-                    {labCameraPressureEnabled && (
+                    {!dialShotPending && labCameraPressureEnabled && (
                       <LabPreShotDialUnderScale
                         labEnabled={labCameraPressureEnabled}
                         calibrated={Boolean(labGaugeTapCalibrationFromSettings(settingsSetting))}
@@ -3609,6 +3651,8 @@ export default function App() {
                           <button
                             type="button"
                             key={star}
+                            aria-label={`Rate shot ${star} out of 5`}
+                            aria-pressed={shotRating === star}
                             onClick={() => setShotRating(star)}
                             className={`p-1 transition-colors ${shotRating !== null && star <= shotRating ? 'text-[#c88a4b]' : 'text-[#3d3830] hover:text-[#6b6457]'}`}
                           >
@@ -3675,10 +3719,10 @@ export default function App() {
                     <div className="max-w-xl mx-auto">
                       <button
                         type="submit"
-                        disabled={yieldSettleActive}
+                        disabled={yieldSettleActive || timerRunning || dialSaving}
                         className="w-full bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] font-black py-4 rounded-xl shadow-lg transition-colors text-sm tracking-wide disabled:opacity-60"
                       >
-                        Log shot & calculate grind adjustment
+                        {dialSaving ? 'Saving shot…' : 'Log shot & calculate grind adjustment'}
                       </button>
                     </div>
                   </div>
@@ -4515,7 +4559,7 @@ export default function App() {
               </div>
 
               <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
-                <ExperienceChoices value={experienceDraft ?? experience} onChange={setExperienceDraft} ui={ui} legend="Preferred experience" disabled={savingExperience} />
+                <ExperienceChoices value={experienceDraft ?? experience} onChange={setExperienceDraft} ui={ui} legend="Preferred experience" disabled={savingExperience || experienceSwitchLocked || dialSaving} />
                 <details className={`${ui.cardInset} rounded-xl p-3 space-y-3`} open={explicitExperience !== 'brew' || labCameraPressureEnabled}>
                   <summary className={`cursor-pointer min-h-8 font-bold ${ui.text}`}>Advanced camera pressure</summary>
                   <div className="flex items-center justify-between gap-3">
@@ -4971,7 +5015,9 @@ export default function App() {
                 key={tab.id}
                 type="button"
                 aria-current={isActive ? 'page' : undefined}
-                disabled={pressureState !== 'idle' && tab.id !== 'pressure'}
+                disabled={(pressureState !== 'idle' && tab.id !== 'pressure')
+                  || ((experienceSwitchLocked || dialSaving) && tab.id !== activeTab
+                    && (activeTab === 'dial' || tab.id === 'pressure'))}
                 onClick={tab.onClick}
                 className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] rounded-xl transition-colors ${
                   isActive ? ui.tabActive : ui.muted
