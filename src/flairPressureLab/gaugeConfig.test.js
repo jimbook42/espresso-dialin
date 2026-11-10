@@ -895,7 +895,8 @@ export function runFlairPressureLabTests() {
   assert.equal(tenDegree[1].gauge.reacquireAccepted, false);
   const anchorWalk = readSpin(5, 8);
   assert.ok(Math.abs(wrapDelta(40, anchorWalk[anchorWalk.length - 1].gauge.rotationDeg)) <= 12, `faced walk past 24° stopped at ${anchorWalk[anchorWalk.length - 1].gauge.rotationDeg}`);
-  assert.ok(anchorWalk.some((read) => read.gauge.poseDecision === 're-anchor'), 'cumulative 24° did not re-anchor');
+  assert.equal(anchorWalk[4].gauge.poseDecision, 're-anchor', 'confirmed walk did not re-anchor when it crossed 24°');
+  assert.equal(anchorWalk[4].gauge.pressureHold, false, 'confirmed re-anchor kept pressure held');
   assert.ok(anchorWalk.every((read) => read.gauge.reacquireAccepted === false), 'in-window walk used search');
   assert.ok(anchorWalk.every((read) => read.gauge.held === false), 're-anchor froze in-window tracking');
   const occludedWalk = readSpin(5, 8, { occlude: { start: 180, span: 100, value: 40 }, faceMark: false });
@@ -920,10 +921,18 @@ export function runFlairPressureLabTests() {
   assert.ok(Math.abs(wideTwist[0].gauge.rotationDeg) < 8, `±20 crossing committed on frame 1 (${wideTwist[0].gauge.rotationDeg})`);
   assert.equal(wideTwist[0].gauge.pressureHold, true);
   assert.equal(wideTwist[0].gauge.held, false);
-  const wideSettled = holdAngle(40, 4);
-  assert.ok(Math.abs(wrapDelta(40, wideSettled[3].gauge.rotationDeg)) <= 8, `±20 crossing stayed at ${wideSettled[3].gauge.rotationDeg}`);
-  assert.equal(wideSettled[3].gauge.reacquireAccepted, false, '±20 crossing used the 3-hit search');
-  assert.equal(wideSettled[3].gauge.pressureHold, false);
+  // An abrupt turn of this mostly periodic tick pattern is ambiguous even
+  // when the needle moves with the face. Repeating it cannot establish identity.
+  const wideAmbiguous = holdAngle(40, 4);
+  for (const read of wideAmbiguous) {
+    assert.ok(Math.abs(wrapDelta(40, read.gauge.rawRotationDeg)) <= 5, 'wide search did not see the turn');
+    assert.equal(read.gauge.needleAgrees, true);
+    assert.equal(read.gauge.poseDecision, 're-anchor-fail');
+    assert.ok(Math.abs(read.gauge.rotationDeg) < 8, `ambiguous turn moved the pose to ${read.gauge.rotationDeg}`);
+    assert.equal(read.gauge.reacquireAccepted, false, 'ambiguous turn used the 3-hit search');
+    assert.equal(read.gauge.pressureHold, true);
+    assert.equal(read.gauge.held, false, 'ambiguous turn froze the ring');
+  }
   for (const read of fiveDegree) {
     assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'narrowOk'));
     assert.ok(Object.prototype.hasOwnProperty.call(read.gauge, 'needleAgrees'));
@@ -1529,12 +1538,18 @@ export function runFlairPressureLabTests() {
   );
   let twistRead = twistFirst;
   for (let i = 0; i < 4; i += 1) twistRead = analyzeGaugeImage(twistFrame, twistTracker);
-  assert.ok(Math.abs(wrapDelta(40, twistRead.gauge.rotationDeg)) <= 8, `twist rotation ${twistRead.gauge.rotationDeg}`);
+  assert.ok(Math.abs(wrapDelta(twistSettled.gauge.rotationDeg, twistRead.gauge.rotationDeg)) < 8,
+    `repeated ambiguous twist moved the pose to ${twistRead.gauge.rotationDeg}`);
   assert.ok(
     Math.abs(wrapDelta(twistSettled.relativeAngleDeg, twistRead.relativeAngleDeg)) <= 8,
     `twist relative ${twistSettled.relativeAngleDeg} -> ${twistRead.relativeAngleDeg}`,
   );
-  assert.equal(twistRead.gauge.held, false, 'a confirmed rigid twist stayed held');
+  assert.equal(twistRead.gauge.pressureHold, true, 'repeating the ambiguous twist published a pressure pose');
+  assert.equal(twistRead.gauge.held, false, 'repeated ambiguous twist froze the ring');
+  const twistRecovered = analyzeGaugeImage(twistHome, twistTracker);
+  assert.equal(twistRecovered.gauge.pressureHold, false, 'returning to the verified face did not restore pressure');
+  assert.ok(Math.abs(wrapDelta(twistSettled.relativeAngleDeg, twistRecovered.relativeAngleDeg)) <= 8,
+    'recovering the verified face changed the relative needle angle');
 
   const aliasTwistTracker = createGaugeTracker();
   const aliasTwistHome = makeGaugeImage(200, { cx: 90, cy: 88, radius: 42, needleDeg: 47, rotationDeg: 0 });
