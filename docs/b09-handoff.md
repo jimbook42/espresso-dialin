@@ -1,12 +1,12 @@
 # B09 handoff — Per-shot insights
 
-**Status: TESTING**
+**Status: READY**
 
 ## Checkpoint
 
 - Base `origin/main`: `95faa345d6ba9a69a43b7e373ab528b87043f503` (v4.14.17).
 - Branch: `b09/per-shot-insights`.
-- Latest pushed SHA: `c0654ac002a8a73259c69a91bcf50be91ef1a63e` (latest UI/refinement checkpoint; v4.14.18 candidate pending).
+- Latest pushed implementation/candidate SHA: `aa019e7b18e2653e66f80a3080d195f13b5581da` (v4.14.18, exact SHA embedded in the verified release build). This final handoff update is documentation-only.
 - Production provenance: Vercel project `espresso-dialin` reports latest deployment `dpl_JD9n99iVtgXXcv8hxvS4zNzhUvDE` as READY/production but exposes no Git metadata and lists no project domains. The supplied expected production SHA could not be verified; no project settings or deployments were changed.
 
 ## Audit findings
@@ -36,8 +36,8 @@
 
 ## Completed / incomplete
 
-- Completed: baseline `main` SHA verified; `AGENTS.md` read from main; recommendation, save, taste, history, profile, and standalone pressure paths audited; B09 branch created; Vercel auto-build exclusion added; pure insight function and 10 focused tests pass; insights integrated into expanded History Shot profile; missing-data behavior, mobile widths, dark/light rendering, saved recommendation, interruptions, browser restart, and no-record-mutation checks pass. Calculation runs only when the profile is expanded. Version is bumped locally to v4.14.18 for the final candidate.
-- Incomplete: push the versioned candidate; release-mode preflight with full SHA; record the preflight result and final handoff checkpoint.
+- Completed: baseline `main` SHA verified; `AGENTS.md` read from main; recommendation, save, taste, history, profile, and standalone pressure paths audited; B09 branch created; Vercel auto-build exclusion added; pure insight function and 10 focused tests pass; insights integrated into expanded History Shot profile; missing-data behavior, mobile widths, dark/light rendering, saved recommendation, interruptions, browser restart, and no-record-mutation checks pass. Calculation runs only when the profile is expanded. Version is v4.14.18. Exact-SHA release-mode build preflight passed.
+- Incomplete: none for development candidate. Release remains subject to explicit product-owner approval. Current production Git SHA/version could not be confirmed from Vercel metadata; resolve before release execution.
 - Known uncertainty: current production Git SHA/version cannot be established from Vercel's deployment metadata available in this session.
 - Blockers requiring owner input: none for development. Production provenance uncertainty should be resolved before any release review.
 
@@ -51,5 +51,6 @@
 - Test command: `npm run test:vitest -- --run src/utils/shotInsights.vitest.js` — 1 file passed, 10 tests passed (exit 0).
 - Focused lint: `npx eslint src/utils/shotInsights.js src/utils/shotInsights.vitest.js src/components/ShotInsights.jsx src/components/ShotProfile.jsx` — exit 0. `git diff --check` — exit 0.
 - Browser follow-up: shot-screen smoke passes 7/7 (exit 0). Stop regression passes 6/6 (exit 0), including 320×640/412×915 no-overflow checks, light theme, browser restart, and unchanged stored shots. Final viewport screenshots are saved under `C:\Users\Isaac\AppData\Local\Temp\` as `b09-shot-insights-320x640.png`, `b09-shot-insights-412x915.png`, and `b09-shot-insights-light-412x915.png`. Saved Sette micro labels (including letters) render correctly; reason text preserves the outlier context and removes duplicated uppercase grind commands.
-- Full Vitest: 111 files passed, 2 skipped; 659 passed, 4 skipped (the four expected conditional skips). Legacy `npm test` passed with `TZ=UTC` and `TZ=Pacific/Auckland` (both exit 0). Browser: stop regression 6/6 and shot screen smoke 7/7 (exit 0). Focused ESLint on all changed source/test/script files passed (exit 0). Full `npm run lint` failed with ESLint `RangeError: Maximum call stack size exceeded` while linting generated `public/flair-pressure-lab/opencv.js` line 23; no changed-file lint errors. Flagged build passed with the usual >500 kB bundle warning.
-- Exact next steps: run focused tests/lint on the final versioned tree; commit and push v4.14.18; run `npm run build:release` with pressure/scale enabled, simulations/replay disabled, `VITE_APP_VERSION=4.14.18`, and the exact full candidate SHA. Verify embedded SHA/version; then update this handoff and push a documentation-only readiness checkpoint if validation passes. Do not deploy or merge.
+- Full Vitest: 111 files passed, 2 skipped; 659 passed, 4 skipped (the four expected conditional skips). Legacy `npm test` passed with `TZ=UTC` and `TZ=Pacific/Auckland` (both exit 0). Focused B09 Vitest: 1 file, 10 tests passed. Browser stop regression: 6/6; shot screen smoke: 7/7. Changed-file ESLint passed (exit 0). Full `npm run lint` failed with ESLint `RangeError: Maximum call stack size exceeded` while linting generated `public/flair-pressure-lab/opencv.js` line 23; no changed-file lint errors.
+- Final build: `npm run build:release`, exit 0; release preflight passed for `aa019e7b18e2653e66f80a3080d195f13b5581da`. Embedded app bundle `dist/assets/App-BpJObfwO.js` contains v4.14.18 and the exact full SHA. Pressure/scale enabled; pressure simulation, scale simulation, and replay disabled. Build reports the existing >500 kB chunk warning.
+- Exact next steps: product owner reviews/approves candidate SHA `aa019e7b18e2653e66f80a3080d195f13b5581da`. After explicit release approval, follow the established staged build/promotion process. Do not deploy, merge, or start B10 before that release is approved and completed.
