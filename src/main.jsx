@@ -5,7 +5,11 @@ import { isPressureLabEnabled } from './config/pressureLabFlag.js'
 import { resolveAppEntry } from './appEntry.js'
 
 const root = createRoot(document.getElementById('root'))
-const pressureLabEnabled = isPressureLabEnabled()
+// The experimental direct reader remains available for local development and replay.
+const pressureLabEnabled = isPressureLabEnabled() && (
+  import.meta.env.DEV || import.meta.env.VITE_PRESSURE_REPLAY === 'true'
+  || import.meta.env.VITE_PRESSURE_ALLOW_SIM === 'true'
+)
 const entry = resolveAppEntry({
   hash: window.location.hash,
   pressureLabEnabled,

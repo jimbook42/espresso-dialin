@@ -7,7 +7,7 @@ export const EXPERIENCES = [
   {
     id: 'pressure',
     label: 'Pressure Tracker',
-    description: 'Set up a gauge camera and find saved shots. Standalone pressure recording and analysis are coming.',
+    description: 'Set up a gauge camera, record pressure on its own, and review saved curves.',
   },
   {
     id: 'combined',

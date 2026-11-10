@@ -226,6 +226,11 @@ import { isBrewGuideExtractCountdownActive } from './brewGuide/brewGuideExtractP
 import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
+import { FeedbackShareDialog } from './components/FeedbackShareDialog.jsx';
+import {
+  allowUsagePageViews, anonymousUsageEnabled, beforeUsagePageView, recordUsage, usageSensors,
+} from './settings/anonymousUsage.js';
+import { isVerifiedGaugeCalibration } from './flairPressureLab/gaugeCompatibility.js';
 import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
 import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
 import { ShotLabPressureProvider } from './components/ShotLabPressureContext.jsx';
@@ -368,6 +373,11 @@ export default function App() {
   const [selectedTab, setActiveTab] = useState(null);
   const [darkMode, setDarkMode] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [usageSessionOff, setUsageSessionOff] = useState(false);
+  const [usageSaving, setUsageSaving] = useState(false);
+  const [usageError, setUsageError] = useState(false);
+  const [lastSavedShotId, setLastSavedShotId] = useState(null);
+  const [shotToShare, setShotToShare] = useState(null);
   const [experienceDraft, setExperienceDraft] = useState(null);
   const [savingExperience, setSavingExperience] = useState(false);
   const [experienceSaveFailed, setExperienceSaveFailed] = useState(false);
@@ -391,6 +401,12 @@ export default function App() {
   const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), [], SETTINGS_QUERY_PENDING);
   const settingsSetting =
     settingsQueryResult === SETTINGS_QUERY_PENDING ? null : (settingsQueryResult ?? null);
+  const usageEnabled = !usageSessionOff
+    && anonymousUsageEnabled(settingsQueryResult !== SETTINGS_QUERY_PENDING, settingsSetting);
+  useLayoutEffect(() => {
+    allowUsagePageViews(usageEnabled);
+    return () => allowUsagePageViews(false);
+  }, [usageEnabled]);
   const explicitExperience = savedExperience(settingsSetting);
   const experience = preferredExperience(settingsSetting);
   const showPressureTab = experience !== 'brew';
@@ -1455,6 +1471,7 @@ export default function App() {
           ? { brewGuideEnabled: setupBrewGuideEnabled }
           : {}),
       }));
+      recordUsage(usageEnabled, 'onboarding_experience', { choice: experiencePreference });
       return;
     }
     const scaleId = setupUseSmartScale
@@ -1468,6 +1485,7 @@ export default function App() {
       customGrinder: setupCustomGrinderDraft,
       smartScaleDeviceId: scaleId,
     });
+    recordUsage(usageEnabled, 'onboarding_experience', { choice: experiencePreference });
   };
 
   const openSettings = () => {
@@ -1608,7 +1626,25 @@ export default function App() {
     await patchGlobalSettings(db, { [LAB_CAMERA_PRESSURE_KEY]: val });
   };
 
+  const handleToggleAnonymousUsage = async (enabled) => {
+    if (!enabled) {
+      allowUsagePageViews(false);
+      setUsageSessionOff(true);
+    }
+    setUsageSaving(true);
+    setUsageError(false);
+    try {
+      await patchGlobalSettings(db, { anonymousUsageStats: enabled });
+      if (enabled) setUsageSessionOff(false);
+    } catch {
+      setUsageError(true);
+    } finally {
+      setUsageSaving(false);
+    }
+  };
+
   const handleSaveLabGaugeCalibration = async (calibration) => {
+    if (!isVerifiedGaugeCalibration(calibration)) return;
     await patchGlobalSettings(db, {
       [LAB_GAUGE_TAP_CALIBRATION_KEY]: {
         calibration,
@@ -1709,6 +1745,19 @@ export default function App() {
     setActualTimeS('');
   };
 
+  const openShotShare = async (id) => {
+    const shot = await db.shots.get(id);
+    if (shot) setShotToShare(shot);
+    else if (id === lastSavedShotId) setLastSavedShotId(null);
+  };
+
+  const recordSavedShotUsage = (mode, shot, pressureMetrics) => {
+    const hasScale = Boolean(shot.scaleFlowCurve?.length);
+    const hasPressure = Boolean(shot.labPressureCurve?.length);
+    recordUsage(usageEnabled, 'shot_recorded', { mode, sensors: usageSensors(hasScale, hasPressure) });
+    recordUsage(usageEnabled, 'reader_confidence', { band: pressureMetrics?.readerConfidenceBand ?? 'none' });
+  };
+
   const saveStandalonePressure = async (event) => {
     event.preventDefault();
     if (standaloneSaveRef.current || yieldSettleTimerRef.current || !standaloneCaptureRef.current) return;
@@ -1725,8 +1774,9 @@ export default function App() {
     standaloneSaveRef.current = true;
     setPressureSaving(true);
     setPressureError('');
+    let persistedId;
     try {
-      await db.shots.add(shot);
+      persistedId = await db.shots.add(shot);
     } catch {
       setPressureError('Recording could not be saved. Try saving again.');
       setPressureSaving(false);
@@ -1734,6 +1784,7 @@ export default function App() {
       return;
     }
     trace?.save(shot);
+    recordSavedShotUsage('pressure', shot, labPressureShotMetrics);
     try {
       await commitReplay?.(shot.id);
     } finally {
@@ -1742,6 +1793,7 @@ export default function App() {
       setPressureSaving(false);
       setHistoryFilterBeanId('all');
       setActiveTab('history');
+      setLastSavedShotId(persistedId);
     }
   };
 
@@ -2285,8 +2337,9 @@ export default function App() {
     dialSaveRef.current = true;
     setDialSaving(true);
     try {
-      await db.shots.add(shotRecord);
+      const persistedId = await db.shots.add(shotRecord);
       trace?.save(shotRecord);
+      recordSavedShotUsage(experience === 'combined' ? 'combined' : 'brew', shotRecord, labPressureShotMetrics);
       if (labCameraPressureEnabled) {
         try {
           await commitReplay?.(shotRecord.id);
@@ -2294,6 +2347,7 @@ export default function App() {
           console.warn('[lab-pressure] replay commit failed (shot curve kept):', err);
         }
       }
+      setLastSavedShotId(persistedId);
       try {
         const displayHoldClear = clearRecommendationCardDisplayHoldPatch(
           appSettings,
@@ -2844,6 +2898,15 @@ export default function App() {
     );
   }
 
+  const savedShotNotice = lastSavedShotId != null && !timerRunning && !dialShotPending && pressureState === 'idle' && (
+    <div className={`flex items-center justify-end gap-3 ${ui.text}`}>
+      <span className="text-xs" role="status">Shot saved</span>
+      <button type="button" onClick={() => void openShotShare(lastSavedShotId)}
+        className={`min-h-9 text-xs font-bold ${ui.accentText}`} data-testid="saved-share-shot">Share shot</button>
+      <button type="button" onClick={() => setLastSavedShotId(null)} aria-label="Dismiss shot saved" className="min-h-9 px-2">✕</button>
+    </div>
+  );
+
   return (
     <ShotLabPressureProvider
       settings={settingsSetting}
@@ -2873,6 +2936,7 @@ export default function App() {
       shotReplayCommitRef={labShotReplayCommitRef}
       shotReplayDiscardRef={labShotReplayDiscardRef}
       onLabShotReplayStored={refreshLabReplayShotId}
+      usageEnabled={usageEnabled}
     >
     <div className={`min-h-screen ${ui.page} relative`}>
       <LabPressurePreShotConfirm
@@ -3717,6 +3781,7 @@ export default function App() {
                   {/* Submit — fixed above tab bar */}
                   <div className={`fixed bottom-[4.25rem] left-0 right-0 p-3 ${ui.dock} backdrop-blur z-40`}>
                     <div className="max-w-xl mx-auto">
+                      {savedShotNotice}
                       <button
                         type="submit"
                         disabled={yieldSettleActive || timerRunning || dialSaving}
@@ -4156,6 +4221,7 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === 'history' && savedShotNotice}
         {activeTab === 'history' && (
           <div className="space-y-4">
             <div className={`flex justify-between items-center gap-3 ${ui.card} p-3 rounded-2xl`}>
@@ -4292,6 +4358,11 @@ export default function App() {
                         ))}
                       </div>
                     )}
+                    <div className="flex flex-wrap justify-end gap-3">
+                      <button type="button" onClick={() => void openShotShare(s.id)}
+                        className={`min-h-11 text-xs font-bold ${ui.accentText}`} data-testid="history-share-shot">
+                        Share shot
+                      </button>
                     {(hasReplay || Number.isFinite(s.actualTimeS) || s.labPressureCurve?.length > 0 || s.scaleFlowCurve?.length > 0
                       || readerStallDiagnosticsForShot(s.id) || shotDeviceDiagnosticsForShot(s.id)) && (
                       <div className="flex flex-wrap justify-end gap-3">
@@ -4316,6 +4387,7 @@ export default function App() {
                         )}
                       </div>
                     )}
+                    </div>
 
                     {s.scaleFlowCurve?.length > 0 && (
                       <ScaleFlowChart
@@ -4596,10 +4668,10 @@ export default function App() {
                         label="Gauge setup camera preview"
                       />
                     </div>
-                    <div>
+                    {import.meta.env.DEV && <div>
                       <span className={`font-bold block ${ui.text}`}>Pressure reader</span>
                       <span className={`text-[10px] ${ui.muted}`}>
-                        Current trusts the 5 and 10 taps. v4.13.21 is the previous scale. v4.13.20 withholds a frame when the needle model disagrees. v4.13.17 is the previous tracker.
+                        Current uses the 5 and 10 taps. v4.13.21 uses the previous scale and v4.13.17 uses the previous tracker.
                       </span>
                       <select
                         value={
@@ -4617,7 +4689,7 @@ export default function App() {
                         <option value={LAB_PRESSURE_READER_BLOCKER}>v4.13.20</option>
                         <option value={LAB_PRESSURE_READER_LEGACY}>v4.13.17</option>
                       </select>
-                    </div>
+                    </div>}
                     </>
                   )}
                 </details>
@@ -4891,6 +4963,17 @@ export default function App() {
                     </div>
                     <SettingsToggle checked={statsForNerdsEnabled} onChange={handleToggleStatsForNerds} label="Stats for Nerds" />
                   </div>
+                  <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Anonymous usage stats</span>
+                      <span className={`block text-[10px] ${ui.muted}`}>
+                        Vercel page views help improve the app. Your shots, history and camera data stay on your device unless you choose to share them.
+                      </span>
+                    </div>
+                    <SettingsToggle checked={usageEnabled} onChange={handleToggleAnonymousUsage}
+                      disabled={usageSaving || settingsQueryResult === SETTINGS_QUERY_PENDING} label="Anonymous usage stats" />
+                  </div>
+                  {usageError && <p role="alert">Could not save your usage stats preference. Please try again.</p>}
                 </div>
 
                 <div className={`pt-2 border-t ${ui.modalDivider} space-y-2`}>
@@ -5034,7 +5117,11 @@ export default function App() {
         </div>
       </nav>
 
-      <Analytics />
+      {usageEnabled && <Analytics beforeSend={beforeUsagePageView} />}
+      {shotToShare && (
+        <FeedbackShareDialog shot={shotToShare} ui={ui} onClose={() => setShotToShare(null)}
+          onShotShare={(method) => recordUsage(usageEnabled, 'share_shot', { method })} />
+      )}
       <LabShotReplayScreen
         open={labReplayOpen}
         onClose={() => {

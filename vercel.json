@@ -2,7 +2,8 @@
   "git": {
     "deploymentEnabled": {
       "main": false,
-      "b07/final-release-recovery": false
+      "b07/final-release-recovery": false,
+      "b06b/beta-safety-sharing": false
     }
   },
   "buildCommand": "if [ \"$VERCEL_ENV\" = preview ]; then npm run build; else npm run build:release; fi"

@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { createShotLabR7Publisher } from './shotLabR7Live.js';
 import { createTapReadingPublisher, currentTapModel, TAP_DISPLAY_HOLD_MS, TAP_MODEL_MAX_AGE_MS } from './tapReadingPublisher.js';
+import { GAUGE_COMPATIBILITY } from './gaugeCompatibility.js';
+import { isRecordedSampleConfident } from './preShotReadableStatus.js';
 
-const calibration = { hub: { x: 100, y: 100 }, zeroAngleDeg: 0, fiveAngleDeg: 75, tenAngleDeg: 160 };
-const read = (bar = 5) => ({ ok: bar != null, lost: false, fresh: bar != null, bar,
+const calibration = { compatibility: GAUGE_COMPATIBILITY.supported,
+  hub: { x: 100, y: 100 }, zeroAngleDeg: 0, fiveAngleDeg: 75, tenAngleDeg: 160 };
+const read = (bar = 5) => ({ ok: bar != null, poseCompatible: true, lost: false, fresh: bar != null, bar,
   needleDeg: bar == null ? null : 75, needleQuality: 0.8, tenDeg: 160,
-  hub: { x: 100, y: 100 }, radius: 60, shiftDeg: 0 });
+  hub: { x: 100, y: 100 }, radius: 60, shiftDeg: 0, poseEpoch: 1 });
 const modelFrame = () => ({ nowMs: 1125, read: read(null), r5Registered: true,
   r5Corroborated: true, r5Bar: 5, r5Angle: 75, r5Conf: 0.9, r5CapturedAtMs: 1000,
-  r5Pose: { hub: { x: 100, y: 100 }, radius: 60, shiftDeg: 0 } });
+  r5Pose: { hub: { x: 100, y: 100 }, radius: 60, shiftDeg: 0, epoch: 1 } });
 
 describe('fresh tap observations and held display pressure', () => {
   it('starts immediately at pressure, with a zero pin at angle 0 and no rest observations', () => {
@@ -39,13 +42,38 @@ describe('fresh tap observations and held display pressure', () => {
     expect(out).toMatchObject({ bar: null, fresh: false, held: false });
   });
 
-  it('publishes a corroborated model observation once at its capture time', () => {
+  it('blocks the reported 7.07 bar at rest even with high confidence and corroboration', () => {
     const pub = createShotLabR7Publisher(calibration);
     pub.beginShot(1000);
-    expect(pub.stepFrame(modelFrame())).toMatchObject({ bar: 5, fresh: true, measuredAtMs: 1000, reason: 'model-fresh' });
-    expect(pub.stepFrame({ ...modelFrame(), nowMs: 1250 })).toMatchObject({ bar: 5, fresh: false, held: true });
-    pub.beginShot(2000);
-    expect(pub.stepFrame({ ...modelFrame(), nowMs: 2000 }).bar).toBeNull();
+    const falseAtRest = { ...modelFrame(), r5Bar: 7.07, r5Conf: 0.89 };
+    for (const frame of [falseAtRest, { ...falseAtRest, read: { ...read(), ok: false } }]) {
+      expect(pub.stepFrame(frame)).toMatchObject({ bar: null, fresh: false, measuredAtMs: null });
+    }
+    expect(pub.stepFrame({ ...falseAtRest, read: { ...read(0), needleDeg: 0 } }))
+      .toMatchObject({ bar: 0, fresh: true, reason: 'tap-fresh' });
+    const hold = pub.stepFrame({ ...falseAtRest, nowMs: 1250 });
+    expect(hold).toMatchObject({ bar: 0, fresh: false, held: true });
+    expect(isRecordedSampleConfident(hold)).toBe(false);
+  });
+
+  it('publishes only the main reader with agreeing, disagreeing, stale and previous-pose models', () => {
+    const frame = { ...modelFrame(), read: read(), r5Bar: 5.1 };
+    for (const input of [frame, { ...frame, r5Angle: 120, r5Conf: 0.99 },
+      { ...frame, nowMs: 2000 }, { ...frame, r5Pose: { ...frame.r5Pose, epoch: 0 } }]) {
+      const pub = createShotLabR7Publisher(calibration);
+      pub.beginShot(1000);
+      expect(pub.stepFrame(input)).toMatchObject({ bar: 5, fresh: true, reason: 'tap-fresh' });
+    }
+  });
+
+  it('blocks unverified calibration even with a valid main reader, including the legacy scale', () => {
+    for (const compatibility of [undefined, GAUGE_COMPATIBILITY.uncertain, GAUGE_COMPATIBILITY.unsupported]) {
+      for (const legacyScale of [false, true]) {
+        const pub = createShotLabR7Publisher({ ...calibration, compatibility }, { legacyScale });
+        expect(pub.stepFrame({ ...modelFrame(), read: read() }))
+          .toMatchObject({ bar: null, fresh: false, reason: 'gauge-unverified' });
+      }
+    }
   });
 
   it('rejects model results after age, movement, rotation, loss, or missing pixel confirmation', () => {

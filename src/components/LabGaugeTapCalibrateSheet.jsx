@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useFrontCameraStream } from '../flairPressureLab/hooks/useFrontCameraStream.js';
 import { useSharedCameraVideo } from './useSharedCameraVideo.js';
+import { FeedbackShareDialog } from './FeedbackShareDialog.jsx';
+import { GAUGE_COMPATIBILITY, isVerifiedGaugeCalibration } from '../flairPressureLab/gaugeCompatibility.js';
+import { recordUsage } from '../settings/anonymousUsage.js';
 import {
   calibrateFromTaps,
   createCalibratedTracker,
@@ -37,6 +40,7 @@ const PHASE_LABEL = {
   five: 'Place marker on the printed 5, drag to fine-tune, then Confirm',
   ten: 'Place marker on the printed 10, drag to fine-tune, then Confirm',
   review: 'Check rays, then accept',
+  incompatible: 'Gauge compatibility',
 };
 
 const LOUPE_SIZE = 112;
@@ -56,6 +60,7 @@ export function LabGaugeTapCalibrateSheet({
   leapCap = true,
   legacyScale = false,
   sourceCamera,
+  usageEnabled,
 }) {
   const { videoRef, start: localStart, stop: localStop, retry: localRetry, status: localStatus, error: localError } = useFrontCameraStream();
   const start = sourceCamera ? NO_CAMERA_ACTION : localStart;
@@ -65,6 +70,8 @@ export function LabGaugeTapCalibrateSheet({
   const retryCamera = sourceCamera ? sourceCamera.retryCamera : localRetry;
   const [tapPhase, setTapPhase] = useState('aim');
   const [tapNote, setTapNote] = useState('');
+  const [unsupportedReason, setUnsupportedReason] = useState(null);
+  const [clipFeedbackOpen, setClipFeedbackOpen] = useState(false);
   const [reviewPose, setReviewPose] = useState(null);
   const [placementPreview, setPlacementPreview] = useState(null);
   const [frameBox, setFrameBox] = useState({ w: 0, h: 0 });
@@ -184,6 +191,8 @@ export function LabGaugeTapCalibrateSheet({
     setDialCrop(null);
     setTapPhase('aim');
     setTapNote('');
+    setUnsupportedReason(null);
+    setClipFeedbackOpen(false);
     dragRef.current = false;
     autoFrozenRef.current = false;
   }, []);
@@ -291,6 +300,17 @@ export function LabGaugeTapCalibrateSheet({
     const taps = tapsRef.current;
     if (!image || !taps.centre || !taps.five || !taps.ten) return;
     const result = calibrateFromTaps(image, { ...taps, legacyScale });
+    if (result.compatibility && !isVerifiedGaugeCalibration(result.calibration)) {
+      const unsupported = result.compatibility.state === GAUGE_COMPATIBILITY.unsupported;
+      setUnsupportedReason(unsupported ? result.compatibility.reason : null);
+      setTapPhase('incompatible');
+      setPlacementPreview(null);
+      setTapNote(unsupported
+        ? "This gauge isn't supported yet. Espresso Dial-In currently reads the original Flair 58 gauge."
+        : "We couldn't verify this gauge. Try again with better lighting and a clear view of the needle.");
+      if (unsupported) recordUsage(usageEnabled, 'gauge_unsupported');
+      return;
+    }
     if (!result.ok) {
       const again = result.redo || 'centre';
       tapsRef.current = { ...tapsRef.current, [again]: null };
@@ -428,7 +448,7 @@ export function LabGaugeTapCalibrateSheet({
 
   const accept = () => {
     const pending = pendingCalRef.current;
-    if (!pending?.ok) return;
+    if (!pending?.ok || !isVerifiedGaugeCalibration(pending.calibration)) return;
     const tracker = createCalibratedTracker(pending.calibration, { leapCap, legacyScale });
     onAccepted?.({ calibration: pending.calibration, tracker });
     onClose?.();
@@ -459,7 +479,8 @@ export function LabGaugeTapCalibrateSheet({
         <div className="px-3 pt-2 space-y-1 shrink-0">
           <p className={`text-xs ${muted}`}>{PHASE_LABEL[tapPhase] || 'Calibrating'}</p>
           <p className={`text-xs ${muted}`} data-testid="gauge-calibration-lever-hint">{CALIBRATION_LEVER_HINT}</p>
-          {tapNote && <p className={`text-[11px] ${text}`} data-testid="gauge-tap-note">{tapNote}</p>}
+          {tapNote && <p className={`text-[11px] ${text}`} role={tapPhase === 'incompatible' ? 'status' : undefined}
+            data-testid="gauge-tap-note">{tapNote}</p>}
           {error && !fixtureSrc && <p className="text-[11px] text-rose-400">{error}</p>}
           {!fixtureSrc && (status === 'error' || status === 'interrupted') && retryCamera && (
             <button type="button" onClick={retryCamera} className="min-h-9 text-xs underline">Retry camera</button>
@@ -588,6 +609,23 @@ export function LabGaugeTapCalibrateSheet({
           )}
         </div>
         <div className="p-3 border-t border-[#2a2826] flex flex-wrap gap-2 shrink-0">
+          {tapPhase === 'incompatible' && (
+            <>
+              <button type="button" onClick={resetLocal} className="min-h-11 px-4 rounded-xl border border-[#3a3836]">
+                Retry
+              </button>
+              {unsupportedReason && (
+                <button type="button" onClick={() => setClipFeedbackOpen(true)}
+                  className="min-h-11 px-4 rounded-xl bg-[#c88a4b] text-[#121110] font-bold">
+                  Send us a clip
+                </button>
+              )}
+              {clipFeedbackOpen && (
+                <FeedbackShareDialog gaugeReason={unsupportedReason} ui={ui}
+                  onClose={() => setClipFeedbackOpen(false)} />
+              )}
+            </>
+          )}
           {placing && (
             <>
               <button

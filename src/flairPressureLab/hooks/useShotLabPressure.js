@@ -20,6 +20,7 @@ import {
   shotLabPressureShowLive,
 } from '../shotLabPressureDisplay.js';
 import { createShotLabR7Publisher } from '../shotLabR7Live.js';
+import { isVerifiedGaugeCalibration } from '../gaugeCompatibility.js';
 import { r5SampleFromTapFrame } from '../shotLabR7Needle.js';
 import { loadNeedleModel, isNeedleModelReady, needleModelStatus } from '../needleModel.js';
 import {
@@ -96,6 +97,7 @@ export function useShotLabPressure({
   const holdRef = useRef(createReadingHold());
   const trackerRef = useRef(null);
   const r7Ref = useRef(null);
+  const readerConfidenceRef = useRef({ count: 0, total: 0 });
   const qualityCanvasRef = useRef(null);
   const shotEpochRef = useRef(null);
   const lastFrameRef = useRef(null);
@@ -188,7 +190,10 @@ export function useShotLabPressure({
   }, [shouldRunCamera, start, stop]);
 
   const metricsFromLiveSession = useCallback(() => {
-    const base = sessionRef.current.getShotMetrics();
+    const { count, total } = readerConfidenceRef.current;
+    const mean = count ? total / count : 0;
+    const readerConfidenceBand = !count ? 'none' : mean >= 0.65 ? 'high' : mean >= 0.3 ? 'medium' : 'low';
+    const base = { ...sessionRef.current.getShotMetrics(), readerConfidenceBand };
     if (gaugeSnapshotRef.current && base.labPressureCurve?.length) {
       return { ...base, labGaugeSnapshotJpeg: gaugeSnapshotRef.current };
     }
@@ -198,6 +203,7 @@ export function useShotLabPressure({
   const resetShotSession = useCallback(() => {
     r5GenerationRef.current += 1;
     sessionRef.current.reset();
+    readerConfidenceRef.current = { count: 0, total: 0 };
     holdRef.current.reset();
     shotEpochRef.current = null;
     gaugeSnapshotRef.current = null;
@@ -334,6 +340,7 @@ export function useShotLabPressure({
       shotDiagnosticsRef?.current?.pressureStart(epoch, simMode);
       if (!simMode) beginReaderStall(epoch);
       sessionRef.current.begin(epoch);
+      readerConfidenceRef.current = { count: 0, total: 0 };
       shotEpochRef.current = epoch;
       r7Ref.current?.beginShot(epoch);
       holdRef.current.reset();
@@ -353,6 +360,7 @@ export function useShotLabPressure({
       const epoch = Date.now();
       if (!simMode) beginReaderStall(epoch);
       sessionRef.current.begin(epoch);
+      readerConfidenceRef.current = { count: 0, total: 0 };
       shotEpochRef.current = epoch;
       r7Ref.current?.beginShot(epoch);
       holdRef.current.reset();
@@ -524,6 +532,10 @@ export function useShotLabPressure({
         } catch { /* observation only */ }
         if (confident && rawBar != null && epoch) {
           sessionRef.current.pushRaw(rawBar, true, gated.measuredAtMs);
+          if (Number.isFinite(read.needleQuality)) {
+            readerConfidenceRef.current.count += 1;
+            readerConfidenceRef.current.total += read.needleQuality;
+          }
           // In-memory display boundary only; getShotMetrics saves just tS/bar.
           const lastSample = sessionRef.current.getSamples().at(-1);
           if (read.needleTrackingReset && lastSample) lastSample.reset = true;
@@ -678,6 +690,7 @@ export function useShotLabPressure({
 
   const acceptCalibration = useCallback(
     ({ calibration, tracker }) => {
+      if (!isVerifiedGaugeCalibration(calibration)) return;
       r5GenerationRef.current += 1;
       lastR5Ref.current = { r5Bar: null, r5Conf: null, r5Angle: null };
       trackerRef.current = tracker ?? createCalibratedTracker(calibration, { leapCap, legacyScale });

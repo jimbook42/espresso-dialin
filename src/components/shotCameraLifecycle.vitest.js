@@ -27,6 +27,7 @@ vi.mock('../flairPressureLab/needleModel.js', async (importOriginal) => ({
 
 import { useShotLabPressure } from '../flairPressureLab/hooks/useShotLabPressure.js';
 import { LabGaugeTapCalibrateSheet } from './LabGaugeTapCalibrateSheet.jsx';
+import { GAUGE_COMPATIBILITY } from '../flairPressureLab/gaugeCompatibility.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let root;
@@ -47,11 +48,12 @@ async function mountReader() {
   vi.stubEnv('VITE_PRESSURE_ALLOW_SIM', 'false');
   const hub = { x: 20, y: 20 };
   const calibration = {
+    compatibility: GAUGE_COMPATIBILITY.supported,
     centre: hub, hub, radius: 16, five: { x: 18, y: 8 }, ten: { x: 31, y: 12 },
     zeroAngleDeg: 200, fiveAngleDeg: 260, tenAngleDeg: 320,
   };
   const reading = { ok: true, fresh: true, bar: 0, needleDeg: 200, needleQuality: .3,
-    lost: false, poseVerified: true, hub, radius: 16, tenDeg: 320 };
+    lost: false, poseVerified: true, poseCompatible: true, hub, radius: 16, tenDeg: 320 };
   const video = { readyState: 2, videoWidth: 40, videoHeight: 40, currentTime: 0, srcObject: {} };
   camera.videoRef.current = video;
   let raf;

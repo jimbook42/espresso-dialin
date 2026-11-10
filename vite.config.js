@@ -40,8 +40,11 @@ function verifyReleaseBuild(env) {
   if (env.VITE_ENABLE_PRESSURE_LAB !== 'true' || env.VITE_ENABLE_SCALE !== 'true') {
     throw new Error('Release preflight requires camera pressure and scale support.');
   }
-  if ([env.VITE_PRESSURE_ALLOW_SIM, env.VITE_SCALE_ALLOW_SIM, env.VITE_PRESSURE_REPLAY].includes('true')) {
+  if ([env.VITE_PRESSURE_ALLOW_SIM, env.VITE_SCALE_ALLOW_SIM, env.VITE_PRESSURE_REPLAY].some((flag) => flag !== 'false')) {
     throw new Error('Release preflight requires pressure simulation, scale simulation and replay to be disabled.');
+  }
+  if (env.VITE_APP_VERSION !== pkg.version || !/^\d+\.\d+\.\d+$/.test(env.VITE_APP_VERSION)) {
+    throw new Error('Release preflight requires the embedded version to match package.json.');
   }
 
   const expectedSha = (process.env.RELEASE_EXPECTED_SHA || '').trim();
@@ -71,7 +74,7 @@ function verifyReleaseBuild(env) {
 
 const pwaManifest = {
   name: 'Espresso Dial-In',
-  short_name: 'EspressoDial',
+  short_name: 'Dial-In',
   start_url: '/',
   display: 'standalone',
   background_color: '#1a1714',
@@ -114,7 +117,7 @@ export default defineConfig(({ mode }) => ({
       configResolved(config) {
         const keys = [
           'VITE_ENABLE_PRESSURE_LAB', 'VITE_ENABLE_SCALE', 'VITE_PRESSURE_ALLOW_SIM',
-          'VITE_SCALE_ALLOW_SIM', 'VITE_PRESSURE_REPLAY', 'VITE_APP_FULL_COMMIT_SHA',
+          'VITE_SCALE_ALLOW_SIM', 'VITE_PRESSURE_REPLAY', 'VITE_APP_FULL_COMMIT_SHA', 'VITE_APP_VERSION',
         ];
         verifyReleaseBuild(Object.fromEntries(keys.map((key) => [
           key, JSON.parse(config.define[`import.meta.env.${key}`] ?? 'null'),

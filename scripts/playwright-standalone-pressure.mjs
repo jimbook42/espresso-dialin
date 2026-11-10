@@ -43,6 +43,17 @@ async function diagnostics(page, card) {
   return JSON.parse(await readFile(await download.path(), 'utf8'));
 }
 
+async function sharedDiagnostics(page, action) {
+  await page.evaluate(() => Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true }));
+  await action.click();
+  const dialog = page.getByRole('dialog', { name: 'Share shot' });
+  const pending = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Share', exact: true }).click();
+  const download = await pending;
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  return JSON.parse(await readFile(await download.path(), 'utf8'));
+}
+
 async function calibrate(page, { sheetOpen = false } = {}) {
   if (!sheetOpen) await page.getByRole('button', { name: 'Calibrate gauge', exact: true }).click();
   await page.getByText(/Frame held.*centre marker/i).waitFor();
@@ -233,6 +244,7 @@ async function checkCombinedCamera(page, verifyFailedReplay) {
   assert.equal(exported.shotId, shot.id);
   assert.equal(exported.pressureSource, 'camera');
   assert.deepEqual(exported.labPressureCurve, shot.labPressureCurve);
+  assert.equal((await sharedDiagnostics(page, page.getByTestId('saved-share-shot'))).shotId, shot.id);
   for (let visit = 0; visit < 2; visit++) {
     if (visit) {
       await page.reload();
@@ -350,6 +362,7 @@ try {
     assert.equal(exported.exportBuild.appVersion, version);
     assert.equal(exported.final.actualTimeS, shot.actualTimeS);
     assert.equal(exported.final.rule, 'manual');
+    assert.equal((await sharedDiagnostics(page, page.getByTestId('saved-share-shot'))).shotId, shot.id);
     assert.equal(exported.scaleDiagnostics.availability, !camera && withScale ? 'current-session' : 'unavailable');
     if (!camera && withScale) assert.equal(exported.scaleDiagnostics.identity.simulated, true);
     assert.equal(shot.diagnosticsVersion, undefined);
@@ -379,6 +392,7 @@ try {
     assert.equal(reloaded.recordingBuild, null);
     assert.match(reloaded.stopDiagnosticsAvailability, /page reloaded/);
     assert.deepEqual(reloaded.labPressureCurve, exported.labPressureCurve);
+    assert.equal((await sharedDiagnostics(page, card.getByTestId('history-share-shot'))).shotId, shot.id);
     await page.getByRole('button', { name: 'Pressure', exact: true }).click();
     await start.waitFor();
     if (!camera && !withScale) {

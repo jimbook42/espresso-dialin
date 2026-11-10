@@ -2,6 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {findPointerEvidence,capturePointerAppearance,trackPointerEvidence} from './pointerEvidence.js';
 import {createNeedleTrack,missNeedleTrack,rememberNeedleTrack,NEEDLE_TRACK_MAX_MISSES} from './needleTracking.js';
 import {createShotLabR7Publisher} from './shotLabR7Live.js';
+import { GAUGE_COMPATIBILITY } from './gaugeCompatibility.js';
 import {wrapDelta} from './gaugeConfig.js';
 const hub={x:110,y:110},radius=90;
 function image(angle=40,{empty=false}={}){
@@ -43,9 +44,9 @@ describe('image-supported needle tracking',()=>{
    expect(trackPointerEvidence(current,hub,radius,40,template).rayAngleDeg).toBeNull();
  });
  it('never publishes an unsupported tracked prediction as fresh or extends the display hold',()=>{
-   const cal={hub,zeroAngleDeg:0,fiveAngleDeg:75,tenAngleDeg:160};
+   const cal={hub,zeroAngleDeg:0,fiveAngleDeg:75,tenAngleDeg:160,compatibility:GAUGE_COMPATIBILITY.supported};
    const publisher=createShotLabR7Publisher(cal);publisher.beginShot(0);
-   const read={ok:true,lost:false,fresh:true,bar:5,needleDeg:75,needleQuality:.8,tenDeg:160};
+   const read={ok:true,poseCompatible:true,lost:false,fresh:true,bar:5,needleDeg:75,needleQuality:.8,tenDeg:160};
    expect(publisher.stepFrame({nowMs:0,read}).fresh).toBe(true);
    const evidence=trackPointerEvidence(image(40,{empty:true}),hub,radius,40,seed());
    const missing={...read,ok:false,fresh:false,bar:null,rawBar:null,needleDeg:evidence.rayAngleDeg,pointerVerified:false};

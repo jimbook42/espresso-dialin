@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { GAUGE_COMPATIBILITY } from '../flairPressureLab/gaugeCompatibility.js';
 import {
   isLabCameraPressureEnabled,
   labGaugeTapCalibrationFromSettings,
@@ -18,11 +19,15 @@ describe('labCameraPressure settings', () => {
     expect(isLabCameraPressureEnabled({ labCameraPressureEnabled: true })).toBe(true);
   });
 
-  it('reads stored tap calibration', () => {
+  it('uses only verified tap calibrations and leaves older settings intact', () => {
     expect(labGaugeTapCalibrationFromSettings(null)).toBeNull();
-    expect(
-      labGaugeTapCalibrationFromSettings({ labGaugeTapCalibration: { calibration: { hub: { x: 1 } } } }),
-    ).toEqual({ hub: { x: 1 } });
+    for (const compatibility of [undefined, GAUGE_COMPATIBILITY.uncertain, GAUGE_COMPATIBILITY.unsupported]) {
+      const calibration = { compatibility, hub: { x: 1 } };
+      expect(labGaugeTapCalibrationFromSettings({ labGaugeTapCalibration: { calibration } })).toBeNull();
+      expect(calibration.hub).toEqual({ x: 1 });
+    }
+    const calibration = { compatibility: GAUGE_COMPATIBILITY.supported, hub: { x: 1 } };
+    expect(labGaugeTapCalibrationFromSettings({ labGaugeTapCalibration: { calibration } })).toBe(calibration);
   });
 
   it('keeps the current pressure reader unless v4.13.17 is stored', () => {

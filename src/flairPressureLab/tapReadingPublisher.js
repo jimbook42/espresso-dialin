@@ -3,19 +3,20 @@ import { publishTapBar } from './tapCalibrate.js';
 
 export const TAP_DISPLAY_HOLD_MS = 450;
 export const TAP_MODEL_MAX_AGE_MS = 2 * PROCESS_INTERVAL_MS;
+const MAIN_READING_MAX_AGE_MS = 2 * PROCESS_INTERVAL_MS;
 
-/** An unregistered/canonical or stale model output cannot certify a tap pressure. */
+/** Only a current, registered prediction is useful for reader comparison. */
 export function currentTapModel(frame, shotT0) {
   const { read, nowMs, r5Pose: pose, r5CapturedAtMs: captured } = frame;
   if (!frame.r5Registered || !frame.r5Corroborated || frame.r5Bar == null
     || !Number.isFinite(frame.r5Bar) || !(frame.r5Conf >= 0.6)
     || !Number.isFinite(captured) || captured < shotT0 || captured > nowMs
     || nowMs - captured > TAP_MODEL_MAX_AGE_MS || read.lost || read.duplicate || read.frameMissing
-    || !pose?.hub || !read.hub || pose.epoch !== read.poseEpoch) return null;
+    || !pose?.hub || !read.hub || !Number.isInteger(read.poseEpoch) || pose.epoch !== read.poseEpoch) return null;
   const shift = Math.abs(wrapDelta(pose.shiftDeg ?? 0, read.shiftDeg ?? 0));
   const distance = Math.hypot(pose.hub.x - read.hub.x, pose.hub.y - read.hub.y);
   const ratio = pose.radius / read.radius;
-  if (shift > 3 || distance > Math.max(3, read.radius * 0.08) || ratio < 0.9 || ratio > 1.1) return null;
+  if (!Number.isFinite(ratio) || shift > 3 || distance > Math.max(3, read.radius * 0.08) || ratio < 0.9 || ratio > 1.1) return null;
   return { bar: frame.r5Bar, angle: frame.r5Angle, capturedAtMs: captured };
 }
 
@@ -38,17 +39,19 @@ export function createTapReadingPublisher(config) {
   const reset = (epoch = 0) => { last = null; pending = []; shotT0 = epoch; resetCounts(); };
   const step = frame => {
     const { read, nowMs } = frame;
-    const model = currentTapModel(frame, shotT0);
-    const tapFresh = read.ok && !read.lost && read.fresh !== false && Number.isFinite(read.bar);
+    // The model is diagnostic evidence only. Pose and image checks belong to
+    // the main reader, and a display hold is never a new observation.
+    const tapFresh = read.ok && read.poseCompatible === true && !read.lost && !read.duplicate && !read.frameMissing
+      && read.fresh === true && Number.isFinite(read.bar) && Number.isFinite(read.needleDeg);
     let candidate = tapFresh ? { bar: read.bar, angle: read.needleDeg,
-      capturedAtMs: frame.capturedAtMs ?? nowMs, source: 'tap' } : null;
-    if (!candidate && model && (last == null || model.capturedAtMs > last.at)) {
-      candidate = { ...model, source: 'model' };
-    }
-    let reason = read.lost ? 'pose-lost' : 'needle-missing';
-    if (candidate && (candidate.capturedAtMs < shotT0 || candidate.capturedAtMs > nowMs)) {
+      capturedAtMs: frame.capturedAtMs ?? nowMs } : null;
+    let reason = read.lost || (read.ok && !read.poseCompatible) ? 'pose-lost' : 'needle-missing';
+    if (candidate && (!Number.isFinite(candidate.capturedAtMs) || candidate.capturedAtMs < shotT0
+      || candidate.capturedAtMs > nowMs || nowMs - candidate.capturedAtMs > MAIN_READING_MAX_AGE_MS
+      || (last && candidate.capturedAtMs <= last.at))) {
       candidate = null; reason = 'stale-frame';
     }
+    if (read.lost || read.frameMissing || !tapFresh || !candidate) pending = [];
     if (candidate) {
       const top = publishTapBar({ bar: candidate.bar, needleDeg: candidate.angle,
         tenDeg: read.tenDeg, previousBar: last?.bar });
@@ -69,9 +72,9 @@ export function createTapReadingPublisher(config) {
       pending = [];
       last = { bar: candidate.bar, at: candidate.capturedAtMs };
       return { bar: last.bar, fresh: true, held: false, uncertain: false,
-        measuredAtMs: last.at, reason: candidate.source === 'tap' ? 'tap-fresh' : 'model-fresh' };
+        measuredAtMs: last.at, reason: 'tap-fresh' };
     }
-    const held = !read.lost && last != null && nowMs - last.at <= TAP_DISPLAY_HOLD_MS;
+    const held = reason !== 'pose-lost' && last != null && nowMs - last.at <= TAP_DISPLAY_HOLD_MS;
     const outReason = held ? `held:${reason}` : reason;
     noteRejection(outReason);
     return { bar: held ? last.bar : null, fresh: false, held, uncertain: true,

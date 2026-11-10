@@ -33,6 +33,9 @@ import {
 import { getOpenCvSync } from './opencvRuntime.js';
 import { isRepeatedGaugeFrame } from './cameraFrameFreshness.js';
 import { locateGauge, probeGaugeDiscoveryCandidates } from './gaugeTrack.js';
+import {
+  expectedFlairRestAngle, hasOriginalFlairFace, isVerifiedGaugeCalibration, verifyGaugeCompatibility,
+} from './gaugeCompatibility.js';
 
 /** Clockwise travel from the printed 5 to the printed 10. */
 export const MARK_SWEEP_DEG = FLAIR_58_SCALE.sweepDeg / 2;
@@ -1048,6 +1051,23 @@ export function calibrateFromTaps(image, taps) {
   }
 
   const needle = readNeedleAt(image, hub.x, hub.y, hub.radius);
+  const fiveTapDeg = pointAngle(hub, fiveTap);
+  // Resolve a possible counterweight using the image-only shaft reader.
+  // The expected zero can request a second look, but cannot choose the tip.
+  const restNeedle = needle.angleDeg != null
+    && Math.abs(wrapDelta(needle.angleDeg, expectedFlairRestAngle(fiveTapDeg))) > 90
+    // The taps are inside the bezel. Include the longer tapered end rather
+    // than comparing only the short shafts near the pivot.
+    ? findPointerEvidence(image, hub, hub.radius * 1.3)
+    : needle;
+  const compatibility = verifyGaugeCompatibility(image, {
+    hub,
+    fiveDeg: fiveTapDeg,
+    tenDeg: pointAngle(hub, tenTap),
+    radius: (pointDist(hub, fiveTap) + pointDist(hub, tenTap)) / 2,
+    needleDeg: restNeedle.rayAngleDeg ?? restNeedle.angleDeg,
+    needleQuality: restNeedle.quality,
+  });
   let marks = snapScaleMarks(image, hub, fiveTap, tenTap, needle.angleDeg);
   if (geomOk) {
     const fiveDeg = pointAngle(hub, fiveTap);
@@ -1072,6 +1092,7 @@ export function calibrateFromTaps(image, taps) {
       ok: false,
       redo: null,
       reason: 'unregistered',
+      compatibility,
       hub,
       marks,
       snapPx: { centre: hubPx, five: null, ten: null },
@@ -1104,12 +1125,14 @@ export function calibrateFromTaps(image, taps) {
   }
   const needleWeak = needle.angleDeg == null || (needle.quality ?? 0) < NEEDLE_LOST_QUALITY * 0.5;
   if (needleWeak && !userPlaced) {
-    return { ok: false, redo: null, reason: 'needle', hub, marks };
+    return { ok: false, redo: null, reason: 'needle', hub, marks, compatibility };
   }
 
   let zeroAngleDeg = needleWeak
     ? wrap360(marks.tenDeg - REST_TO_TEN_DEG)
-    : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
+    : restNeedle !== needle && compatibility.reason === 'verified'
+      ? restNeedle.rayAngleDeg ?? restNeedle.angleDeg
+      : chooseRestNeedle(needle.angleDeg, marks.tenDeg);
   let tenAngleDeg = marks.tenDeg;
   let fiveAngleDeg = marks.fiveDeg;
   const r6 = taps.r6Anchor ?? taps.r6;
@@ -1138,6 +1161,7 @@ export function calibrateFromTaps(image, taps) {
     ok: true,
     redo: null,
     reason: null,
+    compatibility,
     userPlaced,
     userPlacedNote: userPlaced ? USER_PLACED_NOTE : null,
     fiveWarn: fiveBar == null || Math.abs(fiveBar - 5) > FIVE_WARN_BAR,
@@ -1161,6 +1185,7 @@ export function calibrateFromTaps(image, taps) {
       needleQuality: needle.quality,
       userPlaced,
       legacyScale,
+      compatibility: compatibility.state,
     },
   };
   rememberDialReference(image, result.calibration);
@@ -1486,12 +1511,25 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
     shiftDeg = redShift.shiftDeg;
   }
   if (registered) shiftDeg = registered.shiftDeg;
-  if (!tracker.legacyScale && !tracker.registration.reference && bezelOk
-    && shiftOk && redShift.corr >= 0.85 && darkShift.corr >= 0.65 && shiftDisagree <= 5) {
+  const bandsConfirmIdentity = bezelOk && shiftOk
+    && redShift.corr >= 0.85 && darkShift.corr >= 0.65 && shiftDisagree <= 5;
+  let faceReseeded = false;
+  // After reload a sparse dark histogram can fail the stored template check.
+  // Confirm the original printed layout locally at the prior orientation.
+  const canReseed = !tracker.legacyScale && !tracker.registration.reference && bezelOk;
+  const nearPriorFace = canReseed && isVerifiedGaugeCalibration(tracker.calibration)
+    && bands.redMass > 1.2 && redShift.corr >= 0.85 && shiftReach && stepFromPrev <= 3
+    && hasOriginalFlairFace(image, pose,
+      tracker.calibration.fiveAngleDeg + prevShift, tracker.calibration.tenAngleDeg + prevShift,
+      (pointDist(tracker.calibration.hub, tracker.calibration.five)
+        + pointDist(tracker.calibration.hub, tracker.calibration.ten)) * scale / 2);
+  if (canReseed && (bandsConfirmIdentity || nearPriorFace)) {
+    const seedShift = bandsConfirmIdentity ? shiftDeg : prevShift;
     const pending = tracker.registration.pendingSeed;
-    if (pending != null && Math.abs(wrapDelta(pending, shiftDeg)) <= 3) {
-      seedDialRegistration(image, tracker.calibration, pose, tracker.registration, shiftDeg, needle.angleDeg);
-    } else tracker.registration.pendingSeed = shiftDeg;
+    if (pending != null && Math.abs(wrapDelta(pending, seedShift)) <= 3) {
+      seedDialRegistration(image, tracker.calibration, pose, tracker.registration, seedShift, needle.angleDeg);
+      faceReseeded = Boolean(tracker.registration.reference);
+    } else tracker.registration.pendingSeed = seedShift;
   } else if (!tracker.registration.reference) tracker.registration.pendingSeed = null;
   const match = redShift.corr;
   const score = (bezelOk ? pose.score : 0) * (0.35 + 0.65 * Math.max(0, match));
@@ -1572,6 +1610,8 @@ export function readCalibratedFrame(image, tracker, diagnostics = null) {
     registration: registered ? { inliers: registered.inliers, residual: registered.residual } : null,
     poseMatrix: matrix,
     poseVerified: Boolean(registered),
+    poseCompatible: Boolean(registered) || faceReseeded || (bandsConfirmIdentity
+      && Math.abs(wrapDelta(shiftDeg, redShift.shiftDeg)) <= 3),
     poseEpoch: tracker.poseEpoch,
   };
   tracker.previousFrame = image;

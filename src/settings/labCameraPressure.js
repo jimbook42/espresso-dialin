@@ -1,3 +1,5 @@
+import { isVerifiedGaugeCalibration } from '../flairPressureLab/gaugeCompatibility.js';
+
 /** Settings key: camera pressure on shot screen (beta). Default off. */
 export const LAB_CAMERA_PRESSURE_KEY = 'labCameraPressureEnabled';
 
@@ -12,8 +14,7 @@ export function labGaugeTapCalibrationFromSettings(settings) {
   const raw = settings?.[LAB_GAUGE_TAP_CALIBRATION_KEY];
   if (!raw || typeof raw !== 'object') return null;
   const calibration = raw.calibration;
-  if (!calibration || typeof calibration !== 'object') return null;
-  return calibration;
+  return isVerifiedGaugeCalibration(calibration) ? calibration : null;
 }
 
 /** Previous tracker. Anything else, including unset, is the current reader. */

@@ -1,19 +1,19 @@
-import { NEEDLE_TRACK_QUALITY, PROCESS_INTERVAL_MS } from './gaugeConfig.js';
+import { NEEDLE_TRACK_QUALITY, PROCESS_INTERVAL_MS, wrapDelta } from './gaugeConfig.js';
 import {
   createClassicalReaderR6,
   regularizeReplayAnchors,
 } from './classicalReaderR6.js';
-import { initialTemporalState, stepTemporalGate } from './temporalGate.js';
 import { gateConfigR7, loadR7Config } from './r7Config.js';
-import { publishTapBar } from './tapCalibrate.js';
-import { createTapReadingPublisher } from './tapReadingPublisher.js';
+import { createTapReadingPublisher, currentTapModel } from './tapReadingPublisher.js';
 import { createPressureCurveFilter } from './pressureCurveFilter.js';
+import { isVerifiedGaugeCalibration } from './gaugeCompatibility.js';
 
 export const SHOT_LAB_R7_FRAME_MS = PROCESS_INTERVAL_MS;
+const MODEL_COMPARISON_MAX_DEG = 12;
 
 /**
- * Live tap observations with registered model recovery and explicit display holds.
- * The legacy R6/TemporalGate path and shared rate limits use frozen r7_config.
+ * Live tap observations and explicit display holds. The classical and model
+ * comparison is diagnostic only. The selected tap scale remains unchanged.
  */
 export function createShotLabR7Publisher(tapCalibration, options = {}) {
   const bundle = loadR7Config();
@@ -25,15 +25,11 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
   const tapPublisher = createTapReadingPublisher(gateCfg);
   const curveFilter = createPressureCurveFilter();
   let lastDisplayBar = null;
-  let gateState = initialTemporalState();
   let shotT0 = 0;
-  let lastOut = null;
 
   const reset = () => {
     classical.reset();
-    gateState = initialTemporalState();
     shotT0 = 0;
-    lastOut = null;
     tapPublisher.reset();
     curveFilter.reset();
     lastDisplayBar = null;
@@ -55,9 +51,10 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
    * }} frame
    */
   const stepFrame = (frame) => {
-    const { nowMs = Date.now(), read, r5Bar = null, r5Conf = null, r5Angle = null } = frame;
-    if (!anchors) {
-      return { bar: null, uncertain: true, reason: 'no-anchors', classicalStep: null };
+    const { nowMs = Date.now(), read } = frame;
+    if (!anchors || !isVerifiedGaugeCalibration(tapCalibration)) {
+      return { bar: null, fresh: false, held: false, uncertain: true,
+        reason: 'gauge-unverified', classicalStep: null };
     }
     const t = (nowMs - shotT0) / 1000;
     const tracking = read.lost ? 'LOST' : read.ok ? 'TRACKING' : 'UNCERTAIN';
@@ -67,6 +64,10 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
       && (read.needleQuality ?? 0) >= NEEDLE_TRACK_QUALITY;
     const zeroDeg = !legacyScale && read.zeroDeg != null ? read.zeroDeg : anchors.zeroAngleDeg;
     const tenDeg = !legacyScale && read.tenDeg != null ? read.tenDeg : anchors.tenAngleDeg;
+    const observation = tapPublisher.step({ ...frame, nowMs });
+    const model = currentTapModel({ ...frame, nowMs }, shotT0);
+    const agrees = observation.fresh && Number.isFinite(model?.angle)
+      && Math.abs(wrapDelta(model.angle, read.needleDeg)) <= MODEL_COMPARISON_MAX_DEG;
     const classicalStep = classical.processFrame({
       t,
       tracking,
@@ -74,11 +75,10 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
       rest,
       zeroDeg,
       tenDeg,
-      r5Bar,
-      r5Conf,
+      r5Bar: agrees ? model.bar : null,
+      r5Conf: agrees ? frame.r5Conf : null,
     });
     if (!legacyScale) {
-      const observation = tapPublisher.step({ ...frame, nowMs });
       // bar and its freshness/timestamp remain the measured, unsmoothed value.
       // Never feed display output back into acceptance, rate or tracking gates.
       let displayBar = null;
@@ -93,58 +93,7 @@ export function createShotLabR7Publisher(tapCalibration, options = {}) {
       }
       return { ...observation, displayBar, classicalStep };
     }
-    const tapSure = !legacyScale && read.ok && read.bar != null && !read.lost;
-    let classicalBar = classicalStep.published ? classicalStep.bar : null;
-    // The tap reader's bar is piecewise through the user's 5 and 10, and it
-    // already refused a 10 that was not climbed to. The linear classical span
-    // is the v4.13.21 scale.
-    if (tapSure) classicalBar = read.bar;
-    const classicalConfidence =
-      classicalBar != null && (tapSure || classicalStep.published) ? NEEDLE_TRACK_QUALITY : null;
-    // The classical reader already says when it is guessing: it did not publish,
-    // or it is holding the last bar through an UNCERTAIN stretch.
-    const classicalUnsure = tapSure
-      ? false
-      : (!classicalStep.published || classicalStep.reason === 'uncertain-hold');
-    const gated = stepTemporalGate(gateState, {
-      t,
-      r2Bar: r5Bar,
-      r2Conf: r5Conf,
-      r2Angle: r5Angle,
-      classicalBar,
-      classicalAngle: classicalStep.needleDeg,
-      classicalConfidence,
-      classicalUnsure,
-      rest,
-    }, gateCfg);
-    gateState = gated.state;
-    let bar = gated.bar;
-    if (!legacyScale) {
-      bar = publishTapBar({
-        bar,
-        needleDeg: read.needleDeg,
-        tenDeg,
-        previousBar: lastOut,
-      });
-      // A missed needle used to publish the classical hold, which sits below
-      // the last good bar while the lever is still rising.
-      if (read.bar == null && bar != null && lastOut != null && bar < lastOut - 0.15) {
-        bar = lastOut;
-      }
-    }
-    if (bar != null) lastOut = bar;
-    const uncertain = bar == null;
-    const held = bar != null && (bar !== gated.bar || gated.reason === 'hold'
-      || classicalStep.reason === 'uncertain-hold');
-    return {
-      bar,
-      uncertain,
-      fresh: bar != null && !held,
-      held,
-      measuredAtMs: bar != null && !held ? nowMs : null,
-      reason: bar != null && bar !== gated.bar ? 'hold-max' : gated.reason,
-      classicalStep,
-    };
+    return { ...observation, classicalStep };
   };
 
   return {

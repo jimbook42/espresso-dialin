@@ -6,7 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 describe('November 3 low-pressure real-frame regression', () => {
-  it('preserves main calibration behavior and creates a fresh output directory', () => {
+  it('preserves valid low-pressure readings and withholds unverified perturbed calibrations', () => {
     const temporary=mkdtempSync(path.join(tmpdir(),'espresso-low-pressure-'));
     const outputDir=path.join(temporary,'nested','out');
     try {
@@ -18,15 +18,21 @@ describe('November 3 low-pressure real-frame regression', () => {
     expect(runs.map(r=>r.spec.name)).toEqual(['true','hub-x-10','hub-y-10']);
     for(const run of runs){
       expect(run.rows,run.spec.name).toHaveLength(18);
-      // These are main's measured limitations, not pressure corrections.
-      const expectedFalseRest={'true':0,'hub-x-10':1,'hub-y-10':4};
-      expect(run.summary.falseRest,run.spec.name).toBe(expectedFalseRest[run.spec.name]);
-      if(run.spec.name==='true')expect(run.summary.median).toBeLessThanOrEqual(.3);
-      else expect(run.summary.median).toBeGreaterThan(.3);
-      expect(run.summary.recovered,run.spec.name).toBe(5);
-      for(const row of run.rows.filter(r=>['c004','c005','c015','c016','c017'].includes(r.id))){
-        expect(row.output.fresh,row.id).toBe(true);
-        expect(row.read.pointerVerified,row.id).toBe(true);
+      expect(run.summary.falseRest,run.spec.name).toBe(0);
+      if(run.spec.name==='true') {
+        expect(run.summary.median).toBeLessThanOrEqual(.3);
+        expect(run.summary.recovered).toBe(5);
+        for(const row of run.rows.filter(r=>['c004','c005','c015','c016','c017'].includes(r.id))){
+          expect(row.output.fresh,row.id).toBe(true);
+          expect(row.read.pointerVerified,row.id).toBe(true);
+        }
+      } else {
+        // Main published false-rest measurements with these two pivot errors.
+        expect(run.calibration.compatibility).toBe('uncertain');
+        expect(run.summary.scored).toBe(0);
+        for(const row of run.rows) {
+          expect(row.output).toMatchObject({ bar:null, fresh:false, reason:'gauge-unverified' });
+        }
       }
       if(run.spec.name==='hub-y-10') {
         // Main's 22-degree geometry check takes the snapped-hub path here.

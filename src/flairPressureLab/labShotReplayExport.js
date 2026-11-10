@@ -62,7 +62,8 @@ export function downloadBlobFile(filename, blob) {
   URL.revokeObjectURL(url);
 }
 
-export function buildShotDiagnosticDocument(shot, exportedAt = new Date().toISOString()) {
+export function buildShotDiagnosticDocument(shot, exportedAt = new Date().toISOString(),
+  { testerFeedback, includeSavedFlow = false } = {}) {
   const documentJson = labPressureCurveExportDocument(shot);
   const trace = shotDeviceDiagnosticsForShot(shot?.id);
   documentJson.readerDiagnostics = replayDiagnosticsForShot(shot?.id);
@@ -83,6 +84,9 @@ export function buildShotDiagnosticDocument(shot, exportedAt = new Date().toISOS
     ...trace,
     pressureSource: documentJson.labPressureCurve.length || documentJson.readerDiagnostics || documentJson.readerStallDiagnostics
       ? trace?.pressureSource ?? null : null,
+    ...(testerFeedback ? { testerFeedback } : {}),
+    ...(includeSavedFlow && shot?.scaleFlowCurve?.length
+      ? { savedScaleFlowCurve: shot.scaleFlowCurve } : {}),
   };
 }
 

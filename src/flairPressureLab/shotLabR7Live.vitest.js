@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createShotLabR7Publisher } from './shotLabR7Live.js';
 import { stepTemporalGate, initialTemporalState } from './temporalGate.js';
 import { gateConfigR7 } from './r7Config.js';
+import { GAUGE_COMPATIBILITY } from './gaugeCompatibility.js';
 
 const TAP_CAL = {
+  compatibility: GAUGE_COMPATIBILITY.supported,
   zeroAngleDeg: 200,
   fiveAngleDeg: 260,
   tenAngleDeg: 320,
@@ -17,7 +19,7 @@ describe('shotLabR7Live', () => {
     const pub = createShotLabR7Publisher(TAP_CAL);
     pub.beginShot(0);
     const step = (nowMs, bar, extra = {}) => pub.stepFrame({ nowMs,
-      read: { ok: bar != null, lost: false, bar, fresh: bar != null,
+      read: { ok: bar != null, poseCompatible: true, lost: false, bar, fresh: bar != null,
         needleDeg: 260, needleQuality: .3, ...extra } });
     expect(step(0, 5).displayBar).toBe(5);
     const fresh = step(125, 5.1);
@@ -53,8 +55,10 @@ describe('shotLabR7Live', () => {
         nowMs: 1_000_000 + i * 125,
         read: {
           ok: true,
+          poseCompatible: true,
           lost: false,
           bar: 4.5,
+          fresh: true,
           needleDeg: 40 + i * 2,
           needleQuality: 0.3,
           hub: { x: 100, y: 100 },

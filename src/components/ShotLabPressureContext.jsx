@@ -37,12 +37,16 @@ export function ShotLabPressureProvider({
   shotReplayCommitRef,
   shotReplayDiscardRef,
   onLabShotReplayStored,
+  usageEnabled,
   children,
 }) {
   const replayFrameObserverRef = useRef(null);
   const readerFrameObserverRef = useRef(null);
   const liveFrameRef = useRef(null);
   const enabled = isLabCameraPressureEnabled(settings);
+  // Experimental readers lack the current pose identity checks.
+  const legacyTracker = import.meta.env.DEV && labPressureReaderLegacy(settings);
+  const legacyScale = import.meta.env.DEV && labPressureScaleLegacy(settings);
   const storedCalibration = labGaugeTapCalibrationFromSettings(settings);
   const viewMoved = settings?.labGaugeTapCalibration?.viewMoved === true;
   const [calibrateOpen, setCalibrateOpen] = useState(false);
@@ -80,9 +84,9 @@ export function ShotLabPressureProvider({
     onCalibrationSaved: onSaveCalibration,
     replayFrameObserverRef: readerFrameObserverRef,
     shotDiagnosticsRef,
-    leapCap: !labPressureReaderLegacy(settings),
+    leapCap: !legacyTracker,
     modelTiebreak: labPressureModelTiebreak(settings),
-    legacyScale: labPressureScaleLegacy(settings),
+    legacyScale,
   });
 
   useLabShotReplay({
@@ -241,8 +245,9 @@ export function ShotLabPressureProvider({
         sourceCamera={pressure}
         ui={ui}
         showCameraPreview={previewOn}
-        leapCap={!labPressureReaderLegacy(settings)}
-        legacyScale={labPressureScaleLegacy(settings)}
+        leapCap={!legacyTracker}
+        legacyScale={legacyScale}
+        usageEnabled={usageEnabled}
       />
       {children}
     </ShotLabPressureContext.Provider>

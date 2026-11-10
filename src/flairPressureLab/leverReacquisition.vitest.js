@@ -9,6 +9,7 @@ import { createPreShotReadableWindow, isRecordedSampleConfident, samplePreShotDi
 import { createShotLabPressureSession } from './shotLabPressureSession.js';
 import { buildLabPressureShotFields } from './labPressureShotFields.js';
 import { currentTapModel } from './tapReadingPublisher.js';
+import { GAUGE_COMPATIBILITY } from './gaugeCompatibility.js';
 import * as discovery from './gaugeTrack.js';
 
 beforeAll(async () => {
@@ -60,7 +61,8 @@ function setup() {
   const tracker = createCalibratedTracker(result.calibration);
   expect(tracker.registration.reference).not.toBeNull();
   return { calibration: result.calibration, tracker,
-    publisher: createShotLabR7Publisher(result.calibration), time: 1000, serial: 0,
+    publisher: createShotLabR7Publisher({ ...result.calibration, compatibility: GAUGE_COMPATIBILITY.supported }),
+    time: 1000, serial: 0,
     sampler: createPreShotDialVerdictSampler(), readable: createPreShotReadableWindow() };
 }
 
