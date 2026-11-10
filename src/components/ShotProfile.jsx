@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { buildShotProfile, observationAtTime } from '../utils/shotProfile.js';
 import { ScaleFlowChart } from './ScaleFlowChart.jsx';
+import { ShotInsights } from './ShotInsights.jsx';
 
 const format = (value, unit, digits = 1) => value == null ? 'Not recorded' : `${value.toFixed(digits)} ${unit}`;
 const formatTime = (value) => format(value, 's');
@@ -63,6 +64,7 @@ function ProfileDetails({ shot, ui }) {
           <li key={label} className={`${ui.chip} rounded-full px-2 py-1`}>{label}</li>
         ))}
       </ul>
+      <ShotInsights shot={shot} profile={profile} ui={ui} />
       {view && (
         <div className={`${ui.cardInset} min-w-0 rounded-xl p-2.5 space-y-2`}>
           {views.length > 1 && (

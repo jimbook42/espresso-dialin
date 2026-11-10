@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { chromium } from 'playwright';
 import { encodeTimemoreFrame } from '../src/scales/protocols/timemoreFramed.js';
 import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
@@ -223,8 +225,20 @@ try {
     const card = page.getByTestId('history-shot-card');
     await card.getByText('Shot profile', { exact: true }).click();
     await card.getByText('Scale recording interrupted', { exact: true }).waitFor();
+    const insights = card.getByTestId('shot-insights');
+    await insights.getByText('Shot insights', { exact: true }).waitFor();
+    await insights.getByText('Main takeaway', { exact: true }).waitFor();
+    await insights.getByText('Supporting observations', { exact: true }).waitFor();
+    await insights.getByText('Next step', { exact: true }).waitFor();
+    const timeInsight = (await insights.textContent()).toLowerCase();
+    const savedTimeRelation = shots[0].actualTimeS < 27 ? 'faster than the saved'
+      : shots[0].actualTimeS > 32 ? 'slower than the saved' : 'within the saved';
+    assert.ok(timeInsight.includes(savedTimeRelation), `Unexpected target explanation: ${timeInsight}`);
     for (const viewport of [{ width: 320, height: 640 }, { width: 412, height: 915 }]) {
       await page.setViewportSize(viewport);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        `History insights overflow at ${viewport.width}px`);
+      await card.screenshot({ path: path.join(tmpdir(), `b09-shot-insights-${viewport.width}x${viewport.height}.png`) });
       await card.getByRole('button', { name: 'Weight', exact: true }).click();
       await card.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
