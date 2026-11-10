@@ -37,6 +37,14 @@ function rows(page, seed = false) {
   }), seed);
 }
 
+async function checkManualProfile(card) {
+  await card.getByText('Shot profile', { exact: true }).tap();
+  await card.getByText('Pressure not recorded', { exact: true }).waitFor();
+  await card.getByText('No scale data', { exact: true }).waitFor();
+  await card.getByText('1:2.0', { exact: true }).waitFor();
+  assert.equal(await card.getByTestId('shot-profile-details').getByRole('img').count(), 0);
+}
+
 try {
   await waitForServer(server.url);
   const launch = (viewport) => chromium.launchPersistentContext(profile, {
@@ -102,6 +110,7 @@ try {
     assert.equal(shot.notes, 'Combined browser check');
     assert.equal(shot.labPressureCurve, undefined);
     assert.ok(shot.recommendation);
+    await checkManualProfile(card);
     const download = page.waitForEvent('download');
     await card.getByTestId('history-shot-diagnostics-export').click();
     const diagnostics = JSON.parse(await readFile(await (await download).path(), 'utf8'));
@@ -128,7 +137,7 @@ try {
     const [restarted] = context.pages();
     await restarted.goto(server.url);
     await restarted.getByRole('navigation').getByRole('button', { name: 'History', exact: true }).click();
-    await restarted.getByTestId('history-shot-card').filter({ hasText: 'Combined coffee' }).waitFor();
+    await checkManualProfile(restarted.getByTestId('history-shot-card').filter({ hasText: 'Combined coffee' }));
     assert.deepEqual(await rows(restarted), saved);
     console.log('PASS Combined manual shot, protected review, one save, diagnostics and browser restart at 320×640 and 412×915');
   }

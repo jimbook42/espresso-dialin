@@ -219,6 +219,18 @@ try {
     assert.ok(curve.length > 45);
     assert.equal(curve.at(-1).weightG, 36);
     assert.ok(curve.at(-1).tS < elapsed, 'reconnected weights are not appended to the interrupted shot');
+    assert.equal(shots[0].shotProfileTiming.scaleInterrupted, true);
+    const card = page.getByTestId('history-shot-card');
+    await card.getByText('Shot profile', { exact: true }).click();
+    await card.getByText('Scale recording interrupted', { exact: true }).waitFor();
+    for (const viewport of [{ width: 320, height: 640 }, { width: 412, height: 915 }]) {
+      await page.setViewportSize(viewport);
+      await card.getByRole('button', { name: 'Weight', exact: true }).click();
+      await card.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await card.getByRole('button', { name: 'Flow', exact: true }).click();
+      await card.getByRole('img', { name: 'Flow rate (g/s)' }).waitFor();
+    }
     const exported = await readDiagnostics(page);
     assert.equal(exported.shotId, shots[0].id);
     const gaps = exported.scaleDiagnostics.gaps;

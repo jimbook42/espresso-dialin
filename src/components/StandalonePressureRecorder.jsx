@@ -18,7 +18,11 @@ export function StandalonePressureRecorder({
   const input = `${ui.input} border rounded-lg w-full min-w-0 min-h-11 px-3`;
   const update = (event) => {
     const { name, value } = event.target;
-    setDetails((current) => ({ ...current, [name]: value }));
+    setDetails((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === 'yield' ? { yieldSource: 'manual' } : {}),
+    }));
   };
   return (
     <section aria-labelledby="pressure-title" className={`${ui.card} rounded-2xl p-4 space-y-4`}>

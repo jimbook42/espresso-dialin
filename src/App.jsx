@@ -231,7 +231,8 @@ import {
   allowUsagePageViews, anonymousUsageEnabled, beforeUsagePageView, recordUsage, usageSensors,
 } from './settings/anonymousUsage.js';
 import { isVerifiedGaugeCalibration } from './flairPressureLab/gaugeCompatibility.js';
-import { ScaleFlowChart } from './components/ScaleFlowChart.jsx';
+import { ShotProfile } from './components/ShotProfile.jsx';
+import { savedShotMeasurements } from './utils/shotProfile.js';
 import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
 import { ShotLabPressureProvider } from './components/ShotLabPressureContext.jsx';
 import { LabShotReplayScreen } from './components/LabShotReplayScreen.jsx';
@@ -244,7 +245,6 @@ import { readerStallDiagnosticsForShot } from './flairPressureLab/readerStallDia
 import { LabPressureStartPanel } from './components/LabPressureStartPanel.jsx';
 import { LabPreShotDialUnderScale } from './components/LabPreShotDialUnderScale.jsx';
 import { LabPressurePreShotConfirm } from './components/LabPressurePreShotConfirm.jsx';
-import { ShotPressureChart } from './components/ShotPressureChart.jsx';
 import {
   LAB_CAMERA_PRESSURE_KEY,
   LAB_GAUGE_TAP_CALIBRATION_KEY,
@@ -460,6 +460,7 @@ export default function App() {
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
   const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
   const yieldSettleUserEditedRef = useRef(false);
+  const dialYieldSourceRef = useRef(null);
   const yieldSettleTimerRef = useRef(null);
   const activeTabRef = useRef(activeTab);
   const activeBeansCountRef = useRef(0);
@@ -1007,8 +1008,10 @@ export default function App() {
 
   const applyMeasuredShotYield = useCallback((yieldG) => {
     if (standaloneCaptureRef.current) {
-      if (yieldG != null) setPressureDetails((details) => ({ ...details, yield: details.yield || String(yieldG) }));
+      if (yieldG != null) setPressureDetails((details) => details.yield ? details
+        : { ...details, yield: String(yieldG), yieldSource: 'scale' });
     } else if (yieldG != null && yieldG > 0) {
+      dialYieldSourceRef.current = 'scale';
       setActualYieldG(String(yieldG));
     }
   }, []);
@@ -1021,7 +1024,7 @@ export default function App() {
     shotDiagnosticsRef.current?.freeze({ settled: true, yieldG });
     if (standaloneCaptureRef.current) applyMeasuredShotYield(yieldG);
     if (!yieldSettleUserEditedRef.current && yieldG != null && yieldG > 0) {
-      if (!standaloneCaptureRef.current) setActualYieldG(String(yieldG));
+      if (!standaloneCaptureRef.current) applyMeasuredShotYield(yieldG);
       setFrozenShotWeightG(yieldG);
     } else {
       setFrozenShotWeightG(null);
@@ -1265,6 +1268,7 @@ export default function App() {
     if (!dialShotPending) return;
     setActualTimeS('');
     setActualYieldG('');
+    dialYieldSourceRef.current = null;
     setTasteProfile('');
     setShotRating(null);
     setNotes('');
@@ -1770,6 +1774,8 @@ export default function App() {
     });
     if (!shot) return;
     const trace = shotDiagnosticsRef.current;
+    const timing = trace?.savedProfileTiming(shot, pressureDetails.yieldSource ?? null);
+    if (timing) shot.shotProfileTiming = timing;
     const commitReplay = labShotReplayCommitRef.current?.capture();
     standaloneSaveRef.current = true;
     setPressureSaving(true);
@@ -2332,6 +2338,8 @@ export default function App() {
     };
 
     const trace = shotDiagnosticsRef.current;
+    const timing = trace?.savedProfileTiming(shotRecord, dialYieldSourceRef.current);
+    if (timing) shotRecord.shotProfileTiming = timing;
     const commitReplay = (dialShotPending || labPressureShotMetrics != null)
       ? labShotReplayCommitRef.current?.capture() : null;
     dialSaveRef.current = true;
@@ -2380,6 +2388,7 @@ export default function App() {
         setActualDoseG(activeRecipe.targetDoseG);
       }
       setActualYieldG('');
+      dialYieldSourceRef.current = null;
       setShotRating(null);
       setNotes('');
       setTasteProfile('');
@@ -2806,12 +2815,6 @@ export default function App() {
   const shotTimeTone = (timeS, minT, maxT) =>
     EXTRACTION_TIME_COLORS[extractionTimeStatus(timeS, minT, maxT)].label;
 
-  const preInfusionFromNotes = (notes) => {
-    if (!notes) return null;
-    const match = notes.match(/Pre-infusion:\s*([\d.]+)s/i);
-    return match ? match[1] : null;
-  };
-
   const handleBrewStartTimer = () => {
     setActualTimeS('');
     requestStartTimer({ fromBrewGuide: true });
@@ -2839,7 +2842,10 @@ export default function App() {
       setActualDoseG(activeRecipe.targetDoseG);
     }
     if (timeS != null && timeS !== '') setActualTimeS(timeS);
-    if (yieldG != null && yieldG !== '' && Number(yieldG) > 0) setActualYieldG(yieldG);
+    if (yieldG != null && yieldG !== '' && Number(yieldG) > 0) {
+      dialYieldSourceRef.current = null;
+      setActualYieldG(yieldG);
+    }
     setWasPurged(true);
     if (lastLearningShot && dynamicRec?.recommendedSetting && lastLearningShot.grinderModel === grinderModel) {
       const uiState = uiStateFromRecommendedSetting(grinderModel, dynamicRec.recommendedSetting, appSettings);
@@ -3634,6 +3640,7 @@ export default function App() {
                         readOnly={yieldTileCelebrating}
                         onChange={(e) => {
                           if (yieldSettleActive) yieldSettleUserEditedRef.current = true;
+                          dialYieldSourceRef.current = 'manual';
                           setActualYieldG(e.target.value);
                           setShotFieldHighlights((prev) => ({ ...prev, yield: false }));
                         }}
@@ -4250,8 +4257,7 @@ export default function App() {
                 const recipeForShot = recipes.find(r => r.beanId === s.beanId);
                 const minT = recipeForShot?.targetTimeMinS || 27;
                 const maxT = recipeForShot?.targetTimeMaxS || 32;
-                const preSec = standalone ? null : preInfusionFromNotes(s.notes);
-                const peakBar = s.flairProfile?.peakPressure;
+                const { durationS, doseG, yieldG, ratio } = savedShotMeasurements(s);
                 const shotOutcome = standalone ? {} : classifyShotOutcome(s, recipeContextForShot(s, recipeForShot || {}));
                 const historyUserNote = standalone ? s.notes : formatHistoryShotUserNoteLine(s.notes);
                 return (
@@ -4331,17 +4337,17 @@ export default function App() {
 
                     {standalone ? (
                       <p className={`flex flex-wrap gap-2 text-xs ${ui.text}`}>
-                        <span>{s.actualTimeS}s</span>
-                        {s.actualDoseG != null && <span>{s.actualDoseG} g dose</span>}
-                        {s.actualYieldG != null && <span>{s.actualYieldG} g yield</span>}
-                        {s.brewRatio && <span>{s.brewRatio}</span>}
+                        {durationS != null && <span>{durationS} s</span>}
+                        {doseG != null && <span>{doseG} g dose</span>}
+                        {yieldG != null && <span>{yieldG} g yield</span>}
+                        {ratio != null && <span>1:{ratio.toFixed(1)}</span>}
                       </p>
                     ) : (
                       <div className="grid grid-cols-4 gap-2 text-xs" data-testid="history-shot-metric-tiles">
                         {[
                           { label: 'Grind', value: grindStr, tone: ui.text, compact: false },
-                          { label: 'Dose/Yield', value: `${s.actualDoseG || 0}/${s.actualYieldG || 0}g`, tone: ui.text, compact: false },
-                          { label: 'Time', value: `${s.actualTimeS || 0}s`, tone: shotTimeTone(s.actualTimeS, minT, maxT), compact: false },
+                          { label: 'Dose/Yield', value: doseG == null && yieldG == null ? '—' : `${doseG ?? '—'}/${yieldG ?? '—'}g`, tone: ui.text, compact: false },
+                          { label: 'Time', value: durationS == null ? '—' : `${durationS}s`, tone: shotTimeTone(durationS, minT, maxT), compact: false },
                           { label: 'Taste', value: tasteProfileDisplayLabel(s.tasteProfile), tone: `${ui.sub} capitalize`, compact: true },
                         ].map((cell) => (
                           <div
@@ -4389,49 +4395,14 @@ export default function App() {
                     )}
                     </div>
 
-                    {s.scaleFlowCurve?.length > 0 && (
-                      <ScaleFlowChart
-                        flowCurve={s.scaleFlowCurve}
-                        flowTimeOffsetSec={Number(preSec) || 0}
-                        averageFlowRateGs={s.scaleFlowRateGs}
-                        flairProfile={s.flairProfile ?? null}
-                        compact
-                        {...(!standalone && s.labPressureCurve?.length > 0
-                          ? {
-                              pressureSamples: s.labPressureCurve.map((p) => ({
-                                tS: p.tS,
-                                bar: p.bar,
-                                confident: true,
-                              })),
-                              pressurePeakBar: s.labPressurePeakBar ?? null,
-                            }
-                          : {})}
-                      />
-                    )}
-                    {s.labPressureCurve?.length > 0 && (standalone || !s.scaleFlowCurve?.length) && (
-                      <ShotPressureChart
-                        samples={s.labPressureCurve.map((p) => ({ tS: p.tS, bar: p.bar, confident: true }))}
-                        compact
-                        peakBar={s.labPressurePeakBar ?? null}
-                        savedCurve={!standalone}
-                      />
-                    )}
+                    <ShotProfile shot={s} ui={ui} />
 
                     <div className={`flex flex-wrap items-center gap-2 text-[10px] ${ui.muted}`}>
-                      {preSec && <span className="italic">Pre-infusion: {preSec}s.</span>}
-                      {s.scaleFlowCurve?.length > 0
-                        && s.scaleFlowRateGs != null
-                        && Number.isFinite(s.scaleFlowRateGs) && (
-                        <span className={`${ui.accentText} font-semibold`}>
-                          Scale flow {s.scaleFlowRateGs.toFixed(2)} g/s
-                        </span>
-                      )}
                       {(s.brewTemperatureC || recipeForShot?.brewTemperatureC) && (
                         <span className={`${ui.tempPill} px-2 py-0.5 rounded-full font-semibold`}>
                           {s.brewTemperatureC || recipeForShot?.brewTemperatureC}°C
                         </span>
                       )}
-                      {peakBar && <span>{peakBar} bar</span>}
                     </div>
 
                     {statsForNerdsEnabled && (

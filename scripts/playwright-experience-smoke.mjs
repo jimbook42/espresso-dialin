@@ -147,7 +147,16 @@ try {
   await legacy.getByRole('button', { name: 'View shot history' }).click();
   await current(legacy, 'History');
   await legacy.getByTestId('history-shot-card').getByText('Legacy coffee', { exact: false }).waitFor();
-  await legacy.getByTestId('history-shot-card').getByText('4', { exact: true }).waitFor();
+  const legacyCard = legacy.getByTestId('history-shot-card');
+  await legacyCard.getByText('4', { exact: true }).waitFor();
+  await legacyCard.getByText('Shot profile', { exact: true }).tap();
+  await legacyCard.getByRole('img', { name: 'Pressure (bar)' }).waitFor();
+  await legacyCard.getByText('Approximate alignment', { exact: true }).waitFor();
+  await legacyCard.getByText('No scale data', { exact: true }).waitFor();
+  await legacy.setViewportSize(small);
+  await checkMobile(legacy);
+  await legacy.setViewportSize(galaxy);
+  assert.deepEqual((await accessRows(legacy)).shots, beforeSwitch.shots);
   await legacy.getByTitle('Settings', { exact: true }).click();
   await chooseInSettings(legacy, 'Brew & Dial-In');
   const afterSwitch = await accessRows(legacy);

@@ -156,6 +156,25 @@ export function createShotDeviceDiagnostics(settings) {
         },
       };
     },
+    savedProfileTiming(shot, yieldSource) {
+      if (!frozen || (!shot.labPressureCurve?.length && !shot.scaleFlowCurve?.length)) return null;
+      const { timeline, final } = frozen;
+      const stopMs = final.stopMs + final.wallClockDriftAtStopMs;
+      const observedWeight = frozen.scaleDiagnostics.rawWeightSamples?.some(({ tMs }) => tMs >= 0);
+      return {
+        version: 1,
+        pressureOriginMs: shot.labPressureCurve?.length ? timeline.pressureOffsetMs : null,
+        scaleOriginMs: shot.scaleFlowCurve?.length ? timeline.extractionOffsetMs : null,
+        extractionStartMs: timeline.appExtractionOffsetMs,
+        extractionEndMs: final.backdatedEndMs ?? stopMs,
+        stopMs,
+        settlementEndMs: frozen.events.findLast(({ type }) => type === 'yield-settlement-completed')?.tMs ?? null,
+        clockDriftMs: final.wallClockDriftAtStopMs,
+        scaleInterrupted: frozen.events.some(({ type, tMs }) => type === 'disconnect'
+          && timeline.extractionOffsetMs != null && tMs >= timeline.extractionOffsetMs),
+        yieldSource: yieldSource === 'scale' && !observedWeight ? 'unobserved-scale' : yieldSource,
+      };
+    },
     save(shot) {
       if (saved || !frozen) return;
       saved = true;

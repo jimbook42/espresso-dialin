@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
 
@@ -15,7 +17,8 @@ const calibration = camera
   : null;
 if (camera && !calibration?.anchors) throw new Error('The recording has no tap calibration.');
 const videoBytes = camera ? await readFile(fixturePath) : null;
-const server = startPreviewServer(camera ? 4186 : 4187, process.env.B06_PREVIEW_DIST);
+const screenshotDir = process.env.B08_SCREENSHOTS;
+const server = startPreviewServer(combined ? 4189 : camera ? 4186 : 4187, process.env.B06_PREVIEW_DIST);
 let browser;
 
 function readRows(page) {
@@ -52,6 +55,56 @@ async function sharedDiagnostics(page, action) {
   const download = await pending;
   await dialog.getByRole('button', { name: 'Done' }).click();
   return JSON.parse(await readFile(await download.path(), 'utf8'));
+}
+
+async function connectSimulatedScale(page) {
+  await page.getByRole('combobox', { name: 'Scale transport' }).selectOption('sim');
+  await page.getByRole('button', { name: 'Connect scale' }).click();
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).waitFor();
+}
+
+async function checkShotProfile(page, card, shot, screenshot) {
+  const panel = card.getByTestId('history-shot-profile');
+  const summary = panel.getByText('Shot profile', { exact: true });
+  const details = panel.getByTestId('shot-profile-details');
+  assert.equal(await details.count(), 0);
+  await summary.tap();
+  await panel.getByTestId('shot-pressure-chart').waitFor();
+  const timing = shot.shotProfileTiming;
+  assert.equal(timing.version, 1);
+  assert.ok(Number.isFinite(timing.pressureOriginMs));
+  assert.ok(Number.isFinite(timing.extractionEndMs));
+  assert.equal(await panel.getByText('Approximate alignment', { exact: true }).count(), 0);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  const hasScale = Boolean(shot.scaleFlowCurve?.length);
+  if (hasScale) {
+    assert.ok(Number.isFinite(timing.scaleOriginMs));
+    assert.ok(timing.settlementEndMs >= timing.stopMs);
+    await panel.getByRole('button', { name: 'Weight', exact: true }).tap();
+    await panel.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
+    await panel.getByRole('button', { name: 'Flow', exact: true }).tap();
+    await panel.getByRole('img', { name: 'Flow rate (g/s)' }).waitFor();
+    await panel.getByRole('button', { name: 'Combined', exact: true }).tap();
+    await panel.getByRole('img', { name: 'Pressure (bar) and flow (g/s)' }).waitFor();
+  } else {
+    await panel.getByText('No scale data', { exact: true }).waitFor();
+    assert.equal(timing.scaleOriginMs, null);
+  }
+  const chart = panel.getByRole('img');
+  await chart.tap();
+  await panel.getByTestId('profile-time-cursor').waitFor({ state: 'attached' });
+  await panel.getByTestId('profile-observations').waitFor();
+  const range = panel.getByRole('slider', { name: 'Explore shot time' });
+  const timeBefore = await range.inputValue();
+  await range.press('ArrowRight');
+  assert.notEqual(await range.inputValue(), timeBefore);
+  if (screenshot && screenshotDir) {
+    await mkdir(screenshotDir, { recursive: true });
+    await chart.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: join(screenshotDir, screenshot) });
+  }
+  await summary.tap();
+  await details.waitFor({ state: 'detached' });
 }
 
 async function calibrate(page, { sheetOpen = false } = {}) {
@@ -94,8 +147,8 @@ async function interruptCamera(page) {
   }, interruptedTrackId);
 }
 
-async function setup(viewport) {
-  const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, acceptDownloads: true });
+async function setup(viewport, context) {
+  const page = context?.pages()[0] ?? await browser.newPage({ viewport, isMobile: true, hasTouch: true, acceptDownloads: true });
   if (camera) await page.route(`**${fixture}`, async (route) => {
     const headers = { 'content-type': 'video/mp4', 'accept-ranges': 'bytes' };
     const range = /^bytes=(\d+)-(\d*)$/.exec(route.request().headers().range ?? '');
@@ -172,7 +225,8 @@ async function setup(viewport) {
         const tx = db.transaction(['settings', 'beans', 'recipes'], 'readwrite');
         tx.objectStore('settings').put({
           id: 'global', experiencePreference: 'combined', grinderModel: 'Sette 270Wi',
-          lastSelectedBeanId: 'camera-bean', preInfusionEnabled: false, shotStartCountdown: 0,
+          lastSelectedBeanId: 'camera-bean', preInfusionEnabled: true, shotStartCountdown: 0,
+          smartScaleDeviceId: 'timemore-dot', scaleFlowAutoStopEnabled: false,
         });
         tx.objectStore('beans').put({ id: 'camera-bean', name: 'Camera coffee', roastType: 'Medium' });
         tx.objectStore('recipes').put({ id: 'camera-recipe', beanId: 'camera-bean',
@@ -211,14 +265,22 @@ async function checkCombinedCamera(page, verifyFailedReplay) {
   await calibrate(page, { sheetOpen: true });
   await page.getByText(/Camera pressure on · Gauge calibrated/).waitFor();
   await page.locator('[data-dial-found="true"]').waitFor({ timeout: 20000 });
+  await connectSimulatedScale(page);
   await start.click();
   const stop = page.getByRole('button', { name: 'Stop shot', exact: true });
+  const endPreInfusion = page.getByRole('button', { name: 'End pre-infusion' });
+  await endPreInfusion.waitFor();
+  await page.waitForTimeout(700);
+  await endPreInfusion.click();
   await stop.waitFor();
   await page.waitForTimeout(1500);
   await interruptCamera(page);
   await page.waitForTimeout(1300);
   await stop.click();
   await page.getByText(/Peak pressure .* bar/).waitFor();
+  await page.getByRole('button', { name: 'Log shot & calculate grind adjustment' }).waitFor();
+  await page.waitForFunction(() => !document.querySelector('[data-testid="dial-yield-tile"] input')?.readOnly);
+  await page.waitForTimeout(2500);
   await page.getByTestId('dial-yield-tile').locator('input').fill('36');
   await page.getByRole('button', { name: 'Balanced', exact: true }).click();
   await page.getByRole('button', { name: 'Rate shot 4 out of 5' }).click();
@@ -231,7 +293,7 @@ async function checkCombinedCamera(page, verifyFailedReplay) {
   const history = page.getByRole('navigation').getByRole('button', { name: 'History', exact: true });
   await history.click();
   const card = page.getByTestId('history-shot-card').filter({ hasText: 'Camera coffee' });
-  await card.getByTestId('shot-pressure-chart').waitFor();
+  await card.waitFor();
   const { shots } = await readRows(page);
   assert.equal(shots.length, 1);
   const [shot] = shots;
@@ -240,6 +302,11 @@ async function checkCombinedCamera(page, verifyFailedReplay) {
   assert.equal(shot.shotRating, 4);
   assert.ok(shot.actualTimeS >= 2);
   assert.ok(shot.labPressureCurve.length > 0);
+  assert.ok(shot.scaleFlowCurve.length > 0);
+  assert.ok(shot.shotProfileTiming.extractionStartMs > 0);
+  assert.ok(shot.shotProfileTiming.scaleOriginMs >= shot.shotProfileTiming.extractionStartMs);
+  const { width, height } = page.viewportSize();
+  await checkShotProfile(page, card, shot, `b08-combined-${width}x${height}.png`);
   const exported = await diagnostics(page, card);
   assert.equal(exported.shotId, shot.id);
   assert.equal(exported.pressureSource, 'camera');
@@ -251,19 +318,22 @@ async function checkCombinedCamera(page, verifyFailedReplay) {
       await history.click();
       assert.deepEqual((await readRows(page)).shots, shots);
       assert.match((await diagnostics(page, card)).stopDiagnosticsAvailability, /page reloaded/);
+      await checkShotProfile(page, card, shot);
     }
     await card.getByRole('button', { name: 'Play shot replay' }).click();
     await page.getByRole('dialog', { name: 'Shot replay' }).waitFor();
     await page.getByRole('button', { name: 'Close replay' }).click();
   }
-  if (!verifyFailedReplay) return;
+  if (!verifyFailedReplay) return shot;
   await page.getByRole('navigation').getByRole('button', { name: 'Dial', exact: true }).click();
   await page.locator('[data-dial-found="true"]').waitFor({ timeout: 20000 });
   await start.click();
   await page.getByRole('button', { name: 'Yes, start shot' }).click();
+  await endPreInfusion.click();
   await stop.waitFor();
   await page.waitForTimeout(2500);
   await stop.click();
+  await page.waitForTimeout(2500);
   await page.getByTestId('dial-yield-tile').locator('input').fill('34');
   await page.getByRole('button', { name: 'Balanced', exact: true }).click();
   await page.evaluate(() => { window.failReplayWrite = true; });
@@ -280,14 +350,41 @@ try {
   await waitForServer(server.url);
   browser = await chromium.launch();
   for (const [viewport, withScale] of [[{ width: 320, height: 640 }, false], [{ width: 412, height: 915 }, true]]) {
-    const page = await setup(viewport);
     if (combined) {
-      await checkCombinedCamera(page, withScale);
-      await page.close();
-      console.log(`PASS ${viewport.width}×${viewport.height} Combined recorded gauge, save retry, diagnostics and replay`);
+      const profileDir = await mkdtemp(join(tmpdir(), 'dialin-b08-combined-'));
+      const launch = () => chromium.launchPersistentContext(profileDir, { viewport, isMobile: true, hasTouch: true });
+      let context = await launch();
+      try {
+        const page = await setup(viewport, context);
+        const shot = await checkCombinedCamera(page, withScale);
+        if (shot) {
+          await context.close();
+          context = await launch();
+          const [restarted] = context.pages();
+          await restarted.goto(server.url);
+          await restarted.getByRole('navigation').getByRole('button', { name: 'History', exact: true }).click();
+          assert.deepEqual((await readRows(restarted)).shots, [shot]);
+          const card = restarted.getByTestId('history-shot-card').filter({ hasText: 'Camera coffee' });
+          await checkShotProfile(restarted, card, shot);
+          await card.getByRole('button', { name: 'Play shot replay' }).click();
+          await restarted.getByRole('dialog', { name: 'Shot replay' }).waitFor();
+        }
+        console.log(`PASS ${viewport.width}×${viewport.height} Combined recorded gauge and simulated scale, save retry, profile, diagnostics and replay`);
+      } finally {
+        await context.close();
+        await rm(profileDir, { recursive: true, force: true });
+      }
       continue;
     }
+    const page = await setup(viewport);
     const start = page.getByRole('button', { name: 'Start recording' });
+    if (withScale) {
+      await page.getByRole('button', { name: 'Pressure settings' }).click();
+      await page.getByRole('combobox').filter({ has: page.getByRole('option', { name: 'Timemore Black Mirror Dot' }) })
+        .selectOption('timemore-dot');
+      await page.getByRole('button', { name: 'Save & Close' }).click();
+      await connectSimulatedScale(page);
+    }
     if (camera) {
       assert.equal(await start.isDisabled(), true);
       await calibrate(page);
@@ -299,15 +396,6 @@ try {
       await page.waitForTimeout(1300);
     } else {
       await page.getByText('Simulated pressure preview', { exact: true }).waitFor();
-      if (withScale) {
-        await page.getByRole('button', { name: 'Pressure settings' }).click();
-        await page.getByRole('combobox').filter({ has: page.getByRole('option', { name: 'Timemore Black Mirror Dot' }) })
-          .selectOption('timemore-dot');
-        await page.getByRole('button', { name: 'Save & Close' }).click();
-        await page.getByRole('combobox', { name: 'Scale transport' }).selectOption('sim');
-        await page.getByRole('button', { name: 'Connect scale' }).click();
-        await page.getByRole('button', { name: 'Disconnect' }).waitFor();
-      }
       await page.clock.install();
       await start.click();
       await page.clock.runFor(withScale ? 4000 : 125000);
@@ -353,9 +441,9 @@ try {
     } else {
       for (const field of ['actualDoseG', 'actualYieldG', 'shotRating']) assert.equal(shot[field], undefined);
     }
-    assert.equal(shot.scaleFlowCurve?.length > 0, !camera && withScale);
+    assert.equal(shot.scaleFlowCurve?.length > 0, withScale);
     assert.equal(await card.getByText('Unknown bean').count(), 0);
-    await card.getByTestId('shot-pressure-chart').waitFor();
+    await checkShotProfile(page, card, shot, camera ? `b08-pressure-${viewport.width}x${viewport.height}.png` : null);
     const exported = await diagnostics(page, card);
     assert.equal(exported.shotId, shot.id);
     assert.equal(exported.diagnosticsVersion, 2);
@@ -363,8 +451,8 @@ try {
     assert.equal(exported.final.actualTimeS, shot.actualTimeS);
     assert.equal(exported.final.rule, 'manual');
     assert.equal((await sharedDiagnostics(page, page.getByTestId('saved-share-shot'))).shotId, shot.id);
-    assert.equal(exported.scaleDiagnostics.availability, !camera && withScale ? 'current-session' : 'unavailable');
-    if (!camera && withScale) assert.equal(exported.scaleDiagnostics.identity.simulated, true);
+    assert.equal(exported.scaleDiagnostics.availability, withScale ? 'current-session' : 'unavailable');
+    if (withScale) assert.equal(exported.scaleDiagnostics.identity.simulated, true);
     assert.equal(shot.diagnosticsVersion, undefined);
     if (!camera && !withScale) {
       await page.getByRole('button', { name: 'Pressure', exact: true }).click();
@@ -388,6 +476,7 @@ try {
     await page.getByRole('button', { name: 'History', exact: true }).click();
     await card.waitFor();
     assert.deepEqual((await readRows(page)).shots, shots);
+    await checkShotProfile(page, card, shot);
     const reloaded = await diagnostics(page, card);
     assert.equal(reloaded.recordingBuild, null);
     assert.match(reloaded.stopDiagnosticsAvailability, /page reloaded/);
