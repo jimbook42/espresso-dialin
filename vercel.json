@@ -5,7 +5,8 @@
       "b07/final-release-recovery": false,
       "b06b/beta-safety-sharing": false,
       "b08/shot-metrics": false,
-      "b09/per-shot-insights": false
+      "b09/per-shot-insights": false,
+      "fix/persist-gauge-visibility": false
     }
   },
   "buildCommand": "if [ \"$VERCEL_ENV\" = preview ]; then npm run build; else npm run build:release; fi"
