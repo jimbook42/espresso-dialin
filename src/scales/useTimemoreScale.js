@@ -19,6 +19,7 @@ import { resolveSettledYieldG } from './scaleYieldSettleResolve.js';
 import { publishScaleLiveWeight, resetScaleLiveWeightStore } from './scaleLiveWeightStore.js';
 
 const noopAsync = async () => {};
+const emptyDisplayFlow = { flowGs: null, series: [] };
 
 /** @param {boolean} simAllowed */
 export function resolveDefaultTransportKind(simAllowed) {
@@ -58,7 +59,7 @@ export function useTimemoreScale({
   const [liveWeightG, setLiveWeightG] = useState(0);
   const [liveRelativeWeightG, setLiveRelativeWeightG] = useState(0);
   const [weightTriggersPrimed, setWeightTriggersPrimed] = useState(false);
-  const [instantFlowGs, setInstantFlowGs] = useState(null);
+  const [displayFlow, setDisplayFlow] = useState(emptyDisplayFlow);
   const [liveFlowSeries, setLiveFlowSeries] = useState([]);
   const [flowSeriesEpoch, setFlowSeriesEpoch] = useState(0);
   const [batteryPercent, setBatteryPercent] = useState(null);
@@ -129,7 +130,7 @@ export function useTimemoreScale({
       interruptedMetricsRef.current = sessionRef.current.getShotMetrics();
     }
     setConnectStatus('idle');
-    setInstantFlowGs(null);
+    setDisplayFlow(emptyDisplayFlow);
     setLiveFlowSeries([]);
     setFlowSeriesEpoch((epoch) => epoch + 1);
     setBatteryPercent(null);
@@ -165,7 +166,16 @@ export function useTimemoreScale({
         setLiveWeightG(g);
         syncRelativeFromLive(g);
       },
-      onInstantFlowGs: (f) => setInstantFlowGs(f),
+      onDisplayFlowSample: (sample) => {
+        setDisplayFlow((prev) => {
+          if (!sample) return prev.flowGs == null ? prev : { ...prev, flowGs: null };
+          const last = prev.series.at(-1);
+          const series = last?.tS === sample.tS
+            ? [...prev.series.slice(0, -1), { ...last, ...sample }]
+            : [...prev.series, sample];
+          return { flowGs: sample.flowGs, series };
+        });
+      },
       onLiveTimerS: () => {},
       onFlowSample: (sample) => {
         setLiveFlowSeries((prev) => {
@@ -223,7 +233,7 @@ export function useTimemoreScale({
       resetShotWeightTracking();
       setLiveWeightG(0);
       publishWeightSnapshot(0, 0, false);
-      setInstantFlowGs(null);
+      setDisplayFlow(emptyDisplayFlow);
     } catch (err) {
       console.warn('[scale] connect failed', err);
       setConnectStatus('error');
@@ -260,13 +270,20 @@ export function useTimemoreScale({
   }, [diagnosticsRef]);
 
   const tare = useCallback(async () => {
-    if (transportRef.current) await issueTare(transportRef.current);
+    if (!transportRef.current) return;
+    const session = sessionRef.current;
+    session?.resetDisplayFlow();
+    try {
+      await issueTare(transportRef.current);
+    } finally {
+      if (sessionRef.current === session) session?.resetDisplayFlow();
+    }
   }, [issueTare]);
 
   const prepareShotWeightBaseline = useCallback(async () => {
     const transport = transportRef.current;
     if (!enabled || !transport || connectStatus !== 'connected') return;
-    setInstantFlowGs(null);
+    setDisplayFlow(emptyDisplayFlow);
     setLiveFlowSeries([]);
     setFlowSeriesEpoch((epoch) => epoch + 1);
     sessionRef.current?.resetRecording();
@@ -343,7 +360,7 @@ export function useTimemoreScale({
       : roundYieldG(relativeNow);
     yieldSettleSnapshotRef.current = null;
     resetShotWeightTracking();
-    setInstantFlowGs(null);
+    setDisplayFlow(emptyDisplayFlow);
     setLiveFlowSeries([]);
     setFlowSeriesEpoch((epoch) => epoch + 1);
     const shotMetrics =
@@ -395,7 +412,7 @@ export function useTimemoreScale({
     sessionRef.current?.resetRecording();
     resetShotWeightTracking();
     yieldSettleSnapshotRef.current = null;
-    setInstantFlowGs(null);
+    setDisplayFlow(emptyDisplayFlow);
     setLiveFlowSeries([]);
     setFlowSeriesEpoch((epoch) => epoch + 1);
   }, [enabled, connectStatus, resetShotWeightTracking]);
@@ -411,7 +428,8 @@ export function useTimemoreScale({
       liveWeightG: 0,
       liveRelativeWeightG: 0,
       weightTriggersPrimed: false,
-      instantFlowGs: null,
+      displayFlowGs: null,
+      displayFlowSeries: [],
       liveFlowSeries: [],
       flowSeriesEpoch: 0,
       batteryPercent: null,
@@ -440,7 +458,8 @@ export function useTimemoreScale({
     liveWeightG,
     liveRelativeWeightG,
     weightTriggersPrimed,
-    instantFlowGs,
+    displayFlowGs: isConnected ? displayFlow.flowGs : null,
+    displayFlowSeries: isConnected ? displayFlow.series : [],
     liveFlowSeries,
     flowSeriesEpoch,
     batteryPercent,

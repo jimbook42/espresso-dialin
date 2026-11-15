@@ -17,7 +17,7 @@ function LiveShotChart({ pressure = [], flow = [], gauge, scale, grow = false })
   const bars = gauge ? pressureChartPointsForDisplay(pressure) : [];
   const flows = scale ? flow.filter((p) => !p.gap && Number.isFinite(p.tS) && Number.isFinite(p.flowGs)) : [];
   const end = Math.max(10, ...bars.map((p) => p.tS), ...flows.map((p) => p.tS));
-  const flowMax = Math.max(2, ...flows.map((p) => p.flowGs));
+  const flowMax = Math.ceil(Math.max(2, ...flows.map((p) => p.flowGs)) * 10) / 10;
   const barMax = Math.max(10, ...bars.map((p) => p.bar));
   const path = (points, key, max) => points.map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'}${(p.tS / end * 300).toFixed(1)},${(55 - p[key] / max * 50).toFixed(1)}`).join(' ');
   return <div data-testid="live-shot-chart" className={`shot-live-chart ${grow ? 'shot-live-chart--grow' : ''} rounded-xl border border-[#2e2b26] bg-[#1a1815] px-3 py-2`}>
