@@ -223,7 +223,6 @@ import {
 } from './utils/celebrationOverlap.js';
 import { createLogoTapTester, nextLogoTestCelebrationVariant } from './utils/logoTapTester.js';
 import { normalizeBrewAccessories } from './brewGuide/steps';
-import { isBrewGuideExtractCountdownActive } from './brewGuide/brewGuideExtractPhase.js';
 import { formatShotCount } from './utils/shotCountDisplay.js';
 import { getAppTheme } from './theme';
 import { Analytics } from '@vercel/analytics/react';
@@ -428,7 +427,7 @@ export default function App() {
   const devUrlSimScaleActive = isDevUrlSimScaleActive();
   const scaleFeatureEnabled = isSmartScaleIntegrationActive(settingsSetting) || devUrlSimScaleActive;
   const shotDiagnosticsRef = useRef(null);
-  const timerStartingRef = useRef(false);
+  const timerStartingRef = useRef(null);
   const dialSaveRef = useRef(false);
   const [dialSaving, setDialSaving] = useState(false);
   const [dialShotPending, setDialShotPending] = useState(false);
@@ -442,7 +441,7 @@ export default function App() {
   const [labPressureShotMetrics, setLabPressureShotMetrics] = useState(null);
   const labPressureMetricsGetterRef = useRef(() => ({}));
   const [shotCountdownValue, setShotCountdownValue] = useState(null);
-  const [countdownHandoffPending, setCountdownHandoffPending] = useState(false);
+  const [timerStartPending, setTimerStartPending] = useState(false);
   const shotCountdownStartOptsRef = useRef(null);
   const [weighingViewOpen, setWeighingViewOpen] = useState(false);
   const [labCalibrateRequest, setLabCalibrateRequest] = useState(0);
@@ -861,21 +860,6 @@ export default function App() {
     return `0:${String(secs).padStart(2, '0')}.${tenths}`;
   };
 
-  const releaseBrewGuideTimer = useCallback(() => {
-    if (!brewGuideTimerActiveRef.current) return;
-    shotDiagnosticsRef.current = null;
-    syncBrewGuideTimerActive(false);
-    scaleAutoEndPreinfusionRef.current = false;
-    shotStartedAtRef.current = null;
-    setTimerRunning(false);
-    setTimerTicks(0);
-    setPreInfusionSeconds(0);
-    setPreInfusionPhase(false);
-    if (timemoreScale.isConnected) {
-      void timemoreScale.notifyShotCancelled();
-    }
-  }, [timemoreScale, syncBrewGuideTimerActive]);
-
   const prepareShotDiagnostics = useCallback(() => {
     const trace = createShotDeviceDiagnostics(flowAutoStopSettings(
       normalizeScaleFlowAutoStopEnabled(settingsSetting?.scaleFlowAutoStopEnabled),
@@ -888,7 +872,9 @@ export default function App() {
 
   const handleStartTimer = useCallback(async ({ fromBrewGuide = false, tareAlreadyDone = false, standalone = false } = {}) => {
     if (timerStartingRef.current || shotStartedAtRef.current != null || yieldSettleTimerRef.current) return;
-    timerStartingRef.current = true;
+    const start = { fromBrewGuide, cancelled: false };
+    timerStartingRef.current = start;
+    setTimerStartPending(true);
     if (!fromBrewGuide && !standalone) setDialShotPending(true);
     if (!tareAlreadyDone || !shotDiagnosticsRef.current) prepareShotDiagnostics();
     setWeighingViewOpen(false);
@@ -903,9 +889,20 @@ export default function App() {
     try {
       await timemoreScale.notifyShotStarted({ tareAlreadyDone, skipPreInfusion: standalone });
     } catch {
-      shotDiagnosticsRef.current?.event('scale-timer-start-failed');
+      if (!start.cancelled) shotDiagnosticsRef.current?.event('scale-timer-start-failed');
     }
-    timerStartingRef.current = false;
+    if (start.cancelled) {
+      // Scale preparation can send a start command after the user cancels.
+      // Keep other starts out until this attempt has stopped its scale session.
+      try {
+        await timemoreScale.notifyShotCancelled();
+      } finally {
+        timerStartingRef.current = null;
+      }
+      return;
+    }
+    timerStartingRef.current = null;
+    setTimerStartPending(false);
     setLabPressureShotMetrics(null);
     if (timerUsePreInfusion) setPreInfusionPhase(true);
     else setPreInfusionPhase(false);
@@ -920,16 +917,18 @@ export default function App() {
     setTimerRunning(true);
   }, [prepareShotDiagnostics, resetFlowAutoStop, syncBrewGuideTimerActive, timerUsePreInfusion, timemoreScale]);
 
-  const cancelShotCountdown = useCallback(() => {
+  const cancelShotStart = useCallback(() => {
     const opts = shotCountdownStartOptsRef.current;
+    const start = timerStartingRef.current;
     setShotCountdownValue(null);
-    setCountdownHandoffPending(false);
+    setTimerStartPending(false);
     shotCountdownStartOptsRef.current = null;
-    if (opts) shotDiagnosticsRef.current = null;
-    if (timemoreScale.isConnected) {
+    if (opts || start) shotDiagnosticsRef.current = null;
+    if (start) start.cancelled = true;
+    else if (timemoreScale.isConnected) {
       void timemoreScale.notifyShotCancelled();
     }
-    if (opts?.fromBrewGuide) {
+    if (opts?.fromBrewGuide || start?.fromBrewGuide) {
       syncBrewGuideTimerActive(false);
       scaleAutoEndPreinfusionRef.current = false;
       setTimerRunning(false);
@@ -939,16 +938,30 @@ export default function App() {
     }
   }, [timemoreScale, syncBrewGuideTimerActive]);
 
+  const releaseBrewGuideTimer = useCallback(() => {
+    if (!brewGuideTimerActiveRef.current) return;
+    shotDiagnosticsRef.current = null;
+    cancelShotStart();
+    syncBrewGuideTimerActive(false);
+    scaleAutoEndPreinfusionRef.current = false;
+    shotStartedAtRef.current = null;
+    setTimerRunning(false);
+    setTimerTicks(0);
+    setPreInfusionSeconds(0);
+    setPreInfusionPhase(false);
+  }, [cancelShotStart, syncBrewGuideTimerActive]);
+
   const requestStartTimer = useCallback(
     (opts = {}) => {
-      if (shotCountdownValue != null || timerRunning) return;
+      if (shotCountdownStartOptsRef.current || timerStartingRef.current
+        || shotStartedAtRef.current != null || yieldSettleTimerRef.current) return false;
       const useCountdown = isShotStartCountdownActive(
         appSettings?.shotStartCountdown,
         flairEnabled
       );
       if (!useCountdown) {
         void handleStartTimer(opts);
-        return;
+        return true;
       }
       if (opts.fromBrewGuide) {
         syncBrewGuideTimerActive(true);
@@ -964,19 +977,19 @@ export default function App() {
       if (timemoreScale.isConnected) {
         void timemoreScale.notifyShotCountdownPrepare();
       }
+      return true;
     },
-    [shotCountdownValue, timerRunning, appSettings?.shotStartCountdown, flairEnabled, timemoreScale,
+    [appSettings?.shotStartCountdown, flairEnabled, timemoreScale,
       handleStartTimer, prepareShotDiagnostics, syncBrewGuideTimerActive]
   );
 
   useEffect(() => {
     if (shotCountdownValue == null) return undefined;
     if (shotCountdownValue <= 0) {
-      const opts = shotCountdownStartOptsRef.current || {};
+      const opts = shotCountdownStartOptsRef.current;
       shotCountdownStartOptsRef.current = null;
-      setCountdownHandoffPending(true);
       setShotCountdownValue(null);
-      void handleStartTimer({ ...opts, tareAlreadyDone: true });
+      if (opts) void handleStartTimer({ ...opts, tareAlreadyDone: true });
       return undefined;
     }
     const tick = window.setTimeout(() => {
@@ -984,12 +997,6 @@ export default function App() {
     }, 1000);
     return () => window.clearTimeout(tick);
   }, [shotCountdownValue]);
-
-  useEffect(() => {
-    if (timerRunning && countdownHandoffPending) {
-      setCountdownHandoffPending(false);
-    }
-  }, [timerRunning, countdownHandoffPending]);
 
   const handleEndPreInfusion = () => {
     shotDiagnosticsRef.current?.extractionPhaseStart();
@@ -1225,7 +1232,7 @@ export default function App() {
   const handleCancelTimer = () => {
     setDialShotPending(false);
     shotDiagnosticsRef.current = null;
-    cancelShotCountdown();
+    cancelShotStart();
     clearYieldSettleTimer();
     setYieldSettleActive(false);
     setFrozenShotWeightG(null);
@@ -1237,9 +1244,6 @@ export default function App() {
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     setPreInfusionPhase(false);
-    if (timemoreScale.isConnected) {
-      void timemoreScale.notifyShotCancelled();
-    }
     setLabPressureShotMetrics(null);
     labShotReplayDiscardRef.current?.();
   };
@@ -1247,7 +1251,7 @@ export default function App() {
   const handleResetTimer = () => {
     setDialShotPending(false);
     shotDiagnosticsRef.current = null;
-    cancelShotCountdown();
+    cancelShotStart();
     setFrozenShotWeightG(null);
     resetFlowAutoStop();
     scaleAutoEndPreinfusionRef.current = false;
@@ -1256,9 +1260,6 @@ export default function App() {
     setTimerTicks(0);
     setPreInfusionSeconds(0);
     setPreInfusionPhase(false);
-    if (timemoreScale.isConnected) {
-      void timemoreScale.notifyShotCancelled();
-    }
     labShotReplayDiscardRef.current?.();
   };
 
@@ -1501,7 +1502,7 @@ export default function App() {
   };
 
   const experienceSwitchLocked = dialShotPending || pressureState !== 'idle'
-    || timerRunning || shotCountdownValue != null || countdownHandoffPending || yieldSettleActive;
+    || timerRunning || shotCountdownValue != null || timerStartPending || yieldSettleActive;
 
   const saveAndCloseSettings = async () => {
     setExperienceSaveFailed(false);
@@ -2161,7 +2162,7 @@ export default function App() {
   const handleLogShot = async (e) => {
     e.preventDefault();
     if (dialSaveRef.current || timerStartingRef.current || shotStartedAtRef.current != null
-      || shotCountdownValue != null || countdownHandoffPending || yieldSettleTimerRef.current) return;
+      || shotCountdownValue != null || timerStartPending || yieldSettleTimerRef.current) return;
     setValidationError('');
 
     const parsedTime = parseInt(actualTimeS, 10);
@@ -2821,15 +2822,12 @@ export default function App() {
     EXTRACTION_TIME_COLORS[extractionTimeStatus(timeS, minT, maxT)].label;
 
   const handleBrewStartTimer = () => {
+    if (!requestStartTimer({ fromBrewGuide: true })) return false;
     setActualTimeS('');
-    requestStartTimer({ fromBrewGuide: true });
+    return true;
   };
 
   const shotCountdownOverlayVisible = shotCountdownValue != null && shotCountdownValue > 0;
-  const brewGuideExtractCountdownActive = isBrewGuideExtractCountdownActive({
-    shotCountdownValue,
-    countdownHandoffPending,
-  });
 
   const handleBrewResetTimer = () => {
     syncBrewGuideTimerActive(false);
@@ -2996,7 +2994,7 @@ export default function App() {
           </p>
           <button
             type="button"
-            onClick={cancelShotCountdown}
+            onClick={cancelShotStart}
             className="mt-10 px-5 py-2.5 rounded-xl border border-[#3a3a3a] text-[#9a9690] text-sm font-semibold"
           >
             Cancel
@@ -3851,8 +3849,8 @@ export default function App() {
             }
             timer={{
               running: timerRunning,
-              countdownActive: brewGuideExtractCountdownActive,
-              countdownHandoffPending,
+              countdownActive: shotCountdownValue != null,
+              startPending: timerStartPending,
               yieldSettleActive,
               frozenShotWeightG,
               label: formatTimerLive(usePreInfusion && !preInfusionPhase ? timerDisplaySeconds : timerSeconds),
