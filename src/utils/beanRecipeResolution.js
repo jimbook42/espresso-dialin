@@ -1,5 +1,6 @@
 import { defaultBrewTemperatureForGrinder } from '../grinders/grinderRegistry.js';
 import { generateId } from './grinderLogic.js';
+import { validateRecipeFields } from './inputValidation.js';
 
 export const DEFAULT_RECIPE_TARGETS = {
   targetDoseG: 18,
@@ -128,17 +129,11 @@ export async function persistBeanRecipeForBean(database, beanId, recipeForm, exi
 }
 
 export function recipeFormToPersisted(recipeForm, grinderModel) {
-  const dose = parseFloat(recipeForm.targetDoseG);
-  const yieldG = parseFloat(recipeForm.targetYieldG);
-  const tMin = parseInt(String(recipeForm.targetTimeMinS), 10);
-  const tMax = parseInt(String(recipeForm.targetTimeMaxS), 10);
+  const { recipe, errors } = validateRecipeFields(recipeForm);
+  const [firstError] = Object.values(errors);
+  if (firstError) throw new Error(firstError);
   return {
-    targetDoseG: Number.isFinite(dose) ? dose : DEFAULT_RECIPE_TARGETS.targetDoseG,
-    targetYieldG: Number.isFinite(yieldG) ? yieldG : DEFAULT_RECIPE_TARGETS.targetYieldG,
-    targetTimeMinS: Number.isFinite(tMin) ? tMin : DEFAULT_RECIPE_TARGETS.targetTimeMinS,
-    targetTimeMaxS: Number.isFinite(tMax) ? tMax : DEFAULT_RECIPE_TARGETS.targetTimeMaxS,
-    brewTemperatureC:
-      recipeForm.brewTemperatureC ?? defaultBrewTemperatureForGrinder(grinderModel),
-    flairProfile: recipeForm.flairProfile ?? null,
+    ...recipe,
+    brewTemperatureC: recipe.brewTemperatureC ?? defaultBrewTemperatureForGrinder(grinderModel),
   };
 }

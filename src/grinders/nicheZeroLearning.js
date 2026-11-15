@@ -427,7 +427,7 @@ export function buildNicheFallbackReason({
       }
       return 'KEEP GRIND — Balanced and in range.';
     }
-    const secOff = Math.abs(Math.round(timeDelta));
+    const secOff = Math.round(Math.abs(timeDelta));
     if (timeDelta < 0) {
       return `Shot was ${secOff}s fast — consider grinding finer (lower dial number). Log more comparable shots at different dial positions to unlock numeric suggestions.`;
     }
