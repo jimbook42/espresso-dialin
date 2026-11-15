@@ -75,11 +75,12 @@ export function defaultCustomGrindValue(profile) {
 }
 
 /**
- * @param {number} dialShift signed engine steps (negative = finer on lower-is-finer grinders)
+ * @param {number} dialShift signed engine steps (negative = finer, positive = coarser)
  */
 export function adjustCustomGrind(currentValue, dialShift, profile) {
   const current = parseCustomGrindValue(currentValue, profile) ?? defaultCustomGrindValue(profile);
-  const next = current + dialShift * profile.step;
+  const direction = profile.lowerIsFiner === false ? -1 : 1;
+  const next = current + dialShift * profile.step * direction;
   return roundToCustomStep(next, profile);
 }
 

@@ -33,13 +33,14 @@ function grinderDialLimits(grinderModel, settings) {
   if (isPresetGrinderId(grinderModel)) {
     const spec = getPresetGrinderSpec(grinderModel);
     if (!spec) return null;
-    return { min: spec.min, max: spec.max, step: spec.step };
+    return { min: spec.min, max: spec.max, step: spec.step, lowerIsFiner: spec.lowerIsFiner };
   }
   if (def.customProfile) {
     return {
       min: def.customProfile.min,
       max: def.customProfile.max,
       step: def.customProfile.step,
+      lowerIsFiner: def.customProfile.lowerIsFiner,
     };
   }
   return null;
@@ -128,13 +129,15 @@ export function dialBoundaryAdvisoryForRecommendation(grinderModel, rec, setting
     || (shift === 0 && Number.isFinite(timeDelta) && timeDelta > 0.25);
   if (!wantedFiner && !wantedCoarser) return null;
 
-  if (wantedFiner && atDialEnd(current, limits, 'min')) {
+  const finestEnd = limits.lowerIsFiner === false ? 'max' : 'min';
+  const coarsestEnd = limits.lowerIsFiner === false ? 'min' : 'max';
+  if (wantedFiner && atDialEnd(current, limits, finestEnd)) {
     return {
       headline: 'Already at the finest end of the dial',
       detail: DOSE_YIELD_HINT,
     };
   }
-  if (wantedCoarser && atDialEnd(current, limits, 'max')) {
+  if (wantedCoarser && atDialEnd(current, limits, coarsestEnd)) {
     return {
       headline: 'Already at the coarsest end of the dial',
       detail: DOSE_YIELD_HINT,
@@ -151,7 +154,9 @@ export function dialLimitReachedNote(grinderModel, rec, settings = null) {
   const target = recommendedDialValue(grinderModel, rec?.recommendedSetting, settings);
   if (limits == null || current === null || target === null) return '';
   if (atDialEnd(current, limits, 'min') || atDialEnd(current, limits, 'max')) return '';
-  if (atDialEnd(target, limits, 'min')) return ' (finest setting on your dial)';
-  if (atDialEnd(target, limits, 'max')) return ' (coarsest setting on your dial)';
+  const finestEnd = limits.lowerIsFiner === false ? 'max' : 'min';
+  const coarsestEnd = limits.lowerIsFiner === false ? 'min' : 'max';
+  if (atDialEnd(target, limits, finestEnd)) return ' (finest setting on your dial)';
+  if (atDialEnd(target, limits, coarsestEnd)) return ' (coarsest setting on your dial)';
   return '';
 }

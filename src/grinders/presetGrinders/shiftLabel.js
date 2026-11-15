@@ -11,7 +11,7 @@ export function formatDialShiftReasonParts(grinderProfile, customGrindValue, shi
   const next = adjustCustomGrind(current, shift, profile);
   const steps = Math.round(Math.abs(next - current) / profile.step);
   if (steps === 0) return null;
-  const direction = next < current ? 'FINER' : 'COARSER';
+  const direction = shift < 0 ? 'FINER' : 'COARSER';
   const unit = grinderProfile.timeOffTargetStepLabel || 'step(s)';
   return { steps, direction, unit };
 }
