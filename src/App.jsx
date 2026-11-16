@@ -75,7 +75,6 @@ import {
   isNicheZeroGrinderModel,
   NICHE_ZERO_GRINDER_ID,
   listGrinderPickerOptions,
-  normalizeCustomGrinderSettingsPatch,
   parseGrindForShotSave,
   persistedSettingsPatchFromRecommendation,
   uiStateFromRecommendedSetting,
@@ -110,6 +109,7 @@ import {
   shouldRenderFirstLaunchWizard,
 } from './settings/firstLaunchRenderGate.js';
 import { SETTINGS_QUERY_PENDING } from './settings/settingsLiveQuery.js';
+import { validateBeanFields, validateRecipeFields, validateShotFields } from './utils/inputValidation.js';
 import { writeCachedGlobalSettings } from './settings/settingsLocalCache.js';
 import { patchGlobalSettings } from './settings/patchGlobalSettings.js';
 import { shotGaugeVisibilityPatch } from './settings/shotScreenLayout.js';
@@ -287,24 +287,12 @@ function createDefaultFlairProfile() {
 function createDefaultNewRecipe(grinderModel) {
   return {
     targetDoseG: 18,
-    targetYieldG: '',
+    targetYieldG: 36,
     targetTimeMinS: 27,
     targetTimeMaxS: 32,
     brewTemperatureC: defaultBrewTemperatureForGrinder(grinderModel),
     flairProfile: createDefaultFlairProfile(),
   };
-}
-
-function parseRecipeFloatField(raw) {
-  if (raw === '' || raw === null || raw === undefined) return '';
-  const n = parseFloat(raw);
-  return Number.isFinite(n) ? n : '';
-}
-
-function parseRecipeIntField(raw) {
-  if (raw === '' || raw === null || raw === undefined) return '';
-  const n = parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : '';
 }
 
 function recipeFieldDisplayValue(value) {
@@ -347,23 +335,16 @@ const EMPTY_SHOT_FIELD_HIGHLIGHTS = { dose: false, yield: false, time: false, ta
 
 const cachedGrindBootstrap = readCachedGrindBootstrapState();
 
-function formatMissingShotFields(keys) {
-  const labels = { dose: 'dose', yield: 'yield', time: 'time', taste: 'taste' };
-  const parts = keys.map((key) => labels[key]);
-  if (parts.length === 1) return parts[0];
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+function fieldErrorAttributes(field, error) {
+  return {
+    'aria-invalid': Boolean(error),
+    'aria-describedby': error ? `${field}-error` : undefined,
+  };
 }
 
-function shotLogValidationMessage(missing) {
-  if (missing.length === 1) {
-    if (missing[0] === 'taste') return 'Taste profile selection is required.';
-    if (missing[0] === 'dose') return 'Dose is required and must be a number.';
-    if (missing[0] === 'yield') return 'Yield is required and must be a number.';
-    return 'Extraction time is required and must be a number.';
-  }
-  const list = formatMissingShotFields(missing);
-  return `${list.charAt(0).toUpperCase()}${list.slice(1)} are required.`;
+function FieldError({ field, error }) {
+  if (!error) return null;
+  return <p id={`${field}-error`} className="text-[11px] text-[#d08080] mt-1 font-semibold">{error}</p>;
 }
 
 function shotFieldAttentionClass(active) {
@@ -553,6 +534,7 @@ export default function App() {
   const syncedSettingsCustomGrinderRef = useRef('');
   const [validationError, setValidationError] = useState('');
   const [beanFieldErrors, setBeanFieldErrors] = useState({});
+  const [beanSaveError, setBeanSaveError] = useState('');
   const [applyRecConfirmation, setApplyRecConfirmation] = useState('');
   const [csvImportSummary, setCsvImportSummary] = useState('');
   const csvImportInputRef = useRef(null);
@@ -574,6 +556,9 @@ export default function App() {
   const [setupSmartScaleDeviceId, setSetupSmartScaleDeviceId] = useState(SMART_SCALE_MANUAL_ID);
   const [settingsGrinderPickerValue, setSettingsGrinderPickerValue] = useState('');
   const [settingsCustomGrinderDraft, setSettingsCustomGrinderDraft] = useState(null);
+  const [customGrinderDraftDirty, setCustomGrinderDraftDirty] = useState(false);
+  const [savingCustomGrinder, setSavingCustomGrinder] = useState(false);
+  const [customGrinderSaveFailed, setCustomGrinderSaveFailed] = useState(false);
   const lastPersistedGrinderModelRef = useRef(null);
   const [brewAccessoriesOpenRequest, setBrewAccessoriesOpenRequest] = useState(0);
   const [brewAccessoriesReturnTo, setBrewAccessoriesReturnTo] = useState('brew');
@@ -587,12 +572,6 @@ export default function App() {
   useEffect(() => {
     if (settingsSetting) {
       queueMicrotask(() => {
-      setSettingsGrinderPickerValue(grinderPickerValueForSettings(settingsSetting));
-      if (settingsSetting.customGrinderSetupDraft) {
-        setSettingsCustomGrinderDraft(settingsSetting.customGrinderSetupDraft);
-      } else if (settingsSetting.customGrinder) {
-        setSettingsCustomGrinderDraft(settingsSetting.customGrinder);
-      }
       const persistedGrinderModel = settingsSetting.grinderModel;
       const grinderModelChanged =
         lastPersistedGrinderModelRef.current === null
@@ -1417,7 +1396,6 @@ export default function App() {
       customGrinderPatch = { customGrinder: undefined };
     }
 
-    setGrinderModel(model);
     if (!isEditingBean) {
       brewTempDefaultRef.current = model;
       const nextTemp = defaultBrewTemperatureForGrinder(model);
@@ -1468,6 +1446,7 @@ export default function App() {
       };
       return patch;
     });
+    setGrinderModel(model);
   };
 
   const handleFinishFirstLaunch = async (experiencePreference, { configureEquipment = false } = {}) => {
@@ -1499,13 +1478,22 @@ export default function App() {
     if (pressureState !== 'idle' || (dialShotPending && !timerRunning)) return;
     setExperienceDraft(null);
     setExperienceSaveFailed(false);
+    setSettingsGrinderPickerValue(grinderPickerValueForSettings(settingsSetting));
+    setSettingsCustomGrinderDraft(settingsSetting?.customGrinder ?? setupCustomGrinderDraft);
+    setCustomGrinderDraftDirty(false);
+    setCustomGrinderSaveFailed(false);
     setIsSettingsOpen(true);
   };
 
   const experienceSwitchLocked = dialShotPending || pressureState !== 'idle'
     || timerRunning || shotCountdownValue != null || timerStartPending || yieldSettleActive;
 
+  const settingsCustomGrinderSelected = settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID;
+  const invalidCustomGrinderDraft = settingsCustomGrinderSelected
+    && !isCustomGrinderFormValid(settingsCustomGrinderDraft);
+
   const saveAndCloseSettings = async () => {
+    if (savingCustomGrinder || invalidCustomGrinderDraft) return;
     setExperienceSaveFailed(false);
     if (experienceDraft && experienceDraft !== experience) {
       if (experienceSwitchLocked || timerStartingRef.current) return;
@@ -1521,60 +1509,39 @@ export default function App() {
         setSavingExperience(false);
       }
     }
-    if (settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID
-      && isCustomGrinderFormValid(settingsCustomGrinderDraft)) {
-      void handleSaveCustomGrinderFromSettings();
-    }
+    if (settingsCustomGrinderSelected && customGrinderDraftDirty
+      && !(await handleSaveCustomGrinderFromSettings())) return;
     setIsSettingsOpen(false);
-  };
-
-  const persistCustomGrinderSetupDraft = async (draft) => {
-    await patchGlobalSettings(db, () => {
-      const patch = {
-        grinderPickerSelection: CUSTOM_GRINDER_PICKER_ID,
-        customGrinderSetupDraft: draft ?? null,
-      };
-      if (isCustomGrinderFormValid(draft)) {
-        const normalized = normalizeCustomGrinderSettingsPatch(draft);
-        if (normalized) {
-          Object.assign(patch, normalized);
-          setGrinderModel(normalized.grinderModel);
-        }
-      }
-      return patch;
-    });
   };
 
   const handleSettingsCustomGrinderDraftChange = (draft) => {
     setSettingsCustomGrinderDraft(draft);
-    void persistCustomGrinderSetupDraft(draft);
+    setCustomGrinderDraftDirty(true);
   };
 
   const handleSettingsGrinderPickerChange = async (pickerValue) => {
     setSettingsGrinderPickerValue(pickerValue);
     if (pickerValue === CUSTOM_GRINDER_PICKER_ID) {
-      const draft =
-        settingsCustomGrinderDraft
-        || settingsSetting?.customGrinderSetupDraft
-        || settingsSetting?.customGrinder
-        || setupCustomGrinderDraft;
-      setSettingsCustomGrinderDraft(draft);
-      await persistCustomGrinderSetupDraft(draft);
+      setCustomGrinderDraftDirty(true);
       return;
     }
-    await patchGlobalSettings(db, {
-      grinderPickerSelection: undefined,
-      customGrinderSetupDraft: undefined,
-    });
     await handleSaveGrinderSetup(pickerValue);
   };
 
   const handleSaveCustomGrinderFromSettings = async () => {
-    if (!isCustomGrinderFormValid(settingsCustomGrinderDraft)) return;
-    const patch = normalizeCustomGrinderSettingsPatch(settingsCustomGrinderDraft);
-    if (!patch) return;
-    await handleSaveGrinderSetup(CUSTOM_GRINDER_PICKER_ID, { customGrinder: patch.customGrinder });
-    setSettingsGrinderPickerValue(CUSTOM_GRINDER_PICKER_ID);
+    if (savingCustomGrinder || invalidCustomGrinderDraft) return false;
+    setSavingCustomGrinder(true);
+    setCustomGrinderSaveFailed(false);
+    try {
+      await handleSaveGrinderSetup(CUSTOM_GRINDER_PICKER_ID, { customGrinder: settingsCustomGrinderDraft });
+      setCustomGrinderDraftDirty(false);
+      return true;
+    } catch {
+      setCustomGrinderSaveFailed(true);
+      return false;
+    } finally {
+      setSavingCustomGrinder(false);
+    }
   };
 
   const handleSmartScaleDeviceChange = async (deviceId) => {
@@ -1938,28 +1905,40 @@ export default function App() {
 
   const handleSaveBean = async (e) => {
     e.preventDefault();
-    if (!newBean.name) return;
-    setValidationError('');
-    if (!newBean.roastDate) {
-      setBeanFieldErrors({ roastDate: 'Roast date is required.' });
+    const form = e.currentTarget;
+    setBeanSaveError('');
+    const beanValidation = validateBeanFields(newBean);
+    const recipeValidation = validateRecipeFields(newRecipe);
+    const errors = { ...beanValidation.errors, ...recipeValidation.errors };
+    setBeanFieldErrors(errors);
+    const [firstInvalid] = Object.keys(errors);
+    if (firstInvalid) {
+      form.elements.namedItem(firstInvalid)?.focus();
       return;
     }
-    setBeanFieldErrors({});
 
     try {
       const sanitized = sanitizeRating(newBean.rating);
-      const beanToSave = { ...newBean, rating: sanitized !== '' ? sanitized : null, isDecaf: beanIsDecaf(newBean) };
-      
-      if (isEditingBean && newBean.id) {
-        await db.beans.update(newBean.id, beanToSave);
-        const existingRecipe = recipes.find(r => r.beanId === newBean.id);
-        await persistBeanRecipeForBean(db, newBean.id, newRecipe, existingRecipe, grinderModel);
-        prefillDoseFromRecipe(newRecipe);
+      const beanToSave = {
+        ...newBean,
+        name: beanValidation.name,
+        rating: sanitized !== '' ? sanitized : null,
+        isDecaf: beanIsDecaf(newBean),
+      };
+      const beanId = isEditingBean ? newBean.id : generateId();
+      const isFirstBeanAdd = beans.length === 0;
+      await db.transaction('rw', db.beans, db.recipes, async () => {
+        if (isEditingBean) {
+          await db.beans.update(beanId, beanToSave);
+        } else {
+          await db.beans.add({ ...beanToSave, id: beanId, isFinished: false, thawHistory: [], createdAt: new Date().toISOString() });
+        }
+        const existingRecipe = isEditingBean ? await db.recipes.where('beanId').equals(beanId).first() : null;
+        await persistBeanRecipeForBean(db, beanId, recipeValidation.recipe, existingRecipe, grinderModel);
+      });
+      if (isEditingBean) {
+        prefillDoseFromRecipe(recipeValidation.recipe);
       } else {
-        const isFirstBeanAdd = beans.length === 0;
-        const beanId = generateId();
-        await db.beans.add({ ...beanToSave, id: beanId, isFinished: false, thawHistory: [], createdAt: new Date().toISOString() });
-        await db.recipes.add({ ...newRecipe, targetYieldG: parseFloat(newRecipe.targetYieldG) || 36, id: generateId(), beanId });
         selectActiveBean(beanId);
 
         const currentSettings = await db.settings.get('global') || { id: 'global' };
@@ -1979,7 +1958,7 @@ export default function App() {
       setActiveTab('dial');
     } catch (err) {
       console.error("Failed to save bean profile:", err);
-      setValidationError("Failed to save bean: " + err.message);
+      setBeanSaveError('Couldn’t save the coffee profile. Please try again.');
     }
   };
 
@@ -1987,6 +1966,8 @@ export default function App() {
     const { focusFlairProfile = false } = options;
     const recipe = recipes.find(r => r.beanId === bean.id);
     const beanShotHistory = shots.filter((s) => s.beanId === bean.id);
+    setBeanFieldErrors({});
+    setBeanSaveError('');
     setNewBean(bean);
     if (recipe) {
       setNewRecipe(sanitizeRecipeFormState(recipe, grinderModel));
@@ -2027,6 +2008,8 @@ export default function App() {
   }, [activeTab, isEditingBean, newBean.id]);
 
   const cancelEditBean = () => {
+    setBeanFieldErrors({});
+    setBeanSaveError('');
     pendingFocusFlairProfileRef.current = false;
     setIsEditingBean(false);
     setNewBean({ name: '', roaster: '', roastType: 'Medium', roastDate: '', storageType: 'bag', postThawStorage: 'bag', freezeDate: '', thawDate: '', thawHistory: [], rating: '', isFinished: false, isDecaf: false });
@@ -2166,31 +2149,11 @@ export default function App() {
       || shotCountdownValue != null || timerStartPending || yieldSettleTimerRef.current) return;
     setValidationError('');
 
-    const parsedTime = parseInt(actualTimeS, 10);
-    const parsedYield = parseFloat(actualYieldG);
-    const parsedDose = parseFloat(actualDoseG);
-
-    const missing = [];
-    const highlights = { ...EMPTY_SHOT_FIELD_HIGHLIGHTS };
-    if (isNaN(parsedDose)) {
-      missing.push('dose');
-      highlights.dose = true;
-    }
-    if (isNaN(parsedYield)) {
-      missing.push('yield');
-      highlights.yield = true;
-    }
-    if (isNaN(parsedTime)) {
-      missing.push('time');
-      highlights.time = true;
-    }
-    if (!tasteProfile) {
-      missing.push('taste');
-      highlights.taste = true;
-    }
-    if (missing.length > 0) {
-      setValidationError(shotLogValidationMessage(missing));
-      setShotFieldHighlights(highlights);
+    const { errors, parsedTime, parsedYield, parsedDose } = validateShotFields({
+      time: actualTimeS, yieldG: actualYieldG, dose: actualDoseG, taste: tasteProfile,
+    });
+    if (Object.keys(errors).length > 0) {
+      setShotFieldHighlights({ ...EMPTY_SHOT_FIELD_HIGHLIGHTS, ...errors });
       const focusOrder = [
         ['dose', doseInputRef, 'input'],
         ['yield', yieldInputRef, 'input'],
@@ -2198,7 +2161,7 @@ export default function App() {
         ['taste', tasteInputRef, 'button'],
       ];
       for (const [key, ref, focusSelector] of focusOrder) {
-        if (!highlights[key]) continue;
+        if (!errors[key]) continue;
         ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (focusSelector === 'button') ref.current?.querySelector('button')?.focus();
         else ref.current?.querySelector('input')?.focus();
@@ -2216,7 +2179,9 @@ export default function App() {
       setteMicro: pendingGrind?.setteMicro ?? setteMicro,
       sunbeamSetting: pendingGrind?.sunbeamSetting ?? sunbeamSetting,
       nicheZeroSetting: pendingGrind?.nicheZeroSetting ?? nicheZeroSetting,
-      customGrindValue: pendingGrind?.customGrindValue ?? customGrindValue,
+      customGrindValue: pendingGrind?.customGrindValue ?? (
+        isCustomGrinderModel(logGrinderModel, appSettings) ? effectiveCustomGrindValue : customGrindValue
+      ),
     };
     const parsedGrind = parseGrindForShotSave(
       logGrinderModel,
@@ -2566,7 +2531,8 @@ export default function App() {
       );
       if (resolved !== null) return resolved;
     }
-    if (customGrindValue !== null && customGrindValue !== '') return customGrindValue;
+    if (customGrindValue != null
+      && (customGrindValue !== '' || isCustomGrinderModel(grinderModel, appSettings))) return customGrindValue;
     if (isPresetGrinderModel(grinderModel)) {
       const spec = getPresetGrinderSpec(grinderModel);
       if (spec) return defaultPresetGrindValue(spec, appSettings);
@@ -3470,7 +3436,7 @@ export default function App() {
                 )}
 
                 {/* ── SHOT LOG FORM ─────────────────────────────────────── */}
-                <form onSubmit={handleLogShot} className="space-y-3">
+                <form onSubmit={handleLogShot} noValidate className="space-y-3">
 
                   {validationError && (
                     <div className="bg-[rgba(180,60,60,0.12)] border border-[rgba(180,60,60,0.3)] p-3 rounded-xl text-xs text-[#d08080] font-semibold flex items-center gap-2">
@@ -3617,6 +3583,7 @@ export default function App() {
                       <label className={`${ui.fieldLabel} block mb-2`}>Dose (g)</label>
                       <input
                         type="number" step="0.1"
+                        {...fieldErrorAttributes('shot-dose', shotFieldHighlights.dose)}
                         value={actualDoseG}
                         onChange={(e) => {
                           setActualDoseG(e.target.value);
@@ -3624,6 +3591,7 @@ export default function App() {
                         }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
                       />
+                      <FieldError field="shot-dose" error={shotFieldHighlights.dose} />
                     </div>
                     <div
                       ref={yieldInputRef}
@@ -3641,6 +3609,7 @@ export default function App() {
                       <input
                         type="number" step="0.1"
                         placeholder="36"
+                        {...fieldErrorAttributes('shot-yield', shotFieldHighlights.yield)}
                         value={yieldDisplayValue}
                         readOnly={yieldTileCelebrating}
                         onChange={(e) => {
@@ -3651,6 +3620,7 @@ export default function App() {
                         }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}${yieldTileCelebrating ? ' perfect-shot-yield-value' : ''}`}
                       />
+                      <FieldError field="shot-yield" error={shotFieldHighlights.yield} />
                       <p
                         className={`text-[9px] text-center mt-1 ${yieldTileCelebrating ? 'perfect-shot-yield-ratio' : ui.accentText}`}
                         data-testid="dial-yield-ratio"
@@ -3671,7 +3641,9 @@ export default function App() {
                       <label className={`${ui.fieldLabel} block mb-2`}>Time (s) *</label>
                       <input
                         type="number"
+                        step="any"
                         placeholder="28"
+                        {...fieldErrorAttributes('shot-time', shotFieldHighlights.time)}
                         value={actualTimeS}
                         onChange={(e) => {
                           setActualTimeS(e.target.value);
@@ -3679,6 +3651,7 @@ export default function App() {
                         }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
                       />
+                      <FieldError field="shot-time" error={shotFieldHighlights.time} />
                       {yieldTileCelebrating && (
                         <p className="text-[8px] perfect-shot-time-in-range text-center mt-1" data-testid="dial-time-in-range">
                           in range
@@ -3693,7 +3666,9 @@ export default function App() {
                     ref={tasteInputRef}
                   >
                     <label className={ui.fieldLabel}>Extraction taste *</label>
-                    <div className="grid grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-5 gap-1.5" role="group" aria-label="Extraction taste"
+                      {...fieldErrorAttributes('shot-taste', shotFieldHighlights.taste)}
+                    >
                       {[
                         { id: 'very_sour', label: 'V.Sour' },
                         { id: 'sour', label: 'Sour' },
@@ -3718,6 +3693,8 @@ export default function App() {
                         </button>
                       ))}
                     </div>
+
+                    <FieldError field="shot-taste" error={shotFieldHighlights.taste} />
 
                     {/* Star rating */}
                     <div className="flex items-center justify-between pt-2 border-t border-[#2e2b26]">
@@ -3898,12 +3875,17 @@ export default function App() {
                 <label className={`${ui.fieldLabel} block mb-1`}>Bean name</label>
                 <input
                   type="text"
-                  required
+                  name="name"
+                  {...fieldErrorAttributes('bean-name', beanFieldErrors.name)}
                   placeholder="e.g. House Espresso Blend"
                   value={newBean.name}
-                  onChange={(e) => setNewBean({ ...newBean, name: e.target.value })}
+                  onChange={(e) => {
+                    setNewBean({ ...newBean, name: e.target.value });
+                    setBeanFieldErrors((prev) => ({ ...prev, name: '' }));
+                  }}
                   className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm`}
                 />
+                <FieldError field="bean-name" error={beanFieldErrors.name} />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -3941,15 +3923,11 @@ export default function App() {
                       setNewBean({ ...newBean, roastDate: e.target.value });
                       if (e.target.value) setBeanFieldErrors((prev) => ({ ...prev, roastDate: '' }));
                     }}
-                    aria-invalid={Boolean(beanFieldErrors.roastDate)}
-                    aria-describedby={beanFieldErrors.roastDate ? 'roast-date-error' : undefined}
+                    name="roastDate"
+                    {...fieldErrorAttributes('roast-date', beanFieldErrors.roastDate)}
                     className={`w-full ${inputClass} border rounded-lg p-2.5 text-sm ${beanFieldErrors.roastDate ? 'border-[rgba(180,60,60,0.55)]' : ''}`}
                   />
-                  {beanFieldErrors.roastDate && (
-                    <p id="roast-date-error" className="text-[11px] text-[#d08080] mt-1 font-semibold">
-                      {beanFieldErrors.roastDate}
-                    </p>
-                  )}
+                  <FieldError field="roast-date" error={beanFieldErrors.roastDate} />
                 </div>
                 <div>
                   <label className={`text-xs uppercase font-bold ${labelClass} block mb-1`}>Storage Method</label>
@@ -4020,55 +3998,36 @@ export default function App() {
 
               <div className={`border-t ${ui.modalDivider} pt-4 mt-2`}>
                 <h3 className={`${ui.sectionTitle} mb-3`}>Target recipe profile</h3>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  {[
-                    { label: 'Target dose', key: 'targetDoseG', value: newRecipe.targetDoseG, suffix: 'g', parse: parseRecipeFloatField },
-                    { label: 'Yield', key: 'targetYieldG', value: newRecipe.targetYieldG, suffix: 'g', parse: parseRecipeFloatField },
-                  ].map((field) => (
-                    <div key={field.key} className={ui.metricCell}>
-                      <span className={`${ui.fieldLabel} block mb-1`}>{field.label}</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={recipeFieldDisplayValue(field.value)}
-                        onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: field.parse(e.target.value) })}
-                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
-                      />
-                      <span className={`text-[9px] ${ui.muted} text-center block`}>{field.suffix}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  {[
-                    { label: 'Min time', key: 'targetTimeMinS', value: newRecipe.targetTimeMinS },
-                    { label: 'Max time', key: 'targetTimeMaxS', value: newRecipe.targetTimeMaxS },
-                  ].map((field) => (
-                    <div key={field.key} className={ui.metricCell}>
-                      <span className={`${ui.fieldLabel} block mb-1`}>{field.label}</span>
-                      <input
-                        type="number"
-                        value={recipeFieldDisplayValue(field.value)}
-                        onChange={(e) => setNewRecipe({ ...newRecipe, [field.key]: parseRecipeIntField(e.target.value) })}
-                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
-                      />
-                      <span className={`text-[9px] ${ui.muted} text-center block`}>s</span>
-                    </div>
-                  ))}
-                </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className={ui.metricCell}>
-                    <span className={`${ui.fieldLabel} block mb-1`}>Brew temp</span>
-                    <input
-                      type="number"
-                      value={recipeFieldDisplayValue(newRecipe.brewTemperatureC)}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, brewTemperatureC: parseRecipeIntField(e.target.value) })}
-                      className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
-                    />
-                    <span className={`text-[9px] ${ui.muted} text-center block`}>°C</span>
-                    {isSunbeamGrinderModel(grinderModel) && (
-                      <span className={`text-[10px] ${ui.muted} text-center block mt-1`}>92°C is the Barista Max&apos;s default temperature.</span>
-                    )}
-                  </div>
+                  {[
+                    { label: 'Target dose', key: 'targetDoseG', suffix: 'g' },
+                    { label: 'Yield', key: 'targetYieldG', suffix: 'g' },
+                    { label: 'Min time', key: 'targetTimeMinS', suffix: 's' },
+                    { label: 'Max time', key: 'targetTimeMaxS', suffix: 's' },
+                    { label: 'Brew temp', key: 'brewTemperatureC', suffix: '°C' },
+                  ].map(({ label, key, suffix }) => (
+                    <div key={key} className={ui.metricCell}>
+                      <label htmlFor={key} className={`${ui.fieldLabel} block mb-1`}>{label}</label>
+                      <input
+                        id={key}
+                        name={key}
+                        type="number"
+                        step="any"
+                        {...fieldErrorAttributes(key, beanFieldErrors[key])}
+                        value={recipeFieldDisplayValue(newRecipe[key])}
+                        onChange={(e) => {
+                          setNewRecipe({ ...newRecipe, [key]: e.target.value });
+                          setBeanFieldErrors((prev) => ({ ...prev, [key]: '' }));
+                        }}
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
+                      />
+                      <span className={`text-[9px] ${ui.muted} text-center block`}>{suffix}</span>
+                      <FieldError field={key} error={beanFieldErrors[key]} />
+                      {key === 'brewTemperatureC' && isSunbeamGrinderModel(grinderModel) && (
+                        <span className={`text-[10px] ${ui.muted} text-center block mt-1`}>92°C is the Barista Max&apos;s default temperature.</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
                 {flairEnabled && (() => {
@@ -4198,6 +4157,7 @@ export default function App() {
                 })()}
               </div>
 
+              {beanSaveError && <p role="alert" className="text-xs text-[#d08080]">{beanSaveError}</p>}
               <button
                 type="submit"
                 className={`w-full ${currentTheme.primary} font-bold py-3.5 rounded-xl shadow-lg transition-colors mt-2`}
@@ -4604,7 +4564,7 @@ export default function App() {
                   <Sliders className={`w-5 h-5 ${ui.accentText}`} />
                   <h3 id="preferences-title" className={`text-base font-bold ${ui.text}`}>Preferences & Settings</h3>
                 </div>
-                <button type="button" aria-label="Close settings" disabled={savingExperience} onClick={() => setIsSettingsOpen(false)} className={`${ui.ghostBtn} text-sm font-bold`}>✕</button>
+                <button type="button" aria-label="Close settings" disabled={savingExperience || savingCustomGrinder} onClick={() => setIsSettingsOpen(false)} className={`${ui.ghostBtn} text-sm font-bold`}>✕</button>
               </div>
 
               <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
@@ -4679,6 +4639,7 @@ export default function App() {
                 <div className={`${ui.cardInset} rounded-xl p-3 space-y-3`}>
                   <label className={`block ${ui.fieldLabel}`}>Primary grinder</label>
                   <select
+                    disabled={savingCustomGrinder}
                     value={settingsGrinderPickerValue || grinderPickerValueForSettings(settingsSetting)}
                     onChange={(e) => { void handleSettingsGrinderPickerChange(e.target.value); }}
                     className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
@@ -4760,22 +4721,23 @@ export default function App() {
                     ui={ui}
                     onPatchSettings={(patch) => patchBrewGuidanceSettings(patch)}
                   />
-                  {settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID && (
-                    <div className="space-y-2">
+                  {settingsCustomGrinderSelected && (
+                    <fieldset disabled={savingCustomGrinder} className="space-y-2">
                       <CustomGrinderForm
                         value={settingsCustomGrinderDraft}
                         onChange={handleSettingsCustomGrinderDraftChange}
+                        showValidation
                         ui={ui}
                       />
                       <button
                         type="button"
                         onClick={() => { void handleSaveCustomGrinderFromSettings(); }}
-                        disabled={!isCustomGrinderFormValid(settingsCustomGrinderDraft)}
+                        disabled={invalidCustomGrinderDraft || savingCustomGrinder}
                         className={`w-full font-bold py-2.5 rounded-xl ${ui.secondaryBtn} disabled:opacity-40`}
                       >
                         Save custom grinder
                       </button>
-                    </div>
+                    </fieldset>
                   )}
                 </div>
 
@@ -4992,11 +4954,13 @@ export default function App() {
               </div>
 
               <div className={`shrink-0 p-6 pt-3 border-t ${ui.modalDivider} ${ui.card}`}>
+                {customGrinderSaveFailed && <p role="alert" className={`mb-2 text-xs ${ui.text}`}>Couldn’t save your grinder. Please try again.</p>}
+                {invalidCustomGrinderDraft && <p className={`mb-2 text-xs ${ui.text}`}>Check the grinder name, dial limits and step before saving.</p>}
                 {experienceSaveFailed && <p role="alert" className={`mb-2 text-xs ${ui.text}`}>Couldn’t save your experience. Please try again.</p>}
                 <button
                   type="button"
                   onClick={() => { void saveAndCloseSettings(); }}
-                  disabled={savingExperience}
+                  disabled={savingExperience || savingCustomGrinder || invalidCustomGrinderDraft}
                   className={`w-full ${currentTheme.primary} font-bold py-3 rounded-xl text-sm shadow`}
                 >
                   Save & Close

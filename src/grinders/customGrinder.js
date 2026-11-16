@@ -1,3 +1,5 @@
+import { parseFiniteDecimal } from '../utils/inputValidation.js';
+
 /** Picker sentinel — not stored as grinderModel. */
 export const CUSTOM_GRINDER_PICKER_ID = '__custom_grinder__';
 
@@ -26,10 +28,10 @@ export function normalizeCustomGrinderProfile(raw) {
   const name = String(raw.name || '').trim();
   if (!name) return null;
   const dialType = raw.dialType === 'stepless' ? 'stepless' : 'stepped';
-  const min = Number(raw.min);
-  const max = Number(raw.max);
-  const step = Number(raw.step);
-  if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step)) return null;
+  const min = parseFiniteDecimal(raw.min);
+  const max = parseFiniteDecimal(raw.max);
+  const step = parseFiniteDecimal(raw.step);
+  if (min === null || max === null || step === null) return null;
   if (max <= min || step <= 0) return null;
   const lowerIsFiner = raw.lowerIsFiner !== false;
   return {
@@ -175,8 +177,8 @@ export function buildCustomGrinderDefinition(profile) {
       return { lastCustomGrindValue: parsed };
     },
     parseGrindForShotSave({ customGrindValue }) {
-      const parsed = parseCustomGrindValue(customGrindValue, p);
-      if (parsed === null) {
+      const value = parseFiniteDecimal(customGrindValue);
+      if (value === null) {
         return { ok: false, error: this.dialValidationError };
       }
       return {
@@ -185,7 +187,7 @@ export function buildCustomGrinderDefinition(profile) {
         setteMicro: null,
         sunbeamSetting: null,
         nicheZeroSetting: null,
-        customGrindValue: parsed,
+        customGrindValue: roundToCustomStep(value, p),
       };
     },
     grindMatchesRecommendation({ customGrindValue }, rec) {

@@ -4,9 +4,9 @@ const inputClass =
   'w-full bg-[#211e1a] border border-[#2e2b26] text-[#f5f2eb] rounded-lg p-2.5 text-sm font-semibold';
 
 /**
- * @param {{ value: object, onChange: (next: object) => void, ui?: object }} props
+ * @param {{ value: object, onChange: (next: object) => void, ui?: object, showValidation?: boolean }} props
  */
-export function CustomGrinderForm({ value, onChange, ui }) {
+export function CustomGrinderForm({ value, onChange, ui, showValidation = false }) {
   const labelClass = ui?.fieldLabel || 'text-[10px] uppercase tracking-widest text-[#6b6457] font-bold';
   const muted = ui?.muted || 'text-[#6b6457]';
   const v = value || {
@@ -21,7 +21,7 @@ export function CustomGrinderForm({ value, onChange, ui }) {
   const patch = (partial) => onChange({ ...v, ...partial });
 
   const validation = normalizeCustomGrinderProfile(v);
-  const invalid = v.name.trim() && !validation;
+  const invalid = (showValidation || Boolean(v.name.trim())) && !validation;
 
   return (
     <div className="space-y-3">
@@ -99,7 +99,7 @@ export function CustomGrinderForm({ value, onChange, ui }) {
         </button>
       </div>
       {invalid && (
-        <p className="text-[11px] text-[#c97868]">Check name, min/max, and step — max must be above min.</p>
+        <p className="text-[11px] text-[#c97868]">Enter a grinder name, a positive step, and both dial limits. Max must be above min.</p>
       )}
     </div>
   );

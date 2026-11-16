@@ -107,13 +107,11 @@ export function grindSettingChanged(dial = {}) {
   return current !== previous;
 }
 
-/** Grams at which to stop the machine: target yield minus 4, from the live recipe. */
+/** Early-stop guidance for targets of at least 10 g. */
 export function brewStopYield(yieldG) {
+  if (!(Number(yieldG) >= 10)) return null;
   const formatted = formatBrewAmount(yieldG);
-  if (formatted == null) return null;
-  const stop = Math.round((Number(formatted) - 4) * 10) / 10;
-  if (!(stop > 0)) return null;
-  return formatBrewAmount(stop);
+  return formatted == null ? null : formatBrewAmount(Number(formatted) - 4);
 }
 
 export function brewDialSummary(dial = {}) {

@@ -347,7 +347,7 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 6 MICRO STEP(S) FINER — Shot was 9s off target midpoint.",
+      "reason": "GO 6 MICRO STEP(S) FINER — Shot was 10s off target midpoint.",
       "recommendedSetting": {
         "macro": 12,
         "micro": "H"
@@ -381,7 +381,7 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 2 MICRO STEP(S) FINER — Shot was 3s off target midpoint.",
+      "reason": "GO 2 MICRO STEP(S) FINER — Shot was 4s off target midpoint.",
       "recommendedSetting": {
         "macro": 13,
         "micro": "C"
@@ -1333,7 +1333,7 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 5 MICRO STEP(S) FINER — Shot was 7s off target midpoint.",
+      "reason": "GO 5 MICRO STEP(S) FINER — Shot was 8s off target midpoint.",
       "recommendedSetting": {
         "macro": 12,
         "micro": "I"
@@ -1434,7 +1434,7 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 2 SETTING(S) FINER — Shot was 9s off target midpoint.",
+      "reason": "GO 2 SETTING(S) FINER — Shot was 10s off target midpoint.",
       "recommendedSetting": {
         "setting": 1
       },
@@ -1533,7 +1533,7 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 2 SETTING(S) FINER — Shot was 9s off target midpoint.",
+      "reason": "GO 2 SETTING(S) FINER — Shot was 10s off target midpoint.",
       "recommendedSetting": {
         "setting": 13
       },
@@ -1566,7 +1566,7 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 1 SETTING(S) FINER — Shot was 3s off target midpoint.",
+      "reason": "GO 1 SETTING(S) FINER — Shot was 4s off target midpoint.",
       "recommendedSetting": {
         "setting": 14
       },
@@ -2061,7 +2061,7 @@
       },
       "evidenceContext": null,
       "flairWaterTempAdvice": null,
-      "reason": "GO 1 SETTING(S) FINER — Shot was 7s off target midpoint.",
+      "reason": "GO 1 SETTING(S) FINER — Shot was 8s off target midpoint.",
       "recommendedSetting": {
         "setting": 14
       },
@@ -2603,7 +2603,7 @@
       "sensitivityUsedEmpiricalSlope": false,
       "severeChoke": false,
       "shift": -5,
-      "shiftSummary": "-5 micro step(s) finer — GO 5 MICRO STEP(S) FINER — Shot was 7s off target midpoint.",
+      "shiftSummary": "-5 micro step(s) finer — GO 5 MICRO STEP(S) FINER — Shot was 8s off target midpoint.",
       "shiftUnit": "micro",
       "targetMid": 27.5,
       "targetYield": 36,

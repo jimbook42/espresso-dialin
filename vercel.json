@@ -8,7 +8,8 @@
       "b09/per-shot-insights": false,
       "fix/persist-gauge-visibility": false,
       "fix/qa-a-brew-guide-start": false,
-      "fix/qa-2-recommendation-correctness": false
+      "fix/qa-2-recommendation-correctness": false,
+      "fix/qa-3-input-logging": false
     }
   },
   "buildCommand": "if [ \"$VERCEL_ENV\" = preview ]; then npm run build; else npm run build:release; fi"

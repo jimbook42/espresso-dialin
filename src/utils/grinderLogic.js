@@ -840,7 +840,7 @@ function buildNicheZeroQualitativeReason({
     }
     return 'KEEP GRIND — Balanced and in range.';
   }
-  const secOff = Math.abs(Math.round(timeDelta));
+  const secOff = Math.round(Math.abs(timeDelta));
   if (timeDelta < 0) {
     return `Shot was ${secOff}s fast — consider grinding finer (lower dial number). Timing guidance only; dial steps are not auto-calibrated.`;
   }
@@ -1329,7 +1329,7 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     shift = capQuantitativeGrindShift(shift, grinderProfile);
     shift = applyMinimumQuantitativeShift(shift, grinderProfile);
 
-    const secOff = Math.abs(Math.round(timeDelta));
+    const secOff = Math.round(Math.abs(timeDelta));
     const dialReason = formatDialShiftReasonParts(grinderProfile, customGrindValue, shift);
     const absShift = dialReason?.steps ?? Math.abs(shift);
     const direction = dialReason?.direction ?? (shift < 0 ? 'FINER' : 'COARSER');
