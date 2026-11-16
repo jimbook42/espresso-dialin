@@ -28,7 +28,7 @@ import {
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useOverlayHistoryClose } from './hooks/useOverlayHistoryClose.js';
-import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag, Gauge } from 'lucide-react';
+import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag, Gauge, Heart } from 'lucide-react';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { FinishBeanToast, TOAST_DURATION_MS } from './components/FinishBeanToast.jsx';
 import {
@@ -235,6 +235,7 @@ import {
 } from './settings/anonymousUsage.js';
 import { isVerifiedGaugeCalibration } from './flairPressureLab/gaugeCompatibility.js';
 import { ShotProfile } from './components/ShotProfile.jsx';
+import { canReferenceShot, readShotSelections, removeDeletedShotSelections, setReferenceShot, toggleFavouriteShot } from './utils/shotSelections.js';
 import { savedShotMeasurements } from './utils/shotProfile.js';
 import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
 import { ShotLabPressureProvider } from './components/ShotLabPressureContext.jsx';
@@ -400,6 +401,12 @@ export default function App() {
   const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
   const shotsQuery = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []);
   const historyShots = useMemo(() => shotsQuery || [], [shotsQuery]);
+  const shotSelections = useLiveQuery(() => readShotSelections(db), []);
+  const favouriteIds = useMemo(() => new Set(shotSelections?.favouriteIds), [shotSelections]);
+  const referenceShots = useMemo(() => {
+    const shotsById = new Map(historyShots.map((shot) => [shot.id, shot]));
+    return new Map(shotSelections?.references.map(({ beanId, shotId }) => [beanId, shotsById.get(shotId)]));
+  }, [historyShots, shotSelections]);
   const shots = useMemo(() => historyShots.filter((shot) => !isStandalonePressureShot(shot)), [historyShots]);
   const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), [], SETTINGS_QUERY_PENDING);
   const settingsSetting =
@@ -484,6 +491,8 @@ export default function App() {
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
+  const [historyFavouritesOnly, setHistoryFavouritesOnly] = useState(false);
+  const [shotSelectionError, setShotSelectionError] = useState('');
   const [finishUndoToast, setFinishUndoToast] = useState(null);
   const finishUndoTimerRef = useRef(null);
   
@@ -1965,6 +1974,7 @@ export default function App() {
       standaloneSaveRef.current = false;
       setPressureSaving(false);
       setHistoryFilterBeanId('all');
+      setHistoryFavouritesOnly(false);
       setActiveTab('history');
       setLastSavedShotId(persistedId);
     }
@@ -2283,14 +2293,16 @@ export default function App() {
 
   const handleDeleteBean = async (beanId) => {
     if (window.confirm("Are you sure you want to delete this coffee profile? This will permanently remove its recipe and all associated shot history.")) {
-      await db.beans.delete(beanId);
-      
-      const associatedRecipes = await db.recipes.where('beanId').equals(beanId).toArray();
-      for (const r of associatedRecipes) await db.recipes.delete(r.id);
-      
-      const associatedShots = await db.shots.where('beanId').equals(beanId).toArray();
-      for (const s of associatedShots) await db.shots.delete(s.id);
-      setLastSavedShotId((current) => associatedShots.some((shot) => shot.id === current) ? null : current);
+      const deletedShotIds = await db.transaction('rw', db.beans, db.recipes, db.shots, db.settings, async () => {
+        const shotIds = await db.shots.where('beanId').equals(beanId).primaryKeys();
+        await db.beans.delete(beanId);
+        await db.recipes.where('beanId').equals(beanId).delete();
+        await db.shots.bulkDelete(shotIds);
+        await removeDeletedShotSelections(db, shotIds, beanId);
+        return shotIds;
+      });
+      setLastSavedShotId((current) => deletedShotIds.includes(current) ? null : current);
+      setHistoryFilterBeanId((current) => current === beanId ? 'all' : current);
 
       if (effectiveBeanId === beanId) {
         const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
@@ -2326,8 +2338,20 @@ export default function App() {
 
   const handleDeleteShot = async (id) => {
     if (window.confirm("Delete this shot from History?")) {
-      await db.shots.delete(id);
+      await db.transaction('rw', db.shots, db.settings, async () => {
+        await db.shots.delete(id);
+        await removeDeletedShotSelections(db, [id]);
+      });
       setLastSavedShotId((current) => current === id ? null : current);
+    }
+  };
+
+  const saveShotSelection = async (operation) => {
+    setShotSelectionError('');
+    try {
+      await operation();
+    } catch {
+      setShotSelectionError('Could not save the shot selection. Please try again.');
     }
   };
 
@@ -2921,9 +2945,10 @@ export default function App() {
   };
 
   const beanAgeInfo = activeBean ? calculateEffectiveBeanAge(activeBean, null) : null;
-  const filteredShots = historyFilterBeanId === 'all' ? historyShots
+  const beanFilteredShots = historyFilterBeanId === 'all' ? historyShots
     : historyFilterBeanId === 'standalone-pressure' ? historyShots.filter(isStandalonePressureShot)
       : shots.filter((shot) => shot.beanId === historyFilterBeanId);
+  const filteredShots = historyFavouritesOnly ? beanFilteredShots.filter((shot) => favouriteIds.has(shot.id)) : beanFilteredShots;
 
   const totalShots = shots.length;
   const compliantShots = shots.filter(s => {
@@ -3311,7 +3336,7 @@ export default function App() {
             }}
             onSave={saveStandalonePressure}
             onSettings={openSettings}
-            onHistory={() => { setHistoryFilterBeanId('all'); setActiveTab('history'); }}
+            onHistory={() => { setHistoryFilterBeanId('all'); setHistoryFavouritesOnly(false); setActiveTab('history'); }}
             elapsed={formatTimerLive(pressureState === 'review' ? actualTimeS : timerSeconds)}
             pressure={labPressureShotMetrics}
             details={pressureDetails}
@@ -4416,28 +4441,40 @@ export default function App() {
         {activeTab === 'history' && savedShotNotice}
         {activeTab === 'history' && (
           <div className="space-y-4">
-            <div className={`flex justify-between items-center gap-3 ${ui.card} p-3 rounded-2xl`}>
+            <div className={`flex flex-wrap justify-between items-center gap-x-3 gap-y-1 ${ui.card} p-3 rounded-2xl`}>
               <span className={ui.sectionTitle}>Filter history log</span>
-              <select
-                value={historyFilterBeanId}
-                onChange={(e) => setHistoryFilterBeanId(e.target.value)}
-                className={`${inputClass} border rounded-lg px-3 py-1.5 text-xs font-semibold min-w-[8.5rem]`}
-              >
-                <option value="all">All shots</option>
-                {historyShots.some(isStandalonePressureShot) && <option value="standalone-pressure">Pressure recordings</option>}
-                {beans.map(b => (
-                  <option key={b.id} value={b.id}>{formatBeanDisplayName(b)} {b.isFinished ? '(Finished)' : ''}</option>
-                ))}
-              </select>
+              <div className="flex min-w-0 items-center gap-2">
+                <select aria-label="Filter History by bean"
+                  value={historyFilterBeanId}
+                  onChange={(e) => setHistoryFilterBeanId(e.target.value)}
+                  className={`${inputClass} border rounded-lg px-2 py-1.5 text-xs font-semibold min-h-11 min-w-0 max-w-[12rem]`}
+                >
+                  <option value="all">All shots</option>
+                  {historyShots.some(isStandalonePressureShot) && <option value="standalone-pressure">Pressure recordings</option>}
+                  {beans.map(b => (
+                    <option key={b.id} value={b.id}>{formatBeanDisplayName(b)} {b.isFinished ? '(Finished)' : ''}</option>
+                  ))}
+                </select>
+                <button type="button" aria-pressed={historyFavouritesOnly}
+                  onClick={() => setHistoryFavouritesOnly((only) => !only)}
+                  className={`min-h-11 rounded-lg px-2 text-xs font-semibold ${historyFavouritesOnly ? ui.chartToggleActive : ui.chartToggleIdle}`}>
+                  Favourites
+                </button>
+              </div>
             </div>
 
+            {shotSelectionError && <p role="alert" className={`text-sm ${ui.text}`}>{shotSelectionError}</p>}
             {filteredShots.length === 0 ? (
-              <p className={`text-sm ${subTextClass}`}>No shots logged yet.</p>
+              <p className={`text-sm ${subTextClass}`}>{historyFavouritesOnly ? 'No favourites match this filter.' : 'No shots logged yet.'}</p>
             ) : (
               filteredShots.map(s => {
                 const standalone = isStandalonePressureShot(s);
                 const hasReplay = s.id === labReplayShotId;
                 const bean = beans.find(b => b.id === s.beanId);
+                const favourite = favouriteIds.has(s.id);
+                const referenceEligible = canReferenceShot(s, bean);
+                const reference = referenceEligible ? referenceShots.get(bean.id) : null;
+                const referenceShot = canReferenceShot(reference, bean) ? reference : null;
                 const grindStr = standalone ? null : formatShotGrindForHistory(s, appSettings);
                 const recipeForShot = recipes.find(r => r.beanId === s.beanId);
                 const minT = recipeForShot?.targetTimeMinS || 27;
@@ -4550,6 +4587,12 @@ export default function App() {
                       </div>
                     )}
                     <div className="flex flex-wrap justify-end gap-3">
+                      <button type="button" aria-label="Favourite shot" aria-pressed={favourite}
+                        title={favourite ? 'Remove from favourites' : 'Add to favourites'}
+                        onClick={() => saveShotSelection(() => toggleFavouriteShot(db, s.id))}
+                        className={`mr-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg ${favourite ? ui.accentText : ui.muted}`}>
+                        <Heart className={`size-4 ${favourite ? 'fill-current' : ''}`} aria-hidden="true" />
+                      </button>
                       <button type="button" onClick={() => void openShotShare(s.id)}
                         className={`min-h-11 text-xs font-bold ${ui.accentText}`} data-testid="history-share-shot">
                         Share shot
@@ -4580,7 +4623,11 @@ export default function App() {
                     )}
                     </div>
 
-                    <ShotProfile shot={s} ui={ui} />
+                    <ShotProfile shot={s} ui={ui} referenceShot={referenceShot}
+                      referenceDate={referenceShot ? formatShotWhen(referenceShot.timestamp) : null}
+                      onReferenceChange={referenceEligible
+                        ? (selected) => saveShotSelection(() => setReferenceShot(db, bean.id, s.id, selected))
+                        : null} />
 
                     <div className={`flex flex-wrap items-center gap-2 text-[10px] ${ui.muted}`}>
                       {(s.brewTemperatureC || recipeForShot?.brewTemperatureC) && (

@@ -1,12 +1,65 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildShotProfile, observationAtTime, savedShotMeasurements } from './shotProfile.js';
+import { buildComparisonProfile, buildShotProfile, observationAtTime, savedShotMeasurements } from './shotProfile.js';
 import { createShotDeviceDiagnostics, shotDeviceDiagnosticsForShot } from '../scales/shotDeviceDiagnostics.js';
+import pressureRecording from '../../scripts/pressure-label/fixtures/batch-2026-11-03/source/lab-replay-a1efe497-pressure.json';
 
 const weights = (...samples) => samples.map(([tS, weightG]) => ({ tS, weightG }));
 const pressure = (...samples) => samples.map(([tS, bar]) => ({ tS, bar }));
 const timed = { version: 1, pressureOriginMs: 0, scaleOriginMs: 0, extractionStartMs: 0, clockDriftMs: 0 };
 
 afterEach(() => vi.useRealTimers());
+
+describe('comparison profiles', () => {
+  it('aligns each stream to extraction start and preserves recorded pressure and its gaps', () => {
+    const profile = buildComparisonProfile({
+      ...pressureRecording,
+      scaleFlowCurve: weights([0.125, 1], [0.375, 2]),
+      shotProfileTiming: { ...timed, pressureOriginMs: 500, scaleOriginMs: 2250, extractionStartMs: 2000 },
+    });
+    expect(profile.pressure.map(({ bar }) => bar)).toEqual(pressureRecording.labPressureCurve.map(({ bar }) => bar));
+    expect(profile.pressure[0].tS).toBeCloseTo(pressureRecording.labPressureCurve[0].tS - 1.5);
+    expect(profile.pressure[1].breakBefore).toBe(true);
+    expect(profile.pressure[2].breakBefore).toBe(false);
+    expect(profile.weight.map(({ tS }) => tS)).toEqual([0.375, 0.625]);
+    expect(profile.flow).toEqual([{ tS: 0.625, flowGs: 4, breakBefore: true }]);
+  });
+
+  it('preserves missing samples and recorded zeroes, splitting both weight and derived flow', () => {
+    const profile = buildComparisonProfile({
+      scaleFlowCurve: weights([0, 0], [0.25, 1], [0.375, null], [0.5, 3], [0.75, 2.5], [2, 8], [2.25, 9]),
+    });
+    expect(profile.weight.map(({ tS, weightG, breakBefore }) => [tS, weightG, breakBefore])).toEqual([
+      [0, 0, false], [0.25, 1, false], [0.5, 3, true], [0.75, 2.5, false], [2, 8, true], [2.25, 9, false],
+    ]);
+    expect(profile.flow.map(({ tS, flowGs, breakBefore }) => [tS, flowGs, breakBefore])).toEqual([
+      [0.25, 4, true], [0.75, -2, true], [2.25, 4, true],
+    ]);
+  });
+
+  it('keeps settling weight while deriving flow only inside the documented extraction interval', () => {
+    const profile = buildComparisonProfile({
+      shotProfileTiming: { ...timed, extractionStartMs: 250, extractionEndMs: 750 },
+      scaleFlowCurve: weights([0, 0], [0.25, 1], [0.5, 2], [0.75, 3], [1, 4]),
+    });
+    expect(profile.weight.map(({ tS }) => tS)).toEqual([-0.25, 0, 0.25, 0.5, 0.75]);
+    expect(profile.flow.map(({ tS }) => tS)).toEqual([0.25, 0.5]);
+  });
+
+  it('keeps legacy scale time and describes unalignable pressure without estimating a start', () => {
+    const shot = { ...pressureRecording, scaleFlowCurve: weights([0.5, 4]), notes: 'Pre-infusion: 4.2s.' };
+    for (const shotProfileTiming of [undefined, { ...timed, clockDriftMs: 500 }, { ...timed, pressureOriginMs: null }]) {
+      expect(buildComparisonProfile({ ...shot, shotProfileTiming })).toMatchObject({
+        pressure: [], pressureTimingUnavailable: true, weight: [{ tS: 0.5, weightG: 4 }], flow: [],
+      });
+    }
+  });
+
+  it('retains manual shot metrics with empty comparison curves', () => {
+    expect(buildComparisonProfile({ actualTimeS: 28, actualDoseG: 18, actualYieldG: 36 })).toMatchObject({
+      durationS: 28, doseG: 18, yieldG: 36, pressure: [], weight: [], flow: [], pressureTimingUnavailable: false,
+    });
+  });
+});
 
 describe('saved shot measurements', () => {
   it('uses saved observations and derives the ratio from yield and dose', () => {

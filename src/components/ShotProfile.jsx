@@ -3,6 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import { buildShotProfile, observationAtTime } from '../utils/shotProfile.js';
 import { ScaleFlowChart } from './ScaleFlowChart.jsx';
 import { ShotInsights } from './ShotInsights.jsx';
+import { ShotComparison } from './ShotComparison.jsx';
 
 const format = (value, unit, digits = 1) => value == null ? 'Not recorded' : `${value.toFixed(digits)} ${unit}`;
 const formatTime = (value) => format(value, 's');
@@ -120,16 +121,46 @@ function ProfileDetails({ shot, ui }) {
   );
 }
 
-export function ShotProfile({ shot, ui }) {
+function ReferenceComparison({ shot, referenceShot, referenceDate, ui }) {
   const [open, setOpen] = useState(false);
   return (
-    <details onToggle={(event) => setOpen(event.currentTarget.open)}
-      className={`group ${ui.cardInset} rounded-xl px-3`} data-testid="history-shot-profile">
-      <summary className={`flex cursor-pointer list-none items-center justify-between gap-2 min-h-11 text-sm font-bold ${ui.text}`}>
-        Shot profile
-        <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+    <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className={`flex min-h-11 cursor-pointer items-center text-sm font-semibold ${ui.accentText}`}>
+        Compare with bean reference
       </summary>
-      {open && <ProfileDetails shot={shot} ui={ui} />}
+      {open && <ShotComparison shot={shot} referenceShot={referenceShot} referenceDate={referenceDate} ui={ui} />}
+    </details>
+  );
+}
+
+export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenceChange }) {
+  const [open, setOpen] = useState(false);
+  const isReference = referenceShot?.id === shot.id;
+  return (
+    <details onToggle={(event) => setOpen(event.currentTarget.open)}
+      className={`group/profile ${ui.cardInset} rounded-xl px-3`} data-testid="history-shot-profile">
+      <summary className={`flex cursor-pointer list-none items-center gap-2 min-h-11 text-sm font-bold ${ui.text}`}>
+        <span>Shot profile</span>
+        {isReference && <span className={`text-xs font-semibold ${ui.sub}`}>Bean reference</span>}
+        <ChevronDown className="ml-auto size-4 transition-transform group-open/profile:rotate-180" aria-hidden="true" />
+      </summary>
+      {open && (
+        <>
+          <ProfileDetails shot={shot} ui={ui} />
+          {onReferenceChange && (
+            <div className={`border-t ${ui.modalDivider}`}>
+              {referenceShot && !isReference && (
+                <ReferenceComparison key={referenceShot.id} shot={shot} referenceShot={referenceShot}
+                  referenceDate={referenceDate} ui={ui} />
+              )}
+              <button type="button" onClick={() => onReferenceChange(!isReference)}
+                className={`min-h-11 text-xs font-semibold ${ui.sub}`}>
+                {isReference ? 'Remove bean reference' : referenceShot ? 'Replace bean reference with this shot' : 'Use as bean reference'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </details>
   );
 }
