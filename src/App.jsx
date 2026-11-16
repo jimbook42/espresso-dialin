@@ -1268,11 +1268,11 @@ export default function App() {
   };
 
   const discardDialShot = () => {
-    if (dialSaveRef.current || yieldSettleTimerRef.current) return;
+    if (dialSaveRef.current || yieldSettleTimerRef.current) return false;
     const hasUnsavedShot = dialShotPending || dialHasMeasurements;
-    if (hasUnsavedShot && !window.confirm('Discard this unsaved shot?')) return;
+    if (hasUnsavedShot && !window.confirm('Discard this unsaved shot?')) return false;
     handleResetTimer();
-    if (!hasUnsavedShot) return;
+    if (!hasUnsavedShot) return true;
     setActualTimeS('');
     setActualYieldG('');
     dialYieldSourceRef.current = null;
@@ -1284,6 +1284,7 @@ export default function App() {
     setValidationError('');
     setScaleShotMetrics(null);
     setLabPressureShotMetrics(null);
+    return true;
   };
 
   const stashPendingGrind = (model, beanId, grindFields) => {
@@ -1571,6 +1572,8 @@ export default function App() {
     setSelectedTab(next);
   };
   const handleNavigationTab = (tab) => {
+    if (activeTab === 'dial' && tab !== 'dial' && dialHasMeasurements
+      && !discardDialShot()) return;
     if (activeTab === 'brew' && tab !== 'brew'
       && (brewGuideTimerActive || brewGuideTimerActiveRef.current)) {
       const start = timerStartingRef.current;
