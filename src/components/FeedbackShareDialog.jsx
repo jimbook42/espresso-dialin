@@ -45,9 +45,9 @@ export function FeedbackShareDialog({ shot, gaugeReason, ui, onClose, onShotShar
       onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }}
       className={`m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-[#3a3836] p-4 backdrop:bg-black/70 ${ui.card} ${ui.text}`}>
       <form onSubmit={share} className="space-y-3">
-        <h2 id="feedback-share-title" className="text-base font-bold">{shot ? 'Share shot' : 'Send us a clip'}</h2>
+        <h2 id="feedback-share-title" className="text-base font-bold">{shot ? 'Report issue' : 'Send us a clip'}</h2>
         <p className="text-sm">{shot
-          ? 'The selected diagnostic JSON may contain shot measurements and associated notes.'
+          ? 'The diagnostic JSON may contain personal information, including shot measurements and notes.'
           : 'The diagnostic JSON includes the app version and a gauge compatibility summary. You can also choose a video from your device.'}</p>
         {fallback ? (
           <>

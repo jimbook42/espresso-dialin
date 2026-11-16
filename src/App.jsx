@@ -4613,8 +4613,8 @@ export default function App() {
                         <Heart className={`size-4 ${favourite ? 'fill-current' : ''}`} aria-hidden="true" />
                       </button>
                       <button type="button" onClick={() => void openShotShare(s.id)}
-                        className={`min-h-11 text-xs font-bold ${ui.accentText}`} data-testid="history-share-shot">
-                        Share shot
+                        className={`min-h-11 text-xs font-bold ${ui.accentText}`} data-testid="history-share-shot" aria-label="Report issue using diagnostic JSON">
+                        Report issue
                       </button>
                     {(hasReplay || Number.isFinite(s.actualTimeS) || s.labPressureCurve?.length > 0 || s.scaleFlowCurve?.length > 0
                       || readerStallDiagnosticsForShot(s.id) || shotDeviceDiagnosticsForShot(s.id)) && (

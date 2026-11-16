@@ -52,7 +52,7 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
     <p className="font-semibold">PNG card</p>
     <p className={ui.sub}>Choose what to include. These privacy settings apply to the PNG only; JSON and CSV may contain personal details.</p>
     <div className="grid grid-cols-2 gap-2">{choices.map(([key, label]) => <label key={key} className="flex min-h-11 items-center gap-2">
-      <input type="checkbox" checked={options[key]} onChange={(event) => setOptions({ ...options, [key]: event.target.checked })} />{label}
+      <input className="size-5 accent-[#c88a4b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c88a4b]" type="checkbox" checked={options[key]} onChange={(event) => setOptions({ ...options, [key]: event.target.checked })} />{label}
     </label>)}</div>
     <canvas ref={canvas} hidden />
     {ready && <img src={preview.url} alt="Preview of shot card" className="block w-full rounded-lg" />}

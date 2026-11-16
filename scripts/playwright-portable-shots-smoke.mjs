@@ -172,23 +172,32 @@ try {
     return bytes;
   };
   const manualCard = await openCard(manual.notes);
-  await saveCard(manualCard, 'manual', 535);
+  await saveCard(manualCard, 'manual', 575);
   assert.equal(await manualCard.getByRole('button', { name: 'Download SEP CSV' }).count(), 0);
   const recordedCard = await openCard('Recorded card QA fixture');
-  const redacted = await saveCard(recordedCard, 'redacted', 1075);
+  const redacted = await saveCard(recordedCard, 'redacted', 1115);
   for (const label of ['Show bean name', 'Show grinder', 'Show date', 'Show personal notes']) {
     await recordedCard.getByLabel(label).check();
   }
-  const visible = await saveCard(recordedCard, 'visible', 1175);
+  const visible = await saveCard(recordedCard, 'visible', 1215);
   assert.notDeepEqual(visible, redacted);
   for (const label of ['Show bean name', 'Show grinder', 'Show date', 'Show personal notes']) {
     await recordedCard.getByLabel(label).uncheck();
   }
-  assert.deepEqual(await saveCard(recordedCard, 'redacted-again', 1075), redacted);
+  assert.deepEqual(await saveCard(recordedCard, 'redacted-again', 1115), redacted);
+  await recordedCard.getByLabel('Show bean name').check();
+  await cards.goBack();
+  await recordedCard.getByText('Share Shot', { exact: true }).click();
+  assert.equal(await recordedCard.getByLabel('Show bean name').isChecked(), true);
+  await recordedCard.getByLabel('Show bean name').uncheck();
   await recordedCard.getByLabel('Show branding').uncheck();
   await recordedCard.getByLabel('Include bean reference').check();
-  await saveCard(recordedCard, 'reference', 1555);
+  await saveCard(recordedCard, 'reference', 1635);
   console.log('B14 PNGs inspected by the smoke at ' + output);
+  const report = cards.getByTestId('history-shot-card').filter({ hasText: 'Recorded card QA fixture' });
+  await report.getByRole('button', { name: 'Report issue using diagnostic JSON' }).click();
+  await cards.getByRole('heading', { name: 'Report issue' }).waitFor();
+  await cards.getByText(/diagnostic JSON may contain personal information/).waitFor();
   assert.deepEqual(errors, []);
   console.log('B13-A offline browser smoke passed on the 320px Android viewport.');
 } finally {

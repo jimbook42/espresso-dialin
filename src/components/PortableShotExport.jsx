@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useOverlayHistoryClose } from '../hooks/useOverlayHistoryClose.js';
 import { ShotCardPreview } from './ShotCardPreview.jsx';
 import { formatShotGrindForHistory } from '../grinders/grinderRegistry.js';
 import { downloadCsvFile } from '../utils/csvExport.js';
@@ -38,9 +39,13 @@ function savedGrind(shot, settings) {
 
 export function PortableShotExport({ shotId, settings, ui, referenceShot }) {
   const [snapshot, setSnapshot] = useState(null);
+  const [open, setOpen] = useState(false);
+  useOverlayHistoryClose(open, () => setOpen(false));
   const [error, setError] = useState('');
   const loadShot = async (event) => {
-    if (!event.currentTarget.open) return;
+    const nextOpen = event.currentTarget.open;
+    setOpen(nextOpen);
+    if (!nextOpen || snapshot) return;
     setError('');
     setSnapshot(null);
     try {
@@ -67,7 +72,7 @@ export function PortableShotExport({ shotId, settings, ui, referenceShot }) {
   };
 
   return (
-    <details onToggle={loadShot} className={`border-t ${ui.modalDivider}`}>
+    <details open={open} onToggle={loadShot} className={`border-t ${ui.modalDivider}`}>
       <summary className={`flex min-h-11 cursor-pointer items-center text-sm font-semibold ${ui.accentText}`}>
         Share Shot
       </summary>
@@ -89,7 +94,7 @@ export function PortableShotExport({ shotId, settings, ui, referenceShot }) {
                 ['flow', shot.flow.intervals.length],
               ].map(([label, count]) => `${label} ${count ? 'available' : 'unavailable'}`).join(' · ')}
             </p>
-            {missing.length > 0 && <p className={ui.sub}>Missing from this shot {missing.map((key) => fieldNames[key]).join(', ')}.</p>}
+            {missing.length > 0 && <p className={ui.sub}>Missing from this shot: {missing.map((key) => fieldNames[key]).join(', ')}.</p>}
             <div className="flex flex-wrap gap-2">
               <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={saveJson}>Download shot JSON</button>
               <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={() => downloadCsvFile(

@@ -15,9 +15,9 @@ export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options
   const tracks = profiles.map((p) => [
     { label: 'PRESSURE', unit: 'bar', points: p.pressure, key: 'bar', color: '#cf8250' },
     { label: 'WEIGHT', unit: 'g', points: p.weight, key: 'weightG', color: '#739c82' },
-    { label: 'FLOW', unit: 'g/s', points: p.flow, key: 'flowGs', color: '#8294bd' },
+    { label: 'FLOW (SMOOTHED)', unit: 'g/s', points: p.flow, key: 'flowGs', color: '#8294bd' },
   ].filter((t) => t.points.length));
-  const sectionHeight = (i) => 300 + tracks[i].length * 180 + (options.notes && entries[i].shot.notes ? 100 : 0);
+  const sectionHeight = (i) => 340 + tracks[i].length * 180 + (options.notes && entries[i].shot.notes ? 100 : 0);
   canvas.width = CARD_WIDTH;
   canvas.height = 170 + entries.reduce((sum, _, i) => sum + sectionHeight(i), 0) + 65;
   const ctx = canvas.getContext('2d');
@@ -52,29 +52,33 @@ export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options
     let chartY = y + 230;
     tracks[i].forEach((track) => {
       const left = 165, right = 1080, top = chartY + 20, bottom = chartY + 125;
-      const minT = Math.min(0, track.points[0].tS);
-      const maxT = Math.max(minT + 1, track.points.at(-1).tS);
+      const origin = p.aligned ? p.extractionStartS : 0;
+      const comparable = referenceShot && profiles.every((profile) => profile.aligned);
+      const matching = comparable ? tracks.flatMap((group, j) => group.filter((item) => item.key === track.key)
+        .map((item) => ({ points: item.points, origin: profiles[j].extractionStartS }))) : [{ points: track.points, origin }];
+      const minT = Math.min(0, ...matching.map((item) => item.points[0].tS - item.origin));
+      const maxT = Math.max(minT + 1, ...matching.map((item) => item.points.at(-1).tS - item.origin));
       const [minV, maxV] = track.points.reduce(([low, high], point) =>
         [Math.min(low, point[track.key]), Math.max(high, point[track.key])], [0, 1]);
-      text(track.label, 80, chartY + 25, 18, track.color, 700);
+      text(track.label, 80, chartY + 10, 15, track.color, 700, 1000);
       text(`${maxV.toFixed(1)} ${track.unit}`, 80, chartY + 53, 16, '#c7cfc8');
       text(`${minV.toFixed(1)}`, 80, bottom, 16, '#c7cfc8');
       ctx.strokeStyle = '#516057'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left, bottom); ctx.lineTo(right, bottom); ctx.stroke();
       ctx.strokeStyle = track.color; ctx.fillStyle = track.color; ctx.lineWidth = 4; ctx.beginPath();
       track.points.forEach((point, n) => {
-        const x = left + (point.tS - minT) / (maxT - minT) * (right - left);
+        const x = left + (point.tS - origin - minT) / (maxT - minT) * (right - left);
         const py = bottom - (point[track.key] - minV) / (maxV - minV) * (bottom - top);
         if (!n || point.breakBefore) ctx.moveTo(x, py); else ctx.lineTo(x, py);
       });
       ctx.stroke();
       // Dots preserve isolated observations, including zero-valued samples.
-      track.points.forEach((point) => { const x = left + (point.tS - minT) / (maxT - minT) * (right - left); const py = bottom - (point[track.key] - minV) / (maxV - minV) * (bottom - top); ctx.beginPath(); ctx.arc(x, py, 3, 0, Math.PI * 2); ctx.fill(); });
+      track.points.forEach((point) => { const x = left + (point.tS - origin - minT) / (maxT - minT) * (right - left); const py = bottom - (point[track.key] - minV) / (maxV - minV) * (bottom - top); ctx.beginPath(); ctx.arc(x, py, 3, 0, Math.PI * 2); ctx.fill(); });
       text(`${minT.toFixed(1)} s`, left, bottom + 26, 16, '#c7cfc8');
       text(`${maxT.toFixed(1)} s`, right - 65, bottom + 26, 16, '#c7cfc8');
       chartY += 180;
     });
     if (!tracks[i].length) text('Manual shot · no sensor curves recorded', 80, chartY + 30, 21, '#c7cfc8');
-    if (tracks[i].length && p.approximate) text('Charts use sensor recording time', 80, chartY + 15, 17, '#c7cfc8');
+    if (tracks[i].length) text(p.aligned ? 'Time from extraction start' : 'Sensor recording time · alignment uncertain', 80, chartY + 15, 17, '#c7cfc8');
     if (options.notes && entry.shot.notes) text(`Notes: ${entry.shot.notes.replace(/\s+/g, ' ')}`, 80, chartY + 60, 20, '#c7cfc8');
     y += sectionHeight(i);
   });
