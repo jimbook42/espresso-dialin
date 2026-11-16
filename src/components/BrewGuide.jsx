@@ -266,7 +266,7 @@ export function BrewGuide({
   timer = {
     running: false,
     countdownActive: false,
-    countdownHandoffPending: false,
+    startPending: false,
     yieldSettleActive: false,
     frozenShotWeightG: null,
     label: '0:00.0',
@@ -327,10 +327,10 @@ export function BrewGuide({
     const next = syncBrewExtractPhaseWithTimer(extractPhase, {
       timerRunning: timer.running,
       countdownActive: timer.countdownActive,
-      countdownHandoffPending: timer.countdownHandoffPending,
+      startPending: timer.startPending,
     });
     if (next !== extractPhase) setExtractPhase(next);
-  }, [extractPhase, timer.running, timer.countdownActive, timer.countdownHandoffPending]);
+  }, [extractPhase, timer.running, timer.countdownActive, timer.startPending]);
 
   const abortRunningExtract = () => {
     if (extractPhase !== BREW_EXTRACT_RUNNING && extractPhase !== BREW_EXTRACT_ARMING) return;
@@ -767,9 +767,9 @@ export function BrewGuide({
                   type="button"
                   disabled={extractPhase === BREW_EXTRACT_ARMING}
                   onClick={() => {
+                    if (!onStartTimer()) return;
                     setCapturedTime(null);
                     setExtractPhase(BREW_EXTRACT_ARMING);
-                    onStartTimer();
                   }}
                   className={`w-full min-h-[64px] rounded-[20px] text-base flex items-center justify-center gap-2 ${ui.primary}`}
                 >
@@ -855,7 +855,7 @@ export function BrewGuide({
 
       <div className={`fixed bottom-[4.25rem] left-0 right-0 p-3 z-40 ${ui.dock} backdrop-blur`} data-timer-dismiss>
         <div className="max-w-xl mx-auto space-y-2">
-          {step.kind === 'timer' && extractPhase !== BREW_EXTRACT_IDLE && extractPhase !== BREW_EXTRACT_ARMING && (
+          {step.kind === 'timer' && extractPhase !== BREW_EXTRACT_IDLE && (
             <button
               type="button"
               onClick={resetExtract}
