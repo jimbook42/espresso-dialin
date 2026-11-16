@@ -235,6 +235,7 @@ import {
 } from './settings/anonymousUsage.js';
 import { isVerifiedGaugeCalibration } from './flairPressureLab/gaugeCompatibility.js';
 import { ShotProfile } from './components/ShotProfile.jsx';
+import { PortableShotBackup } from './components/PortableShotExport.jsx';
 import { BeanShotConsistency } from './components/BeanShotConsistency.jsx';
 import { saveShotTasteRating, shotTasteRating } from './utils/shotRatings.js';
 import { canReferenceShot, readShotSelections, removeDeletedShotSelections, setReferenceShot, toggleFavouriteShot } from './utils/shotSelections.js';
@@ -4641,7 +4642,7 @@ export default function App() {
                     )}
                     </div>
 
-                    <ShotProfile shot={s} ui={ui} referenceShot={referenceShot}
+                    <ShotProfile shot={s} ui={ui} settings={appSettings} referenceShot={referenceShot}
                       onRatingChange={(rating) => saveShotTasteRating(db, s.id, rating)}
                       onOpenBeanConsistency={referenceEligible ? () => showBeanConsistency(bean.id) : null}
                       referenceDate={referenceShot ? formatShotWhen(referenceShot.timestamp) : null}
@@ -5227,6 +5228,7 @@ export default function App() {
                   {csvImportSummary && (
                     <p className={`text-[11px] ${ui.muted} text-center px-2`}>{csvImportSummary}</p>
                   )}
+                  <PortableShotBackup ui={ui} />
                 </div>
 
                 <div className="pt-3 border-t border-rose-900/40 space-y-2">

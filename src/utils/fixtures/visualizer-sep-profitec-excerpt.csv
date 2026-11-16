@@ -1,0 +1,8 @@
+information_type,elapsed,pressure,current_total_shot_weight,flow_in,flow_out,water_temperature_boiler,water_temperature_in,water_temperature_basket,metatype,metadata,comment
+moment,0.336,0.41368543682058806,,,,,,,,,sample: pressure
+moment,0.338,0.4205801941009312,,,,,,,,,sample: pressure
+moment,0.34,0.4316118057494802,,,,,,,,,sample: pressure
+moment,0.34,,0.0,,,,,,,,sample: weight
+moment,0.347,,0.0,,,,,,,,sample: weight
+moment,1.006,,0.0,,,,,,,,sample: weight
+moment,1.019,0.8453861790732841,,,,,,,,,sample: pressure

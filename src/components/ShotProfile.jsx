@@ -5,6 +5,7 @@ import { ScaleFlowChart } from './ScaleFlowChart.jsx';
 import { ShotInsights } from './ShotInsights.jsx';
 import { ShotComparison } from './ShotComparison.jsx';
 import { PressureFlowAnalytics } from './PressureFlowAnalytics.jsx';
+import { PortableShotExport } from './PortableShotExport.jsx';
 import { shotTasteRating } from '../utils/shotRatings.js';
 
 const format = (value, unit, digits = 1) => value == null ? 'Not recorded' : `${value.toFixed(digits)} ${unit}`;
@@ -171,7 +172,7 @@ function ReferenceComparison({ shot, referenceShot, referenceDate, ui }) {
   );
 }
 
-export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency }) {
+export function ShotProfile({ shot, ui, settings, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency }) {
   const [open, setOpen] = useState(false);
   const isReference = referenceShot?.id === shot.id;
   return (
@@ -186,6 +187,7 @@ export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenc
         <>
           <ProfileDetails shot={shot} ui={ui} onRatingChange={onRatingChange}
             onOpenBeanConsistency={onOpenBeanConsistency} />
+          <PortableShotExport shotId={shot.id} settings={settings} ui={ui} />
           {(shot.labPressureCurve?.length > 0 || shot.scaleFlowCurve?.length > 0) && (
             <PressureFlowAnalytics shot={shot} ui={ui} />
           )}
