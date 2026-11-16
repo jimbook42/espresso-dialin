@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { ShotCardPreview } from './ShotCardPreview.jsx';
 import { formatShotGrindForHistory } from '../grinders/grinderRegistry.js';
 import { downloadCsvFile } from '../utils/csvExport.js';
 import { db, knownIssueReasonLabel } from '../utils/grinderLogic.js';
 import { MAX_PORTABLE_SHOT_BYTES, parsePortableShotFile, previewPortableRestore, restorePortableShots } from '../utils/portableShotRestore.js';
 import { readPortableShots } from '../utils/portableShots.js';
 import { formatRecFollowedForCsv } from '../utils/recommendationFollowed.js';
-import { beanconquerorBrew, buildSepShotFile, shotSummaryCsv } from '../utils/shotExportFormats.js';
+import { buildSepShotFile, shotSummaryCsv } from '../utils/shotExportFormats.js';
 import { normalizeTasteProfile } from '../utils/tasteProfile.js';
 
 const buttonClass = 'min-h-11 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50';
@@ -35,7 +36,7 @@ function savedGrind(shot, settings) {
   return hasSetting ? formatShotGrindForHistory(shot, settings) : '';
 }
 
-export function PortableShotExport({ shotId, settings, ui }) {
+export function PortableShotExport({ shotId, settings, ui, referenceShot }) {
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState('');
   const loadShot = async (event) => {
@@ -54,7 +55,6 @@ export function PortableShotExport({ shotId, settings, ui }) {
   const shot = snapshot?.shots[0];
   const bean = snapshot?.beans.find(({ id }) => id === shot.record.beanId);
   const sep = shot && buildSepShotFile(shot, { bean, grind: savedGrind(shot.record, settings) });
-  const beanconqueror = shot && beanconquerorBrew(shot, bean);
   const missing = shot && ['doseG', 'yieldG', 'durationS', 'ratio', 'rating'].filter((key) => shot.measurements[key] == null);
   const fieldNames = { doseG: 'dose', yieldG: 'yield', durationS: 'extraction time', ratio: 'brew ratio', rating: 'taste rating' };
   const filename = 'espresso-shot-' + String(shotId).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
@@ -69,12 +69,13 @@ export function PortableShotExport({ shotId, settings, ui }) {
   return (
     <details onToggle={loadShot} className={`border-t ${ui.modalDivider}`}>
       <summary className={`flex min-h-11 cursor-pointer items-center text-sm font-semibold ${ui.accentText}`}>
-        Export
+        Share Shot
       </summary>
       {error && <p role="alert" className="pb-2 text-xs">{error}</p>}
       {!shot && !error && <p className="pb-2 text-xs">Loading saved shot…</p>}
       {shot && (
         <div className="space-y-3 pb-3 text-xs">
+          <ShotCardPreview shot={shot.record} bean={bean} grind={shot.record.grinderModel} referenceShot={referenceShot} filename={filename} ui={ui} onError={setError} />
           <div className="space-y-1">
             <p className="font-semibold">Local downloads</p>
             <p className={ui.sub}>
@@ -111,7 +112,6 @@ export function PortableShotExport({ shotId, settings, ui }) {
                   onClick={() => downloadFile(filename + '-sep.csv', sep.blob)}>Download SEP CSV</button>
               </>
             ) : <p className={ui.sub}>SEP and Visualizer unavailable. {sep.reason}</p>}
-            {beanconqueror.missing && <p className={ui.sub}>Beanconqueror unavailable. This shot lacks {beanconqueror.missing.join(', ')}.</p>}
           </div>
         </div>
       )}
