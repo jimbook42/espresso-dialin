@@ -3,27 +3,48 @@ import { drawShotCard } from '../utils/shotCard.js';
 
 export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui, onError }) {
   const [options, setOptions] = useState({ brand: true, bean: false, grinder: false, date: false, notes: false, reference: false });
-  const [preview, setPreview] = useState('');
+  const [preview, setPreview] = useState(null);
   const canvas = useRef(null);
   useEffect(() => {
+    let disposed = false;
+    let url;
     try {
       drawShotCard(canvas.current, { shot, bean, grind, referenceShot: options.reference ? referenceShot : null, options });
-      setPreview(canvas.current.toDataURL('image/png'));
-    } catch (error) { onError(error.message); }
-  }, [shot, bean, grind, referenceShot, options, onError]);
-  const save = async (share) => {
+      canvas.current.toBlob((blob) => {
+        if (disposed) return;
+        if (!blob) {
+          onError('Could not create the PNG.');
+          return;
+        }
+        const file = new File([blob], filename + '.png', { type: 'image/png' });
+        url = URL.createObjectURL(file);
+        setPreview({ file, url, options, shot, bean, grind, referenceShot, filename });
+      }, 'image/png');
+    } catch (error) {
+      onError(error.message);
+    }
+    return () => {
+      disposed = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [shot, bean, grind, referenceShot, options, filename, onError]);
+  const ready = preview?.options === options && preview.shot === shot && preview.bean === bean
+    && preview.grind === grind && preview.referenceShot === referenceShot && preview.filename === filename;
+  const canShare = ready && navigator.share && navigator.canShare?.({ files: [preview.file] });
+  const download = () => {
+    const link = document.createElement('a');
+    link.href = preview.url;
+    link.download = preview.file.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+  const share = async () => {
     try {
-      const blob = await new Promise((resolve) => canvas.current.toBlob(resolve, 'image/png'));
-      if (!blob) throw new Error('Could not create the PNG.');
-      const file = new File([blob], filename + '.png', { type: 'image/png' });
-      if (share && navigator.canShare?.({ files: [file] }) && navigator.share) {
-        await navigator.share({ files: [file], title: 'Espresso shot' });
-      } else {
-        const url = URL.createObjectURL(blob); const link = document.createElement('a');
-        link.href = url; link.download = file.name; document.body.appendChild(link); link.click(); link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
-    } catch (error) { if (error.name !== 'AbortError') onError(error.message); }
+      await navigator.share({ files: [preview.file], title: 'Espresso shot' });
+    } catch (error) {
+      if (error.name !== 'AbortError') download();
+    }
   };
   const choices = [['brand', 'Show branding'], ['bean', 'Show bean name'], ['grinder', 'Show grinder'],
     ['date', 'Show date'], ['notes', 'Show personal notes'], ...(referenceShot ? [['reference', 'Include bean reference']] : [])];
@@ -34,10 +55,10 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
       <input type="checkbox" checked={options[key]} onChange={(event) => setOptions({ ...options, [key]: event.target.checked })} />{label}
     </label>)}</div>
     <canvas ref={canvas} hidden />
-    {preview && <img src={preview} alt="Preview of shot card" className="block w-full rounded-lg" />}
+    {ready && <img src={preview.url} alt="Preview of shot card" className="block w-full rounded-lg" />}
     <div className="flex flex-wrap gap-2">
-      <button type="button" className={`min-h-11 rounded-lg px-3 py-2 font-semibold ${ui.secondaryBtn}`} onClick={() => save(false)}>Download PNG</button>
-      {typeof navigator !== 'undefined' && navigator.share && <button type="button" className={`min-h-11 rounded-lg px-3 py-2 font-semibold ${ui.secondaryBtn}`} onClick={() => save(true)}>Share PNG</button>}
+      <button type="button" className={`min-h-11 rounded-lg px-3 py-2 font-semibold ${ui.secondaryBtn}`} disabled={!ready} onClick={download}>Download PNG</button>
+      {canShare && <button type="button" className={`min-h-11 rounded-lg px-3 py-2 font-semibold ${ui.secondaryBtn}`} onClick={share}>Share PNG</button>}
     </div>
   </section>;
 }

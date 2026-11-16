@@ -10,7 +10,7 @@ import { beanconquerorBatch, beanconquerorBrew, buildSepShotFile, shotSummaryCsv
 import { readShotSelections, setReferenceShot, toggleFavouriteShot } from './shotSelections.js';
 
 const sourceCsv = readFileSync(new URL('./fixtures/visualizer-sep-profitec-excerpt.csv', import.meta.url), 'utf8');
-const [sepHeader, ...knownRows] = sourceCsv.trim().split('\n');
+const [sepHeader, ...knownRows] = sourceCsv.trim().split(/\r?\n/);
 
 function readMoments(rows) {
   const samples = { pressure: [], weight: [] };
@@ -118,6 +118,7 @@ describe('portable shot backup', () => {
     await expect(parsePortableShotFile(file({ ...backup, shots: [...backup.shots, backup.shots[0]] }))).rejects.toThrow(/duplicate shot IDs/);
     await expect(parsePortableShotFile(file(createPortableShots([{ ...shot, timestamp: '2026-02-30T00:00:00Z' }], [bean], selections)))).rejects.toThrow(/timestamp/);
     const corrupt = structuredClone(backup);
+    expect(corrupt.shots[0].flow.intervals).not.toHaveLength(0);
     corrupt.shots[0].flow.intervals = [];
     await expect(parsePortableShotFile(file(corrupt))).rejects.toThrow(/inconsistent/);
     const invalidRef = { ...backup, selections: { favouriteIds: [], references: [{ beanId: 'wrong', shotId: shot.id }] } };

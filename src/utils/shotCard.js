@@ -7,7 +7,11 @@ export const CARD_BRAND = 'ESPRESSO DIAL-IN';
 export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options }) {
   const entries = [{ shot, bean, grind, title: referenceShot ? 'YOUR SHOT' : 'SHOT PROFILE' },
     ...(referenceShot ? [{ shot: referenceShot, bean, grind: referenceShot.grinderModel, title: 'BEAN REFERENCE' }] : [])];
-  const profiles = entries.map(({ shot: item }) => buildShotProfile(item));
+  const profiles = entries.map(({ shot: item }) => buildShotProfile({
+    ...item,
+    labPressureCurve: item.labPressureCurve?.map((point) => point?.gap ? { ...point, breakBefore: true } : point),
+    scaleFlowCurve: item.scaleFlowCurve?.map((point) => point?.gap ? { ...point, breakBefore: true } : point),
+  }));
   const tracks = profiles.map((p) => [
     { label: 'PRESSURE', unit: 'bar', points: p.pressure, key: 'bar', color: '#cf8250' },
     { label: 'WEIGHT', unit: 'g', points: p.weight, key: 'weightG', color: '#739c82' },
@@ -48,10 +52,10 @@ export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options
     let chartY = y + 230;
     tracks[i].forEach((track) => {
       const left = 165, right = 1080, top = chartY + 20, bottom = chartY + 125;
-      const minT = Math.min(0, ...track.points.map((point) => point.tS));
-      const maxT = Math.max(minT + 1, ...track.points.map((point) => point.tS));
-      const minV = Math.min(0, ...track.points.map((point) => point[track.key]));
-      const maxV = Math.max(minV + 0.01, ...track.points.map((point) => point[track.key]));
+      const minT = Math.min(0, track.points[0].tS);
+      const maxT = Math.max(minT + 1, track.points.at(-1).tS);
+      const [minV, maxV] = track.points.reduce(([low, high], point) =>
+        [Math.min(low, point[track.key]), Math.max(high, point[track.key])], [0, 1]);
       text(track.label, 80, chartY + 25, 18, track.color, 700);
       text(`${maxV.toFixed(1)} ${track.unit}`, 80, chartY + 53, 16, '#c7cfc8');
       text(`${minV.toFixed(1)}`, 80, bottom, 16, '#c7cfc8');
