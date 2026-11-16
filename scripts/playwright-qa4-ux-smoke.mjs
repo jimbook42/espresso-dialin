@@ -152,6 +152,32 @@ async function verifySeededDial(page) {
   assert.equal(await bean.inputValue(), 'smoke-bean');
   assert.deepEqual((await readShots(page)).map(({ id }) => id).sort(), ['smoke-shot-latest', 'smoke-shot-learning']);
 }
+
+async function checkBlankShotSubmit(page) {
+  const yieldInput = page.getByTestId('dial-yield-tile').locator('input');
+  const timeInput = page.getByTestId('dial-time-tile').locator('input');
+  assert.equal(await yieldInput.inputValue(), '');
+  assert.equal(await timeInput.inputValue(), '');
+  const beforeBlankSubmit = await readShots(page);
+  const beforeBlankSettings = await readSettings(page);
+
+  await page.getByRole('button', { name: 'Log shot & calculate grind adjustment', exact: true }).click();
+  for (const [tile, input, errorId, message] of [
+    ['dial-yield-tile', yieldInput, 'shot-yield-error', 'Enter a yield greater than 0 and up to 500 g.'],
+    ['dial-time-tile', timeInput, 'shot-time-error', 'Enter an extraction time that saves as 1 to 600 seconds.'],
+  ]) {
+    await page.getByTestId(tile).getByText(message, { exact: true }).waitFor();
+    assert.equal(await input.getAttribute('aria-invalid'), 'true');
+    assert.equal(await input.getAttribute('aria-describedby'), errorId);
+  }
+  assert.equal(await yieldInput.evaluate((input) => input === document.activeElement), true);
+  assert.deepEqual(await readShots(page), beforeBlankSubmit);
+  assert.deepEqual(await readSettings(page), beforeBlankSettings);
+  assert.equal(await page.getByText('Shot saved', { exact: true }).count(), 0);
+  assert.equal(await page.getByTestId('saved-share-shot').count(), 0);
+  console.log('PASS blank shot field errors, focus, and IndexedDB no-write');
+}
+
 async function checkRootShot(browser, url, previousUrl) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   try {
@@ -232,20 +258,38 @@ async function checkSettingsAndCustomGrind(browser, url) {
     await settings.waitFor({ state: 'hidden' });
     assert.equal((await readSettings(page)).experiencePreference, 'combined');
 
-    await open();
-    await settings.getByText('Primary grinder', { exact: true }).locator('..').locator('select').first()
+    const beforeCustom = await readSettings(page);
+    const pickCustom = () => settings.getByText('Primary grinder', { exact: true }).locator('..').locator('select').first()
       .selectOption('__custom_grinder__');
+    await open();
+    await pickCustom();
     const grinderName = settings.getByPlaceholder('e.g. DF64', { exact: true });
     await grinderName.fill('QA4 custom');
     assert.equal(await close.textContent(), 'Close');
+    assert.deepEqual(await readSettings(page), beforeCustom);
     await close.click();
-    // Current main auto-writes a valid custom draft. QA-3 will make save explicit.
-    assert.equal((await readSettings(page)).customGrinderSetupDraft.name, 'QA4 custom');
+    await settings.waitFor({ state: 'hidden' });
+    assert.deepEqual(await readSettings(page), beforeCustom);
+    await open();
+    await pickCustom();
+    assert.notEqual(await grinderName.inputValue(), 'QA4 custom');
+    await grinderName.fill('QA4 custom');
+    await settings.getByRole('button', { name: 'Save custom grinder', exact: true }).click();
+    await close.and(page.getByText('Done', { exact: true })).waitFor();
+    await close.click();
+    const savedCustom = await readSettings(page);
+    assert.equal(savedCustom.customGrinder.name, 'QA4 custom');
+    await open();
+    await grinderName.fill('Discarded with browser Back');
+    assert.equal(await close.textContent(), 'Close');
+    assert.deepEqual(await readSettings(page), savedCustom);
+    await page.goBack();
+    await settings.waitFor({ state: 'hidden' });
+    assert.deepEqual(await readSettings(page), savedCustom);
     await open();
     assert.equal(await grinderName.inputValue(), 'QA4 custom');
-    await settings.getByRole('button', { name: 'Save custom grinder', exact: true }).click();
     await close.click();
-    assert.equal((await readSettings(page)).customGrinder.name, 'QA4 custom');
+    await settings.waitFor({ state: 'hidden' });
     const nav = page.getByRole('navigation', { name: 'Main navigation' });
     const guide = () => nav.getByRole('button', { name: 'Brew Guide', exact: true }).click();
     const dial = () => nav.getByRole('button', { name: 'Dial', exact: true }).click();
@@ -308,18 +352,27 @@ async function checkStandalonePressureBack(browser, url) {
 }
 
 const server = startPreviewServer(4191);
+const blankSubmitOnly = process.argv.includes('--blank-submit');
 let browser;
 try {
   await waitForServer(server.url);
   browser = await chromium.launch();
-  await checkRootShot(browser, server.url, 'data:text/html,Previous%20page');
-  await checkRootShot(browser, server.url);
-  await checkStandalonePressureBack(browser, server.url);
-  await checkSettingsAndCustomGrind(browser, server.url);
-  for (const viewport of [{ width: 360, height: 640 }, { width: 390, height: 844 }]) {
+  if (!blankSubmitOnly) {
+    await checkRootShot(browser, server.url, 'data:text/html,Previous%20page');
+    await checkRootShot(browser, server.url);
+    await checkStandalonePressureBack(browser, server.url);
+    await checkSettingsAndCustomGrind(browser, server.url);
+  }
+  const viewports = [{ width: 360, height: 640 }, { width: 390, height: 844 }];
+  for (const viewport of viewports) {
     const page = await browser.newPage({ viewport, serviceWorkers: 'block' });
     await page.goto(server.url); await seedPolishSmoke(page); await page.reload();
     await verifySeededDial(page);
+    if (blankSubmitOnly) {
+      await checkBlankShotSubmit(page);
+      await page.close();
+      continue;
+    }
     const tab = (name) => page.getByRole('button', { name, exact: true });
     const active = async (name) => page.waitForFunction((label) => [...document.querySelectorAll('nav[aria-label="Main navigation"] button')].some((b) => b.textContent.trim().toLowerCase() === label.toLowerCase() && b.getAttribute('aria-current') === 'page'), name);
     const size = async (locator) => {
@@ -372,10 +425,7 @@ try {
       await tab(theme === 'dark' ? 'Dark' : 'Light').click();
       await page.getByLabel('Close settings').click();
     }
-    const beforeBlankSubmit = await readShots(page);
-    await tab('Log shot & calculate grind adjustment').click();
-    await page.getByText(/(?:yield|time).*required/i).first().waitFor();
-    assert.deepEqual(await readShots(page), beforeBlankSubmit);
+    await checkBlankShotSubmit(page);
     await tab('History').click(); await tab('Dial').click();
     await tab('Start').click();
     const liveShot = page.getByTestId('adaptive-shot-screen'); await liveShot.waitFor();

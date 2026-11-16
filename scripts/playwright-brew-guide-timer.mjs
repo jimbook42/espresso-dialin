@@ -137,6 +137,19 @@ async function verifyCancelledScaleStart(page) {
   assert.equal(await page.getByTestId('adaptive-shot-screen').count(), 0, 'cancelled startup left a live shot screen');
 }
 
+async function countSavedShots(page) {
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('EspressoDialDB');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const count = db.transaction('shots').objectStore('shots').count();
+      count.onsuccess = () => { db.close(); resolve(count.result); };
+      count.onerror = () => { db.close(); reject(count.error); };
+    };
+  }));
+}
+
 try {
   await waitForServer(server.url);
   browser = await chromium.launch();
@@ -245,6 +258,64 @@ try {
     await advance();
     assert.equal(await start.isEnabled(), true);
     assert.equal(await button('Done').isDisabled(), true);
+  }, { connected: true });
+
+  await run('Repeated Dial taps cancel once as the scale finishes starting', async (view) => {
+    const { page, button, start, advance } = view;
+    await start.click();
+    await waitForScaleStart(page);
+    const historyLength = await page.evaluate(() => history.length);
+    const stops = await page.evaluate(() => window.testScale.stops);
+    await button('Dial').evaluate((dial) => {
+      window.testScale.finishStart();
+      dial.click();
+      dial.click();
+    });
+    await page.waitForFunction(() => history.state?.dialTab === 'dial' && !history.state?.shotBackGuard);
+    await page.waitForFunction((stops) => window.testScale.stops > stops, stops);
+    await page.clock.runFor(1500);
+    assert.equal(await page.evaluate(() => history.length), historyLength);
+    assert.equal(await page.evaluate(() => window.testScale.stops), stops + 1);
+    assert.equal(await page.getByTestId('adaptive-shot-screen').count(), 0);
+    assert.equal(await countSavedShots(page), 0);
+
+    await page.goBack();
+    await page.waitForFunction(() => history.state?.dialTab === 'brew' && !history.state?.shotBackGuard);
+    await button('Start brew').click();
+    await advance();
+    await start.click();
+    await waitForScaleStart(page, 2);
+    await page.evaluate(() => window.testScale.finishStart());
+    await verifyRunningAndDone(view);
+    assert.equal(await countSavedShots(page), 0);
+  }, { connected: true });
+
+  await run('Browser Back protects pending, recording and stopped Brew Guide steps', async ({ page, button, start }) => {
+    const goBack = async () => {
+      await page.goBack();
+      await page.waitForFunction(() => history.state?.dialTab === 'brew' && history.state?.shotBackGuard);
+    };
+    await start.click();
+    await waitForScaleStart(page);
+    await goBack();
+    assert.equal(await start.isDisabled(), true);
+    assert.equal(await button('Stop timer').isVisible(), false);
+    await page.evaluate(() => window.testScale.finishStart());
+    const stop = button('Stop timer');
+    await stop.waitFor();
+    assert.equal(await button('Dial').isDisabled(), true);
+    const time = page.locator('[data-testid="adaptive-shot-screen"] [data-metric="time"] .shot-metric-value');
+    const beforeBack = Number.parseFloat(await time.textContent());
+    await goBack();
+    await page.clock.runFor(2200);
+    assert.ok(Number.parseFloat(await time.textContent()) > beforeBack + 1);
+    await stop.click();
+    const done = button('Done').and(page.locator('button:enabled'));
+    await done.waitFor();
+    await goBack();
+    await done.click();
+    await page.getByRole('spinbutton', { name: 'Actual yield in grams' }).waitFor();
+    assert.equal(await countSavedShots(page), 0);
   }, { connected: true });
 } finally {
   await browser?.close();

@@ -127,6 +127,16 @@ try {
   const combinedRows = await accessRows(combined);
   assert.equal(combinedRows.settings[0].experiencePreference, 'combined');
   assert.equal(combinedRows.settings[0].grinderModel, 'Sette 270Wi');
+  await nav(combined, 'Pressure').click();
+  await current(combined, 'Pressure');
+  await nav(combined, 'Dial').click();
+  await combined.goBack();
+  await current(combined, 'Pressure');
+  await combined.goForward();
+  await current(combined, 'Dial');
+  await combined.reload();
+  await current(combined, 'Dial');
+  assert.deepEqual(await accessRows(combined), combinedRows);
   console.log('PASS Combined onboarding preserves optional grinder, scale and Brew Guide setup');
 
   const legacy = await browser.newPage({ viewport: galaxy, isMobile: true, hasTouch: true });

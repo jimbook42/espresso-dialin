@@ -401,6 +401,9 @@ export default function App() {
   const settingsQueryResult = useLiveQuery(() => db.settings.get('global'), [], SETTINGS_QUERY_PENDING);
   const settingsSetting =
     settingsQueryResult === SETTINGS_QUERY_PENDING ? null : (settingsQueryResult ?? null);
+  const hasExistingUserData = historyShots.length > 0 || beans.length > 0;
+  const showFirstLaunchWizard = shouldRenderFirstLaunchWizard(settingsQueryResult, { hasExistingUserData });
+  const firstLaunchDataLoaded = beansQuery !== undefined && shotsQuery !== undefined;
   const usageEnabled = !usageSessionOff
     && anonymousUsageEnabled(settingsQueryResult !== SETTINGS_QUERY_PENDING, settingsSetting);
   useLayoutEffect(() => {
@@ -1517,6 +1520,8 @@ export default function App() {
     || (settingsCustomGrinderSelected && customGrinderDraftDirty);
   const shotBackLocked = experienceSwitchLocked || dialSaving || brewGuideTimerActive
     || (activeTab === 'dial' && dialHasMeasurements);
+  const canExitBrewGuideStartup = activeTab === 'brew' && brewGuideTimerActive
+    && (timerStartPending || shotCountdownValue != null) && !timerRunning && !yieldSettleActive;
 
   useLayoutEffect(() => {
     if (shotBackLocked && !isSettingsOpen && !weighingViewOpen) {
@@ -1529,7 +1534,7 @@ export default function App() {
     if (window.history.state?.shotBackGuard && !window.history.state?.overlay) window.history.back();
   });
 
-  const navigationRef = useRef({ initialized: false, pending: null, restoring: false });
+  const navigationRef = useRef({ initialized: false, pending: null, restoring: false, firstLaunch: false });
   const navigationContextRef = useRef(null);
   useLayoutEffect(() => {
     navigationContextRef.current = { activeTab, experience, brewGuideEnabled, showPressureTab,
@@ -1565,17 +1570,36 @@ export default function App() {
     }
     setSelectedTab(next);
   };
+  const handleNavigationTab = (tab) => {
+    if (activeTab === 'brew' && tab !== 'brew'
+      && (brewGuideTimerActive || brewGuideTimerActiveRef.current)) {
+      const start = timerStartingRef.current;
+      const pendingBrewStart = (start?.fromBrewGuide && !start.cancelled)
+        || shotCountdownStartOptsRef.current?.fromBrewGuide;
+      // The scale can finish between rendering the enabled button and clicking it.
+      if (tab !== 'dial' || !pendingBrewStart
+        || shotStartedAtRef.current != null || yieldSettleTimerRef.current) return;
+      releaseBrewGuideTimer();
+    }
+    setActiveTab(tab);
+  };
   useEffect(() => {
-    if (settingsQueryResult === SETTINGS_QUERY_PENDING || navigationRef.current.initialized) return;
+    const navigation = navigationRef.current;
+    if (settingsQueryResult === SETTINGS_QUERY_PENDING || navigation.initialized) return;
+    if (showFirstLaunchWizard) {
+      navigation.firstLaunch = firstLaunchDataLoaded;
+      return;
+    }
     const context = navigationContextRef.current;
-    const next = validNavigationTab(window.history.state?.dialTab ?? context.activeTab, context);
+    const previousTab = navigation.firstLaunch ? null : window.history.state?.dialTab;
+    const next = validNavigationTab(previousTab ?? context.activeTab, context);
     const state = { ...window.history.state, dialTab: next };
     delete state.overlay;
     window.history.replaceState(state, '');
-    navigationRef.current.initialized = true;
+    navigation.initialized = true;
     if (next !== context.activeTab) setSelectedTab(next);
     if (state.shotBackGuard && !shotBackGuard.current) window.history.back();
-  }, [settingsQueryResult]);
+  }, [firstLaunchDataLoaded, settingsQueryResult, showFirstLaunchWizard]);
   useEffect(() => {
     const onPopState = (event) => {
       const nav = navigationRef.current;
@@ -2967,16 +2991,12 @@ export default function App() {
     }, 200);
   };
 
-  const hasExistingUserData = historyShots.length > 0 || beans.length > 0;
-
   if (shouldDeferMainShellForFirstLaunch(settingsQueryResult, { hasExistingUserData })) {
     return null;
   }
 
-  if (shouldRenderFirstLaunchWizard(settingsQueryResult, {
-    hasExistingUserData,
-  })) {
-    if (beansQuery === undefined || shotsQuery === undefined) return null;
+  if (showFirstLaunchWizard) {
+    if (!firstLaunchDataLoaded) return null;
     return (
       <FirstLaunchWizard
         ui={ui}
@@ -5171,10 +5191,11 @@ export default function App() {
                 type="button"
                 aria-current={isActive ? 'page' : undefined}
                 disabled={(pressureState !== 'idle' && tab.id !== 'pressure')
-                  || (brewGuideTimerActive && tab.id !== activeTab)
+                  || (brewGuideTimerActive && tab.id !== activeTab
+                    && !(canExitBrewGuideStartup && tab.id === 'dial'))
                   || ((experienceSwitchLocked || dialSaving) && tab.id !== activeTab
                     && (activeTab === 'dial' || tab.id === 'pressure'))}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleNavigationTab(tab.id)}
                 className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] rounded-xl transition-colors ${
                   isActive ? ui.tabActive : ui.muted
                 }`}
