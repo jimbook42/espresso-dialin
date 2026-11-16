@@ -75,7 +75,10 @@ async function seedDb(page) {
 }
 
 function startScalePreview() {
-  const child = spawn('npm', ['run', 'preview:scale'], {
+  const child = spawn(process.execPath, [
+    path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
+    'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort',
+  ], {
     cwd: ROOT,
     stdio: 'pipe',
     detached: true,
@@ -125,6 +128,10 @@ async function main() {
   await page.getByText('18.0 g ·').waitFor();
   await page.getByText('72% battery').waitFor();
 
+  await page.goBack();
+  await dialog.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: /Open weighing view/ }).click();
+  await dialog.waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Close weighing view' }).click();
   await dialog.waitFor({ state: 'hidden' });
 

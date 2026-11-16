@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef } from 'react';
  */
 export function bindOverlayHistoryClose(onClose) {
   let historyPushed = true;
-  window.history.pushState({ overlay: 'weighing-view' }, '');
+  window.history.pushState({ ...window.history.state, overlay: 'weighing-view' }, '');
 
   const handlePopState = () => {
     historyPushed = false;
