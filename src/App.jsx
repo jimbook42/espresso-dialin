@@ -745,7 +745,7 @@ export default function App() {
   const flowChartTimeOffsetSec = timerUsePreInfusion ? Math.max(profilePreinfusionTimeS, 4) : 0;
   const scaleLiveFlowOnProfile =
     scaleFeatureEnabled && timemoreScale.isConnected && timerRunning
-      ? timemoreScale.liveFlowSeries
+      ? timemoreScale.displayFlowSeries
       : null;
 
   const prefillDoseFromRecipe = (recipe) => {
@@ -2742,8 +2742,7 @@ export default function App() {
   const scaleShowFlow =
     scaleShowLiveReadout
     && timerRunning
-    && (!timerUsePreInfusion || !preInfusionPhase)
-    && timemoreScale.instantFlowGs != null;
+    && (!timerUsePreInfusion || !preInfusionPhase);
 
   const applyRecommendation = async () => {
     if (!displayDynamicRec || !displayDynamicRec.recommendedSetting) return;
@@ -3129,7 +3128,7 @@ export default function App() {
               targetYieldG={activeRecipe?.targetYieldG}
               targetTimeS={activeRecipe?.targetTimeMaxS}
               scaleEnabled={scaleFeatureEnabled}
-              flowGs={timemoreScale.instantFlowGs}
+              flowGs={timemoreScale.displayFlowGs}
               flowSeries={scaleLiveFlowOnProfile?.map((point) => ({ ...point, tS: point.tS + flowChartTimeOffsetSec }))}
               yieldSettleActive={yieldSettleActive}
               frozenYieldG={frozenShotWeightG}
@@ -3583,7 +3582,7 @@ export default function App() {
                             variant="dial-inline"
                             timerRunning={timerRunning}
                             showFlow={scaleShowFlow}
-                            instantFlowGs={timemoreScale.instantFlowGs}
+                            displayFlowGs={timemoreScale.displayFlowGs}
                             darkMode={darkMode}
                             ui={ui}
                             yieldSettleActive={yieldSettleActive}
@@ -3945,7 +3944,7 @@ export default function App() {
               targetYieldG={activeRecipe?.targetYieldG}
               targetTimeS={activeRecipe?.targetTimeMaxS}
               scaleEnabled={scaleFeatureEnabled}
-              flowGs={timemoreScale.instantFlowGs}
+              flowGs={timemoreScale.displayFlowGs}
               flowSeries={scaleLiveFlowOnProfile?.map((point) => ({ ...point, tS: point.tS + flowChartTimeOffsetSec }))}
               yieldSettleActive={yieldSettleActive}
               frozenYieldG={frozenShotWeightG}

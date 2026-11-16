@@ -1,5 +1,4 @@
 import { useId } from 'react';
-import { smoothFlowSeriesForPlot } from '../scales/flowMetrics.js';
 import { flairProfileChartPressures } from '../flairPressureLab/flairProfileChartPressures.js';
 import {
   flairProfileMarkerProgress,
@@ -98,19 +97,17 @@ function markerAtProgress(built, progress) {
 const FLOW_GREEN = '#8a9d72';
 
 /**
- * @param {{ tS: number, flowGs: number }[]} liveFlowSamples
+ * @param {{ tS: number, flowGs: number, breakBefore?: boolean }[]} liveFlowSamples
  * @param {ReturnType<typeof buildSmoothProfilePath>} built
  * @param {number} flowTimeOffsetSec
  */
 function buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec) {
   if (!liveFlowSamples?.length || !built) return null;
-  const plotted = smoothFlowSeriesForPlot(liveFlowSamples.filter((p) => !p.gap));
-  if (!plotted.length) return null;
-  const maxFlow = Math.max(...plotted.map((p) => p.flowGs), 0.5);
+  const maxFlow = Math.ceil(Math.max(2, ...liveFlowSamples.map((p) => p.flowGs)) * 10) / 10;
   const { padL, padT, chartH, chartW, totalSec } = built;
   const xFor = (tSec) => padL + (Math.min(tSec, totalSec) / totalSec) * chartW;
   const yForFlow = (flow) => padT + chartH - (flow / maxFlow) * chartH * 0.85;
-  const path = plotted
+  const path = liveFlowSamples
     .map((p, i) => {
       const tSec = flowTimeOffsetSec + p.tS;
       return `${i === 0 || p.breakBefore ? 'M' : 'L'} ${xFor(tSec).toFixed(1)} ${yForFlow(p.flowGs).toFixed(1)}`;

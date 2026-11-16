@@ -18,7 +18,7 @@ function formatGrams(g) {
  *   variant: 'fullscreen' | 'dial-inline' | 'brew-guide',
  *   timerRunning: boolean,
  *   showFlow?: boolean,
- *   instantFlowGs?: number | null,
+ *   displayFlowGs?: number | null,
  *   darkMode?: boolean,
  *   ui?: { accentText?: string, muted?: string, text?: string },
  *   yieldSettleActive?: boolean,
@@ -29,7 +29,7 @@ function ShotTimerWeightReadoutInner({
   variant,
   timerRunning,
   showFlow = false,
-  instantFlowGs = null,
+  displayFlowGs = null,
   darkMode = true,
   ui,
   yieldSettleActive = false,
@@ -51,10 +51,7 @@ function ShotTimerWeightReadoutInner({
   const isLiveShot = mode === 'shot' || mode === 'frozen' || mode === 'settling';
   const showSettlingLabel = mode === 'stale';
   const showReadingFinalLabel = mode === 'settling';
-  const flowSuffix =
-    showFlow && instantFlowGs != null
-      ? ` · ${instantFlowGs.toFixed(2)} g/s`
-      : '';
+  const flowText = showFlow ? `${displayFlowGs?.toFixed(2) ?? '—'} g/s` : '';
 
   if (variant === 'fullscreen') {
     return (
@@ -74,8 +71,8 @@ function ShotTimerWeightReadoutInner({
         {showReadingFinalLabel && (
           <p className="text-[10px] uppercase tracking-[0.14em] text-[#8a9d72] mt-2">Reading final weight…</p>
         )}
-        {flowSuffix && isLiveShot && (
-          <p className="text-[15px] text-[#8a9d72] font-medium tabular-nums mt-2">{flowSuffix.replace(/^ · /, '')}</p>
+        {flowText && isLiveShot && (
+          <p className="text-[15px] text-[#8a9d72] font-medium tabular-nums mt-2">{flowText}</p>
         )}
       </div>
     );
@@ -109,9 +106,9 @@ function ShotTimerWeightReadoutInner({
     <div role="status" aria-live="polite">
       <p className={`font-black tabular-nums mt-2 text-[clamp(1.75rem,8vw,2.75rem)] leading-none ${isLiveShot ? liveClass : staleClass}`}>
         {formatGrams(grams)}g
-        {flowSuffix && isLiveShot && (
+        {flowText && isLiveShot && (
           <span className={`text-base font-semibold ml-2 ${ui?.muted ?? 'text-[#6b6457]'}`}>
-            {instantFlowGs.toFixed(2)} g/s
+            {flowText}
           </span>
         )}
       </p>

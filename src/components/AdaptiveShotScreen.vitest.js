@@ -3,12 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AdaptiveShotScreen, ShotScreenView } from './AdaptiveShotScreen.jsx';
+import { PressureProfileChart } from './PressureProfileChart.jsx';
+import { ShotTimerWeightReadout } from './ShotTimerWeightReadout.jsx';
 import { NO_PRESSURE_READING_WARNING } from '../flairPressureLab/readerStallDiagnostics.js';
 import { ShotScreenCustomizer } from './ShotScreenCustomizer.jsx';
 import { ShotScreenPreview } from './ShotScreenPreview.jsx';
 import { ShotLabPressureContext } from './ShotLabPressureContext.jsx';
 import { drawShotGaugeFrame, drawShotGaugeOverlay, shotGaugeObjectPosition } from './shotGaugeFrame.js';
 import { publishScaleLiveWeight, resetScaleLiveWeightStore } from '../scales/scaleLiveWeightStore.js';
+import { createDisplayFlowEstimator } from '../scales/displayFlow.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const roots = [];
@@ -447,6 +450,57 @@ describe('adaptive live shot screen', () => {
     const paths = container.querySelectorAll('[data-testid="live-shot-chart"] path');
     expect(paths[1].getAttribute('d')).toContain('M');
     expect(paths[2].getAttribute('d')).toContain('M30.0,30.0 L60.0,5.0');
+  });
+
+  it.each([false, true])('shares bursty flow between readouts and plots, with gauge=%s', (gauge) => {
+    const estimator = createDisplayFlowEstimator();
+    const delays = [0, 0, 197, 100, 10, 0, 91, 0, 0, 0];
+    const flow = Array.from({ length: 30 }, (_, i) => estimator.add({
+      tS: (i * 100 + delays[i % 10]) / 1000 + (i >= 20 ? 0.6 : 0),
+      weightG: Math.round(i * 0.9) / 10,
+    })).filter(Boolean);
+    const last = flow.at(-1);
+    const flowText = `${last.flowGs.toFixed(2)} g/s`;
+    publishScaleLiveWeight({ isConnected: true, weightTriggersPrimed: true, liveRelativeWeightG: 2.6 });
+    const pressure = { samples: [{ tS: 1, bar: 6, confident: true }, { tS: 2, bar: 8, confident: true }] };
+    const container = render(ShotLabPressureContext.Provider, { value: pressure,
+      children: createElement(AdaptiveShotScreen, {
+        settings: { labCameraPressureEnabled: gauge, shotScreen: { scale: true } },
+        scaleEnabled: true, flowGs: last.flowGs, flowSeries: flow, seconds: 3.5,
+      }),
+    });
+    expect(container.querySelector('[data-metric="flow"]').textContent).toContain(last.flowGs.toFixed(2));
+    expect(render(ShotTimerWeightReadout, {
+      variant: 'dial-inline', timerRunning: true, showFlow: true, displayFlowGs: last.flowGs,
+    }).textContent).toContain(flowText);
+    const chart = container.querySelector('[data-testid="live-shot-chart"]');
+    expect(chart.textContent).toContain('0–2.0 g/s');
+    const plotted = chart.querySelector('[stroke="#e0a660"]').getAttribute('d');
+    expect(plotted.match(/M/g)).toHaveLength(2);
+    expect(plotted.endsWith(`L${(last.tS * 30).toFixed(1)},${(55 - last.flowGs * 25).toFixed(1)}`)).toBe(true);
+    expect(Boolean(chart.querySelector('[stroke="#c97868"]').getAttribute('d'))).toBe(gauge);
+  });
+
+  it('shows unavailable flow while preserving plotted segments and the pressure profile', () => {
+    const flow = [
+      { tS: 1, flowGs: 0.9 }, { tS: 2, flowGs: 1 },
+      { tS: 3, flowGs: 11.25, breakBefore: true }, { tS: 4, flowGs: 12 },
+    ];
+    publishScaleLiveWeight({ isConnected: true, weightTriggersPrimed: true, liveRelativeWeightG: 12 });
+    const container = render(AdaptiveShotScreen, {
+      settings: { shotScreen: { scale: true } }, seconds: 5, scaleEnabled: true, flowGs: null, flowSeries: flow,
+    });
+    expect(container.querySelector('[data-metric="flow"]').textContent).toContain('—');
+    expect(container.querySelector('[data-testid="live-shot-chart"]').textContent).toContain('0–12.0 g/s');
+    expect(render(ShotTimerWeightReadout, { variant: 'dial-inline', timerRunning: true, showFlow: true })
+      .textContent).toContain('— g/s');
+
+    const profile = render(PressureProfileChart, { profile: { peakPressure: 9 }, liveFlowSamples: flow });
+    expect(profile.querySelector('path[stroke="#c88a4b"]').getAttribute('d')).toContain('C');
+    const overlay = profile.querySelector('path[stroke="#8a9d72"]').getAttribute('d');
+    expect(overlay.match(/M/g)).toHaveLength(2);
+    expect(overlay).toBe('M 12.7 79.7 L 21.4 79.2 M 30.1 29.8 L 38.7 26.2');
+    expect(profile.textContent).toContain('12.0 g/s');
   });
 });
 
