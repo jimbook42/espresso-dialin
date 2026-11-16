@@ -52,6 +52,7 @@ import { ShotTimerWeightReadout } from './components/ShotTimerWeightReadout.jsx'
 import { GrinderGrindControls } from './components/GrindControls';
 import { formatGrindRecommendationSummary } from './utils/grindRecommendationDisplay.js';
 import { formatBeanDisplayName, formatBeanRoasterRoastLine } from './utils/beanDisplayName.js';
+import { formatLocalCalendarDate } from './utils/localCalendarDate.js';
 import {
   formatHistoryShotUserNoteLine,
   formatLastShotUserNoteSuffix,
@@ -2124,7 +2125,7 @@ export default function App() {
 
   const handleThawNewBag = async () => {
     if (!activeBean) return;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = formatLocalCalendarDate(new Date());
     const currentHistory = activeBean.thawHistory || [];
     const newHistoryEntry = { thawDate: activeBean.thawDate || null };
     

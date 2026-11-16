@@ -139,7 +139,7 @@ export const PRESET_GRINDER_SPECS = [
     max: 120,
     step: 1,
     defaultSetting: 20,
-    lowerIsFiner: false,
+    lowerIsFiner: true,
     sensitivity: 4,
     defaultBrewTemperatureC: 93,
   },

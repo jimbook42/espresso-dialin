@@ -1,6 +1,7 @@
 /** Shared fixtures mirroring shapes from test.js / runLegacyShotDataTests. */
 
-export const MOCK_NOW = '2026-09-20T12:00:00.000Z';
+// Snapshot age uses the same local calendar date in every timezone.
+export const MOCK_NOW = '2026-09-20T12:00:00';
 
 export const BASE_RECIPE = {
   targetTimeMinS: 25,

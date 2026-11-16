@@ -5,9 +5,6 @@ import {
   FELLOW_OPUS_GRINDER_ID,
   MAZZER_PHILOS_GRINDER_ID,
   EUREKA_SPECIALITA_GRINDER_ID,
-  EUREKA_ZERO_GRINDER_ID,
-  EUREKA_ZERO_55S_GRINDER_ID,
-  EUREKA_ZERO_65_AP_GRINDER_ID,
   EUREKA_ZERO_65_SPEEDY_GRINDER_ID,
   PRESET_GRINDER_IDS,
   ZERNO_Z1_GRINDER_ID,
@@ -59,8 +56,8 @@ export function runPresetGrindersTests() {
   assert.equal(getPresetGrinderDefinition(FELLOW_OPUS_GRINDER_ID).shortBadgeLabel, 'Opus');
 
   const philos = getPresetGrinderSpec(MAZZER_PHILOS_GRINDER_ID);
-  assert.equal(adjustPresetGrind(20, -1, philos), 19);
-  assert.equal(adjustPresetGrind(20, 1, philos), 21);
+  assert.equal(adjustPresetGrind(20, -2, philos), 18);
+  assert.equal(adjustPresetGrind(20, 2, philos), 22);
 
   const zerno = getPresetGrinderSpec(ZERNO_Z1_GRINDER_ID);
   assert.equal(parsePresetGrindValue(200, zerno), 200);
@@ -130,6 +127,7 @@ export function runPresetGrindersTests() {
 
   for (const grinderId of PRESET_GRINDER_IDS) {
     const spec = getPresetGrinderSpec(grinderId);
+    assert.equal(spec.lowerIsFiner, true, `${grinderId}: lower dial numbers are finer`);
     const start = defaultPresetGrindValue(spec);
     const baseShot = {
       grinderModel: grinderId,
@@ -147,6 +145,10 @@ export function runPresetGrindersTests() {
     const slow = calculateRecommendation({ ...baseShot, actualTime: 45 }, RECIPE, []);
     const fastVal = fast.recommendedSetting.customGrindValue;
     const slowVal = slow.recommendedSetting.customGrindValue;
+    if (grinderId === MAZZER_PHILOS_GRINDER_ID) {
+      assert.match(fast.reason, /FINER/);
+      assert.match(slow.reason, /COARSER/);
+    }
     assert.ok(
       fastVal < start,
       `${grinderId}: fast shot should recommend finer (lower dial), got ${fastVal} from ${start}`

@@ -22,7 +22,6 @@ import {
 import { adjustCustomGrind, defaultCustomGrindValue } from '../grinders/customGrinder.js';
 import {
   parseNicheZeroSetting,
-  clampNicheZeroDial,
   NICHE_ZERO_DEFAULT_SETTING,
 } from '../grinders/nicheZero.js';
 import {
@@ -369,41 +368,52 @@ export function getIdealFreezeWindow(roastType) {
   }
 }
 
-export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
-  if (!bean || !bean.roastDate) return { daysOld: 0, recommendedOffsetSette: 0, recommendedOffsetSunbeam: 0, notice: '' };
+const MS_PER_DAY = 86_400_000;
 
-  const roastDate = new Date(bean.roastDate);
-  const today = mockDateOverride ? new Date(mockDateOverride) : new Date();
-  let effectiveDays;
+function calendarDay(value) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+      ? date.getTime() / MS_PER_DAY
+      : NaN;
+  }
+  // Project legacy timestamps and the current time onto their local calendar dates.
+  if (typeof value !== 'string' && typeof value !== 'number' && !(value instanceof Date)) return NaN;
+  const date = new Date(value);
+  const day = new Date(0);
+  return day.setUTCFullYear(date.getFullYear(), date.getMonth(), date.getDate()) / MS_PER_DAY;
+}
+
+export function calculateEffectiveBeanAge(bean, mockDateOverride = null) {
+  const roastDay = calendarDay(bean?.roastDate);
+  const today = calendarDay(mockDateOverride ?? new Date());
+  if (!Number.isFinite(roastDay) || !Number.isFinite(today)) {
+    return { daysOld: 0, recommendedOffsetSette: 0, recommendedOffsetSunbeam: 0, notice: '' };
+  }
+
+  const rawDays = Math.max(0, today - roastDay);
+  let effectiveDays = rawDays;
   const storageType = bean.storageType || 'bag';
   const postThawStorage = bean.postThawStorage || 'bag';
 
   if (storageType === 'frozen') {
-    if (!bean.freezeDate) {
-      effectiveDays = Math.max(0, Math.floor((today - roastDate) / (1000 * 60 * 60 * 24)));
-    } else {
-      const freezeDate = new Date(bean.freezeDate);
-      const ageAtFreeze = Math.max(0, Math.floor((freezeDate - roastDate) / (1000 * 60 * 60 * 24)));
-      if (!bean.thawDate) {
-        effectiveDays = ageAtFreeze; // Clock paused
-      } else {
-        const thawDate = new Date(bean.thawDate);
-        const daysSinceThaw = Math.max(0, Math.floor((today - thawDate) / (1000 * 60 * 60 * 24)));
+    const freezeDay = calendarDay(bean.freezeDate);
+    if (freezeDay >= roastDay && freezeDay <= today) {
+      effectiveDays = freezeDay - roastDay;
+      const thawDay = calendarDay(bean.thawDate);
+      if (thawDay >= freezeDay && thawDay <= today) {
         const thawDecayMultiplier = postThawStorage === 'vacuum' ? 0.9 : 1.1;
-        effectiveDays = ageAtFreeze + Math.floor(daysSinceThaw * thawDecayMultiplier);
+        effectiveDays += Math.floor((today - thawDay) * thawDecayMultiplier);
       }
     }
   } else if (storageType === 'vacuum') {
-    const rawDays = Math.max(0, Math.floor((today - roastDate) / (1000 * 60 * 60 * 24)));
     effectiveDays = Math.floor(rawDays * 0.85);
-  } else {
-    effectiveDays = Math.max(0, Math.floor((today - roastDate) / (1000 * 60 * 60 * 24)));
   }
 
   const { offsetSette, offsetSunbeam } = freshnessOffsetsForEffectiveDays(effectiveDays);
 
   const storageLabels = { frozen: 'Frozen Storage', vacuum: 'Vacuum Sealed Bag', bag: 'Standard Bag' };
-  let notice = `(${storageLabels[storageType] || 'Standard'} • ${bean.roastType} Roast) Effective age: ${effectiveDays} days.`;
+  const notice = `(${storageLabels[storageType] || 'Standard'} • ${bean.roastType} Roast) Effective age: ${effectiveDays} days.`;
 
   return { daysOld: effectiveDays, recommendedOffsetSette: offsetSette, recommendedOffsetSunbeam: offsetSunbeam, notice };
 }
@@ -1426,6 +1436,9 @@ export function calculateRecommendation(shotData, recipe, recentShots = [], flai
     recommendedSetting,
     settings
   );
+  if (grinderProfile.controlType === 'custom' && shift !== 0 && grindSettingHeld) {
+    reason = 'KEEP GRIND — Dial is at its limit.';
+  }
 
   return {
     recommendedSetting,
