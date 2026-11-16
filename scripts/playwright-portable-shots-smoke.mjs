@@ -190,7 +190,17 @@ try {
   await recordedCard.getByText('Share Shot', { exact: true }).click();
   assert.equal(await recordedCard.getByLabel('Show bean name').isChecked(), true);
   await recordedCard.getByLabel('Show bean name').uncheck();
-  await recordedCard.getByLabel('Show branding').uncheck();
+  await recordedCard.locator('summary').first().click();
+  await recordedCard.locator('summary').first().click();
+  await recordedCard.getByText('Share Shot', { exact: true }).click();
+  assert.equal(await recordedCard.getByLabel('Show bean name').isChecked(), false);
+  await cards.getByRole('button', { name: 'Dial In', exact: true }).click();
+  await cards.getByRole('button', { name: 'History', exact: true }).click();
+  const reopened = await openCard('Recorded card QA fixture');
+  assert.equal(await reopened.getByLabel('Show bean name').isChecked(), false);
+  const other = await openCard(manual.notes);
+  assert.equal(await other.getByLabel('Show bean name').isChecked(), false);
+  await reopened.getByLabel('Show branding').uncheck();
   await recordedCard.getByLabel('Include bean reference').check();
   await saveCard(recordedCard, 'reference', 1635);
   console.log('B14 PNGs inspected by the smoke at ' + output);

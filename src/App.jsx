@@ -385,6 +385,7 @@ export default function App() {
   const [usageError, setUsageError] = useState(false);
   const [lastSavedShotId, setLastSavedShotId] = useState(null);
   const [shotToShare, setShotToShare] = useState(null);
+  const [shotCardOptions, setShotCardOptions] = useState({ brand: true, bean: false, grinder: false, date: false, notes: false, reference: false });
   const [experienceDraft, setExperienceDraft] = useState(null);
   const [savingExperience, setSavingExperience] = useState(false);
   const [experienceSaveFailed, setExperienceSaveFailed] = useState(false);
@@ -4642,7 +4643,7 @@ export default function App() {
                     )}
                     </div>
 
-                    <ShotProfile shot={s} ui={ui} settings={appSettings} referenceShot={referenceShot}
+                    <ShotProfile shot={s} ui={ui} settings={appSettings} cardOptions={shotCardOptions} onCardOptionsChange={setShotCardOptions} referenceShot={referenceShot}
                       onRatingChange={(rating) => saveShotTasteRating(db, s.id, rating)}
                       onOpenBeanConsistency={referenceEligible ? () => showBeanConsistency(bean.id) : null}
                       referenceDate={referenceShot ? formatShotWhen(referenceShot.timestamp) : null}

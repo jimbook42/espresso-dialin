@@ -172,7 +172,7 @@ function ReferenceComparison({ shot, referenceShot, referenceDate, ui }) {
   );
 }
 
-export function ShotProfile({ shot, ui, settings, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency }) {
+export function ShotProfile({ shot, ui, settings, cardOptions, onCardOptionsChange, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency }) {
   const [open, setOpen] = useState(false);
   const isReference = referenceShot?.id === shot.id;
   return (
@@ -187,7 +187,7 @@ export function ShotProfile({ shot, ui, settings, referenceShot, referenceDate, 
         <>
           <ProfileDetails shot={shot} ui={ui} onRatingChange={onRatingChange}
             onOpenBeanConsistency={onOpenBeanConsistency} />
-          <PortableShotExport shotId={shot.id} settings={settings} ui={ui} referenceShot={!isReference ? referenceShot : null} />
+          <PortableShotExport shotId={shot.id} settings={settings} ui={ui} cardOptions={cardOptions} onCardOptionsChange={onCardOptionsChange} referenceShot={!isReference ? referenceShot : null} />
           {(shot.labPressureCurve?.length > 0 || shot.scaleFlowCurve?.length > 0) && (
             <PressureFlowAnalytics shot={shot} ui={ui} />
           )}

@@ -37,7 +37,7 @@ function savedGrind(shot, settings) {
   return hasSetting ? formatShotGrindForHistory(shot, settings) : '';
 }
 
-export function PortableShotExport({ shotId, settings, ui, referenceShot }) {
+export function PortableShotExport({ shotId, settings, ui, cardOptions, onCardOptionsChange, referenceShot }) {
   const [snapshot, setSnapshot] = useState(null);
   const [open, setOpen] = useState(false);
   useOverlayHistoryClose(open, () => setOpen(false));
@@ -80,7 +80,7 @@ export function PortableShotExport({ shotId, settings, ui, referenceShot }) {
       {!shot && !error && <p className="pb-2 text-xs">Loading saved shot…</p>}
       {shot && (
         <div className="space-y-3 pb-3 text-xs">
-          <ShotCardPreview shot={shot.record} bean={bean} grind={shot.record.grinderModel} referenceShot={referenceShot} filename={filename} ui={ui} onError={setError} />
+          <ShotCardPreview options={cardOptions} setOptions={onCardOptionsChange} shot={shot.record} bean={bean} grind={shot.record.grinderModel} referenceShot={referenceShot} filename={filename} ui={ui} onError={setError} />
           <div className="space-y-1">
             <p className="font-semibold">Local downloads</p>
             <p className={ui.sub}>

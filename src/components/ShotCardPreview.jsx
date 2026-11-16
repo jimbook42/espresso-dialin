@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { drawShotCard } from '../utils/shotCard.js';
 
-export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui, onError }) {
-  const [options, setOptions] = useState({ brand: true, bean: false, grinder: false, date: false, notes: false, reference: false });
+export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui, onError, options, setOptions }) {
   const [preview, setPreview] = useState(null);
   const canvas = useRef(null);
   useEffect(() => {
