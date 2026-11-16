@@ -1,14 +1,56 @@
 import { useId, useMemo, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Star } from 'lucide-react';
 import { buildShotProfile, observationAtTime } from '../utils/shotProfile.js';
 import { ScaleFlowChart } from './ScaleFlowChart.jsx';
 import { ShotInsights } from './ShotInsights.jsx';
 import { ShotComparison } from './ShotComparison.jsx';
+import { shotTasteRating } from '../utils/shotRatings.js';
 
 const format = (value, unit, digits = 1) => value == null ? 'Not recorded' : `${value.toFixed(digits)} ${unit}`;
 const formatTime = (value) => format(value, 's');
 
-function ProfileDetails({ shot, ui }) {
+function TasteRating({ shot, ui, onRatingChange }) {
+  const rating = shotTasteRating(shot);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async (value) => {
+    setSaving(true);
+    setError('');
+    try {
+      if (!await onRatingChange(value)) setError('This shot is no longer in History.');
+    } catch {
+      setError('Could not save the taste rating. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <fieldset disabled={saving} className={`${ui.metricCell} min-w-0 rounded-lg px-2.5 py-1`}>
+      <legend className="px-1 text-xs font-semibold">Taste rating (optional)</legend>
+      <div className="flex flex-wrap items-center gap-x-2">
+        <div className="flex">
+          {[1, 2, 3, 4, 5].map((stars) => (
+            <button key={stars} type="button" aria-label={`Rate ${stars} ${stars === 1 ? 'star' : 'stars'}`}
+              aria-pressed={rating === stars} onClick={() => save(stars)}
+              className={`inline-flex size-11 items-center justify-center rounded-lg ${stars <= rating ? ui.accentText : ui.muted}`}>
+              <Star aria-hidden="true" className={`size-5 ${stars <= rating ? 'fill-current' : ''}`} />
+            </button>
+          ))}
+        </div>
+        {rating !== null ? (
+          <button type="button" onClick={() => save(null)} className={`min-h-11 px-1 text-xs font-semibold ${ui.sub}`}>
+            Clear rating
+          </button>
+        ) : <span className={`px-1 text-xs ${ui.sub}`}>Unrated</span>}
+      </div>
+      {error && <p role="alert" className="pb-1 text-xs">{error}</p>}
+    </fieldset>
+  );
+}
+
+function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
   const profile = useMemo(() => buildShotProfile(shot), [shot]);
   const [selectedView, setView] = useState(null);
   const [cursor, setCursor] = useState(null);
@@ -45,6 +87,7 @@ function ProfileDetails({ shot, ui }) {
 
   return (
     <div className={`space-y-3 pb-3 ${ui.text}`} data-testid="shot-profile-details">
+      <TasteRating shot={shot} ui={ui} onRatingChange={onRatingChange} />
       <dl className="grid grid-cols-2 gap-2">
         {metrics.map(([label, value]) => (
           <div key={label} className={`${ui.metricCell} min-w-0 rounded-lg px-2.5 py-2`}>
@@ -65,7 +108,7 @@ function ProfileDetails({ shot, ui }) {
           <li key={label} className={`${ui.chip} rounded-full px-2 py-1`}>{label}</li>
         ))}
       </ul>
-      <ShotInsights shot={shot} profile={profile} ui={ui} />
+      <ShotInsights shot={shot} profile={profile} ui={ui} onOpenBeanConsistency={onOpenBeanConsistency} />
       {view && (
         <div className={`${ui.cardInset} min-w-0 rounded-xl p-2.5 space-y-2`}>
           {views.length > 1 && (
@@ -133,7 +176,7 @@ function ReferenceComparison({ shot, referenceShot, referenceDate, ui }) {
   );
 }
 
-export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenceChange }) {
+export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency }) {
   const [open, setOpen] = useState(false);
   const isReference = referenceShot?.id === shot.id;
   return (
@@ -146,7 +189,8 @@ export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenc
       </summary>
       {open && (
         <>
-          <ProfileDetails shot={shot} ui={ui} />
+          <ProfileDetails shot={shot} ui={ui} onRatingChange={onRatingChange}
+            onOpenBeanConsistency={onOpenBeanConsistency} />
           {onReferenceChange && (
             <div className={`border-t ${ui.modalDivider}`}>
               {referenceShot && !isReference && (

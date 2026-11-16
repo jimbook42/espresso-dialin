@@ -161,6 +161,8 @@ export function createShotDeviceDiagnostics(settings) {
       const { timeline, final } = frozen;
       const stopMs = final.stopMs + final.wallClockDriftAtStopMs;
       const observedWeight = frozen.scaleDiagnostics.rawWeightSamples?.some(({ tMs }) => tMs >= 0);
+      const physicalScale = frozen.scaleDiagnostics.identity?.transport === 'web-bluetooth'
+        && !frozen.events.some(({ identity }) => identity?.simulated);
       return {
         version: 1,
         pressureOriginMs: shot.labPressureCurve?.length ? timeline.pressureOffsetMs : null,
@@ -170,6 +172,8 @@ export function createShotDeviceDiagnostics(settings) {
         stopMs,
         settlementEndMs: frozen.events.findLast(({ type }) => type === 'yield-settlement-completed')?.tMs ?? null,
         clockDriftMs: final.wallClockDriftAtStopMs,
+        ...(shot.labPressureCurve?.length && frozen.pressureSource ? { pressureSource: frozen.pressureSource } : {}),
+        ...(shot.scaleFlowCurve?.length && physicalScale ? { scaleSource: 'web-bluetooth' } : {}),
         scaleInterrupted: frozen.events.some(({ type, tMs }) => type === 'disconnect'
           && timeline.extractionOffsetMs != null && tMs >= timeline.extractionOffsetMs),
         yieldSource: yieldSource === 'scale' && !observedWeight ? 'unobserved-scale' : yieldSource,

@@ -235,6 +235,8 @@ import {
 } from './settings/anonymousUsage.js';
 import { isVerifiedGaugeCalibration } from './flairPressureLab/gaugeCompatibility.js';
 import { ShotProfile } from './components/ShotProfile.jsx';
+import { BeanShotConsistency } from './components/BeanShotConsistency.jsx';
+import { saveShotTasteRating, shotTasteRating } from './utils/shotRatings.js';
 import { canReferenceShot, readShotSelections, removeDeletedShotSelections, setReferenceShot, toggleFavouriteShot } from './utils/shotSelections.js';
 import { savedShotMeasurements } from './utils/shotProfile.js';
 import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
@@ -492,6 +494,7 @@ export default function App() {
   const [selectedBeanId, setSelectedBeanId] = useState('');
   const [historyFilterBeanId, setHistoryFilterBeanId] = useState('all');
   const [historyFavouritesOnly, setHistoryFavouritesOnly] = useState(false);
+  const beanConsistencyRef = useRef(null);
   const [shotSelectionError, setShotSelectionError] = useState('');
   const [finishUndoToast, setFinishUndoToast] = useState(null);
   const finishUndoTimerRef = useRef(null);
@@ -2949,6 +2952,15 @@ export default function App() {
     : historyFilterBeanId === 'standalone-pressure' ? historyShots.filter(isStandalonePressureShot)
       : shots.filter((shot) => shot.beanId === historyFilterBeanId);
   const filteredShots = historyFavouritesOnly ? beanFilteredShots.filter((shot) => favouriteIds.has(shot.id)) : beanFilteredShots;
+  const showBeanConsistency = (beanId) => {
+    setHistoryFilterBeanId(beanId);
+    requestAnimationFrame(() => {
+      const details = beanConsistencyRef.current;
+      if (!details) return;
+      details.open = true;
+      details.querySelector('summary')?.focus();
+    });
+  };
 
   const totalShots = shots.length;
   const compliantShots = shots.filter(s => {
@@ -4463,6 +4475,10 @@ export default function App() {
               </div>
             </div>
 
+            {beans.some(({ id }) => id === historyFilterBeanId) && (
+              <BeanShotConsistency key={historyFilterBeanId} shots={beanFilteredShots} ui={ui}
+                formatShotWhen={formatShotWhen} detailsRef={beanConsistencyRef} />
+            )}
             {shotSelectionError && <p role="alert" className={`text-sm ${ui.text}`}>{shotSelectionError}</p>}
             {filteredShots.length === 0 ? (
               <p className={`text-sm ${subTextClass}`}>{historyFavouritesOnly ? 'No favourites match this filter.' : 'No shots logged yet.'}</p>
@@ -4472,6 +4488,7 @@ export default function App() {
                 const hasReplay = s.id === labReplayShotId;
                 const bean = beans.find(b => b.id === s.beanId);
                 const favourite = favouriteIds.has(s.id);
+                const tasteRating = shotTasteRating(s);
                 const referenceEligible = canReferenceShot(s, bean);
                 const reference = referenceEligible ? referenceShots.get(bean.id) : null;
                 const referenceShot = canReferenceShot(reference, bean) ? reference : null;
@@ -4522,9 +4539,10 @@ export default function App() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {s.shotRating && (
-                          <div className={`flex items-center ${ui.accentText} text-xs font-bold gap-0.5`}>
-                            <Star className="w-3.5 h-3.5 fill-current" /> {s.shotRating}
+                        {tasteRating !== null && (
+                          <div className={`flex items-center ${ui.sub} text-xs font-semibold gap-0.5`}
+                            aria-label={`Taste rating ${tasteRating} out of 5`}>
+                            <Star aria-hidden="true" className="w-3.5 h-3.5 fill-current" /> {tasteRating}
                           </div>
                         )}
                         {!standalone && <button
@@ -4624,6 +4642,8 @@ export default function App() {
                     </div>
 
                     <ShotProfile shot={s} ui={ui} referenceShot={referenceShot}
+                      onRatingChange={(rating) => saveShotTasteRating(db, s.id, rating)}
+                      onOpenBeanConsistency={referenceEligible ? () => showBeanConsistency(bean.id) : null}
                       referenceDate={referenceShot ? formatShotWhen(referenceShot.timestamp) : null}
                       onReferenceChange={referenceEligible
                         ? (selected) => saveShotSelection(() => setReferenceShot(db, bean.id, s.id, selected))

@@ -11,7 +11,7 @@ function Finding({ item, ui }) {
   );
 }
 
-export function ShotInsights({ shot, profile, ui }) {
+export function ShotInsights({ shot, profile, ui, onOpenBeanConsistency }) {
   const headingId = useId();
   const insights = useMemo(() => generateShotInsights({ shot, profile }), [shot, profile]);
   const { mainTakeaway, observations, nextStep } = insights;
@@ -43,6 +43,11 @@ export function ShotInsights({ shot, profile, ui }) {
           <p className={`mb-1 text-[10px] font-bold uppercase tracking-wide ${ui.accentText}`}>Next step</p>
           <Finding item={nextStep} ui={ui} />
         </div>
+      )}
+      {onOpenBeanConsistency && (
+        <button type="button" onClick={onOpenBeanConsistency} className={`min-h-11 text-xs font-semibold ${ui.accentText}`}>
+          View bean consistency and ratings
+        </button>
       )}
     </section>
   );
