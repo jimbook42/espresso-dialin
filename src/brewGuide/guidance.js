@@ -77,6 +77,9 @@ export function buildQuickChecklist(rawAccessories, dial = {}) {
   if (grindSetting?.highlight) {
     let text = `Set ${grindSetting.highlightLabel || 'grind'} to ${grindSetting.highlight}.`;
     pushChecklistItem(items, 'grind-setting', text);
+    if (dial.suggestedGrindLabel && String(dial.suggestedGrindLabel) !== String(dial.grindLabel)) {
+      pushChecklistItem(items, 'grind-suggestion', `Suggested: ${dial.suggestedGrindLabel} (not applied). Apply on Dial to use it.`);
+    }
     if (grindSettingChanged(dial)) {
       pushChecklistItem(items, 'purge', 'Purge fresh beans before dosing.');
     }

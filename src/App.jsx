@@ -27,6 +27,7 @@ import {
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useOverlayHistoryClose } from './hooks/useOverlayHistoryClose.js';
 import { History, PlusCircle, AlertTriangle, Download, Trash2, ArrowRight, Sun, Moon, BarChart2, Star, Flame, ChevronDown, ChevronUp, Settings, Sliders, Coffee, Play, RotateCcw, Edit2, X, CheckCircle, ClipboardList, Info, Flag, Gauge } from 'lucide-react';
 import { HowItWorksModal } from './components/HowItWorksModal';
 import { FinishBeanToast, TOAST_DURATION_MS } from './components/FinishBeanToast.jsx';
@@ -352,7 +353,24 @@ function shotFieldAttentionClass(active) {
 }
 
 export default function App() {
-  const [selectedTab, setActiveTab] = useState(null);
+  const [selectedTab, setSelectedTab] = useState(null);
+  const shotBackGuard = useRef(false);
+  const armShotBackGuard = useCallback(() => {
+    if (shotBackGuard.current) return;
+    window.history.pushState({ ...window.history.state, shotBackGuard: true }, '');
+    shotBackGuard.current = true;
+  }, []);
+  useEffect(() => {
+    // The in-app Back entry handles ordinary Back. This also covers an explicit
+    // reload or a browser action that jumps over multiple history entries.
+    const confirmLeave = (event) => {
+      if (!shotBackGuard.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', confirmLeave);
+    return () => window.removeEventListener('beforeunload', confirmLeave);
+  }, []);
   const [darkMode, setDarkMode] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [usageSessionOff, setUsageSessionOff] = useState(false);
@@ -511,6 +529,7 @@ export default function App() {
   const [actualDoseG, setActualDoseG] = useState(18);
   const [actualYieldG, setActualYieldG] = useState('');
   const [actualTimeS, setActualTimeS] = useState('');
+  const dialHasMeasurements = actualTimeS !== '' || actualYieldG !== '';
   const [tasteProfile, setTasteProfile] = useState('');
   const [shotRating, setShotRating] = useState(null);
   const [notes, setNotes] = useState('');
@@ -852,6 +871,7 @@ export default function App() {
 
   const handleStartTimer = useCallback(async ({ fromBrewGuide = false, tareAlreadyDone = false, standalone = false } = {}) => {
     if (timerStartingRef.current || shotStartedAtRef.current != null || yieldSettleTimerRef.current) return;
+    armShotBackGuard();
     const start = { fromBrewGuide, cancelled: false };
     timerStartingRef.current = start;
     setTimerStartPending(true);
@@ -895,7 +915,7 @@ export default function App() {
       setPressureState('recording');
     }
     setTimerRunning(true);
-  }, [prepareShotDiagnostics, resetFlowAutoStop, syncBrewGuideTimerActive, timerUsePreInfusion, timemoreScale]);
+  }, [armShotBackGuard, prepareShotDiagnostics, resetFlowAutoStop, syncBrewGuideTimerActive, timerUsePreInfusion, timemoreScale]);
 
   const cancelShotStart = useCallback(() => {
     const opts = shotCountdownStartOptsRef.current;
@@ -943,6 +963,7 @@ export default function App() {
         void handleStartTimer(opts);
         return true;
       }
+      armShotBackGuard();
       if (opts.fromBrewGuide) {
         syncBrewGuideTimerActive(true);
         scaleAutoEndPreinfusionRef.current = false;
@@ -960,7 +981,7 @@ export default function App() {
       return true;
     },
     [appSettings?.shotStartCountdown, flairEnabled, timemoreScale,
-      handleStartTimer, prepareShotDiagnostics, syncBrewGuideTimerActive]
+      armShotBackGuard, handleStartTimer, prepareShotDiagnostics, syncBrewGuideTimerActive]
   );
 
   useEffect(() => {
@@ -1245,9 +1266,10 @@ export default function App() {
 
   const discardDialShot = () => {
     if (dialSaveRef.current || yieldSettleTimerRef.current) return;
-    if (dialShotPending && !window.confirm('Discard this unsaved shot?')) return;
+    const hasUnsavedShot = dialShotPending || dialHasMeasurements;
+    if (hasUnsavedShot && !window.confirm('Discard this unsaved shot?')) return;
     handleResetTimer();
-    if (!dialShotPending) return;
+    if (!hasUnsavedShot) return;
     setActualTimeS('');
     setActualYieldG('');
     dialYieldSourceRef.current = null;
@@ -1491,6 +1513,104 @@ export default function App() {
   const settingsCustomGrinderSelected = settingsGrinderPickerValue === CUSTOM_GRINDER_PICKER_ID;
   const invalidCustomGrinderDraft = settingsCustomGrinderSelected
     && !isCustomGrinderFormValid(settingsCustomGrinderDraft);
+  const settingsHaveDraft = Boolean(experienceDraft && experienceDraft !== experience)
+    || (settingsCustomGrinderSelected && customGrinderDraftDirty);
+  const shotBackLocked = experienceSwitchLocked || dialSaving || brewGuideTimerActive
+    || (activeTab === 'dial' && dialHasMeasurements);
+
+  useLayoutEffect(() => {
+    if (shotBackLocked && !isSettingsOpen && !weighingViewOpen) {
+      armShotBackGuard();
+      return;
+    }
+    // Close only the temporary entry. The underlying tab keeps its original Back destination.
+    if (shotBackLocked || !shotBackGuard.current) return;
+    shotBackGuard.current = false;
+    if (window.history.state?.shotBackGuard && !window.history.state?.overlay) window.history.back();
+  });
+
+  const navigationRef = useRef({ initialized: false, pending: null, restoring: false });
+  const navigationContextRef = useRef(null);
+  useLayoutEffect(() => {
+    navigationContextRef.current = { activeTab, experience, brewGuideEnabled, showPressureTab,
+      locked: shotBackLocked,
+      overlay: isSettingsOpen || weighingViewOpen };
+  });
+  const validNavigationTab = (tab, context) => {
+    if (tab === 'pressure' && !context.showPressureTab) return 'dial';
+    if (tab === 'brew' && !context.brewGuideEnabled) return 'dial';
+    return ['dial', 'pressure', 'brew', 'beans', 'history', 'stats'].includes(tab) ? tab : 'dial';
+  };
+  const setActiveTab = (tab) => {
+    const context = navigationContextRef.current;
+    const requested = tab ?? (context.experience === 'pressure' ? 'pressure' : 'dial');
+    if (context.overlay) {
+      navigationRef.current.pending = requested;
+      return;
+    }
+    const next = validNavigationTab(requested, context);
+    if (next === context.activeTab) return;
+    if (navigationRef.current.initialized) {
+      const nextState = { ...window.history.state, dialTab: next };
+      const guarded = nextState.shotBackGuard;
+      delete nextState.shotBackGuard;
+      delete nextState.overlay;
+      if (guarded) {
+        // An explicit workflow handoff can turn the guard into a real tab visit.
+        shotBackGuard.current = false;
+        window.history.replaceState(nextState, '');
+      } else {
+        window.history.pushState(nextState, '');
+      }
+    }
+    setSelectedTab(next);
+  };
+  useEffect(() => {
+    if (settingsQueryResult === SETTINGS_QUERY_PENDING || navigationRef.current.initialized) return;
+    const context = navigationContextRef.current;
+    const next = validNavigationTab(window.history.state?.dialTab ?? context.activeTab, context);
+    const state = { ...window.history.state, dialTab: next };
+    delete state.overlay;
+    window.history.replaceState(state, '');
+    navigationRef.current.initialized = true;
+    if (next !== context.activeTab) setSelectedTab(next);
+    if (state.shotBackGuard && !shotBackGuard.current) window.history.back();
+  }, [settingsQueryResult]);
+  useEffect(() => {
+    const onPopState = (event) => {
+      const nav = navigationRef.current;
+      const context = navigationContextRef.current;
+      if (!nav.initialized) return;
+      if (shotBackGuard.current && !event.state?.shotBackGuard) {
+        // Restore synchronously so successive Back presses cannot reach the prior page.
+        window.history.pushState({ ...event.state, dialTab: context.activeTab, shotBackGuard: true }, '');
+        return;
+      }
+      if (nav.restoring) { nav.restoring = false; return; }
+      if (nav.pending) {
+        const next = validNavigationTab(nav.pending, context);
+        nav.pending = null;
+        window.history.replaceState({ ...window.history.state, dialTab: next }, '');
+        setSelectedTab(next);
+        return;
+      }
+      if (context.overlay) return;
+      if (event.state?.shotBackGuard && !shotBackGuard.current) {
+        window.history.back();
+        return;
+      }
+      const next = validNavigationTab(event.state?.dialTab, context);
+      if (context.locked && next !== context.activeTab) {
+        nav.restoring = true;
+        window.history.forward();
+        return;
+      }
+      setSelectedTab(next);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+  useOverlayHistoryClose(isSettingsOpen, () => setIsSettingsOpen(false));
 
   const saveAndCloseSettings = async () => {
     if (savingCustomGrinder || invalidCustomGrinderDraft) return;
@@ -1884,6 +2004,7 @@ export default function App() {
 
   const handleFactoryReset = async () => {
     await db.shots.clear();
+    setLastSavedShotId(null);
     await db.recipes.clear();
     await db.beans.clear();
     await db.settings.clear();
@@ -2096,6 +2217,7 @@ export default function App() {
       
       const associatedShots = await db.shots.where('beanId').equals(beanId).toArray();
       for (const s of associatedShots) await db.shots.delete(s.id);
+      setLastSavedShotId((current) => associatedShots.some((shot) => shot.id === current) ? null : current);
 
       if (effectiveBeanId === beanId) {
         const remaining = beans.filter(b => b.id !== beanId && !b?.isFinished);
@@ -2132,6 +2254,7 @@ export default function App() {
   const handleDeleteShot = async (id) => {
     if (window.confirm("Delete this shot from History?")) {
       await db.shots.delete(id);
+      setLastSavedShotId((current) => current === id ? null : current);
     }
   };
 
@@ -2769,6 +2892,9 @@ export default function App() {
     }
     return currentGrindLabel;
   })();
+  const guideSuggestedGrindLabel = displayDynamicRec?.recommendedSetting
+    ? formatRecommendedGrindDisplay(grinderModel, displayDynamicRec.recommendedSetting, appSettings)
+    : null;
 
   const grinderBadgeLabel = getUiGrinderPresentation(grinderModel, appSettings).shortBadgeLabel;
   const showHeldbackEstimatedStartingCard =
@@ -2874,7 +3000,7 @@ export default function App() {
     );
   }
 
-  const savedShotNotice = lastSavedShotId != null && !timerRunning && !dialShotPending && pressureState === 'idle' && (
+  const savedShotNotice = lastSavedShotId != null && historyShots.some((shot) => shot.id === lastSavedShotId) && !timerRunning && !dialShotPending && pressureState === 'idle' && (
     <div className={`flex items-center justify-end gap-3 ${ui.text}`}>
       <span className="text-xs" role="status">Shot saved</span>
       <button type="button" onClick={() => void openShotShare(lastSavedShotId)}
@@ -3140,6 +3266,7 @@ export default function App() {
                 <div className={`${ui.card} p-4 rounded-2xl space-y-3`} data-testid="dial-bean-card">
                   <select
                     data-testid="dial-bean-select"
+                    style={{ minHeight: 44 }}
                     disabled={dialShotPending || dialSaving}
                     value={effectiveBeanId}
                     onChange={(e) => selectActiveBean(e.target.value)}
@@ -3425,7 +3552,8 @@ export default function App() {
                       timeMaxS: activeRecipe?.targetTimeMaxS,
                       brewTemperatureC: activeRecipe?.brewTemperatureC,
                       grinderModel,
-                      grindLabel: recommendedGrindDisplay || currentGrindLabel,
+                      grindLabel: currentGrindLabel,
+                      suggestedGrindLabel: guideSuggestedGrindLabel,
                       previousGrindLabel,
                     }}
                     onOpenFullGuide={() => setActiveTab('brew')}
@@ -3470,7 +3598,7 @@ export default function App() {
                         <button type="button" disabled={dialShotPending || dialSaving} onClick={() => requestStartTimerWithLab()} className="px-6 py-3.5 min-h-[48px] bg-[#c88a4b] hover:bg-[#e0a660] text-[#121110] rounded-xl font-bold flex items-center gap-2 transition-colors disabled:opacity-60">
                           <Play className="w-4 h-4 fill-current" /> Start
                         </button>
-                        <button type="button" aria-label={dialShotPending ? 'Discard shot' : 'Reset timer'} disabled={yieldSettleActive || dialSaving} onClick={discardDialShot} className={`p-3.5 min-h-[48px] min-w-[48px] ${ui.secondaryBtn} rounded-xl`}>
+                        <button type="button" aria-label={dialShotPending || dialHasMeasurements ? 'Discard shot' : 'Reset timer'} disabled={yieldSettleActive || dialSaving} onClick={discardDialShot} className={`p-3.5 min-h-[48px] min-w-[48px] ${ui.secondaryBtn} rounded-xl`}>
                           <RotateCcw className="w-4 h-4" />
                         </button>
                       </div>
@@ -3605,10 +3733,11 @@ export default function App() {
                           : undefined
                       }
                     >
-                      <label className={`${ui.fieldLabel} block mb-2`}>Yield (g) *</label>
+                      <label htmlFor="shot-yield" className={`${ui.fieldLabel} block mb-2`}>Yield (g) *</label>
                       <input
+                        id="shot-yield"
                         type="number" step="0.1"
-                        placeholder="36"
+                        placeholder="e.g. 36"
                         {...fieldErrorAttributes('shot-yield', shotFieldHighlights.yield)}
                         value={yieldDisplayValue}
                         readOnly={yieldTileCelebrating}
@@ -3618,7 +3747,7 @@ export default function App() {
                           setActualYieldG(e.target.value);
                           setShotFieldHighlights((prev) => ({ ...prev, yield: false }));
                         }}
-                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}${yieldTileCelebrating ? ' perfect-shot-yield-value' : ''}`}
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#a09880]' : 'placeholder:text-[#6b6358]'} placeholder:font-medium${yieldTileCelebrating ? ' perfect-shot-yield-value' : ''}`}
                       />
                       <FieldError field="shot-yield" error={shotFieldHighlights.yield} />
                       <p
@@ -3638,18 +3767,19 @@ export default function App() {
                       data-testid="dial-time-tile"
                       className={`${ui.card} p-3 rounded-2xl transition-all duration-300 ${shotFieldAttentionClass(shotFieldHighlights.time)}`}
                     >
-                      <label className={`${ui.fieldLabel} block mb-2`}>Time (s) *</label>
+                      <label htmlFor="shot-time" className={`${ui.fieldLabel} block mb-2`}>Time (s) *</label>
                       <input
+                        id="shot-time"
                         type="number"
                         step="any"
-                        placeholder="28"
+                        placeholder="e.g. 28"
                         {...fieldErrorAttributes('shot-time', shotFieldHighlights.time)}
                         value={actualTimeS}
                         onChange={(e) => {
                           setActualTimeS(e.target.value);
                           setShotFieldHighlights((prev) => ({ ...prev, time: false }));
                         }}
-                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#6b6457]' : 'placeholder:text-[#8a8276]'}`}
+                        className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none ${darkMode ? 'placeholder:text-[#a09880]' : 'placeholder:text-[#6b6358]'} placeholder:font-medium`}
                       />
                       <FieldError field="shot-time" error={shotFieldHighlights.time} />
                       {yieldTileCelebrating && (
@@ -3843,7 +3973,8 @@ export default function App() {
               targetTimeMaxS: activeRecipe?.targetTimeMaxS,
               brewTemperatureC: activeRecipe?.brewTemperatureC,
               grinderModel,
-              grindLabel: recommendedGrindDisplay || currentGrindLabel,
+              grindLabel: currentGrindLabel,
+              suggestedGrindLabel: guideSuggestedGrindLabel,
               previousGrindLabel,
               flairEnabled,
               scaleConnected: scaleFeatureEnabled && timemoreScale.isConnected,
@@ -4295,7 +4426,7 @@ export default function App() {
                             </>
                           )}
                         </button>}
-                        <button type="button" aria-label="Delete shot" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 p-1`}>
+                        <button type="button" aria-label="Delete shot" onClick={() => handleDeleteShot(s.id)} className={`${ui.muted} hover:text-rose-400 min-w-11 min-h-11 inline-flex items-center justify-center`}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -4401,9 +4532,9 @@ export default function App() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
               <h2 className={ui.pageTitle}>Extraction analytics & statistics</h2>
               <div className={`flex ${ui.cardInset} p-0.5 rounded-lg text-[10px] font-semibold overflow-hidden`}>
-                <button type="button" onClick={() => setChartType('timeline')} className={`px-2.5 py-1 rounded-md transition-colors ${chartType === 'timeline' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Timeline</button>
-                <button type="button" onClick={() => setChartType('scatter')} className={`px-2.5 py-1 rounded-md transition-colors ${chartType === 'scatter' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Dose/Time</button>
-                <button type="button" onClick={() => setChartType('taste')} className={`px-2.5 py-1 rounded-md transition-colors ${chartType === 'taste' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Taste</button>
+                <button type="button" onClick={() => setChartType('timeline')} className={`min-w-11 min-h-11 px-2.5 py-1 rounded-md transition-colors ${chartType === 'timeline' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Timeline</button>
+                <button type="button" onClick={() => setChartType('scatter')} className={`min-w-11 min-h-11 px-2.5 py-1 rounded-md transition-colors ${chartType === 'scatter' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Dose/Time</button>
+                <button type="button" onClick={() => setChartType('taste')} className={`min-w-11 min-h-11 px-2.5 py-1 rounded-md transition-colors ${chartType === 'taste' ? ui.chartToggleActive : ui.chartToggleIdle}`}>Taste</button>
               </div>
             </div>
 
@@ -4564,10 +4695,11 @@ export default function App() {
                   <Sliders className={`w-5 h-5 ${ui.accentText}`} />
                   <h3 id="preferences-title" className={`text-base font-bold ${ui.text}`}>Preferences & Settings</h3>
                 </div>
-                <button type="button" aria-label="Close settings" disabled={savingExperience || savingCustomGrinder} onClick={() => setIsSettingsOpen(false)} className={`${ui.ghostBtn} text-sm font-bold`}>✕</button>
+                <button type="button" aria-label="Close settings" disabled={savingExperience || savingCustomGrinder} onClick={() => setIsSettingsOpen(false)} className={`${ui.ghostBtn} min-h-11 min-w-11 px-2 text-sm font-bold`}>{settingsHaveDraft ? 'Close' : 'Done'}</button>
               </div>
 
               <div className="space-y-4 text-xs overflow-y-auto flex-1 px-6 py-4">
+                <p className={ui.muted}>Most settings save automatically. Use Save & Close for experience and custom grinder changes. Save custom grinder also saves the grinder while Settings stays open.</p>
                 <ExperienceChoices value={experienceDraft ?? experience} onChange={setExperienceDraft} ui={ui} legend="Preferred experience" disabled={savingExperience || experienceSwitchLocked || dialSaving} />
                 <details className={`${ui.cardInset} rounded-xl p-3 space-y-3`} open={explicitExperience !== 'brew' || labCameraPressureEnabled}>
                   <summary className={`cursor-pointer min-h-8 font-bold ${ui.text}`}>Advanced camera pressure</summary>
@@ -5019,18 +5151,18 @@ export default function App() {
         <div className="max-w-xl mx-auto flex items-stretch gap-1 p-1.5">
           {[
             ...(experience === 'pressure'
-              ? [{ id: 'pressure', label: 'Pressure', icon: Gauge, onClick: () => setActiveTab('pressure') }]
+              ? [{ id: 'pressure', label: 'Pressure', icon: Gauge }]
               : []),
-            { id: 'dial', label: 'Dial', icon: Coffee, onClick: () => setActiveTab('dial') },
+            { id: 'dial', label: 'Dial', icon: Coffee },
             ...(experience === 'combined'
-              ? [{ id: 'pressure', label: 'Pressure', icon: Gauge, onClick: () => setActiveTab('pressure') }]
+              ? [{ id: 'pressure', label: 'Pressure', icon: Gauge }]
               : []),
             ...(brewGuideEnabled
-              ? [{ id: 'brew', label: 'Brew Guide', icon: ClipboardList, onClick: () => setActiveTab('brew') }]
+              ? [{ id: 'brew', label: 'Brew Guide', icon: ClipboardList }]
               : []),
-            { id: 'beans', label: 'Beans', icon: PlusCircle, onClick: () => setActiveTab('beans') },
-            { id: 'history', label: 'History', icon: History, onClick: () => setActiveTab('history') },
-            { id: 'stats', label: 'Stats', icon: BarChart2, onClick: () => setActiveTab('stats') },
+            { id: 'beans', label: 'Beans', icon: PlusCircle },
+            { id: 'history', label: 'History', icon: History },
+            { id: 'stats', label: 'Stats', icon: BarChart2 },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -5040,9 +5172,10 @@ export default function App() {
                 type="button"
                 aria-current={isActive ? 'page' : undefined}
                 disabled={(pressureState !== 'idle' && tab.id !== 'pressure')
+                  || (brewGuideTimerActive && tab.id !== activeTab)
                   || ((experienceSwitchLocked || dialSaving) && tab.id !== activeTab
                     && (activeTab === 'dial' || tab.id === 'pressure'))}
-                onClick={tab.onClick}
+                onClick={() => setActiveTab(tab.id)}
                 className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] rounded-xl transition-colors ${
                   isActive ? ui.tabActive : ui.muted
                 }`}

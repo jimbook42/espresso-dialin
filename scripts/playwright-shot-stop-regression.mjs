@@ -79,6 +79,9 @@ async function run(name, check, { settings = {}, withPlateau = true } = {}) {
       const writer = {
         writeValueWithoutResponse: async (bytes) => {
           if (bytes[3] === 2 && bytes[6] === 2) window.scaleStopCommands++;
+          if (bytes[3] === 2 && bytes[6] === 1 && window.holdScaleStart) {
+            await new Promise((resolve) => { window.releaseScaleStart = resolve; });
+          }
         },
       };
       device.gatt = {
@@ -288,6 +291,10 @@ try {
     const settling = yieldTile.getByRole('status').filter({ hasText: 'Reading final weight' });
     const log = page.getByRole('button', { name: 'Log shot & calculate grind adjustment', exact: true });
     await settling.waitFor();
+    await page.goBack();
+    assert.equal(page.url(), server.url);
+    await settling.waitFor();
+    assert.equal(await savedTime(), saved);
     assert.equal(await log.isDisabled(), true);
     await yieldTile.locator('input').fill('35.5');
     await page.getByRole('button', { name: 'Balanced', exact: true }).evaluate((button) => button.click());
@@ -314,6 +321,9 @@ try {
     const ready = page.getByText('Get ready', { exact: true });
     await start.click();
     await ready.waitFor();
+    await page.goBack();
+    assert.equal(page.url(), server.url);
+    await ready.waitFor();
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await ready.waitFor({ state: 'hidden' });
     await page.clock.runFor(4000);
@@ -328,6 +338,9 @@ try {
     await ready.waitFor({ state: 'hidden' });
     await page.clock.runFor(200);
     const endPreinfusion = page.getByRole('button', { name: 'End pre-infusion', exact: true });
+    await endPreinfusion.waitFor();
+    await page.goBack();
+    assert.equal(page.url(), server.url);
     await endPreinfusion.waitFor();
     assert.ok(await readTime() < 0.6, 'the countdown does not advance the shot clock');
     if (withPressurePreview) {
@@ -365,6 +378,27 @@ try {
   }, { withPlateau: false, settings: {
     shotStartCountdown: 'on', preInfusionEnabled: true, labCameraPressureEnabled: withPressurePreview,
   } });
+  await run('Back during delayed scale startup keeps the shot and allows discard', async ({ page, start, stop, notify }) => {
+    await page.evaluate(() => { window.holdScaleStart = true; });
+    await start.click();
+    await page.clock.runFor(500);
+    await page.waitForFunction(() => typeof window.releaseScaleStart === 'function');
+    assert.equal(await stop.isVisible(), false);
+    await page.goBack();
+    assert.equal(page.url(), server.url);
+    await page.evaluate(() => window.releaseScaleStart());
+    await stop.waitFor();
+    await page.clock.runFor(1500);
+    await stop.click();
+    await notify(0, 2000);
+    await page.getByText('Reading final weight…').waitFor({ state: 'hidden' });
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Discard shot', exact: true }).click();
+    await page.waitForFunction(() => !history.state?.shotBackGuard);
+    assert.deepEqual(await readShots(page), []);
+    await page.goBack();
+    assert.notEqual(page.url(), server.url);
+  }, { withPlateau: false });
 } finally {
   await browser?.close();
   await server.kill();

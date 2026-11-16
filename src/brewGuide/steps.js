@@ -120,6 +120,7 @@ export function brewDialSummary(dial = {}) {
   const timeMin = Number.isFinite(Number(dial.timeMinS)) ? String(Number(dial.timeMinS)) : null;
   const timeMax = Number.isFinite(Number(dial.timeMaxS)) ? String(Number(dial.timeMaxS)) : null;
   const grindLabel = dial.grindLabel ? String(dial.grindLabel) : null;
+  const suggestedGrindLabel = dial.suggestedGrindLabel && String(dial.suggestedGrindLabel) !== grindLabel ? String(dial.suggestedGrindLabel) : null;
   const grinder = dial.grinderModel || null;
   const bean = dial.beanName || null;
   const temp = formatBrewAmount(dial.brewTemperatureC);
@@ -130,10 +131,11 @@ export function brewDialSummary(dial = {}) {
     yieldG ? { label: 'Yield', value: `${yieldG}g` } : null,
     timeMin && timeMax ? { label: 'Time', value: `${timeMin}–${timeMax}s` } : null,
     grinder ? { label: 'Grinder', value: grinder } : null,
-    grindLabel ? { label: 'Grind', value: grindLabel } : null,
+    grindLabel ? { label: 'Current grind', value: grindLabel } : null,
+    suggestedGrindLabel ? { label: 'Suggested grind (not applied)', value: suggestedGrindLabel } : null,
     temp ? { label: 'Temp', value: `${temp}°C` } : null,
   ].filter(Boolean);
-  return { dose, yieldG, timeMin, timeMax, grindLabel, grinder, bean, temp, metrics };
+  return { dose, yieldG, timeMin, timeMax, grindLabel, suggestedGrindLabel, grinder, bean, temp, metrics };
 }
 
 function step(partial) {
@@ -197,6 +199,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
   const grindLines = [grinderIsSunbeamMachine
     ? 'Set your grinder dial to this.'
     : `Set your grinder to this.`];
+  if (summary.suggestedGrindLabel) grindLines.push(`Suggested: ${summary.suggestedGrindLabel}. Apply it on Dial if you want to use it; the current setting remains ${grindLabel}.`);
   if (changed) {
     grindLines.push(previous
       ? `The setting changed from ${previous}. Purge a small amount of fresh beans through the grinder, then discard those grounds.`
@@ -386,7 +389,7 @@ export function buildBrewSteps(rawAccessories, dial = {}) {
     id: 'grindSetting',
     icon: 'coffeeBean',
     title: 'Set the grind',
-    highlightLabel: grindSettingLabel,
+    highlightLabel: `${grindSettingLabel} · Current`,
     highlight: grindLabel,
     lines: grindLines,
   }));
