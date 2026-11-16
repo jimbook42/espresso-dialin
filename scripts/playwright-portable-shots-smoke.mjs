@@ -194,7 +194,7 @@ try {
   await recordedCard.locator('summary').first().click();
   await recordedCard.getByText('Share Shot', { exact: true }).click();
   assert.equal(await recordedCard.getByLabel('Show bean name').isChecked(), false);
-  await cards.getByRole('button', { name: 'Dial In', exact: true }).click();
+  await cards.getByRole('button', { name: 'Dial', exact: true }).click();
   await cards.getByRole('button', { name: 'History', exact: true }).click();
   const reopened = await openCard('Recorded card QA fixture');
   assert.equal(await reopened.getByLabel('Show bean name').isChecked(), false);
