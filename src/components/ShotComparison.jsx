@@ -19,16 +19,16 @@ function axis(min, max, count, minimumStep) {
   return { first, last, ticks: Array.from({ length: Math.round((last - first) / step) + 1 }, (_, i) => first + i * step) };
 }
 
-function ComparisonChart({ profiles, measurement, timeAxis }) {
+function ComparisonChart({ seriesByShot, measurement, timeAxis, timeLabel }) {
   const { id, label, key, unit } = measurement;
-  const points = profiles.flatMap((profile) => profile[id]);
+  const points = seriesByShot.flat();
   const [min, max] = points.reduce(([lo, hi], point) => [Math.min(lo, point[key]), Math.max(hi, point[key])], [0, 0]);
   const values = axis(min, max, 3, 0.5);
   const x = (time) => 36 + 268 * (time - timeAxis.first) / (timeAxis.last - timeAxis.first);
   const y = (value) => 113 - 100 * (value - values.first) / (values.last - values.first);
 
   return (
-    <svg viewBox="0 0 320 153" role="img" aria-label={`${label} (${unit}) by time from extraction start`}
+    <svg viewBox="0 0 320 153" role="img" aria-label={`${label} (${unit}) — ${timeLabel}`}
       className="mx-auto block w-full max-w-xl">
       <text x="4" y="10" fill="currentColor" fontSize="9">{unit}</text>
       {values.ticks.map((value) => (
@@ -40,17 +40,17 @@ function ComparisonChart({ profiles, measurement, timeAxis }) {
       {timeAxis.ticks.map((time) => (
         <text key={time} x={x(time)} y="128" textAnchor="middle" fill="currentColor" fontSize="9">{time}</text>
       ))}
-      <text x="170" y="145" textAnchor="middle" fill="currentColor" fontSize="10">From extraction start (s)</text>
-      {profiles.map((profile, index) => {
-        const series = profile[id];
+      <text x="170" y="145" textAnchor="middle" fill="currentColor" fontSize="10">{timeLabel} (s)</text>
+      {seriesByShot.map((series, index) => {
         if (!series.length) return null;
         const { label: name, stroke, dash } = seriesStyles[index];
         return (
           <g key={name} data-testid={`comparison-${index === 0 ? 'selected' : 'reference'}-series`}>
-            <path d={series.map((point, i) =>
-              `${i === 0 || point.breakBefore ? 'M' : 'L'}${x(point.tS).toFixed(2)},${y(point[key]).toFixed(2)}`).join(' ')}
+            <path d={series.map((point, i) => id === 'flow'
+              ? `M${x(point.fromTS)},${y(point[key])} H${x(point.tS)}`
+              : `${i === 0 || point.breakBefore ? 'M' : 'L'}${x(point.tS).toFixed(2)},${y(point[key]).toFixed(2)}`).join(' ')}
               stroke={stroke} strokeWidth="2" strokeDasharray={dash} fill="none" />
-            {series.filter((point, i) => (i === 0 || point.breakBefore)
+            {id !== 'flow' && series.filter((point, i) => (i === 0 || point.breakBefore)
               && (i === series.length - 1 || series[i + 1].breakBefore)).map((point) => (
               <circle key={point.tS} cx={x(point.tS)} cy={y(point[key])} r="2.4" fill={stroke} />
             ))}
@@ -61,15 +61,27 @@ function ComparisonChart({ profiles, measurement, timeAxis }) {
   );
 }
 
+function isApproximate(profile, id) {
+  return id === 'pressure' ? profile.pressureTimingUnavailable : profile.scaleTimingApproximate;
+}
+
+function recordingSeries(profile, id) {
+  return id === 'pressure' && profile.pressureTimingUnavailable ? profile.recordingPressure : profile[id];
+}
+
 export function ShotComparison({ shot, referenceShot, referenceDate, ui }) {
   const profiles = useMemo(() => [buildComparisonProfile(shot), buildComparisonProfile(referenceShot)], [shot, referenceShot]);
   const [view, setView] = useState(null);
-  const available = measurements.filter(({ id }) => profiles.some((profile) => profile[id].length > 0));
+  const available = measurements.filter(({ id }) => profiles.some((profile) => recordingSeries(profile, id).length > 0));
   const measurement = available.find(({ id }) => id === view) ?? available[0];
-  const [minTime, maxTime] = profiles.reduce(([min, max], profile) => measurements.reduce(([lo, hi], { id }) => [
-    Math.min(lo, profile[id][0]?.tS ?? 0), Math.max(hi, profile[id].at(-1)?.tS ?? 0),
-  ], [min, max]), [0, 0]);
+  const [minTime, maxTime] = profiles.reduce(([min, max], profile) => measurements.reduce(([lo, hi], { id }) => (
+    isApproximate(profile, id) ? [lo, hi] : [
+      Math.min(lo, profile[id][0]?.tS ?? 0), Math.max(hi, profile[id].at(-1)?.tS ?? 0),
+    ]
+  ), [min, max]), [0, 0]);
   const timeAxis = axis(minTime, maxTime, 5, 1);
+  const alignedSeries = measurement ? profiles.map((profile) => isApproximate(profile, measurement.id)
+    ? [] : profile[measurement.id]) : [];
 
   return (
     <div className={`space-y-2 pb-3 ${ui.text}`} data-testid="shot-comparison">
@@ -110,18 +122,35 @@ export function ShotComparison({ shot, referenceShot, referenceDate, ui }) {
               ))}
             </div>
           )}
-          <ComparisonChart profiles={profiles} measurement={measurement} timeAxis={timeAxis} />
-          {measurement.id === 'flow' && <p className={`text-xs ${ui.sub}`}>Flow is calculated between consecutive scale readings.</p>}
-          {profiles.map((profile, index) => !profile[measurement.id].length && (
-            <p key={index} className={`text-xs ${ui.sub}`}>
-              {seriesStyles[index].label}: {measurement.label.toLowerCase()} unavailable.
-            </p>
-          ))}
+          {alignedSeries.some((series) => series.length > 0) && (
+            <ComparisonChart seriesByShot={alignedSeries} measurement={measurement} timeAxis={timeAxis}
+              timeLabel="Time from extraction start" />
+          )}
+          {profiles.map((profile, index) => {
+            const { id, label } = measurement;
+            const series = recordingSeries(profile, id);
+            const approximate = isApproximate(profile, id);
+            const verified = profile.sources[id === 'pressure' ? 'pressure' : 'scale'];
+            const disconnected = id !== 'pressure' && profile.scaleDisconnected && profile.weight.length > 0;
+            const status = [
+              series.length === 0 && `${label.toLowerCase()} unavailable`,
+              disconnected && 'scale disconnected',
+              series.length > 0 && (verified ? 'measured source' : 'device source unverified'),
+              series.length > 0 && approximate && 'approximate alignment to extraction',
+            ].filter(Boolean);
+            return (
+              <div key={index} className={`text-xs ${ui.sub}`}>
+                <p>{seriesStyles[index].label}: {status.join(' · ')}.</p>
+                {approximate && series.length > 0 && (
+                  <ComparisonChart seriesByShot={profiles.map((_, i) => i === index ? series : [])}
+                    measurement={measurement} timeAxis={axis(0, series.at(-1).tS, 5, 1)} timeLabel="Sensor recording time" />
+                )}
+              </div>
+            );
+          })}
+          {measurement.id === 'flow' && <p className={`text-xs ${ui.sub}`}>Flow spans the interval between two scale readings.</p>}
         </>
       ) : <p className={`text-xs ${ui.sub}`}>No sensor curves available for comparison.</p>}
-      {profiles.map((profile, index) => profile.pressureTimingUnavailable && (
-        <p key={index} className={`text-xs ${ui.sub}`}>{seriesStyles[index].label}: pressure recording has no reliable extraction timing.</p>
-      ))}
     </div>
   );
 }

@@ -21,7 +21,7 @@ describe('comparison profiles', () => {
     expect(profile.pressure[1].breakBefore).toBe(true);
     expect(profile.pressure[2].breakBefore).toBe(false);
     expect(profile.weight.map(({ tS }) => tS)).toEqual([0.375, 0.625]);
-    expect(profile.flow).toEqual([{ tS: 0.625, flowGs: 4, breakBefore: true }]);
+    expect(profile.flow).toEqual([{ fromTS: 0.375, tS: 0.625, flowGs: 4, breakBefore: true }]);
   });
 
   it('preserves missing samples and recorded zeroes, splitting both weight and derived flow', () => {
@@ -45,12 +45,18 @@ describe('comparison profiles', () => {
     expect(profile.flow.map(({ tS }) => tS)).toEqual([0.25, 0.5]);
   });
 
-  it('keeps legacy scale time and describes unalignable pressure without estimating a start', () => {
+  it('retains separate recording clocks when extraction alignment is uncertain', () => {
     const shot = { ...pressureRecording, scaleFlowCurve: weights([0.5, 4]), notes: 'Pre-infusion: 4.2s.' };
-    for (const shotProfileTiming of [undefined, { ...timed, clockDriftMs: 500 }, { ...timed, pressureOriginMs: null }]) {
-      expect(buildComparisonProfile({ ...shot, shotProfileTiming })).toMatchObject({
-        pressure: [], pressureTimingUnavailable: true, weight: [{ tS: 0.5, weightG: 4 }], flow: [],
+    for (const [shotProfileTiming, scaleTimingApproximate] of [
+      [undefined, true], [{ ...timed, clockDriftMs: 500 }, true], [{ ...timed, pressureOriginMs: null }, false],
+    ]) {
+      const profile = buildComparisonProfile({ ...shot, shotProfileTiming });
+      expect(profile).toMatchObject({
+        pressure: [], pressureTimingUnavailable: true,
+        scaleTimingApproximate,
+        weight: [{ tS: 0.5, weightG: 4 }], flow: [],
       });
+      expect(profile.recordingPressure[0].tS).toBe(pressureRecording.labPressureCurve[0].tS);
     }
   });
 
@@ -169,16 +175,29 @@ describe('shot clock', () => {
     expect(p.flow.map(({ tS }) => tS)).toEqual([0.30000000000000004]);
   });
 
-  it('keeps the old lead and formatted pre-infusion prefix approximate', () => {
+  it('retains legacy recording times and keeps the historical pre-infusion note approximate', () => {
     const shot = { notes: 'Pre-infusion: 4.2s. Puck prep',
       scaleFlowCurve: weights([0.1, 2]), labPressureCurve: pressure([0.2, 3], [0.5, 4]) };
     const p = buildShotProfile(shot);
     expect(p).toMatchObject({ aligned: false, approximate: true, extractionStartS: null, legacyPreS: 4.2 });
-    expect(p.weight[0].tS).toBeCloseTo(4.3);
-    expect(p.pressure[0].tS).toBe(0);
-    expect(p.pressure[1].tS).toBeCloseTo(0.15);
+    expect(p.weight[0].tS).toBe(0.1);
+    expect(p.pressure[0].tS).toBe(0.2);
+    expect(p.pressure[1].tS).toBe(0.5);
     expect(buildShotProfile({ ...shot, notes: 'Maybe Pre-infusion: 4.2s. Puck prep' }).weight[0].tS).toBe(0.1);
     expect(buildShotProfile({ ...shot, recordType: 'standalone-pressure' }).pressure[0].tS).toBe(0.2);
+  });
+
+  it('keeps observed scale intervals in an interrupted shot and leaves the end unobserved', () => {
+    const shot = {
+      shotProfileTiming: { ...timed, scaleInterrupted: true, extractionEndMs: 1500 },
+      scaleFlowCurve: weights([0, 0], [0.2, 2], [0.4, 4]),
+    };
+    for (const build of [buildShotProfile, buildComparisonProfile]) {
+      const profile = build(shot);
+      expect(profile.weight.map(({ breakBefore }) => breakBefore)).toEqual([false, false, false]);
+      expect(profile.flow.map(({ tS }) => tS)).toEqual([0.2, 0.4]);
+      expect(observationAtTime(profile.weight, 1)).toBeNull();
+    }
   });
 
   it('blocks cross-sensor comparison when timing metadata is missing or the app clock drifted', () => {

@@ -109,7 +109,8 @@ describe('generateShotInsights', () => {
     expect(generated.insights.map((item) => item.category)).toEqual(expect.arrayContaining([
       'sensor-availability', 'timing-context',
     ]));
-    expect(generated.insights.find((item) => item.category === 'timing-context').message).toContain('approximately');
+    expect(generated.insights.find((item) => item.category === 'timing-context').message)
+      .toBe('Alignment to extraction is uncertain for this recording.');
     const interruptedOnly = result({ recordType: 'standalone-pressure' }, {
       pressure: [{ tS: 0, bar: Number.NaN }], pressureInterrupted: true,
     });

@@ -1,11 +1,12 @@
 import { isStandalonePressureShot } from '../flairPressureLab/standalonePressureShot.js';
 import { PRESSURE_CURVE_GAP_MS } from '../flairPressureLab/pressureCurveFilter.js';
-import { labPressureCurvePlotTimeS, pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
+import { pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
 import { flowRateSeriesFromWeightCurve, instantaneousFlowGs, SCALE_FLOW_MAX_SAMPLE_GAP_S } from '../scales/flowMetrics.js';
 
 const PRESSURE_GAP_S = PRESSURE_CURVE_GAP_MS / 1000;
 const INTERRUPTED_PRESSURE_S = 1;
 const MAX_CLOCK_DRIFT_MS = 250;
+const TIME_EPSILON_S = 1e-9;
 
 export function savedShotMeasurements(shot) {
   const { actualTimeS, actualDoseG, actualYieldG } = shot;
@@ -18,7 +19,7 @@ export function savedShotMeasurements(shot) {
   return { durationS, doseG, yieldG, ratio: Number.isFinite(ratio) ? ratio : null };
 }
 
-function readCurve(curve, key, validValue, maxGapS, respectMarkers = false) {
+function readCurve(curve, key, validValue, maxGapS) {
   const points = [];
   let broken = false;
   for (const sample of Array.isArray(curve) ? curve : []) {
@@ -29,8 +30,8 @@ function readCurve(curve, key, validValue, maxGapS, respectMarkers = false) {
       broken = true;
       continue;
     }
-    const breakBefore = Boolean(previous && (broken || tS - previous.tS > maxGapS
-      || (respectMarkers && (sample.breakBefore || sample.reset))));
+    const breakBefore = Boolean(previous && (broken || tS - previous.tS > maxGapS + TIME_EPSILON_S
+      || sample.breakBefore || sample.reset));
     points.push({ tS, [key]: sample[key], breakBefore });
     broken = false;
   }
@@ -80,24 +81,42 @@ const validPressure = (bar) => Number.isFinite(bar) && bar >= 0 && bar <= 16;
 const stableClock = (timing) =>
   Number.isFinite(timing?.clockDriftMs) && Math.abs(timing.clockDriftMs) <= MAX_CLOCK_DRIFT_MS;
 
+export function recordedShotTiming(shot) {
+  return shot.shotProfileTiming?.version === 1 ? shot.shotProfileTiming : null;
+}
+
+export function extractionTiming(timing) {
+  if (!stableClock(timing) || !Number.isFinite(timing.extractionStartMs)) return null;
+  const duration = (timing.extractionEndMs - timing.extractionStartMs) / 1000;
+  return {
+    startMs: timing.extractionStartMs,
+    durationS: Number.isFinite(timing.extractionEndMs) && Number.isFinite(duration) && duration > 0 ? duration : null,
+  };
+}
+
+export function physicalShotSources(timing) {
+  return {
+    pressure: timing?.pressureSource === 'camera',
+    scale: timing?.scaleSource === 'web-bluetooth',
+  };
+}
+
 export function buildShotProfile(shot) {
-  const timing = shot.shotProfileTiming?.version === 1 ? shot.shotProfileTiming : null;
+  const timing = recordedShotTiming(shot);
   const pressureOriginS = toSeconds(timing?.pressureOriginMs);
   const scaleOriginS = toSeconds(timing?.scaleOriginMs);
   const legacyPreS = timing ? null : legacyPreInfusionS(shot);
-  const clockStable = stableClock(timing);
+  const extraction = extractionTiming(timing);
   const pressureLocal = readCurve(shot.labPressureCurve, 'bar', validPressure, PRESSURE_GAP_S);
   const weightLocal = readCurve(shot.scaleFlowCurve, 'weightG', Number.isFinite, SCALE_FLOW_MAX_SAMPLE_GAP_S);
-  const pressureTime = pressureOriginS != null ? (tS) => tS + pressureOriginS
-    : isStandalonePressureShot(shot) ? (tS) => tS : labPressureCurvePlotTimeS;
-  const weightTime = (tS) => tS + (scaleOriginS ?? legacyPreS ?? 0);
+  const aligned = Boolean(extraction && (pressureLocal.length || weightLocal.length)
+    && (!pressureLocal.length || pressureOriginS != null) && (!weightLocal.length || scaleOriginS != null));
+  const pressureTime = (tS) => tS + (aligned ? pressureOriginS : 0);
+  const weightTime = (tS) => tS + (aligned ? scaleOriginS : 0);
   const pressure = shift(pressureLocal, pressureTime);
   const weight = shift(weightLocal, weightTime);
-  const measuredPressure = pressure.length > 0 && pressureOriginS != null;
-  const measuredScale = weight.length > 0 && scaleOriginS != null;
-  const aligned = clockStable && (!pressure.length || measuredPressure) && (!weight.length || measuredScale);
   const extractionStartS = aligned ? toSeconds(timing?.extractionStartMs) : null;
-  const extractionEndS = aligned ? toSeconds(timing?.extractionEndMs) : null;
+  const extractionEndS = aligned && extraction.durationS != null ? toSeconds(timing.extractionEndMs) : null;
   const stopS = aligned ? toSeconds(timing?.stopMs) : null;
   const settlementEndS = aligned ? toSeconds(timing?.settlementEndMs) : null;
   // Calculate in the original scale clock, including gap and EMA decisions.
@@ -127,51 +146,59 @@ export function buildShotProfile(shot) {
     pressureInterrupted,
     scaleInterrupted,
     aligned,
-    approximate: !aligned && Boolean(pressure.length && weight.length || legacyPreS != null
-      || pressure.length && !isStandalonePressureShot(shot) || timing),
+    approximate: !aligned && Boolean(pressure.length || weight.length),
     extractionStartS,
     extractionEndS,
     stopS,
     settlementEndS,
     legacyPreS,
     minTimeS: Math.min(0, pressure[0]?.tS ?? 0, weight[0]?.tS ?? 0),
-    maxTimeS: Math.max(1, pressure.at(-1)?.tS ?? 0, weight.at(-1)?.tS ?? 0, stopS ?? 0, settlementEndS ?? 0),
+    maxTimeS: Math.max(1, pressure.at(-1)?.tS ?? 0, weight.at(-1)?.tS ?? 0, extractionEndS ?? 0, stopS ?? 0, settlementEndS ?? 0),
   };
 }
 
 export function buildComparisonProfile(shot) {
-  const timing = shot.shotProfileTiming?.version === 1 ? shot.shotProfileTiming : null;
-  const startMs = stableClock(timing) && Number.isFinite(timing.extractionStartMs) ? timing.extractionStartMs : null;
-  const pressureLocal = readCurve(shot.labPressureCurve, 'bar', validPressure, PRESSURE_GAP_S, true);
+  const timing = recordedShotTiming(shot);
+  const extraction = extractionTiming(timing);
+  const startMs = extraction?.startMs;
+  const pressureLocal = readCurve(shot.labPressureCurve, 'bar', validPressure, PRESSURE_GAP_S);
   const pressureAligned = startMs != null && Number.isFinite(timing.pressureOriginMs);
   const pressure = pressureAligned ? shift(pressureLocal, (tS) => tS + (timing.pressureOriginMs - startMs) / 1000) : [];
-  // The saved scale curve uses the scale's extraction timer even on older shots.
   const scaleAligned = startMs != null && Number.isFinite(timing.scaleOriginMs);
   const scaleOffsetS = scaleAligned ? (timing.scaleOriginMs - startMs) / 1000 : 0;
-  const weight = shift(readCurve(shot.scaleFlowCurve, 'weightG', Number.isFinite, SCALE_FLOW_MAX_SAMPLE_GAP_S, true),
+  // Saving retains the original scale session on disconnect without appending reconnect observations.
+  const scaleDisconnected = timing?.scaleInterrupted === true;
+  const weight = shift(readCurve(shot.scaleFlowCurve, 'weightG', Number.isFinite, SCALE_FLOW_MAX_SAMPLE_GAP_S),
     (tS) => tS + scaleOffsetS);
-  const endS = scaleAligned && Number.isFinite(timing.extractionEndMs)
-    ? (timing.extractionEndMs - startMs) / 1000 : Infinity;
+  const flow = scaleFlowIntervals(weight, scaleAligned ? extraction.durationS ?? Infinity : Infinity);
+  return {
+    ...savedShotMeasurements(shot),
+    pressure,
+    recordingPressure: pressureAligned ? [] : pressureLocal,
+    weight,
+    flow,
+    sources: physicalShotSources(timing),
+    scaleDisconnected,
+    scaleTimingApproximate: weight.length > 0 && !scaleAligned,
+    pressureTimingUnavailable: pressureLocal.length > 0 && !pressureAligned,
+  };
+}
+
+function scaleFlowIntervals(weight, endS) {
   const flow = [];
   let breakBefore = true;
   for (let i = 1; i < weight.length; i += 1) {
     const previous = weight[i - 1];
     const sample = weight[i];
     const flowGs = instantaneousFlowGs(previous, sample);
-    if (sample.breakBefore || previous.tS < 0 || sample.tS > endS || !Number.isFinite(flowGs)) {
+    if (sample.breakBefore || previous.tS < -TIME_EPSILON_S || sample.tS > endS + TIME_EPSILON_S || !Number.isFinite(flowGs)) {
       breakBefore = true;
       continue;
     }
-    flow.push({ tS: sample.tS, flowGs, breakBefore });
+    flow.push({ fromTS: previous.tS, tS: sample.tS, flowGs, breakBefore });
     breakBefore = false;
   }
-  return {
-    ...savedShotMeasurements(shot),
-    pressure,
-    weight,
-    flow,
-    pressureTimingUnavailable: pressureLocal.length > 0 && !pressureAligned,
-  };
+  return flow;
 }
 
 /** Last observation at or before the cursor, only inside a contiguous run. */

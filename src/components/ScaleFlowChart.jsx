@@ -87,7 +87,11 @@ export function ScaleFlowChart({
   const pathFor = (points, key, xAt, yAt) => points
     .map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'} ${xAt(p.tS).toFixed(1)} ${yAt(p[key]).toFixed(1)}`)
     .join(' ');
-  const primaryPath = showPrimary ? pathFor(primaryPoints, primaryKey, x, yPrimary) : '';
+  const intervalFlow = profile?.intervalFlow && !isWeight;
+  const primaryPath = showPrimary ? (intervalFlow
+    ? primaryPoints.map(({ fromTS, tS, flowGs }) =>
+      `M ${x(fromTS)} ${yPrimary(flowGs)} H ${x(tS)}`).join(' ')
+    : pathFor(primaryPoints, primaryKey, x, yPrimary)) : '';
 
   const pressureYMax = showPressure
     ? Math.max(10, historyPressureYMax(pressurePoints, flairProfile))
@@ -115,9 +119,9 @@ export function ScaleFlowChart({
   }
 
   const pressureX = profile ? x : (tS) => x(labPressureCurvePlotTimeS(tS));
-  const bridges = pressureGapBridges(pressurePoints);
+  const bridges = profile ? [] : pressureGapBridges(pressurePoints);
 
-  const pressurePath = showPressure ? pathFor(pressurePoints, 'bar', pressureX, yBar) : '';
+  const pressurePath = showPressure && !profile?.intervalFlow ? pathFor(pressurePoints, 'bar', pressureX, yBar) : '';
   const isolatedPoints = (points) => points.filter((p, i) => (i === 0 || p.breakBefore)
     && (!points[i + 1] || points[i + 1].breakBefore));
 
@@ -282,10 +286,10 @@ export function ScaleFlowChart({
             data-testid="history-measured-pressure"
           />
         )}
-        {profile && showPrimary && isolatedPoints(primaryPoints).map((p) => (
+        {profile && showPrimary && !intervalFlow && isolatedPoints(primaryPoints).map((p) => (
           <circle key={p.tS} cx={x(p.tS)} cy={yPrimary(p[primaryKey])} r="2" fill={AMBER} />
         ))}
-        {profile && showPressure && isolatedPoints(pressurePoints).map((p, i) => (
+        {profile && showPressure && (profile.intervalFlow ? pressurePoints : isolatedPoints(pressurePoints)).map((p, i) => (
           <circle key={i} cx={pressureX(p.tS)} cy={yBar(p.bar)} r="2" fill={pressureLiveStroke} />
         ))}
         {cursorS != null && (

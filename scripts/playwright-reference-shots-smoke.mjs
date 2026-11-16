@@ -9,7 +9,8 @@ const recording = JSON.parse(await readFile(new URL(
 const bean = { id: 'b10-bean', name: 'B10 test coffee', roastType: 'Medium' };
 const otherBean = { id: 'other-bean', name: 'Another coffee', roastType: 'Medium' };
 const timing = { version: 1, clockDriftMs: 0, pressureOriginMs: 100, scaleOriginMs: 2000,
-  extractionStartMs: 2000, extractionEndMs: 31000 };
+  extractionStartMs: 2000, extractionEndMs: 31000, pressureSource: 'camera',
+  scaleSource: 'web-bluetooth', scaleInterrupted: false };
 const profile = {
   labPressureCurve: recording.labPressureCurve,
   scaleFlowCurve: [{ tS: 0.125, weightG: 0 }, { tS: 0.375, weightG: 1 }, { tS: 1.25, weightG: 3 }],
@@ -20,6 +21,7 @@ const shots = [
     shotProfileTiming: { ...timing, pressureOriginMs: 200, extractionStartMs: 2500, scaleOriginMs: 2500 } },
   { id: 'manual', notes: 'Manual extraction' },
   { id: 'other', notes: 'Different bean extraction', beanId: otherBean.id },
+  { id: 'historical', notes: 'Historical recording', ...profile },
 ].map((shot, index) => ({
   beanId: bean.id, timestamp: new Date(Date.UTC(2026, 9, 16, 8 + index)).toISOString(),
   grinderModel: 'Sette 270Wi', actualTimeS: 28, actualDoseG: 18, actualYieldG: 36, tasteProfile: 'balanced',
@@ -69,7 +71,7 @@ try {
   await page.reload();
   await button('History').click();
   await card('other').waitFor();
-  assert.equal(await cards.count(), 4);
+  assert.equal(await cards.count(), 5);
   const original = await rows(page);
 
   await favourite('reference').click();
@@ -102,7 +104,28 @@ try {
   const weightPath = await selectedPath.getAttribute('d');
   assert.equal(weightPath.match(/M/g).length, 2, 'Bluetooth gap starts a new path');
   await comparison.getByRole('button', { name: 'Flow', exact: true }).click();
-  assert.equal(await comparison.getByTestId('comparison-selected-series').locator('circle').count(), 1);
+  assert.match(await selectedPath.getAttribute('d'), /^M[^M]+ H[^M]+$/, 'flow shows one observed interval');
+  await comparison.getByText('Selected shot: measured source.', { exact: true }).waitFor();
+  const advancedSummary = card('selected').getByText('Advanced pressure and flow', { exact: true });
+  const advanced = card('selected').getByTestId('pressure-flow-analytics');
+  assert.equal(await advanced.count(), 0);
+  await advancedSummary.click();
+  await advanced.getByRole('img', { name: 'Pressure (bar) and flow (g/s)' }).waitFor();
+  await advanced.getByText('Timed pre-infusion', { exact: true }).waitFor();
+  await advanced.getByText('Insufficient paired readings within a pressure range.', { exact: true }).waitFor();
+  assert.equal(await advanced.getByTestId('pressure-gap-bridge').count(), 0);
+
+  await openProfile('historical');
+  await card('historical').getByText('Compare with bean reference', { exact: true }).click();
+  const historical = card('historical').getByTestId('shot-comparison');
+  for (const measurement of ['Pressure', 'Weight', 'Flow']) {
+    await historical.getByRole('button', { name: measurement, exact: true }).click();
+    const aligned = historical.getByRole('img', { name: /Time from extraction start/ });
+    const standalone = historical.getByRole('img', { name: /Sensor recording time/ });
+    assert.equal(await aligned.getByTestId('comparison-selected-series').count(), 0);
+    assert.equal(await standalone.getByTestId('comparison-selected-series').count(), 1);
+    await historical.getByText(/Selected shot: .*approximate alignment to extraction/).waitFor();
+  }
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
 
   await openProfile('manual');

@@ -149,7 +149,7 @@ export function generateShotInsights({
   }
   if (profile?.approximate) {
     findings.push(insight('timing-context', 3,
-      'Sensor timing is approximately aligned for this historical shot.', 'shot-profile-timing-metadata'));
+      'Alignment to extraction is uncertain for this recording.', 'shot-profile-timing-metadata'));
   }
 
   const main = findings.find((item) => item.category === 'learning-status')

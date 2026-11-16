@@ -1,6 +1,8 @@
 import { PRESSURE_CURVE_GAP_MS } from '../flairPressureLab/pressureCurveFilter.js';
 import { SCALE_FLOW_MAX_SAMPLE_GAP_S } from '../scales/flowMetrics.js';
-import { buildComparisonProfile, savedShotMeasurements } from './shotProfile.js';
+import {
+  buildComparisonProfile, extractionTiming, physicalShotSources, recordedShotTiming, savedShotMeasurements,
+} from './shotProfile.js';
 import { shotTasteRating } from './shotRatings.js';
 
 export const CONSISTENCY_MIN_SHOTS = 3;
@@ -29,17 +31,15 @@ function extractionSamples(points, duration, tolerance) {
 }
 
 function sensorMeasurements(shot) {
-  const timing = shot.shotProfileTiming;
-  const mayUsePressure = timing?.pressureSource === 'camera';
-  const mayUseFlow = timing?.scaleSource === 'web-bluetooth' && timing.scaleInterrupted === false;
-  const duration = (timing?.extractionEndMs - timing?.extractionStartMs) / 1000;
-  if ((!mayUsePressure && !mayUseFlow) || timing?.version !== 1 || !Number.isFinite(duration) || duration <= 0
-    || !Number.isFinite(timing.extractionStartMs) || !Number.isFinite(timing.extractionEndMs)
-    || !Number.isFinite(timing.clockDriftMs) || Math.abs(timing.clockDriftMs) > 250) return {};
+  const timing = recordedShotTiming(shot);
+  const sources = physicalShotSources(timing);
+  const mayUseFlow = sources.scale && timing.scaleInterrupted === false;
+  const duration = extractionTiming(timing)?.durationS;
+  if (duration == null || (!sources.pressure && !mayUseFlow)) return {};
 
   const profile = buildComparisonProfile(shot);
   const values = {};
-  if (mayUsePressure) {
+  if (sources.pressure) {
     const pressure = extractionSamples(profile.pressure, duration, PRESSURE_CURVE_GAP_MS / 1000);
     if (pressure.length) values.pressure = pressure.reduce((max, { bar }) => Math.max(max, bar), 0);
   }

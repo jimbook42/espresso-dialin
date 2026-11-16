@@ -4,6 +4,7 @@ import { buildShotProfile, observationAtTime } from '../utils/shotProfile.js';
 import { ScaleFlowChart } from './ScaleFlowChart.jsx';
 import { ShotInsights } from './ShotInsights.jsx';
 import { ShotComparison } from './ShotComparison.jsx';
+import { PressureFlowAnalytics } from './PressureFlowAnalytics.jsx';
 import { shotTasteRating } from '../utils/shotRatings.js';
 
 const format = (value, unit, digits = 1) => value == null ? 'Not recorded' : `${value.toFixed(digits)} ${unit}`;
@@ -59,12 +60,11 @@ function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
     profile.pressure.length > 0 && ['pressure', 'Pressure'],
     profile.weight.length > 0 && ['weight', 'Weight'],
     profile.flow.length > 0 && ['flow', 'Flow'],
-    profile.pressure.length > 0 && profile.flow.length > 0 && ['combined', 'Combined'],
+    profile.aligned && profile.pressure.length > 0 && profile.flow.length > 0 && ['combined', 'Combined'],
   ].filter(Boolean);
   const view = views.some(([key]) => key === selectedView) ? selectedView : views[0]?.[0];
-  const canInspect = view !== 'combined' || profile.aligned;
   const selectTime = (time) => setCursor(Math.min(profile.maxTimeS, Math.max(profile.minTimeS, time)));
-  const showObservations = canInspect && cursor != null;
+  const showObservations = cursor != null;
   const observations = [
     ['pressure', 'Pressure', 'bar', 'bar', 1],
     ['weight', 'Weight', 'weightG', 'g', 1],
@@ -122,42 +122,37 @@ function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
               ))}
             </div>
           )}
-          <ScaleFlowChart profile={profile} view={view} cursorS={canInspect ? cursor : null}
-            onPickTime={canInspect ? selectTime : undefined} />
+          <ScaleFlowChart profile={profile} view={view} cursorS={cursor} onPickTime={selectTime} />
           <div className={`flex flex-wrap gap-x-3 gap-y-1 text-[11px] ${ui.sub}`}>
-            <span>{profile.aligned ? 'Time from shot start' : 'Recording time'}</span>
+            <span>{profile.aligned ? 'Time from shot timer start' : 'Sensor recording time'}</span>
             {profile.extractionStartS > 0 && <span>Shaded pre-infusion</span>}
             {profile.legacyPreS > 0 && <span>Estimated pre-infusion {formatTime(profile.legacyPreS)}</span>}
             {profile.extractionEndS != null && <span>Dashed extraction end</span>}
             {profile.settlementEndS != null && <span>Weight includes yield settling</span>}
           </div>
-          {canInspect ? (
-            <div className="space-y-1">
-              <label htmlFor={timeId} className="block text-xs font-semibold">
-                {cursor == null ? 'Explore time' : `Time ${profile.approximate ? '≈ ' : ''}${formatTime(cursor)}`}
-              </label>
-              <input id={timeId} type="range" min={profile.minTimeS} max={profile.maxTimeS} step="0.01"
-                value={cursor ?? profile.minTimeS} onChange={(event) => selectTime(Number(event.target.value))}
-                aria-label="Explore shot time" aria-valuetext={formatTime(cursor ?? profile.minTimeS)}
-                className="w-full min-h-8 accent-[#c88a4b] block" />
-              {showObservations && (
-                <dl className="grid grid-cols-3 gap-1 text-[11px] tabular-nums" data-testid="profile-observations">
-                  {observations.map(([key, label, valueKey, unit, digits]) => {
-                    const point = observationAtTime(profile[key], cursor);
-                    return (
-                      <div key={key}>
-                        <dt className={ui.sub}>{label}</dt>
-                        <dd>{point ? format(point[valueKey], unit, digits) : 'No sample'}</dd>
-                        {point && <dd className={ui.sub}>{formatTime(point.tS)}</dd>}
-                      </div>
-                    );
-                  })}
-                </dl>
-              )}
-            </div>
-          ) : (
-            <p className={`text-xs ${ui.sub}`}>Open an individual view to inspect samples.</p>
-          )}
+          <div className="space-y-1">
+            <label htmlFor={timeId} className="block text-xs font-semibold">
+              {cursor == null ? 'Explore time' : `Time ${formatTime(cursor)}`}
+            </label>
+            <input id={timeId} type="range" min={profile.minTimeS} max={profile.maxTimeS} step="0.01"
+              value={cursor ?? profile.minTimeS} onChange={(event) => selectTime(Number(event.target.value))}
+              aria-label="Explore shot time" aria-valuetext={formatTime(cursor ?? profile.minTimeS)}
+              className="w-full min-h-8 accent-[#c88a4b] block" />
+            {showObservations && (
+              <dl className="grid grid-cols-3 gap-1 text-[11px] tabular-nums" data-testid="profile-observations">
+                {observations.map(([key, label, valueKey, unit, digits]) => {
+                  const point = observationAtTime(profile[key], cursor);
+                  return (
+                    <div key={key}>
+                      <dt className={ui.sub}>{label}</dt>
+                      <dd>{point ? format(point[valueKey], unit, digits) : 'No sample'}</dd>
+                      {point && <dd className={ui.sub}>{formatTime(point.tS)}</dd>}
+                    </div>
+                  );
+                })}
+              </dl>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -191,6 +186,9 @@ export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenc
         <>
           <ProfileDetails shot={shot} ui={ui} onRatingChange={onRatingChange}
             onOpenBeanConsistency={onOpenBeanConsistency} />
+          {(shot.labPressureCurve?.length > 0 || shot.scaleFlowCurve?.length > 0) && (
+            <PressureFlowAnalytics shot={shot} ui={ui} />
+          )}
           {onReferenceChange && (
             <div className={`border-t ${ui.modalDivider}`}>
               {referenceShot && !isReference && (
