@@ -42,6 +42,7 @@ import {
   readBeansFinishedSectionOpen,
   writeBeansFinishedSectionOpen,
 } from './utils/beansFinishedSectionPrefs.js';
+import { clearManualShotDraft, readManualShotDraft, writeManualShotDraft } from './utils/manualShotDraft.js';
 import { PastBeansList } from './components/PastBeansList.jsx';
 import { ShotEngineStatsPanel } from './components/ShotEngineStatsPanel';
 import { StandalonePressureRecorder } from './components/StandalonePressureRecorder.jsx';
@@ -357,7 +358,9 @@ export default function App() {
   const shotBackGuard = useRef(false);
   const armShotBackGuard = useCallback(() => {
     if (shotBackGuard.current) return;
-    window.history.pushState({ ...window.history.state, shotBackGuard: true }, '');
+    if (!window.history.state?.shotBackGuard) {
+      window.history.pushState({ ...window.history.state, shotBackGuard: true }, '');
+    }
     shotBackGuard.current = true;
   }, []);
   useEffect(() => {
@@ -538,6 +541,7 @@ export default function App() {
   const [notes, setNotes] = useState('');
   const [excludeFromLearning, setExcludeFromLearning] = useState(false);
   const [knownIssueReason, setKnownIssueReason] = useState('puck_prep');
+  const manualDraftId = useRef(null);
 
   const doseInputRef = useRef(null);
   const timeInputRef = useRef(null);
@@ -1271,6 +1275,8 @@ export default function App() {
     if (dialSaveRef.current || yieldSettleTimerRef.current) return false;
     const hasUnsavedShot = dialShotPending || dialHasMeasurements;
     if (hasUnsavedShot && !window.confirm('Discard this unsaved shot?')) return false;
+    clearManualShotDraft(manualDraftId.current);
+    manualDraftId.current = null;
     handleResetTimer();
     if (!hasUnsavedShot) return true;
     setActualTimeS('');
@@ -1524,6 +1530,26 @@ export default function App() {
   const canExitBrewGuideStartup = activeTab === 'brew' && brewGuideTimerActive
     && (timerStartPending || shotCountdownValue != null) && !timerRunning && !yieldSettleActive;
 
+  const persistManualShotEdit = (edit) => {
+    const measurementEdit = 'time' in edit || 'yieldG' in edit;
+    if (!activeBean || dialSaveRef.current || experienceSwitchLocked || timerStartingRef.current
+      || (!measurementEdit && !manualDraftId.current)) return;
+    const fields = {
+      time: String(actualTimeS), yieldG: String(actualYieldG), dose: String(actualDoseG),
+      taste: tasteProfile, rating: shotRating, notes, excludeFromLearning, knownIssueReason,
+      ...edit,
+    };
+    if (!fields.time && !fields.yieldG) {
+      clearManualShotDraft(manualDraftId.current);
+      manualDraftId.current = null;
+      return;
+    }
+    // Commit in the input event. The browser can close before React runs effects.
+    manualDraftId.current ??= generateId();
+    writeManualShotDraft({ ...fields, id: manualDraftId.current, beanId: activeBean.id });
+    if (measurementEdit) armShotBackGuard();
+  };
+
   useLayoutEffect(() => {
     if (shotBackLocked && !isSettingsOpen && !weighingViewOpen) {
       armShotBackGuard();
@@ -1586,7 +1612,7 @@ export default function App() {
     }
     setActiveTab(tab);
   };
-  useEffect(() => {
+  useLayoutEffect(() => {
     const navigation = navigationRef.current;
     if (settingsQueryResult === SETTINGS_QUERY_PENDING || navigation.initialized) return;
     if (showFirstLaunchWizard) {
@@ -1594,15 +1620,35 @@ export default function App() {
       return;
     }
     const context = navigationContextRef.current;
+    const draft = !manualDraftId.current && !dialHasMeasurements ? readManualShotDraft() : null;
+    if (draft && !firstLaunchDataLoaded) return;
+    const recover = draft && draft.beanId === activeBean?.id && !activeBean.isFinished
+      && !historyShots.some((shot) => shot.id === draft.id);
+    if (recover) {
+      manualDraftId.current = draft.id;
+      setActualTimeS(draft.time);
+      setActualYieldG(draft.yieldG);
+      setActualDoseG(draft.dose);
+      setTasteProfile(draft.taste);
+      setShotRating(draft.rating);
+      setNotes(draft.notes);
+      setExcludeFromLearning(draft.excludeFromLearning);
+      setKnownIssueReason(draft.knownIssueReason);
+      dialYieldSourceRef.current = draft.yieldG ? 'manual' : null;
+    } else if (draft) {
+      clearManualShotDraft(draft.id);
+    }
     const previousTab = navigation.firstLaunch ? null : window.history.state?.dialTab;
-    const next = validNavigationTab(previousTab ?? context.activeTab, context);
+    const next = recover ? 'dial' : validNavigationTab(previousTab ?? context.activeTab, context);
     const state = { ...window.history.state, dialTab: next };
     delete state.overlay;
     window.history.replaceState(state, '');
     navigation.initialized = true;
     if (next !== context.activeTab) setSelectedTab(next);
+    if (recover) armShotBackGuard();
     if (state.shotBackGuard && !shotBackGuard.current) window.history.back();
-  }, [firstLaunchDataLoaded, settingsQueryResult, showFirstLaunchWizard]);
+  }, [activeBean, armShotBackGuard, dialHasMeasurements, firstLaunchDataLoaded, historyShots,
+    settingsQueryResult, showFirstLaunchWizard]);
   useEffect(() => {
     const onPopState = (event) => {
       const nav = navigationRef.current;
@@ -2419,8 +2465,10 @@ export default function App() {
       }
     );
 
+    const draftId = manualDraftId.current;
     const shotRecord = {
-      id: generateId(),
+      // If the app closes between the IndexedDB commit and draft removal, recovery can see the save.
+      id: draftId ?? generateId(),
       beanId: activeBean.id,
       timestamp: referenceNow.toISOString(),
       grinderModel: logGrinderModel,
@@ -2468,6 +2516,8 @@ export default function App() {
     setDialSaving(true);
     try {
       const persistedId = await db.shots.add(shotRecord);
+      clearManualShotDraft(draftId);
+      manualDraftId.current = null;
       trace?.save(shotRecord);
       recordSavedShotUsage(experience === 'combined' ? 'combined' : 'brew', shotRecord, labPressureShotMetrics);
       if (labCameraPressureEnabled) {
@@ -3736,6 +3786,7 @@ export default function App() {
                         {...fieldErrorAttributes('shot-dose', shotFieldHighlights.dose)}
                         value={actualDoseG}
                         onChange={(e) => {
+                          persistManualShotEdit({ dose: e.target.value });
                           setActualDoseG(e.target.value);
                           setShotFieldHighlights((prev) => ({ ...prev, dose: false }));
                         }}
@@ -3766,6 +3817,7 @@ export default function App() {
                         onChange={(e) => {
                           if (yieldSettleActive) yieldSettleUserEditedRef.current = true;
                           dialYieldSourceRef.current = 'manual';
+                          persistManualShotEdit({ yieldG: e.target.value });
                           setActualYieldG(e.target.value);
                           setShotFieldHighlights((prev) => ({ ...prev, yield: false }));
                         }}
@@ -3798,6 +3850,7 @@ export default function App() {
                         {...fieldErrorAttributes('shot-time', shotFieldHighlights.time)}
                         value={actualTimeS}
                         onChange={(e) => {
+                          persistManualShotEdit({ time: e.target.value });
                           setActualTimeS(e.target.value);
                           setShotFieldHighlights((prev) => ({ ...prev, time: false }));
                         }}
@@ -3832,6 +3885,7 @@ export default function App() {
                           type="button"
                           key={f.id}
                           onClick={() => {
+                            persistManualShotEdit({ taste: f.id });
                             setTasteProfile(f.id);
                             setShotFieldHighlights((prev) => ({ ...prev, taste: false }));
                           }}
@@ -3858,7 +3912,10 @@ export default function App() {
                             key={star}
                             aria-label={`Rate shot ${star} out of 5`}
                             aria-pressed={shotRating === star}
-                            onClick={() => setShotRating(star)}
+                            onClick={() => {
+                              persistManualShotEdit({ rating: star });
+                              setShotRating(star);
+                            }}
                             className={`p-1 transition-colors ${shotRating !== null && star <= shotRating ? 'text-[#c88a4b]' : 'text-[#3d3830] hover:text-[#6b6457]'}`}
                           >
                             <Star className="w-5 h-5 fill-current" />
@@ -3878,7 +3935,10 @@ export default function App() {
                       type="text"
                       placeholder="Notes — puck prep, channeling, batch size…"
                       value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
+                      onChange={(e) => {
+                        persistManualShotEdit({ notes: e.target.value });
+                        setNotes(e.target.value);
+                      }}
                       className={`w-full ${inputClass} rounded-xl p-3 text-sm bg-transparent border-0`}
                     />
                     {perfectShotCelebration && (
@@ -3899,7 +3959,10 @@ export default function App() {
                       </div>
                       <SettingsToggle
                         checked={excludeFromLearning}
-                        onChange={setExcludeFromLearning}
+                        onChange={(value) => {
+                          persistManualShotEdit({ excludeFromLearning: value });
+                          setExcludeFromLearning(value);
+                        }}
                         label="Known issue — don't use for learning"
                       />
                     </div>
@@ -3908,7 +3971,10 @@ export default function App() {
                         <label className={ui.fieldLabel}>What happened?</label>
                         <select
                           value={knownIssueReason}
-                          onChange={(e) => setKnownIssueReason(e.target.value)}
+                          onChange={(e) => {
+                            persistManualShotEdit({ knownIssueReason: e.target.value });
+                            setKnownIssueReason(e.target.value);
+                          }}
                           className={`w-full ${inputClass} border rounded-xl px-3 py-2.5 text-sm`}
                         >
                           {Object.entries(KNOWN_ISSUE_REASONS).map(([key, label]) => (
