@@ -176,6 +176,7 @@ export function ShotLabPressureProvider({
     readerError: pressure.readerError,
     cameraStatus: pressure.cameraStatus,
     cameraError: pressure.cameraError,
+    offlineUnavailable: pressure.offlineUnavailable,
     retryCamera: pressure.retryCamera,
     readerPath: pressure.readerPath,
     peakBar: pressure.peakBar,

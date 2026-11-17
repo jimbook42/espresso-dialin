@@ -17,6 +17,7 @@ import {
   videoPointToPreview,
 } from '../flairPressureLab/geometry.js';
 import { loadOpenCv } from '../flairPressureLab/opencvRuntime.js';
+import { PRESSURE_CAMERA_OFFLINE_MESSAGE, usePressureCameraOffline } from '../flairPressureLab/hooks/usePressureCameraOffline.js';
 import {
   nextTapPhaseAfterConfirm,
   phaseAfterRedo,
@@ -66,7 +67,7 @@ export function LabGaugeTapCalibrateSheet({
   const start = sourceCamera ? NO_CAMERA_ACTION : localStart;
   const stop = sourceCamera ? NO_CAMERA_ACTION : localStop;
   const status = sourceCamera ? sourceCamera.cameraStatus : localStatus;
-  const error = sourceCamera ? sourceCamera.cameraError : localError;
+  const coldOffline = usePressureCameraOffline();
   const retryCamera = sourceCamera ? sourceCamera.retryCamera : localRetry;
   const [tapPhase, setTapPhase] = useState('aim');
   const [tapNote, setTapNote] = useState('');
@@ -92,6 +93,9 @@ export function LabGaugeTapCalibrateSheet({
 
   const fixtureHook = typeof window !== 'undefined' ? window.__labGaugeTapFixture : null;
   const fixtureSrc = fixtureHook?.src ?? null;
+  const offlineUnavailable = !fixtureSrc && (sourceCamera ? sourceCamera.offlineUnavailable : coldOffline);
+  const error = sourceCamera ? sourceCamera.cameraError
+    : offlineUnavailable ? PRESSURE_CAMERA_OFFLINE_MESSAGE : localError;
   const mirrorPreview = fixtureHook?.mirror !== false;
   useSharedCameraVideo({ sourceRef: sourceCamera?.videoRef, targetRef: videoRef,
     active: open && Boolean(sourceCamera) && !fixtureSrc, cameraStatus: sourceCamera?.cameraStatus });
@@ -216,6 +220,7 @@ export function LabGaugeTapCalibrateSheet({
       resetLocal();
       return undefined;
     }
+    if (offlineUnavailable) return undefined;
     let cancelled = false;
     loadOpenCv()
       .then(() => {
@@ -235,7 +240,7 @@ export function LabGaugeTapCalibrateSheet({
       cancelled = true;
       stop();
     };
-  }, [open, fixtureSrc, loadFixtureFrame, start, stop, resetLocal]);
+  }, [open, offlineUnavailable, fixtureSrc, loadFixtureFrame, start, stop, resetLocal]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -481,11 +486,11 @@ export function LabGaugeTapCalibrateSheet({
           <p className={`text-xs ${muted}`} data-testid="gauge-calibration-lever-hint">{CALIBRATION_LEVER_HINT}</p>
           {tapNote && <p className={`text-[11px] ${text}`} role={tapPhase === 'incompatible' ? 'status' : undefined}
             data-testid="gauge-tap-note">{tapNote}</p>}
-          {error && !fixtureSrc && <p className="text-[11px] text-rose-400">{error}</p>}
-          {!fixtureSrc && (status === 'error' || status === 'interrupted') && retryCamera && (
+          {error && !fixtureSrc && <p role="status" className="text-[11px] text-rose-400">{error}</p>}
+          {!fixtureSrc && !offlineUnavailable && (status === 'error' || status === 'interrupted') && retryCamera && (
             <button type="button" onClick={retryCamera} className="min-h-9 text-xs underline">Retry camera</button>
           )}
-          {!opencvReady && status === 'live' && (
+          {!offlineUnavailable && !opencvReady && status === 'live' && (
             <p className={`text-[10px] ${muted}`}>Loading vision helpers…</p>
           )}
         </div>

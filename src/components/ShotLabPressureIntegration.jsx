@@ -40,7 +40,9 @@ export function ShotLabPressureIntegration({ variant, ui }) {
 
   return (
     <>
-      {ctx.readoutVisible && (
+      {ctx.readoutVisible && (ctx.offlineUnavailable ? (
+        <p role="status" className={`text-xs ${ui?.sub ?? pressureLiveTextClass}`}>{ctx.cameraError}</p>
+      ) : (
         <ShotLabPressureReadout
           displayBar={ctx.displayBar}
           hold={ctx.hold}
@@ -55,7 +57,7 @@ export function ShotLabPressureIntegration({ variant, ui }) {
           viewportWidth={viewportWidth}
           ui={ui}
         />
-      )}
+      ))}
       {variant === 'inline' && !ctx.calibrated && !ctx.timerRunning && (
         <button
           type="button"

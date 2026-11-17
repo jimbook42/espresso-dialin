@@ -187,7 +187,7 @@ export function ShotProfile({ shot, ui, settings, cardOptions, onCardOptionsChan
         <>
           <ProfileDetails shot={shot} ui={ui} onRatingChange={onRatingChange}
             onOpenBeanConsistency={onOpenBeanConsistency} />
-          <PortableShotExport shotId={shot.id} settings={settings} ui={ui} cardOptions={cardOptions} onCardOptionsChange={onCardOptionsChange} referenceShot={!isReference ? referenceShot : null} />
+          <PortableShotExport shotId={shot.id} settings={settings} ui={ui} cardOptions={cardOptions} onCardOptionsChange={onCardOptionsChange} />
           {(shot.labPressureCurve?.length > 0 || shot.scaleFlowCurve?.length > 0) && (
             <PressureFlowAnalytics shot={shot} ui={ui} />
           )}

@@ -2,12 +2,13 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseCsvLine } from './csvImport.js';
+import { buildShotRecordsFromCsvRows, parseCsvLine, parseShotsCsvText } from './csvImport.js';
 import { SHOT_CSV_HEADERS, buildShotsCsvContent, buildShotsCsvRows } from './csvExport.js';
 import { MAX_PORTABLE_SHOT_BYTES, parsePortableShotFile, previewPortableRestore, restorePortableShots } from './portableShotRestore.js';
 import { createPortableShots, readPortableShots } from './portableShots.js';
 import { beanconquerorBatch, beanconquerorBrew, buildSepShotFile, shotSummaryCsv } from './shotExportFormats.js';
 import { readShotSelections, setReferenceShot, toggleFavouriteShot } from './shotSelections.js';
+import { formatShotGrindForHistory } from '../grinders/grinderRegistry.js';
 
 const sourceCsv = readFileSync(new URL('./fixtures/visualizer-sep-profitec-excerpt.csv', import.meta.url), 'utf8');
 const [sepHeader, ...knownRows] = sourceCsv.trim().split(/\r?\n/);
@@ -49,9 +50,10 @@ afterEach(async () => {
 
 describe('portable shot backup', () => {
   it('reads one immutable snapshot and round-trips historical records, favourites, references and ratings into fresh storage', async () => {
+    const legacyBean = { ...bean, name: '   ' };
     const source = database();
     await source.shots.bulkAdd([shot, manual]);
-    await source.beans.add(bean);
+    await source.beans.add(legacyBean);
     await toggleFavouriteShot(source, shot.id);
     await setReferenceShot(source, bean.id, shot.id, true);
     const snapshot = await readPortableShots(source);
@@ -70,6 +72,7 @@ describe('portable shot backup', () => {
     expect(await target.settings.count()).toBe(0);
     await restorePortableShots(target, parsed, plan);
     expect(await readPortableShots(target)).toEqual(snapshot);
+    expect(await target.beans.toArray()).toEqual([legacyBean]);
   });
 
   it('skips identical and conflicting IDs, keeps the local rating and occupied reference, and adds safe favourites', async () => {
@@ -181,6 +184,23 @@ describe('shot file adapters', () => {
       formatRecFollowedForCsv: () => '', knownIssueReasonLabel: () => '' };
     const existing = buildShotsCsvContent(SHOT_CSV_HEADERS, buildShotsCsvRows([record], { ...helpers, beans: [bean] }));
     expect(shotSummaryCsv(makeBackup([record]), helpers)).toBe(existing);
+  });
+
+  it('preserves unknown age and storage, explicit zero and bag, and the saved ratio in CSV round-trip', () => {
+    const base = { ...shot, grinderModel: 'Sette 270Wi', setteMacro: 8, setteMicro: 'C', actualDoseG: 18, actualYieldG: 36.2 };
+    const known = { ...base, id: 'known', timestamp: manual.timestamp, beanAgeDays: 0, storageType: 'bag', brewRatio: '1:2.011' };
+    const helpers = { formatShotGrindForHistory, normalizeTasteProfile: (value) => value,
+      formatRecFollowedForCsv: () => '', knownIssueReasonLabel: () => '' };
+    const snapshot = makeBackup([base, known]);
+    const { header, rows } = parseShotsCsvText(shotSummaryCsv(snapshot, helpers));
+    const columns = ['Ratio', 'Bean Age (Days)', 'Storage'].map((label) => SHOT_CSV_HEADERS.indexOf(label));
+    expect(rows.map((row) => columns.map((i) => row[i]))).toEqual([['1:2.0', '', ''], ['1:2.011', '0', 'bag']]);
+    expect(snapshot.shots[0].measurements.ratio).toBe(36.2 / 18);
+    const { imported, errors } = buildShotRecordsFromCsvRows(rows, header, { resolveBeanId: () => ({ beanId: bean.id }) });
+    expect(errors).toEqual([]);
+    expect(imported[0]).not.toHaveProperty('beanAgeDays');
+    expect(imported[0]).not.toHaveProperty('storageType');
+    expect(imported[1]).toMatchObject({ beanAgeDays: 0, storageType: 'bag', brewRatio: '1:2.011' });
   });
 
   it('matches the documented Beanconqueror envelope and rejects incompatible batches without inventing water or beverage', () => {

@@ -77,7 +77,7 @@ function validateShot(record) {
 }
 
 function validateBean(bean) {
-  requireValid(object(bean) && id(bean.id) && string(bean.name) && bean.name.trim(),
+  requireValid(object(bean) && id(bean.id) && string(bean.name),
     'Each linked bean must have a valid ID and name.');
   optionalFields(bean, string, 'roaster roastType roastDate storageType postThawStorage freezeDate thawDate createdAt finishedAt');
   optionalFields(bean, scalar, 'rating');

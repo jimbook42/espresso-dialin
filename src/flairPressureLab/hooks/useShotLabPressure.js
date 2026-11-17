@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resetCameraTrackLog, useFrontCameraStream } from './useFrontCameraStream.js';
+import { PRESSURE_CAMERA_OFFLINE_MESSAGE, usePressureCameraOffline } from './usePressureCameraOffline.js';
 import { PROCESS_INTERVAL_MS } from '../gaugeConfig.js';
 import { isRepeatedGaugeFrame } from '../cameraFrameFreshness.js';
 import { createReadingHold } from '../frameQuality.js';
@@ -86,7 +87,7 @@ export function useShotLabPressure({
   legacyScale = false,
 }) {
   const {
-    videoRef, start, stop, retry, status, revision, error: cameraError, trackDiagnosticsRef: cameraTrackLogRef,
+    videoRef, start, stop, retry, status, revision, error: streamError, trackDiagnosticsRef: cameraTrackLogRef,
   } = useFrontCameraStream({ facingMode: cameraFacingMode });
   const fallbackTrackLogRef = useRef(null);
   if (!cameraTrackLogRef && !fallbackTrackLogRef.current) {
@@ -110,6 +111,10 @@ export function useShotLabPressure({
   const timerSecondsRef = useRef(timerSeconds);
   timerSecondsRef.current = timerSeconds;
   const simMode = isPressureSimAllowed();
+  const coldOffline = usePressureCameraOffline();
+  const offlineUnavailable = enabled && !simMode && coldOffline;
+  const cameraError = offlineUnavailable ? PRESSURE_CAMERA_OFFLINE_MESSAGE : streamError;
+  const cameraStatus = offlineUnavailable ? 'error' : status;
 
   const [samples, setSamples] = useState([]);
   const [displayBar, setDisplayBar] = useState(null);
@@ -162,6 +167,7 @@ export function useShotLabPressure({
     && !simMode;
   const shouldRunCamera =
     enabled
+    && !offlineUnavailable
     && (calibrateSheetOpen || (cameraPreviewActive && !simMode)
       || ((displaySurfaceActive || preShotDialCheckActive) && calibrated && !simMode));
 
@@ -725,11 +731,12 @@ export function useShotLabPressure({
     displaySurfaceActive,
     calibrated,
     simMode,
-    cameraStatus: status,
+    cameraStatus,
   });
 
   let preShotDialStatus = null;
-  if (preShotDialCheckActive) {
+  if (offlineUnavailable) preShotDialStatus = 'unavailable';
+  else if (preShotDialCheckActive) {
     if (status === 'error') preShotDialStatus = 'unavailable';
     else if (status === 'interrupted') preShotDialStatus = 'interrupted';
     else if (status !== 'live') preShotDialStatus = 'starting';
@@ -742,8 +749,8 @@ export function useShotLabPressure({
   return {
     videoRef,
     samples,
-    displayBar: simMode || status === 'live' ? displayBar : null,
-    hold: simMode || status === 'live' ? hold : { held: false, gap: true },
+    displayBar: simMode || cameraStatus === 'live' ? displayBar : null,
+    hold: simMode || cameraStatus === 'live' ? hold : { held: false, gap: true },
     peakBar,
     calibrated,
     readoutVisible,
@@ -754,10 +761,11 @@ export function useShotLabPressure({
     readerPath: SHOT_LAB_PRESSURE_READER_PATH,
     acceptCalibration,
     getShotMetrics,
-    cameraStatus: status,
+    cameraStatus,
     cornerPreviewPose,
     cameraError,
-    retryCamera: retry,
+    offlineUnavailable,
+    retryCamera: offlineUnavailable ? undefined : retry,
     dialRecalibrateHint,
     preShotDialStatus,
     noPressureReadingWarning,

@@ -10,7 +10,7 @@ export function shotSummaryCsv(snapshot, helpers) {
     actualDoseG: measurements.doseG,
     actualYieldG: measurements.yieldG,
     actualTimeS: measurements.durationS,
-    brewRatio: measurements.ratio == null ? '' : record.brewRatio || '1:' + measurements.ratio,
+    brewRatio: record.brewRatio || (measurements.ratio == null ? '' : `1:${measurements.ratio.toFixed(1)}`),
   })), { ...helpers, beans: snapshot.beans });
   return buildShotsCsvContent(SHOT_CSV_HEADERS, rows);
 }

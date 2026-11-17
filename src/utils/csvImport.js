@@ -314,6 +314,9 @@ export function buildShotRecordsFromCsvRows(rows, header, options) {
       const targetMaxRaw = col(row, header, 'Target Time Max (s)');
       const targetDoseRaw = col(row, header, 'Target Dose (g)');
       const targetYieldRaw = col(row, header, 'Target Yield (g)');
+      const beanAgeRaw = col(row, header, 'Bean Age (Days)')?.trim();
+      const beanAgeDays = beanAgeRaw ? Number(beanAgeRaw) : undefined;
+      const storageType = col(row, header, 'Storage')?.trim();
 
       const grindFields = { ...grindResult.fields };
       delete grindFields.ok;
@@ -333,8 +336,8 @@ export function buildShotRecordsFromCsvRows(rows, header, options) {
         tasteProfile,
         shotRating: Number.isFinite(shotRating) ? shotRating : undefined,
         brewRatio: col(row, header, 'Ratio') || undefined,
-        beanAgeDays: Number(col(row, header, 'Bean Age (Days)')) || 0,
-        storageType: col(row, header, 'Storage') || 'bag',
+        ...(Number.isFinite(beanAgeDays) ? { beanAgeDays } : {}),
+        ...(storageType ? { storageType } : {}),
         ...(recommendationFollowed === true || recommendationFollowed === false
           ? { recommendationFollowed }
           : {}),

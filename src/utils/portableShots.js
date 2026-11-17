@@ -101,3 +101,23 @@ export function readPortableShots(db, shotId) {
     return createPortableShots(records, beans, selections);
   });
 }
+
+export function readShotForSharing(db, shotId) {
+  return db.transaction('r', db.shots, db.beans, db.settings, async () => {
+    const [record, selections] = await Promise.all([
+      db.shots.get(shotId),
+      readShotSelections(db),
+    ]);
+    if (!record) return null;
+
+    const referenceId = selections.references.find(({ beanId }) => beanId === record.beanId)?.shotId;
+    const [bean, reference] = await Promise.all([
+      record.beanId == null ? undefined : db.beans.get(record.beanId),
+      referenceId == null || referenceId === shotId ? undefined : db.shots.get(referenceId),
+    ]);
+    return {
+      snapshot: createPortableShots([record], bean ? [bean] : [], selections),
+      referenceShot: canReferenceShot(record, bean) && canReferenceShot(reference, bean) ? reference : null,
+    };
+  });
+}

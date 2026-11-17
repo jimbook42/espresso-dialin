@@ -24,3 +24,16 @@ Before serving production traffic, stage a production deployment with
 calibration, both recording flows and the full SHA in a Diagnostics v2 export.
 Git pushes to `main` and the B07 recovery branch skip automatic Vercel builds.
 Promote the staged production deployment once verified.
+
+## Beta offline scope
+
+The installed app can reopen History and log manual shots offline after the
+app shell is cached. A cold pressure camera session needs an internet
+connection to load OpenCV, the ONNX model and its WASM runtime. If those
+assets are unavailable offline, reconnect while the pressure screen or gauge
+setup is open to retry automatically. If the reader still cannot start after
+a connection loss during initialization, save any work and reopen the app
+online to start with a fresh runtime.
+
+Full offline pressure recording needs a separate product decision on camera
+asset storage and updates, followed by acceptance on physical devices.

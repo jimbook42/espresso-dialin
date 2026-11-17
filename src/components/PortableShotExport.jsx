@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useOverlayHistoryClose } from '../hooks/useOverlayHistoryClose.js';
 import { ShotCardPreview } from './ShotCardPreview.jsx';
 import { formatShotGrindForHistory } from '../grinders/grinderRegistry.js';
 import { downloadCsvFile } from '../utils/csvExport.js';
 import { db, knownIssueReasonLabel } from '../utils/grinderLogic.js';
 import { MAX_PORTABLE_SHOT_BYTES, parsePortableShotFile, previewPortableRestore, restorePortableShots } from '../utils/portableShotRestore.js';
-import { readPortableShots } from '../utils/portableShots.js';
+import { readPortableShots, readShotForSharing } from '../utils/portableShots.js';
 import { formatRecFollowedForCsv } from '../utils/recommendationFollowed.js';
 import { buildSepShotFile, shotSummaryCsv } from '../utils/shotExportFormats.js';
 import { normalizeTasteProfile } from '../utils/tasteProfile.js';
@@ -37,26 +38,30 @@ function savedGrind(shot, settings) {
   return hasSetting ? formatShotGrindForHistory(shot, settings) : '';
 }
 
-export function PortableShotExport({ shotId, settings, ui, cardOptions, onCardOptionsChange, referenceShot }) {
-  const [snapshot, setSnapshot] = useState(null);
+export function PortableShotExport({ shotId, settings, ui, cardOptions, onCardOptionsChange }) {
   const [open, setOpen] = useState(false);
   useOverlayHistoryClose(open, () => setOpen(false));
-  const [error, setError] = useState('');
-  const loadShot = async (event) => {
-    const nextOpen = event.currentTarget.open;
-    setOpen(nextOpen);
-    if (!nextOpen || snapshot) return;
-    setError('');
-    setSnapshot(null);
-    try {
-      const result = await readPortableShots(db, shotId);
-      if (!result.shots.length) throw new Error('This shot is no longer in History.');
-      setSnapshot(result);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
+  return (
+    <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className={`border-t ${ui.modalDivider}`}>
+      <summary className={`flex min-h-11 cursor-pointer items-center text-sm font-semibold ${ui.accentText}`}>
+        Share Shot
+      </summary>
+      {open && <ShotShareOptions shotId={shotId} settings={settings} ui={ui}
+        cardOptions={cardOptions} onCardOptionsChange={onCardOptionsChange} />}
+    </details>
+  );
+}
 
+function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChange }) {
+  const [error, setError] = useState('');
+  const data = useLiveQuery(async () => {
+    try {
+      return await readShotForSharing(db, shotId);
+    } catch (err) {
+      return { error: err.message };
+    }
+  }, [shotId]);
+  const { snapshot, referenceShot } = data ?? {};
   const shot = snapshot?.shots[0];
   const bean = snapshot?.beans.find(({ id }) => id === shot.record.beanId);
   const sep = shot && buildSepShotFile(shot, { bean, grind: savedGrind(shot.record, settings) });
@@ -72,12 +77,11 @@ export function PortableShotExport({ shotId, settings, ui, cardOptions, onCardOp
   };
 
   return (
-    <details open={open} onToggle={loadShot} className={`border-t ${ui.modalDivider}`}>
-      <summary className={`flex min-h-11 cursor-pointer items-center text-sm font-semibold ${ui.accentText}`}>
-        Share Shot
-      </summary>
-      {error && <p role="alert" className="pb-2 text-xs">{error}</p>}
-      {!shot && !error && <p className="pb-2 text-xs">Loading saved shot…</p>}
+    <>
+      {(error || data?.error || data === null) && (
+        <p role="alert" className="pb-2 text-xs">{error || data?.error || 'This shot is no longer in History.'}</p>
+      )}
+      {data === undefined && <p className="pb-2 text-xs">Loading saved shot…</p>}
       {shot && (
         <div className="space-y-3 pb-3 text-xs">
           <ShotCardPreview options={cardOptions} setOptions={onCardOptionsChange} shot={shot.record} bean={bean} grind={shot.record.grinderModel} referenceShot={referenceShot} filename={filename} ui={ui} onError={setError} />
@@ -120,7 +124,7 @@ export function PortableShotExport({ shotId, settings, ui, cardOptions, onCardOp
           </div>
         </div>
       )}
-    </details>
+    </>
   );
 }
 
