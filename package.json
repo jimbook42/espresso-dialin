@@ -18,9 +18,13 @@
     "test:playwright-bean-finish-undo": "node scripts/playwright-bean-finish-undo-smoke.mjs",
     "test:playwright-bean-reactivate": "node scripts/playwright-bean-reactivate-smoke.mjs",
     "replay:pressure": "node scripts/copy-opencv-asset.mjs && node scripts/copy-needle-ort.mjs && node scripts/pressure-replay/run-replay.mjs",
-    "postinstall": "node scripts/copy-opencv-asset.mjs && node scripts/copy-needle-ort.mjs"
+    "postinstall": "node scripts/copy-opencv-asset.mjs && node scripts/copy-needle-ort.mjs",
+    "android:sync": "node scripts/build-android.mjs"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "^8.3.0",
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
     "@techstark/opencv-js": "^5.0.0-release.1",
     "@vercel/analytics": "^2.0.1",
     "dexie": "^4.4.6",
@@ -31,6 +35,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/react": "^19.2.18",
