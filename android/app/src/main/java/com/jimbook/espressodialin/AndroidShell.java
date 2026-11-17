@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.ClipData;
+import android.content.ContentResolver;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.net.Uri;
@@ -21,6 +22,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 
 @CapacitorPlugin(name = "AndroidShell")
@@ -31,11 +33,17 @@ public class AndroidShell extends Plugin {
     private Uri backupUri;
     private long backupBytes;
     private boolean openingBackup;
+    private FileExportPayload fileExport;
+    private String fileId;
+    private String fileName;
+    private String fileMime;
+    private boolean openingFile;
 
     @PluginMethod
     public synchronized void beginBackupExport(PluginCall call) {
         String filename = call.getString("filename", "");
-        if (!filename.matches("[A-Za-z0-9-]{1,80}\\.dialinbackup") || openingBackup || backupStream != null) {
+        if (!filename.matches("[A-Za-z0-9-]{1,80}\\.dialinbackup") || openingBackup || backupStream != null
+            || fileExport != null || openingFile) {
             call.reject("Invalid backup filename or an export is already open.");
             return;
         }
@@ -116,6 +124,7 @@ public class AndroidShell extends Plugin {
     @Override
     protected synchronized void handleOnDestroy() {
         discardFailedBackup();
+        discardFileExport();
         super.handleOnDestroy();
     }
 
@@ -166,44 +175,22 @@ public class AndroidShell extends Plugin {
     }
 
     @PluginMethod
-    public void exportFile(PluginCall call) {
+    public synchronized void beginFileExport(PluginCall call) {
+        String id = call.getString("id", "");
         String filename = call.getString("filename", "");
         String mimeType = call.getString("mimeType", "");
-        if (!filename.matches("[A-Za-z0-9][A-Za-z0-9_. -]{0,127}")
+        int expected = call.getInt("byteCount", 0);
+        if (fileExport != null || openingFile || openingBackup || backupStream != null) {
+            call.reject("An export is already open.");
+            return;
+        }
+        if (!id.matches("[a-f0-9-]{36}") || expected <= 0 || expected > FileExportPayload.LIMIT
+            || !filename.matches("[A-Za-z0-9][A-Za-z0-9_. -]{0,127}")
             || !("image/png".equals(mimeType) || "application/json".equals(mimeType) || "text/csv".equals(mimeType))) {
             call.reject("Unsupported export.");
             return;
         }
-        if (Boolean.TRUE.equals(call.getBoolean("share"))) {
-            shareFile(call, filename, mimeType);
-            return;
-        }
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType(mimeType)
-            .putExtra(Intent.EXTRA_TITLE, filename);
-        startActivityForResult(call, intent, "writeExport");
-    }
-
-    @ActivityCallback
-    private void writeExport(PluginCall call, ActivityResult result) {
-        if (call == null) return;
-        Intent intent = result.getData();
-        if (result.getResultCode() != Activity.RESULT_OK || intent == null || intent.getData() == null) {
-            call.resolve(new JSObject().put("cancelled", true));
-            return;
-        }
-        try (OutputStream output = getContext().getContentResolver().openOutputStream(intent.getData(), "wt")) {
-            if (output == null) throw new IOException("No output stream");
-            writeData(call, output);
-            call.resolve();
-        } catch (IOException | IllegalArgumentException | SecurityException error) {
-            call.reject("Unable to save the export.", error);
-        }
-    }
-
-    private void shareFile(PluginCall call, String filename, String mimeType) {
-        File attachment = null;
+        File staged = null;
         try {
             File directory = new File(getContext().getCacheDir(), "shot-share");
             if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("No cache directory");
@@ -211,33 +198,126 @@ public class AndroidShell extends Plugin {
             File[] stale = directory.listFiles(file -> file.isFile() && file.getName().startsWith("shared-")
                 && file.lastModified() < expiry);
             if (stale != null) for (File file : stale) file.delete();
-            String suffix = "image/png".equals(mimeType) ? ".png"
-                : "text/csv".equals(mimeType) ? ".csv" : ".json";
-            attachment = File.createTempFile("shared-", suffix, directory);
-            try (OutputStream output = new FileOutputStream(attachment)) {
-                writeData(call, output);
-            }
-            Uri uri = FileProvider.getUriForFile(
-                getContext(), getContext().getPackageName() + ".fileprovider", attachment, filename);
-            Intent send = new Intent(Intent.ACTION_SEND).setType(mimeType)
-                .putExtra(Intent.EXTRA_STREAM, uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            send.setClipData(ClipData.newRawUri(filename, uri));
-            if (Boolean.TRUE.equals(call.getBoolean("feedback")) && "application/json".equals(mimeType)) {
-                send.putExtra(Intent.EXTRA_EMAIL, new String[]{"TullLabs@outlook.com"});
-                send.putExtra(Intent.EXTRA_SUBJECT, "Espresso Dial-In beta feedback");
-            }
-            getActivity().startActivity(Intent.createChooser(send, "Share Espresso Dial-In file"));
+            String suffix = "image/png".equals(mimeType) ? ".png" : "text/csv".equals(mimeType) ? ".csv" : ".json";
+            staged = File.createTempFile("shared-", suffix, directory);
+            fileExport = new FileExportPayload(staged, expected);
+            fileId = id;
+            fileName = filename;
+            fileMime = mimeType;
             call.resolve();
         } catch (IOException | RuntimeException error) {
-            if (attachment != null) attachment.delete();
-            call.reject("Unable to open the share sheet.", error);
+            if (staged != null) staged.delete();
+            call.reject("Unable to prepare the export.", error);
         }
     }
 
-    private void writeData(PluginCall call, OutputStream output) throws IOException {
-        String encoded = call.getString("data", "");
-        if (encoded.length() > 89_478_488) throw new IOException("Export exceeds 64 MiB");
-        output.write(Base64.decode(encoded, Base64.DEFAULT));
+    @PluginMethod
+    public synchronized void appendFileExport(PluginCall call) {
+        if (!hasFileExport(call)) return;
+        try {
+            fileExport.append(call.getInt("offset", -1), call.getString("data"), data -> Base64.decode(data, Base64.DEFAULT));
+            call.resolve();
+        } catch (IOException | RuntimeException error) {
+            discardFileExport();
+            call.reject("The export data is incomplete or invalid.", error);
+        }
+    }
+
+    @PluginMethod
+    public synchronized void cancelFileExport(PluginCall call) {
+        if (!openingFile && call.getString("id", "").equals(fileId)) discardFileExport();
+        call.resolve();
+    }
+
+    private boolean hasFileExport(PluginCall call) {
+        if (!openingFile && fileExport != null && call.getString("id", "").equals(fileId)) return true;
+        call.reject("The export is no longer open. Try again.");
+        return false;
+    }
+
+    private void discardFileExport() {
+        if (fileExport != null) fileExport.file.delete();
+        fileExport = null;
+    }
+
+    @PluginMethod
+    public synchronized void exportFile(PluginCall call) {
+        if (!hasFileExport(call)) return;
+        try {
+            fileExport.verify(fileMime);
+            if (Boolean.TRUE.equals(call.getBoolean("share"))) {
+                shareFile(call, fileExport.file, fileName, fileMime);
+                int byteCount = fileExport.expected;
+                fileExport = null; // Keep the verified file available to the recipient.
+                call.resolve(new JSObject().put("bytesWritten", byteCount));
+                return;
+            }
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(fileMime)
+                .putExtra(Intent.EXTRA_TITLE, fileName);
+            // Capacitor can serialize the picker call into Activity state. It carries only the ID.
+            openingFile = true;
+            startActivityForResult(call, intent, "writeExport");
+        } catch (IOException | RuntimeException error) {
+            openingFile = false;
+            discardFileExport();
+            call.reject("Unable to verify or open the export.", error);
+        }
+    }
+
+    @ActivityCallback
+    private synchronized void writeExport(PluginCall call, ActivityResult result) {
+        Intent intent = result.getData();
+        Uri uri = result.getResultCode() == Activity.RESULT_OK && intent != null ? intent.getData() : null;
+        if (uri == null) {
+            openingFile = false;
+            discardFileExport();
+            if (call != null) call.resolve(new JSObject().put("cancelled", true));
+            return;
+        }
+        FileExportPayload payload = fileExport;
+        fileExport = null;
+        getBridge().execute(() -> finishFileExport(call, uri, payload));
+    }
+
+    private void finishFileExport(PluginCall call, Uri uri, FileExportPayload payload) {
+        ContentResolver resolver = getContext().getContentResolver();
+        try {
+            if (payload == null || call == null) {
+                deleteCreatedDocument(resolver, uri);
+                throw new IOException("The file picker interrupted the export");
+            }
+            payload.saveVerified(new FileExportPayload.Destination() {
+                public OutputStream openOutput() throws IOException { return resolver.openOutputStream(uri, "wt"); }
+                public InputStream openInput() throws IOException { return resolver.openInputStream(uri); }
+                public void discard() { deleteCreatedDocument(resolver, uri); }
+            });
+            call.resolve(new JSObject().put("bytesWritten", payload.expected));
+        } catch (IOException | RuntimeException error) {
+            if (call != null) call.reject("Unable to save and verify the export. Try again with a local folder.", error);
+        } finally {
+            if (payload != null) payload.file.delete();
+            synchronized (this) { openingFile = false; }
+        }
+    }
+
+    private void deleteCreatedDocument(ContentResolver resolver, Uri uri) {
+        try { android.provider.DocumentsContract.deleteDocument(resolver, uri); }
+        catch (IOException | RuntimeException ignored) { /* Some providers do not support deletion. */ }
+    }
+
+    private void shareFile(PluginCall call, File attachment, String filename, String mimeType) {
+        Uri uri = FileProvider.getUriForFile(
+            getContext(), getContext().getPackageName() + ".fileprovider", attachment, filename);
+        Intent send = new Intent(Intent.ACTION_SEND).setType(mimeType)
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        send.setClipData(ClipData.newRawUri(filename, uri));
+        if (Boolean.TRUE.equals(call.getBoolean("feedback")) && "application/json".equals(mimeType)) {
+            send.putExtra(Intent.EXTRA_EMAIL, new String[]{"TullLabs@outlook.com"});
+            send.putExtra(Intent.EXTRA_SUBJECT, "Espresso Dial-In beta feedback");
+        }
+        getActivity().startActivity(Intent.createChooser(send, "Share Espresso Dial-In file"));
     }
 }

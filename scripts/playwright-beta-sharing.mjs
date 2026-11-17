@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import sharp from 'sharp';
 import { validateContribution } from '../src/beta/contribution.js';
 import { v1Bean, v1Shot, v10Shot } from '../src/transfer/historicalFixtures.js';
 import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
@@ -106,6 +107,56 @@ try {
   assert.equal(JSON.parse(await contributionText.inputValue()).records.length, 1);
   assert.deepEqual(errors, []);
   console.log('PASS Shot Profile opens a single-shot contribution preview');
+
+  await contribution.getByRole('button', { name: 'Close' }).click();
+  const card = profile.getByRole('region', { name: 'Shot card' });
+  const historical = await downloadPng(card);
+  assert.equal(historical.height, 575);
+  await card.getByRole('checkbox', { name: 'Show personal notes' }).check();
+  await card.getByRole('checkbox', { name: 'Show bean name' }).check();
+  assert.ok((await downloadPng(card)).height > historical.height);
+  await card.getByRole('checkbox', { name: 'Show personal notes' }).uncheck();
+  await card.getByRole('checkbox', { name: 'Show bean name' }).uncheck();
+  assert.deepEqual((await downloadPng(card)).pixels, historical.pixels);
+  await profile.getByRole('button', { name: 'Use as bean reference' }).click();
+  await seed([], [
+    { id: 'manual-png', beanId: v1Bean.id, timestamp: '2026-01-01T00:00:00Z', actualYieldG: 32 },
+    { id: 'sensor-png', beanId: v1Bean.id, timestamp: '2026-06-01T00:00:00Z', actualYieldG: 36,
+      labPressureCurve: [{ tS: 0, bar: 0 }, { tS: 0.2, bar: 6 }, { tS: 0.4, bar: 9 }],
+      scaleFlowCurve: [{ tS: 0, weightG: 0 }, { tS: 0.2, weightG: 1 }, { tS: 0.4, weightG: 2 }] },
+  ]);
+  await page.reload();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  const profiles = page.getByTestId('history-shot-profile');
+  const manual = await openCard(profiles.nth(1));
+  assert.equal((await downloadPng(manual)).height, 575);
+  const tracked = await openCard(profiles.first());
+  const trackedPng = await downloadPng(tracked);
+  assert.equal(trackedPng.height, 575 + 3 * 180);
+  await tracked.getByRole('checkbox', { name: 'Include bean reference' }).check();
+  assert.equal((await downloadPng(tracked)).height, trackedPng.height + 340);
+  assert.deepEqual(errors, []);
+  console.log('PASS real canvas PNG download, historical/manual cards, privacy, pressure and flow, and reference comparison');
+
+  async function openCard(entry) {
+    await entry.getByText('Shot profile', { exact: true }).click();
+    await entry.getByText('Share Shot', { exact: true }).click();
+    return entry.getByRole('region', { name: 'Shot card' });
+  }
+
+  async function downloadPng(section) {
+    const pending = page.waitForEvent('download');
+    await section.getByRole('button', { name: 'Download PNG', exact: true }).click();
+    const download = await pending;
+    const bytes = await readFile(await download.path());
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    const { data: pixels, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    assert.equal(info.width, 1200);
+    assert.ok(info.height > 0);
+    const accent = (67 * info.width + 75) * info.channels;
+    assert.notDeepEqual(pixels.subarray(0, 4), pixels.subarray(accent, accent + 4));
+    return { height: info.height, pixels };
+  }
 
   function seed(beans = [], shots = []) {
     return page.evaluate(({ beans, shots }) => new Promise((resolve, reject) => {

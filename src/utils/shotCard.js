@@ -3,6 +3,26 @@ import { buildShotProfile } from './shotProfile.js';
 export const CARD_WIDTH = 1200;
 export const CARD_BRAND = 'ESPRESSO DIAL-IN';
 
+export async function encodeShotCardPng(canvas) {
+  const context = canvas.getContext('2d');
+  const background = context.getImageData(0, 0, 1, 1).data;
+  const accent = context.getImageData(75, 67, 1, 1).data;
+  if (background[3] !== 255 || accent[3] !== 255 || background.slice(0, 3).every((value, i) => value === accent[i])) {
+    throw new Error('The shot card did not render visible content.');
+  }
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (blob?.type !== 'image/png' || blob.size < 57) throw new Error('Could not create the PNG.');
+  const header = new DataView(await blob.slice(0, 24).arrayBuffer());
+  const end = new DataView(await blob.slice(-12).arrayBuffer());
+  if (header.getUint32(0) !== 0x89504e47 || header.getUint32(4) !== 0x0d0a1a0a
+    || header.getUint32(8) !== 13 || header.getUint32(12) !== 0x49484452
+    || header.getUint32(16) !== canvas.width || header.getUint32(20) !== canvas.height
+    || end.getUint32(0) !== 0 || end.getUint32(4) !== 0x49454e44 || end.getUint32(8) !== 0xae426082) {
+    throw new Error('The shot card PNG is invalid or incomplete.');
+  }
+  return blob;
+}
+
 // The same canvas is used for the preview and the exported PNG.
 export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options }) {
   const entries = [{ shot, bean, grind, title: referenceShot ? 'YOUR SHOT' : 'SHOT PROFILE' },

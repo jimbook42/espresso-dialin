@@ -1,25 +1,23 @@
 import { isAndroidApp, saveAndroidFile } from '../native/androidShell.js';
 import { useEffect, useRef, useState } from 'react';
-import { drawShotCard } from '../utils/shotCard.js';
+import { drawShotCard, encodeShotCardPng } from '../utils/shotCard.js';
 
 export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui, onError, options, setOptions }) {
   const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
   const canvas = useRef(null);
   useEffect(() => {
     let disposed = false;
     let url;
     try {
       drawShotCard(canvas.current, { shot, bean, grind, referenceShot: options.reference ? referenceShot : null, options });
-      canvas.current.toBlob((blob) => {
+      void encodeShotCardPng(canvas.current).then((blob) => {
         if (disposed) return;
-        if (!blob) {
-          onError('Could not create the PNG.');
-          return;
-        }
         const file = new File([blob], filename + '.png', { type: 'image/png' });
         url = URL.createObjectURL(file);
         setPreview({ file, url, options, shot, bean, grind, referenceShot, filename });
-      }, 'image/png');
+      }).catch((error) => { if (!disposed) onError(error.message); });
     } catch (error) {
       onError(error.message);
     }
@@ -31,9 +29,23 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
   const ready = preview?.options === options && preview.shot === shot && preview.bean === bean
     && preview.grind === grind && preview.referenceShot === referenceShot && preview.filename === filename;
   const canShare = ready && (isAndroidApp || (navigator.share && navigator.canShare?.({ files: [preview.file] })));
+  const deliverAndroid = async (share) => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = await saveAndroidFile(preview.file, preview.file.name, share);
+      setStatus(result.cancelled ? 'Save cancelled.' : share
+        ? 'Share sheet opened. Check the receiving app for the PNG.'
+        : `Saved and verified ${result.bytesWritten.toLocaleString()} bytes.`);
+    } catch (error) {
+      onError(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const download = () => {
     if (isAndroidApp) {
-      void saveAndroidFile(preview.file, preview.file.name).catch((error) => onError(error.message));
+      void deliverAndroid(false);
       return;
     }
     const link = document.createElement('a');
@@ -46,13 +58,12 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
   const share = async () => {
     try {
       if (isAndroidApp) {
-        await saveAndroidFile(preview.file, preview.file.name, true);
+        await deliverAndroid(true);
         return;
       }
       await navigator.share({ files: [preview.file], title: 'Espresso shot' });
     } catch (error) {
-      if (isAndroidApp) onError(error.message);
-      else if (error.name !== 'AbortError') download();
+      if (error.name !== 'AbortError') download();
     }
   };
   const choices = [['brand', 'Show branding'], ['bean', 'Show bean name'], ['grinder', 'Show grinder'],
@@ -66,8 +77,9 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
     <canvas ref={canvas} hidden />
     {ready && <img src={preview.url} alt="Preview of shot card" className="block w-full rounded-lg" />}
     <div className="flex flex-wrap gap-2">
-      <button type="button" className={`min-h-11 rounded-lg px-3 py-2 font-semibold ${ui.secondaryBtn}`} disabled={!ready} onClick={download}>Download PNG</button>
-      {canShare && <button type="button" className={`min-h-11 rounded-lg px-3 py-2 font-semibold ${ui.secondaryBtn}`} onClick={share}>Share PNG</button>}
+      <button type="button" className={`min-h-11 rounded-lg px-3 py-2 font-semibold ${ui.secondaryBtn}`} disabled={!ready || busy} onClick={download}>Download PNG</button>
+      {canShare && <button type="button" className={`min-h-11 rounded-lg px-3 py-2 font-semibold ${ui.secondaryBtn}`} disabled={busy} onClick={share}>Share PNG</button>}
     </div>
+    {status && <p role="status">{status}</p>}
   </section>;
 }
