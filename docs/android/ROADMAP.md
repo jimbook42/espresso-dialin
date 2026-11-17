@@ -45,7 +45,7 @@ Dedicated Android and Google Play roadmap for `feat/capacitor-android-poc`. The 
 - **Dependencies** Owner-approved APK build, confirmed debug signing certificate for in-place update, battery/permission checks, secured copy of a verified backup, and real coffee hardware.
 - **Acceptance criteria** On the Galaxy, verify Flair 58 front-camera permission, calibration, tracking and pressure capture against the physical gauge. Check pairing, remembered-scale reconnection on entry to a shot, tare and measured weight, flow and auto-stop for each available Timemore, Acaia or Bookoo model. Run BLE with the camera active. Test interruption and recovery after backgrounding, screen lock and force-stop. Check saved shots, diagnostics and verification after relaunch. Run an offline startup, Android Back, orientation and actual chooser/saved-file exercise.
 - **Verification evidence** Owner migration is recorded in A1. Simulations, fixture results and Gradle compilation provide regression evidence only. Record phone/OS/build SHA, hardware and firmware, actual observations and any unsupported device separately.
-- **Next action** Approve a signed update build, then complete a physical acceptance session on the owner’s equipment.
+- **Next action** Use the v4.15.5 signed debug candidate for the owner's physical acceptance session. [Galaxy acceptance checklist](V4.15.5-BETA-ACCEPTANCE.md).
 
 ## A6. Google Play preparation
 
