@@ -29,6 +29,7 @@ describe('shot card rendering', () => {
   it('keeps zero and breaks a curve at missing samples', () => {
     const { texts, commands } = render({ ...manual, labPressureCurve: [{ tS: 0, bar: 0 }, { tS: 0.1, bar: 1 }, { tS: 0.2, bar: null }, { tS: 0.3, bar: 2 }] });
     expect(texts).toContain('0.0');
+    expect(texts).toContain('GAPS ▾');
     expect(commands.filter(([op]) => op === 'move').length).toBeGreaterThanOrEqual(3);
   });
 });

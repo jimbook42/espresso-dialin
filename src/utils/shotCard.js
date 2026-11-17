@@ -73,6 +73,23 @@ export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options
       ctx.stroke();
       // Dots preserve isolated observations, including zero-valued samples.
       track.points.forEach((point) => { const x = left + (point.tS - origin - minT) / (maxT - minT) * (right - left); const py = bottom - (point[track.key] - minV) / (maxV - minV) * (bottom - top); ctx.beginPath(); ctx.arc(x, py, 3, 0, Math.PI * 2); ctx.fill(); });
+      // Mark gaps above the trace so adjacent dots cannot visually hide a break.
+      track.points.forEach((point, index) => {
+        if (!index || !point.breakBefore) return;
+        const previous = track.points[index - 1];
+        const middle = (previous.tS + point.tS) / 2;
+        const x = left + (middle - origin - minT) / (maxT - minT) * (right - left);
+        ctx.strokeStyle = '#f9d59c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x - 5, top - 16);
+        ctx.lineTo(x, top - 5);
+        ctx.lineTo(x + 5, top - 16);
+        ctx.stroke();
+      });
+      if (track.points.some((point, index) => index > 0 && point.breakBefore)) {
+        text('GAPS ▾', right - 75, chartY + 10, 14, '#f9d59c', 700);
+      }
       text(`${minT.toFixed(1)} s`, left, bottom + 26, 16, '#c7cfc8');
       text(`${maxT.toFixed(1)} s`, right - 65, bottom + 26, 16, '#c7cfc8');
       chartY += 180;

@@ -203,6 +203,49 @@ try {
   await reopened.getByLabel('Show branding').uncheck();
   await recordedCard.getByLabel('Include bean reference').check();
   await saveCard(recordedCard, 'reference', 1635);
+
+  const synthetic = (duration, id) => ({
+    id, beanId: bean.id, timestamp: '2023-03-24T09:38:52.463Z',
+    grinderModel: 'Long grinder model name '.repeat(12),
+    notes: 'Distinctive private notes '.repeat(20), actualDoseG: 18, actualYieldG: 36, actualTimeS: duration,
+    labPressureCurve: Array.from({ length: duration * 10 + 1 }, (_, i) => ({
+      tS: i / 10, bar: i === 0 ? 0 : 8, ...(i === 100 ? { breakBefore: true } : {}),
+    })),
+    scaleFlowCurve: Array.from({ length: duration * 4 + 1 }, (_, i) => ({
+      tS: i / 4, weightG: i * 0.2, ...(i === 40 ? { breakBefore: true } : {}),
+    })),
+    shotProfileTiming: { version: 1, clockDriftMs: 0, pressureOriginMs: 0, scaleOriginMs: 0,
+      extractionStartMs: 0, extractionEndMs: duration * 1000, pressureSource: 'camera', scaleSource: 'web-bluetooth' },
+  });
+  const comparison = await openOfflinePage(true, [synthetic(22, 'short-shot'), synthetic(35, 'card-reference')]);
+  await comparison.evaluate(() => new Promise((resolve, reject) => {
+    const req = indexedDB.open('EspressoDialDB');
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction('beans', 'readwrite');
+      tx.objectStore('beans').put({ id: 'portable-bean', name: 'Private long bean name '.repeat(12), roastType: 'Medium' });
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onabort = () => reject(tx.error);
+    };
+  }));
+  await comparison.reload();
+  await comparison.getByRole('button', { name: 'History', exact: true }).click();
+  const shortCard = comparison.getByTestId('history-shot-card').filter({ hasText: 'Distinctive private notes' })
+    .filter({ hasText: '22' }).first().getByTestId('history-shot-profile');
+  await shortCard.locator('summary').first().click();
+  await shortCard.getByText('Share Shot', { exact: true }).click();
+  await shortCard.getByLabel('Include bean reference').check();
+  const saveComparison = async (name) => {
+    const img = shortCard.getByAltText('Preview of shot card');
+    await img.waitFor();
+    const previewBytes = await img.evaluate(async (el) => Array.from(new Uint8Array(await (await fetch(el.src)).arrayBuffer())));
+    const { bytes } = await grabDownload(comparison, 'Download PNG', shortCard);
+    assert.deepEqual(bytes, Buffer.from(previewBytes));
+    await writeFile(join(output, name + '.png'), bytes);
+  };
+  await saveComparison('comparison-hidden');
+  for (const label of ['Show bean name', 'Show grinder', 'Show personal notes']) await shortCard.getByLabel(label).check();
+  await saveComparison('comparison-long');
   console.log('B14 PNGs inspected by the smoke at ' + output);
   const report = cards.getByTestId('history-shot-card').filter({ hasText: 'Recorded card QA fixture' });
   await report.getByRole('button', { name: 'Report issue using diagnostic JSON' }).click();
