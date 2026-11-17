@@ -357,6 +357,27 @@ function shotFieldAttentionClass(active) {
   return active ? 'ring-2 ring-[#c88a4b]/80 taste-attention-pulse' : '';
 }
 
+// Keep keyboard navigation inside Settings without changing the existing dialog layout.
+function containSettingsTabFocus(event) {
+  if (event.key !== 'Tab') return;
+  const focusable = Array.from(event.currentTarget.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter((element) => element.getClientRects().length > 0);
+  if (!focusable.length) {
+    event.preventDefault();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 export default function App() {
   const [selectedTab, setSelectedTab] = useState(null);
   const shotBackGuard = useRef(false);
@@ -380,6 +401,17 @@ export default function App() {
   }, []);
   const [darkMode, setDarkMode] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsDialogRef = useRef(null);
+  useEffect(() => {
+    if (!isSettingsOpen) return undefined;
+    const previouslyFocused = document.activeElement;
+    settingsDialogRef.current?.querySelector('button:not([disabled])')?.focus();
+    return () => {
+      if (previouslyFocused?.isConnected && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus();
+      }
+    };
+  }, [isSettingsOpen]);
   const [usageSessionOff, setUsageSessionOff] = useState(false);
   const [usageSaving, setUsageSaving] = useState(false);
   const [usageError, setUsageError] = useState(false);
@@ -3115,7 +3147,7 @@ export default function App() {
     <div className={`flex items-center justify-end gap-3 ${ui.text}`}>
       <span className="text-xs" role="status">Shot saved</span>
       <button type="button" onClick={() => void openShotShare(lastSavedShotId)}
-        className={`min-h-9 text-xs font-bold ${ui.accentText}`} data-testid="saved-share-shot">Share shot</button>
+        className={`min-h-9 text-xs font-bold ${ui.accentText}`} data-testid="saved-share-shot">Report issue</button>
       <button type="button" onClick={() => setLastSavedShotId(null)} aria-label="Dismiss shot saved" className="min-h-9 px-2">✕</button>
     </div>
   );
@@ -3768,7 +3800,11 @@ export default function App() {
                         ui={ui}
                       />
                     )}
-                    <p className="text-[10px] text-[#6b6457]">Fullscreen timer: tap anywhere to end pre-infusion, then tap again to stop.</p>
+                    <p className="text-[10px] text-[#6b6457]">
+                      {timerUsePreInfusion
+                        ? 'Fullscreen timer: use End pre-infusion, then Stop shot.'
+                        : 'Fullscreen timer: use Stop shot to finish.'}
+                    </p>
                   </div>
 
                   {/* Grind setting */}
@@ -3801,7 +3837,7 @@ export default function App() {
                       onPatchSettings={(patch) => patchBrewGuidanceSettings(patch)}
                     />
 
-                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-[#2e2b26]">
+                    <div className={`mt-4 flex items-center justify-between pt-3 border-t ${ui.modalDivider}`}>
                       <span className="text-sm text-[#a09880]">Grinder purged?</span>
                       <button
                         type="button"
@@ -3931,7 +3967,7 @@ export default function App() {
                           className={`py-3 text-[10px] font-bold rounded-xl border transition-all ${
                             tasteProfilesMatch(tasteProfile, f.id)
                               ? 'bg-[#c88a4b] border-[#c88a4b] text-[#121110]'
-                              : 'bg-[#211e1a] text-[#a09880] border-[#2e2b26] hover:border-[#3d3830]'
+                              : `${ui.chip} ${darkMode ? 'hover:border-[#3d3830]' : 'hover:border-[#bfb3a1]'}`
                           }`}
                         >
                           {f.label}
@@ -3942,7 +3978,7 @@ export default function App() {
                     <FieldError field="shot-taste" error={shotFieldHighlights.taste} />
 
                     {/* Star rating */}
-                    <div className="flex items-center justify-between pt-2 border-t border-[#2e2b26]">
+                    <div className={`flex items-center justify-between pt-2 border-t ${ui.modalDivider}`}>
                       <span className="text-xs text-[#6b6457]">Shot rating (optional)</span>
                       <div className="flex gap-1">
                         {[1,2,3,4,5].map(star => (
@@ -4006,7 +4042,7 @@ export default function App() {
                       />
                     </div>
                     {excludeFromLearning && (
-                      <div className="space-y-2 pt-1 border-t border-[#2e2b26]">
+                      <div className={`space-y-2 pt-1 border-t ${ui.modalDivider}`}>
                         <label className={ui.fieldLabel}>What happened?</label>
                         <select
                           value={knownIssueReason}
@@ -4501,15 +4537,18 @@ export default function App() {
                 const { durationS, doseG, yieldG, ratio } = savedShotMeasurements(s);
                 const shotOutcome = standalone ? {} : classifyShotOutcome(s, recipeContextForShot(s, recipeForShot || {}));
                 const historyUserNote = standalone ? s.notes : formatHistoryShotUserNoteLine(s.notes);
+                const historyDisplayName = standalone
+                  ? (s.shotName || 'Pressure recording')
+                  : bean ? `${formatBeanDisplayName(bean)} [${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown bean';
                 return (
                   <div key={s.id} className={`${ui.card} p-4 rounded-2xl space-y-3`} data-testid="history-shot-card">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap justify-between items-start gap-2">
+                      <div className={`min-w-0 flex-1 ${historyDisplayName.length > 26 ? 'min-w-[min(12rem,100%)]' : ''}`}>
                         <span className={`text-sm font-bold ${ui.accentText}`}>
-                          {standalone ? (s.shotName || 'Pressure recording') : bean ? `${formatBeanDisplayName(bean)} [${bean.rating ? Number(bean.rating).toFixed(1) : 'N/A'}]` : 'Unknown bean'}
+                          {historyDisplayName}
                         </span>
                         {shotOutcome.statusLabel && (
-                          <span className={`ml-2 text-[9px] font-bold uppercase tracking-wide ${shotOutcome.isDialledIn ? ui.accentText : ui.muted}`}>
+                          <span className={`ml-2 whitespace-nowrap text-[9px] font-bold uppercase tracking-wide ${shotOutcome.isDialledIn ? ui.accentText : ui.muted}`}>
                             {shotOutcome.statusLabel}
                           </span>
                         )}
@@ -4588,7 +4627,7 @@ export default function App() {
                       <div className="grid grid-cols-4 gap-2 text-xs" data-testid="history-shot-metric-tiles">
                         {[
                           { label: 'Grind', value: grindStr, tone: ui.text, compact: false },
-                          { label: 'Dose/Yield', value: doseG == null && yieldG == null ? '—' : `${doseG ?? '—'}/${yieldG ?? '—'}g`, tone: ui.text, compact: false },
+                          { label: 'Dose/Yield', value: doseG == null && yieldG == null ? '—' : <>{doseG ?? '—'}/<wbr />{yieldG ?? '—'}g</>, tone: ui.text, compact: false },
                           { label: 'Time', value: durationS == null ? '—' : `${durationS}s`, tone: shotTimeTone(durationS, minT, maxT), compact: false },
                           { label: 'Taste', value: tasteProfileDisplayLabel(s.tasteProfile), tone: `${ui.sub} capitalize`, compact: true },
                         ].map((cell) => (
@@ -4598,7 +4637,7 @@ export default function App() {
                           >
                             <span className={`block text-[8px] uppercase tracking-wider ${ui.muted} mb-1 w-full`}>{cell.label}</span>
                             <strong
-                              className={`font-black leading-tight max-w-full break-words ${cell.compact ? 'text-[10px]' : 'text-sm'} ${cell.tone}`}
+                              className={`font-black leading-tight max-w-full ${cell.label === 'Dose/Yield' ? 'break-normal overflow-hidden' : 'break-words'} ${cell.compact ? 'text-[10px]' : 'text-sm'} ${cell.tone}`}
                             >
                               {cell.value}
                             </strong>
@@ -4846,7 +4885,7 @@ export default function App() {
 
         {isSettingsOpen && (
           <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center p-4 pb-24 sm:pb-4 z-50">
-            <div role="dialog" aria-labelledby="preferences-title" className={`${ui.card} rounded-2xl max-w-sm w-full shadow-xl max-h-[min(85dvh,calc(100dvh-7rem))] flex flex-col overflow-hidden`}>
+            <div role="dialog" aria-modal="true" aria-labelledby="preferences-title" ref={settingsDialogRef} onKeyDown={containSettingsTabFocus} className={`${ui.card} rounded-2xl max-w-sm w-full shadow-xl max-h-[min(85dvh,calc(100dvh-7rem))] flex flex-col overflow-hidden`}>
               <div className={`flex items-center justify-between border-b p-6 pb-3 shrink-0 ${ui.modalDivider}`}>
                 <div className="flex items-center gap-2">
                   <Sliders className={`w-5 h-5 ${ui.accentText}`} />
@@ -5305,7 +5344,7 @@ export default function App() {
       )}
 
       {/* Fixed bottom tab bar */}
-      <nav aria-label="Main navigation" className={`fixed bottom-0 left-0 right-0 z-50 ${ui.nav} backdrop-blur safe-area-pb`}>
+      <nav aria-label="Main navigation" inert={isSettingsOpen} className={`fixed bottom-0 left-0 right-0 ${isSettingsOpen ? 'z-40' : 'z-50'} ${ui.nav} backdrop-blur safe-area-pb`}>
         <div className="max-w-xl mx-auto flex items-stretch gap-1 p-1.5">
           {[
             ...(experience === 'pressure'
