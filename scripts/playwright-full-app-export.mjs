@@ -61,6 +61,8 @@ try {
   const archiveBytes = await readFile(await download.path());
   const { snapshot, manifest } = await parseArchive(new Blob([archiveBytes]));
   assert.equal(manifest.version, 1);
+  const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.appVersion, version);
   assert.deepEqual(snapshot.settings, [settings]);
   assert.deepEqual(snapshot.beans.map(({ id }) => id), ['b', v1Bean.id, 'unused']);
   assert.equal(snapshot.shots[0].actualYieldG, 36.125);
@@ -114,6 +116,64 @@ try {
   await importSection.getByRole('button', { name: 'Verify imported data' }).click();
   await importSection.getByText('Transfer verification: PASS', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('EspressoDialDB');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction('shots', 'readwrite');
+      const shots = tx.objectStore('shots');
+      const read = shots.get('s');
+      read.onsuccess = () => {
+        const bytes = new Uint16Array([1, 257, 65530]);
+        const metadata = { bytes, view: new DataView(bytes.buffer, 2, 4) };
+        metadata.self = metadata;
+        shots.put({ ...read.result, metadata });
+      };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onabort = () => reject(tx.error);
+    };
+  }));
+  const secondDownload = page.waitForEvent('download');
+  await transfer.getByRole('button', { name: 'Export entire app' }).click();
+  const v2File = await secondDownload;
+  const v2Bytes = await readFile(await v2File.path());
+  const v2 = await parseArchive(new Blob([v2Bytes]));
+  assert.equal(v2.manifest.version, 2);
+  assert.equal(v2.manifest.appVersion, version);
+  assert.deepEqual(v2.snapshot.shots.find(({ id }) => id === v1Shot.id), v1Shot);
+  const metadata = v2.snapshot.shots.find(({ id }) => id === 's').metadata;
+  assert.equal(metadata.self, metadata);
+  assert.equal(metadata.view.buffer, metadata.bytes.buffer);
+
+  await importSection.locator('input[type=file]').setInputFiles({
+    name: v2File.suggestedFilename(), mimeType: 'application/octet-stream', buffer: v2Bytes,
+  });
+  await importSection.getByText('Import preview', { exact: true }).waitFor();
+  await importSection.getByRole('checkbox', { name: 'Replace supported Android data with the exact copy' }).check();
+  await importSection.getByRole('button', { name: 'Confirm transfer' }).click();
+  await importSection.waitFor({ state: 'hidden' });
+  await settingsButton.click();
+  await importSection.getByRole('button', { name: 'Verify imported data' }).click();
+  await importSection.getByText('Transfer verification: PASS', { exact: true }).waitFor();
+  const persisted = await android.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('EspressoDialDB');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const read = db.transaction('shots').objectStore('shots').get('s');
+      read.onerror = () => { db.close(); reject(read.error); };
+      read.onsuccess = () => {
+        db.close();
+        const metadata = read.result.metadata;
+        resolve({ bytes: Array.from(metadata.bytes), offset: metadata.view.byteOffset, span: metadata.view.byteLength,
+          shared: metadata.view.buffer === metadata.bytes.buffer, cyclic: metadata.self === metadata });
+      };
+    };
+  }));
+  assert.deepEqual(persisted, { bytes: [1, 257, 65530], offset: 2, span: 4, shared: true, cyclic: true });
+  assert.deepEqual(errors, []);
+  console.log('PASS v2 PWA export and Android restore UI preserve typed views, offsets and cyclic metadata after reload');
   await destination.close();
   console.log('PASS Android restore UI in Chromium: conflict preview, exact copy, History, Stats and verification after reload');
 

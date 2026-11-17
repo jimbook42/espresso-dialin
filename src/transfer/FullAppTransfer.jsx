@@ -1,3 +1,4 @@
+import { transferErrorMessage } from './transferError.js';
 import { useEffect, useRef, useState } from 'react';
 import { isAndroidApp, saveAndroidBackup } from '../native/androidShell.js';
 import { BACKUP_EXTENSION } from './archive.js';
@@ -52,8 +53,7 @@ export function FullAppTransfer({ ui, blocked }) {
     try {
       await action();
     } catch (err) {
-      const message = err?.name === 'QuotaExceededError' ? 'There is not enough local storage. Free some space and try again.' : err?.message;
-      setError(message || 'Transfer failed. Check available storage and try again.');
+      setError(transferErrorMessage(err, 'Transfer failed. Check available storage and try again.'));
     } finally {
       setBusy('');
     }

@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { readFile } from 'node:fs/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { transferErrorMessage } from './transferError.js';
 import { buildArchive, DATASETS, parseArchive } from './archive.js';
 import { createTransferStore, openTransferJournal } from './transferStore.js';
 import { readReplayForTransfer, replaceReplayForTransfer } from '../flairPressureLab/labShotReplayDb.js';
@@ -322,12 +323,57 @@ describe('full app transfer', () => {
     expect(await target.database.beans.count()).toBe(1);
   });
 
+  it('keeps original v1 scalar, sparse array, Date, binary and File metadata values', async () => {
+    const data = example();
+    const sparse = new Array(3);
+    sparse[0] = undefined;
+    sparse[2] = null;
+    data.beans[0].metadata = {
+      sparse, timestamp: new Date('2025-01-10T10:01:00.123Z'), invalidDate: new Date(NaN),
+      big: 9007199254740993n, negativeZero: -0, infinite: Infinity, notANumber: NaN,
+      buffer: Uint8Array.of(0, 255).buffer,
+      attachment: new File([Uint8Array.of(10, 20)], 'label.bin', { type: 'application/octet-stream', lastModified: 123 }),
+    };
+    const { file } = await buildArchive(data, appVersion);
+    const decoded = await parseArchive(file);
+    expect(decoded.manifest.version).toBe(1);
+    const saved = decoded.snapshot.beans[0].metadata;
+    expect(Object.hasOwn(saved.sparse, 0)).toBe(true);
+    expect(Object.hasOwn(saved.sparse, 1)).toBe(false);
+    expect(saved.sparse[2]).toBeNull();
+    expect(saved.timestamp.toISOString()).toBe('2025-01-10T10:01:00.123Z');
+    expect(Number.isNaN(+saved.invalidDate)).toBe(true);
+    expect(saved.big).toBe(9007199254740993n);
+    expect(Object.is(saved.negativeZero, -0)).toBe(true);
+    expect(saved.infinite).toBe(Infinity);
+    expect(Number.isNaN(saved.notANumber)).toBe(true);
+    expect([...new Uint8Array(saved.buffer)]).toEqual([0, 255]);
+    expect(saved.attachment).toMatchObject({ name: 'label.bin', type: 'application/octet-stream', lastModified: 123 });
+    expect([...new Uint8Array(await saved.attachment.arrayBuffer())]).toEqual([10, 20]);
+  });
+
+  it('locates bad fields without exposing a record value, key, ID, or raw parser error', async () => {
+    const data = example();
+    const privateText = 'private payload 9d12';
+    data.shots[0][privateText] = new Error(privateText);
+    await expect(buildArchive(data, appVersion)).rejects.toThrow(/^shots\[0\]\.field\[\d+\]: A stored value uses an unsupported type\.$/);
+    expect(transferErrorMessage(new Error(privateText))).toBe('Transfer failed. Try again.');
+    const { file } = await buildArchive(example(), appVersion);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const manifestLength = new DataView(bytes.buffer).getUint32(8, true);
+    const invalid = new Uint8Array(manifestLength).fill(32);
+    invalid.set(new TextEncoder().encode(privateText));
+    bytes.set(invalid, 44);
+    bytes.set(new Uint8Array(await crypto.subtle.digest('SHA-256', invalid)), 12);
+    await expect(parseArchive(new Blob([bytes]))).rejects.toThrow(/^manifest: Invalid JSON or UTF-8\.$/);
+  });
+
   it('rejects corrupted, truncated, unsupported, or unsafe archives', async () => {
     const { file } = await buildArchive(example(), appVersion);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const corrupt = bytes.slice();
     corrupt[corrupt.length - 1] ^= 1;
-    await expect(parseArchive(new Blob([corrupt]))).rejects.toThrow('checksum');
+    await expect(parseArchive(new Blob([corrupt]))).rejects.toThrow('preferences.parts[0]: Checksum failed.');
     await expect(parseArchive(file.slice(0, -5))).rejects.toThrow('truncated');
     await expect(parseArchive(new Blob([file, 'x']))).rejects.toThrow('trailing');
     const badVersion = bytes.slice();

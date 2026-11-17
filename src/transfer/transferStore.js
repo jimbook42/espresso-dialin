@@ -1,3 +1,4 @@
+import { TransferError } from './transferError.js';
 import Dexie from 'dexie';
 import { db } from '../utils/grinderLogic.js';
 import { readReplayForTransfer, replaceReplayForTransfer } from '../flairPressureLab/labShotReplayDb.js';
@@ -12,7 +13,7 @@ const tables = ['beans', 'recipes', 'shots', 'settings'];
 const preferences = [BEANS_FINISHED_SECTION_OPEN_KEY, 'espresso-dialin.camera-facing-mode'];
 const isId = (id) => (typeof id === 'string' && id.length > 0) || Number.isFinite(id);
 const rowObject = (value) => value != null && Object.getPrototypeOf(value) === Object.prototype;
-const valid = (condition, message) => { if (!condition) throw new Error(message); };
+const valid = (condition, message) => { if (!condition) throw new TransferError(message); };
 
 export function openTransferJournal(name = 'EspressoDialTransfer') {
   const journal = new Dexie(name, { chromeTransactionDurability: 'strict' });
