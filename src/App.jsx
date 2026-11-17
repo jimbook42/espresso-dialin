@@ -4637,7 +4637,7 @@ export default function App() {
                           >
                             <span className={`block text-[8px] uppercase tracking-wider ${ui.muted} mb-1 w-full`}>{cell.label}</span>
                             <strong
-                              className={`font-black leading-tight max-w-full ${cell.label === 'Dose/Yield' ? 'break-normal overflow-hidden' : 'break-words'} ${cell.compact ? 'text-[10px]' : 'text-sm'} ${cell.tone}`}
+                              className={`font-black leading-tight max-w-full break-words ${cell.compact ? 'text-[10px]' : 'text-sm'} ${cell.tone}`}
                             >
                               {cell.value}
                             </strong>

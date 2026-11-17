@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync(new URL('./App.jsx', import.meta.url), 'utf8');
 
 describe('v4.15.2 compact UI regressions', () => {
-  it('offers a break after the Dose/Yield slash, not inside digits', () => {
+  it('offers a break after the Dose/Yield slash and permits long values to wrap', () => {
     expect(source).toContain("{doseG ?? '—'}/<wbr />{yieldG ?? '—'}g");
-    expect(source).toContain("cell.label === 'Dose/Yield' ? 'break-normal overflow-hidden' : 'break-words'");
+    expect(source).toContain('max-w-full break-words');
   });
 
   it('accurately labels the saved-shot diagnostic action', () => {
