@@ -31,3 +31,8 @@ export function installSettingsLocalCacheHook(database) {
   };
   database.settings.__localCacheHookInstalled = true;
 }
+
+export function rebuildGlobalSettingsCache(storage, row) {
+  if (row) storage.setItem(CACHE_KEY, JSON.stringify(row));
+  else storage.removeItem(CACHE_KEY);
+}

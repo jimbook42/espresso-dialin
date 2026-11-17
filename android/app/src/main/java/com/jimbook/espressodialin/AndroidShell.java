@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.net.Uri;
 import android.util.Base64;
 import android.view.WindowManager;
 import androidx.activity.result.ActivityResult;
@@ -23,6 +24,114 @@ import java.io.OutputStream;
 
 @CapacitorPlugin(name = "AndroidShell")
 public class AndroidShell extends Plugin {
+    private static final int BACKUP_CHUNK_LIMIT = 256 * 1024;
+    private static final long BACKUP_LIMIT = 512L * 1024 * 1024;
+    private OutputStream backupStream;
+    private Uri backupUri;
+    private long backupBytes;
+    private boolean openingBackup;
+
+    @PluginMethod
+    public synchronized void beginBackupExport(PluginCall call) {
+        String filename = call.getString("filename", "");
+        if (!filename.matches("[A-Za-z0-9-]{1,80}\\.dialinbackup") || openingBackup || backupStream != null) {
+            call.reject("Invalid backup filename or an export is already open.");
+            return;
+        }
+        openingBackup = true;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/octet-stream")
+            .putExtra(Intent.EXTRA_TITLE, filename);
+        startActivityForResult(call, intent, "openBackupExport");
+    }
+
+    @ActivityCallback
+    private synchronized void openBackupExport(PluginCall call, ActivityResult result) {
+        openingBackup = false;
+        if (call == null) return;
+        Intent intent = result.getData();
+        if (result.getResultCode() != Activity.RESULT_OK || intent == null || intent.getData() == null) {
+            call.resolve(new JSObject().put("opened", false));
+            return;
+        }
+        backupUri = intent.getData();
+        try {
+            backupStream = getContext().getContentResolver().openOutputStream(backupUri, "wt");
+            if (backupStream == null) throw new IOException("No output stream");
+            backupBytes = 0;
+            call.resolve(new JSObject().put("opened", true));
+        } catch (IOException | RuntimeException error) {
+            discardFailedBackup();
+            call.reject("Unable to open the backup destination.", error);
+        }
+    }
+
+    @PluginMethod
+    public synchronized void appendBackupExport(PluginCall call) {
+        if (backupStream == null) {
+            call.reject("No backup destination is open.");
+            return;
+        }
+        try {
+            String encoded = call.getString("data", "");
+            if (encoded.length() > ((BACKUP_CHUNK_LIMIT + 2) / 3) * 4) throw new IOException("Chunk too large");
+            byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
+            if (bytes.length > BACKUP_CHUNK_LIMIT || backupBytes + bytes.length > BACKUP_LIMIT) {
+                throw new IOException("Backup size limit exceeded");
+            }
+            backupStream.write(bytes);
+            backupBytes += bytes.length;
+            call.resolve();
+        } catch (IOException | RuntimeException error) {
+            discardFailedBackup();
+            call.reject("Could not write the backup. Check available storage and retry.", error);
+        }
+    }
+
+    @PluginMethod
+    public synchronized void finishBackupExport(PluginCall call) {
+        if (backupStream == null) {
+            call.reject("No backup destination is open.");
+            return;
+        }
+        try {
+            backupStream.close();
+            backupStream = null;
+            backupUri = null;
+            call.resolve();
+        } catch (IOException error) {
+            discardFailedBackup();
+            call.reject("Could not finish writing the backup.", error);
+        }
+    }
+
+    @PluginMethod
+    public synchronized void cancelBackupExport(PluginCall call) {
+        discardFailedBackup();
+        call.resolve();
+    }
+
+    @Override
+    protected synchronized void handleOnDestroy() {
+        discardFailedBackup();
+        super.handleOnDestroy();
+    }
+
+    private void discardFailedBackup() {
+        if (backupStream != null) {
+            try { backupStream.close(); } catch (IOException ignored) {}
+        }
+        if (backupUri != null) {
+            try {
+                // Only the document just created through ACTION_CREATE_DOCUMENT.
+                android.provider.DocumentsContract.deleteDocument(getContext().getContentResolver(), backupUri);
+            } catch (IOException | RuntimeException ignored) {}
+        }
+        backupStream = null;
+        backupUri = null;
+    }
+
     @PluginMethod
     public void hasBluetoothPermissions(PluginCall call) {
         boolean granted = Build.VERSION.SDK_INT >= 31

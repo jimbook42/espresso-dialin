@@ -117,3 +117,33 @@ export async function deleteLastLabShotReplay() {
   });
   db.close();
 }
+
+/** Full replay row for local app transfer, including the original Blob and metadata. */
+export async function readReplayForTransfer() {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction(STORE).objectStore(STORE).get(RECORD_KEY);
+      request.onsuccess = () => resolve(request.result ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function replaceReplayForTransfer(record) {
+  const db = await openDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite', { durability: 'strict' });
+      const store = tx.objectStore(STORE);
+      if (record) store.put(record, RECORD_KEY);
+      else store.delete(RECORD_KEY);
+      tx.oncomplete = resolve;
+      tx.onabort = () => reject(tx.error || new Error('Replay restore was interrupted.'));
+    });
+  } finally {
+    db.close();
+  }
+}

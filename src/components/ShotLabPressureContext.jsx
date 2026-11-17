@@ -54,9 +54,6 @@ export function ShotLabPressureProvider({
     try { return localStorage.getItem('espresso-dialin.camera-facing-mode') === 'environment' ? 'environment' : 'user'; }
     catch { return 'user'; }
   });
-  useEffect(() => {
-    try { localStorage.setItem('espresso-dialin.camera-facing-mode', facingMode); } catch { /* UI preference only. */ }
-  }, [facingMode]);
 
   useEffect(() => {
     if (calibrateRequest > 0) setCalibrateOpen(true);
@@ -160,7 +157,11 @@ export function ShotLabPressureProvider({
 
   const value = {
     facingMode,
-    flipCamera: () => setFacingMode((current) => current === 'user' ? 'environment' : 'user'),
+    flipCamera: () => {
+      const next = facingMode === 'user' ? 'environment' : 'user';
+      setFacingMode(next);
+      try { localStorage.setItem('espresso-dialin.camera-facing-mode', next); } catch { /* UI preference only. */ }
+    },
     videoRef: pressure.videoRef,
     liveFrameRef,
     enabled,

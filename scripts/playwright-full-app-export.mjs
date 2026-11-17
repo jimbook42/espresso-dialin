@@ -1,0 +1,116 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { chromium } from 'playwright';
+import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
+import { parseArchive } from '../src/transfer/archive.js';
+
+const server = startPreviewServer(4198);
+let browser;
+try {
+  await waitForServer(server.url);
+  browser = await chromium.launch();
+  const page = await browser.newPage({ serviceWorkers: 'block' });
+  const errors = [];
+  page.on('pageerror', (error) => { errors.push(error.message); });
+  await page.goto(server.url);
+  await page.waitForFunction(() => document.body.textContent.includes('grinder'));
+  const settings = { id: 'global', grinderModel: 'Sette 270Wi', experiencePreference: 'combined',
+    lastSelectedBeanId: 'b', anonymousUsageStats: false };
+  await page.evaluate(async (settings) => {
+    const openDb = (name, version, upgrade) => new Promise((resolve, reject) => {
+      const open = version ? indexedDB.open(name, version) : indexedDB.open(name);
+      if (upgrade) open.onupgradeneeded = () => upgrade(open.result);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => resolve(open.result);
+    });
+    const write = (db, stores, operation) => new Promise((resolve, reject) => {
+      const tx = db.transaction(stores, 'readwrite');
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onabort = () => reject(tx.error);
+      operation(tx);
+    });
+    const db = await openDb('EspressoDialDB');
+    await write(db, ['settings', 'beans', 'recipes', 'shots'], (tx) => {
+      tx.objectStore('settings').add(settings);
+      tx.objectStore('beans').add({ id: 'b', name: 'Test bean' });
+      tx.objectStore('beans').add({ id: 'unused', name: 'Unused bean' });
+      tx.objectStore('recipes').add({ id: 'r', beanId: 'b', targetYieldG: 36 });
+      tx.objectStore('shots').add({ id: 's', beanId: 'b', actualYieldG: 36.125, actualTimeS: 28.01,
+        timestamp: '2026-07-04T00:00:00Z' });
+    });
+    const replay = await openDb('EspressoDialLabReplay', 1, (db) => db.createObjectStore('lastReplay'));
+    await write(replay, ['lastReplay'], (tx) => tx.objectStore('lastReplay').put({
+      shotId: 's', byteSize: 3, mimeType: 'video/webm', samples: [],
+      blob: new Blob([new Uint8Array([3, 255, 9])], { type: 'video/webm' }),
+    }, 'last'));
+    localStorage.setItem('espresso-dialin.beans-finished-section-open', '1');
+    localStorage.setItem('other-app-key', 'excluded');
+  }, settings);
+  await page.reload();
+  await page.getByTitle('Settings', { exact: true }).click();
+  const transfer = page.getByRole('region', { name: 'Transfer & Backup' });
+  assert.equal(await transfer.getByRole('button', { name: 'Import existing app' }).count(), 0);
+  const downloadReady = page.waitForEvent('download');
+  await transfer.getByRole('button', { name: 'Export entire app' }).click();
+  const download = await downloadReady;
+  assert.match(download.suggestedFilename(), /^espresso-dial-in-.*\.dialinbackup$/);
+  const archiveBytes = await readFile(await download.path());
+  const { snapshot, manifest } = await parseArchive(new Blob([archiveBytes]));
+  assert.equal(manifest.version, 1);
+  assert.deepEqual(snapshot.settings, [settings]);
+  assert.deepEqual(snapshot.beans.map(({ id }) => id), ['b', 'unused']);
+  assert.equal(snapshot.shots[0].actualYieldG, 36.125);
+  assert.deepEqual(new Uint8Array(await snapshot.replay[0].blob.arrayBuffer()), new Uint8Array([3, 255, 9]));
+  assert.deepEqual(snapshot.preferences, [{ id: 'espresso-dialin.beans-finished-section-open', value: '1' }]);
+  assert.deepEqual(errors, []);
+  console.log('PASS PWA Settings downloads a full archive with original records and replay bytes');
+
+  // A separate Chromium profile exercises the Android startup and restore UI.
+  // The platform hook here does not exercise the native file picker or bridge.
+  const destination = await browser.newContext({ serviceWorkers: 'block' });
+  await destination.addInitScript(() => { window.CapacitorCustomPlatform = { name: 'android' }; });
+  const android = await destination.newPage();
+  android.on('pageerror', (error) => { errors.push(error.message); });
+  await android.goto(server.url);
+  await android.waitForFunction(() => document.body.textContent.includes('grinder'));
+  await android.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('EspressoDialDB');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction('settings', 'readwrite');
+      tx.objectStore('settings').put({ id: 'global', grinderModel: 'Niche Zero', experiencePreference: 'brew',
+        anonymousUsageStats: false });
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onabort = () => reject(tx.error);
+    };
+  }));
+  await android.reload();
+  const settingsButton = android.getByTitle('Settings', { exact: true });
+  await settingsButton.click();
+  const importSection = android.getByRole('region', { name: 'Transfer & Backup' });
+  await importSection.locator('input[type=file]').setInputFiles({
+    name: download.suggestedFilename(), mimeType: 'application/octet-stream', buffer: archiveBytes,
+  });
+  await importSection.getByText('Import preview', { exact: true }).waitFor();
+  await importSection.getByRole('checkbox', { name: 'Replace supported Android data with the exact copy' }).check();
+  await importSection.getByRole('button', { name: 'Confirm transfer' }).click();
+  await importSection.waitFor({ state: 'hidden' });
+  await settingsButton.waitFor();
+  await android.getByRole('button', { name: 'History', exact: true }).click();
+  assert.equal(await android.getByTestId('history-shot-card').count(), 1);
+  await android.getByRole('button', { name: 'Stats', exact: true }).click();
+  await android.getByRole('heading', { name: 'Extraction analytics & statistics' }).waitFor();
+  assert.match(await android.getByText('Total', { exact: true }).locator('..').innerText(), /Total\s+1 shot/i);
+  await android.reload();
+  await settingsButton.click();
+  await importSection.getByRole('button', { name: 'Verify imported data' }).click();
+  await importSection.getByText('Transfer verification: PASS', { exact: true }).waitFor();
+  assert.deepEqual(errors, []);
+  await destination.close();
+  console.log('PASS Android restore UI in Chromium: conflict preview, exact copy, History, Stats and verification after reload');
+
+} finally {
+  await browser?.close();
+  await server.kill();
+}

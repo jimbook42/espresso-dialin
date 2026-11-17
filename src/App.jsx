@@ -236,6 +236,7 @@ import {
 } from './settings/anonymousUsage.js';
 import { isVerifiedGaugeCalibration } from './flairPressureLab/gaugeCompatibility.js';
 import { ShotProfile } from './components/ShotProfile.jsx';
+import { FullAppTransfer } from './transfer/FullAppTransfer.jsx';
 import { PortableShotBackup } from './components/PortableShotExport.jsx';
 import { BeanShotConsistency } from './components/BeanShotConsistency.jsx';
 import { saveShotTasteRating, shotTasteRating } from './utils/shotRatings.js';
@@ -5287,6 +5288,7 @@ export default function App() {
                     <p className={`text-[11px] ${ui.muted} text-center px-2`}>{csvImportSummary}</p>
                   )}
                   <PortableShotBackup ui={ui} />
+                  <FullAppTransfer ui={ui} blocked={shotBackLocked} />
                 </div>
 
                 <div className="pt-3 border-t border-rose-900/40 space-y-2">

@@ -1,3 +1,4 @@
+import { isAndroidApp } from './native/androidShell.js'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
@@ -27,12 +28,24 @@ if (entry.entry === 'flair-pressure-lab') {
     )
   })
 } else {
-  import('./App.jsx').then(async ({ default: App }) => {
+  async function launchApp() {
+    if (isAndroidApp) {
+      try {
+        const { recoverAndroidTransfer } = await import('./transfer/transferStore.js')
+        await recoverAndroidTransfer()
+      } catch (error) {
+        const { TransferRecovery } = await import('./transfer/TransferRecovery.jsx')
+        root.render(<TransferRecovery root={root} error={error} />)
+        return
+      }
+    }
+    const { default: App } = await import('./App.jsx')
     const children = [<App key="app" />]
     if (pressureLabEnabled) {
       const { PressureLabEntry } = await import('./flairPressureLab/PressureLabEntry.jsx')
       children.push(<PressureLabEntry key="pressure-lab" />)
     }
     root.render(<StrictMode>{children}</StrictMode>)
-  })
+  }
+  void launchApp()
 }
