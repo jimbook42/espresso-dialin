@@ -33,6 +33,12 @@ export function installSettingsLocalCacheHook(database) {
 }
 
 export function rebuildGlobalSettingsCache(storage, row) {
-  if (row) storage.setItem(CACHE_KEY, JSON.stringify(row));
-  else storage.removeItem(CACHE_KEY);
+  let serialized;
+  try {
+    if (row) serialized = JSON.stringify(row);
+  } catch {
+    // The IndexedDB row is authoritative. A cycle or BigInt cannot be cached as JSON.
+  }
+  if (serialized === undefined) storage.removeItem(CACHE_KEY);
+  else storage.setItem(CACHE_KEY, serialized);
 }

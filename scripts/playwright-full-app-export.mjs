@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { startPreviewServer, waitForServer } from './lib/previewServer.mjs';
+import { v1Bean, v1Recipe, v1Shot } from '../src/transfer/historicalFixtures.js';
 import { parseArchive } from '../src/transfer/archive.js';
 
 const server = startPreviewServer(4198);
@@ -16,7 +17,7 @@ try {
   await page.waitForFunction(() => document.body.textContent.includes('grinder'));
   const settings = { id: 'global', grinderModel: 'Sette 270Wi', experiencePreference: 'combined',
     lastSelectedBeanId: 'b', anonymousUsageStats: false };
-  await page.evaluate(async (settings) => {
+  await page.evaluate(async ({ settings, v1Bean, v1Recipe, v1Shot }) => {
     const openDb = (name, version, upgrade) => new Promise((resolve, reject) => {
       const open = version ? indexedDB.open(name, version) : indexedDB.open(name);
       if (upgrade) open.onupgradeneeded = () => upgrade(open.result);
@@ -32,6 +33,9 @@ try {
     const db = await openDb('EspressoDialDB');
     await write(db, ['settings', 'beans', 'recipes', 'shots'], (tx) => {
       tx.objectStore('settings').add(settings);
+      tx.objectStore('beans').add(v1Bean);
+      tx.objectStore('recipes').add(v1Recipe);
+      tx.objectStore('shots').add(v1Shot);
       tx.objectStore('beans').add({ id: 'b', name: 'Test bean' });
       tx.objectStore('beans').add({ id: 'unused', name: 'Unused bean' });
       tx.objectStore('recipes').add({ id: 'r', beanId: 'b', targetYieldG: 36 });
@@ -45,7 +49,7 @@ try {
     }, 'last'));
     localStorage.setItem('espresso-dialin.beans-finished-section-open', '1');
     localStorage.setItem('other-app-key', 'excluded');
-  }, settings);
+  }, { settings, v1Bean, v1Recipe, v1Shot });
   await page.reload();
   await page.getByTitle('Settings', { exact: true }).click();
   const transfer = page.getByRole('region', { name: 'Transfer & Backup' });
@@ -58,8 +62,9 @@ try {
   const { snapshot, manifest } = await parseArchive(new Blob([archiveBytes]));
   assert.equal(manifest.version, 1);
   assert.deepEqual(snapshot.settings, [settings]);
-  assert.deepEqual(snapshot.beans.map(({ id }) => id), ['b', 'unused']);
+  assert.deepEqual(snapshot.beans.map(({ id }) => id), ['b', v1Bean.id, 'unused']);
   assert.equal(snapshot.shots[0].actualYieldG, 36.125);
+  assert.deepEqual(snapshot.shots.find(({ id }) => id === v1Shot.id), v1Shot);
   assert.deepEqual(new Uint8Array(await snapshot.replay[0].blob.arrayBuffer()), new Uint8Array([3, 255, 9]));
   assert.deepEqual(snapshot.preferences, [{ id: 'espresso-dialin.beans-finished-section-open', value: '1' }]);
   assert.deepEqual(errors, []);
@@ -98,10 +103,12 @@ try {
   await importSection.waitFor({ state: 'hidden' });
   await settingsButton.waitFor();
   await android.getByRole('button', { name: 'History', exact: true }).click();
-  assert.equal(await android.getByTestId('history-shot-card').count(), 1);
+  await android.getByTestId('history-shot-card').nth(1).waitFor();
+  assert.equal(await android.getByTestId('history-shot-card').count(), 2);
+  assert.match(await android.getByTestId('history-shot-card').nth(1).innerText(), /13.?E/);
   await android.getByRole('button', { name: 'Stats', exact: true }).click();
   await android.getByRole('heading', { name: 'Extraction analytics & statistics' }).waitFor();
-  assert.match(await android.getByText('Total', { exact: true }).locator('..').innerText(), /Total\s+1 shot/i);
+  assert.match(await android.getByText('Total', { exact: true }).locator('..').innerText(), /Total\s+2 shots/i);
   await android.reload();
   await settingsButton.click();
   await importSection.getByRole('button', { name: 'Verify imported data' }).click();

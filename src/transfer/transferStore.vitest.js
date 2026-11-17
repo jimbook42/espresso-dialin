@@ -1,14 +1,20 @@
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
+import { readFile } from 'node:fs/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildArchive, DATASETS, parseArchive } from './archive.js';
 import { createTransferStore, openTransferJournal } from './transferStore.js';
 import { readReplayForTransfer, replaceReplayForTransfer } from '../flairPressureLab/labShotReplayDb.js';
 import { BEANS_FINISHED_SECTION_OPEN_KEY } from '../utils/beansFinishedSectionPrefs.js';
+import { db as appDatabase } from '../utils/grinderLogic.js';
+import { savedShotMeasurements, buildShotProfile } from '../utils/shotProfile.js';
+import { historicalSchemas, v1Bean, v1Recipe, v1Shot, v10Shot } from './historicalFixtures.js';
 import { MANUAL_SHOT_DRAFT_KEY } from '../utils/manualShotDraft.js';
 
 const appVersion = '4.15.2';
 const tables = ['beans', 'recipes', 'shots', 'settings'];
+const appSchema = Object.fromEntries(appDatabase.tables.map(({ name, schema }) =>
+  [name, [schema.primKey, ...schema.indexes].map(({ src }) => src).join(', ')]));
 const cacheKey = 'espresso-dialin.global-settings-v1';
 const cameraKey = 'espresso-dialin.camera-facing-mode';
 const cleanup = [];
@@ -42,9 +48,9 @@ function example() {
   };
 }
 
-async function setup(initial = empty(), { realReplay = false } = {}) {
-  const database = new Dexie('transfer-test-' + crypto.randomUUID());
-  database.version(17).stores(Object.fromEntries(tables.map((name) => [name, 'id'])));
+async function setup(initial = empty(), { realReplay = false, name = 'transfer-test-' + crypto.randomUUID() } = {}) {
+  const database = new Dexie(name);
+  database.version(appDatabase.verno).stores(appSchema);
   const journal = openTransferJournal(database.name + '-journal');
   const memory = new Map();
   const storage = { getItem: (name) => memory.get(name) ?? null,
@@ -68,6 +74,86 @@ afterEach(async () => {
 });
 
 describe('full app transfer', () => {
+  it.each([1, 6, 10, 11, 17])('opens historical schema %i and round-trips old and new rows', async (version) => {
+    const name = 'historical-' + crypto.randomUUID();
+    const historical = new Dexie(name);
+    historical.version(version).stores(historicalSchemas[version] ?? appSchema);
+    const oldShot = version >= 10 ? v10Shot : v1Shot;
+    await historical.table('beans').add(v1Bean);
+    await historical.table('recipes').add(v1Recipe);
+    await historical.table('shots').add(oldShot);
+    const oldSettings = { id: 'global', grinderModel: 'Sette 270Wi', flairEnabled: true, lastSetteMacro: 13 };
+    if (version >= 10) await historical.table('settings').add(oldSettings);
+    historical.close();
+
+    const modern = example();
+    modern.settings = version >= 10 ? modern.settings.filter(({ id }) => id !== 'global') : modern.settings;
+    const source = await setup(modern, { name });
+    const first = await source.store.capture();
+    expect(first.snapshot.shots.find(({ id }) => id === oldShot.id)).toEqual(oldShot);
+    expect(first.snapshot.beans.find(({ id }) => id === v1Bean.id)).toEqual(v1Bean);
+    expect(first.snapshot.recipes.find(({ id }) => id === v1Recipe.id)).toEqual(v1Recipe);
+    if (version >= 10) expect(first.snapshot.settings.find(({ id }) => id === 'global')).toEqual(oldSettings);
+
+    const destination = await setup(empty(), { realReplay: true });
+    await destination.store.stage(await destination.store.preview(first.file));
+    expect((await destination.store.applyPending()).datasets.every(({ match }) => match)).toBe(true);
+    destination.database.close();
+    await destination.database.open();
+    const again = await destination.store.capture();
+    expect(again.manifest.datasets).toEqual(first.manifest.datasets);
+    const restored = again.snapshot.shots.find(({ id }) => id === oldShot.id);
+    expect(restored).toEqual(oldShot);
+    expect(savedShotMeasurements(restored)).toEqual(savedShotMeasurements(oldShot));
+    expect(buildShotProfile(restored)).toEqual(buildShotProfile(oldShot));
+  });
+
+  it('restores and re-exports a frozen v1 archive written by 7bd8c71', async () => {
+    const file = new Blob([await readFile(new URL('./fixtures/v1-approved-build.dialinbackup', import.meta.url))]);
+    const original = await parseArchive(file);
+    expect(original.manifest.version).toBe(1);
+    expect(original.snapshot.shots).toEqual([v1Shot]);
+    const destination = await setup();
+    await destination.store.stage(await destination.store.preview(file));
+    const report = await destination.store.applyPending();
+    expect(report.datasets.every(({ match }) => match)).toBe(true);
+    expect((await destination.store.capture()).manifest.datasets).toEqual(original.manifest.datasets);
+  });
+
+  it('keeps typed views, ordered containers, own property names and shared or cyclic references', async () => {
+    const initial = example();
+    const buffer = new ArrayBuffer(16);
+    const view = new DataView(buffer, 2, 10);
+    view.setUint16(0, 1);
+    const details = { view, typed: new Uint16Array(buffer, 2, 4), pattern: /a/gi };
+    Object.defineProperty(details, '__proto__', { value: 'stored metadata', enumerable: true });
+    details.set = new Set([details, details.pattern]);
+    details.map = new Map([[details.typed, details.view], ['self', details]]);
+    initial.shots[0].oldMetadata = details;
+    initial.settings[0].oldSettingsCounter = 2n ** 53n;
+    const source = await setup(initial);
+    const first = await source.store.capture();
+    expect(first.manifest.version).toBe(2);
+    const destination = await setup();
+    await destination.store.stage(await destination.store.preview(first.file));
+    expect((await destination.store.applyPending()).datasets.every(({ match }) => match)).toBe(true);
+    destination.database.close();
+    await destination.database.open();
+    const again = await destination.store.capture();
+    expect(again.manifest.datasets).toEqual(first.manifest.datasets);
+    const restored = again.snapshot.shots[0].oldMetadata;
+    expect(restored.view.getUint16(0)).toBe(1);
+    expect(restored.typed.buffer).toBe(restored.view.buffer);
+    expect(restored.typed.byteOffset).toBe(2);
+    expect([...restored.set]).toEqual([restored, restored.pattern]);
+    expect(restored.map.get('self')).toBe(restored);
+    expect(restored.map.get(restored.typed)).toBe(restored.view);
+    expect(Object.getPrototypeOf(restored)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(restored, '__proto__').value).toBe('stored metadata');
+    expect(again.snapshot.settings[0].oldSettingsCounter).toBe(2n ** 53n);
+    expect(destination.storage.getItem(cacheKey)).toBeNull();
+  });
+
   it('restores whole records, original IDs, preferences and the binary replay, then verifies after reopening', async () => {
     const original = example();
     const source = await setup(original);
