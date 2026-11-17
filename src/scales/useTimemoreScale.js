@@ -1,3 +1,4 @@
+import { recordDiagnostic } from '../beta/diagnosticLog.js';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isScaleSimPickerEnabled } from '../config/scaleFlag.js';
 import { isDevUrlSimScaleActive } from '../config/devUrlSimScale.js';
@@ -118,7 +119,10 @@ export function useTimemoreScale({
     unsubscribeDisconnectRef.current?.();
     unsubscribeDisconnectRef.current = null;
     disposeSession();
-    if (connectionRef.current) diagnosticsRef?.current?.disconnect();
+    if (connectionRef.current) {
+      diagnosticsRef?.current?.disconnect();
+      if (!connectionRef.current.identity.simulated) recordDiagnostic('ble', 'disconnected');
+    }
     connectionRef.current = null;
     const t = transportRef.current;
     transportRef.current = null;
@@ -221,6 +225,8 @@ export function useTimemoreScale({
     pendingConnect.current = attempt;
     attempt.reconnect = reconnect === true;
     let transport;
+    const simulated = resolveEffectiveTransportKind(transportKind, simAllowed) === 'sim';
+    if (!simulated) recordDiagnostic('ble', reconnect === true ? 'reconnecting' : 'pairing');
     setConnectStatus('connecting');
     setBatteryPercent(null);
     try {
@@ -234,7 +240,7 @@ export function useTimemoreScale({
         throw new Error('Scale connection ended before setup completed.');
       }
       transport.remember?.();
-      const simulated = resolveEffectiveTransportKind(transportKind, simAllowed) === 'sim';
+      if (!simulated) recordDiagnostic('ble', 'connected');
       const identity = {
         model: simulated ? 'Simulated Timemore Dot'
           : SCALE_DEVICES.find(({ id }) => id === scaleDeviceId)?.label ?? 'Compatible scale',
@@ -256,6 +262,7 @@ export function useTimemoreScale({
     } catch (err) {
       if (transportRef.current === transport) transportRef.current = null;
       await transport?.disconnect().catch(() => {});
+      if (!simulated) recordDiagnostic('ble', attempt.signal.aborted || err?.name === 'NotFoundError' ? 'cancelled' : 'failed');
       if (!attempt.signal.aborted) {
         if (reconnect !== true) console.warn('[scale] connect failed', err);
         setConnectStatus(reconnect === true ? 'idle' : 'error');

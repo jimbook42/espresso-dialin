@@ -22,7 +22,7 @@ const identity = { model: 'Simulated Timemore Dot', transport: 'simulated', simu
 let nextId = 0;
 afterEach(() => vi.useRealTimers());
 
-function setup({ connected = true, legacyMode = false, enabled = true } = {}) {
+function setup({ connected = true, legacyMode = false, enabled = true, scaleIdentity = identity } = {}) {
   vi.useFakeTimers();
   vi.setSystemTime(epoch);
   const trace = createShotDeviceDiagnostics(flowAutoStopSettings(enabled, legacyMode));
@@ -40,7 +40,7 @@ function setup({ connected = true, legacyMode = false, enabled = true } = {}) {
     },
   });
   const at = (ms) => vi.setSystemTime(epoch + ms);
-  if (connected) trace.connect(identity, epoch - 3000);
+  if (connected) trace.connect(scaleIdentity, epoch - 3000);
   trace.start(epoch, 100);
   at(30);
   pressure.begin(Date.now());
@@ -87,6 +87,17 @@ function pour(shot) {
 }
 
 describe('shot diagnostic export', () => {
+  it.each(['native-ble', 'web-bluetooth'])('persists the observed physical scale transport %s', (transport) => {
+    const run = setup({ scaleIdentity: { model: 'Test scale', transport, simulated: false } });
+    run.weight(2100, 0);
+    run.weight(2200, 1.25);
+    const { shot } = run.stop({ ms: 5300 });
+    const timing = run.trace.savedProfileTiming({
+      ...shot, scaleFlowCurve: [{ tS: 0.1, weightG: 0 }, { tS: 0.2, weightG: 1.25 }],
+    }, 'scale');
+    expect(timing).toMatchObject({ scaleSource: transport, yieldSource: 'scale' });
+  });
+
   it('loads an old-format pressure export with explicit unavailable provenance', () => {
     const old = JSON.parse('{"shotId":"old-shot","labPressureCurve":[{"tS":1,"bar":0}]}');
     const document = buildShotDiagnosticDocument({ id: old.shotId, labPressureCurve: old.labPressureCurve });

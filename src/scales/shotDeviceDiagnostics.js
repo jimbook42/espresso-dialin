@@ -4,10 +4,19 @@ const completedShots = new Map();
 
 export const DIAGNOSTICS_UNAVAILABLE = 'unavailable: page reloaded or diagnostics were not retained';
 
-export const diagnosticsBuild = {
-  appVersion: import.meta.env.VITE_APP_VERSION || null,
-  gitSha: import.meta.env.VITE_APP_FULL_COMMIT_SHA || null,
-};
+function buildMetadata() {
+  try {
+    return {
+      appVersion: import.meta.env.VITE_APP_VERSION || null,
+      gitSha: import.meta.env.VITE_APP_FULL_COMMIT_SHA || null,
+    };
+  } catch {
+    // The offline contribution validator also imports this module directly in Node.
+    return { appVersion: null, gitSha: null };
+  }
+}
+
+export const diagnosticsBuild = buildMetadata();
 
 export function createShotDeviceDiagnostics(settings) {
   let origin = null;
@@ -173,7 +182,7 @@ export function createShotDeviceDiagnostics(settings) {
         settlementEndMs: frozen.events.findLast(({ type }) => type === 'yield-settlement-completed')?.tMs ?? null,
         clockDriftMs: final.wallClockDriftAtStopMs,
         ...(shot.labPressureCurve?.length && frozen.pressureSource ? { pressureSource: frozen.pressureSource } : {}),
-        ...(shot.scaleFlowCurve?.length && physicalScale ? { scaleSource: 'web-bluetooth' } : {}),
+        ...(shot.scaleFlowCurve?.length && physicalScale ? { scaleSource: frozen.scaleDiagnostics.identity.transport } : {}),
         scaleInterrupted: frozen.events.some(({ type, tMs }) => type === 'disconnect'
           && timeline.extractionOffsetMs != null && tMs >= timeline.extractionOffsetMs),
         yieldSource: yieldSource === 'scale' && !observedWeight ? 'unobserved-scale' : yieldSource,
@@ -197,4 +206,8 @@ export function createShotDeviceDiagnostics(settings) {
 
 export function shotDeviceDiagnosticsForShot(shotId) {
   return completedShots.get(String(shotId)) ?? null;
+}
+
+export function latestShotDeviceDiagnostics() {
+  return Array.from(completedShots.values()).at(-1) ?? null;
 }

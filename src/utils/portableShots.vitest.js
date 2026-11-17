@@ -178,6 +178,19 @@ describe('shot file adapters', () => {
     expect(buildSepShotFile(makeBackup([manual]).shots[0]).csv).toBeUndefined();
   });
 
+  it('exports physical Android BLE samples with the same SEP moments, offsets and gaps as Web Bluetooth', () => {
+    const timing = { ...shot.shotProfileTiming, scaleOriginMs: 500 };
+    const makeSep = (scaleSource) => buildSepShotFile(makeBackup([{
+      ...shot, shotProfileTiming: { ...timing, scaleSource },
+    }]).shots[0]);
+    const native = makeSep('native-ble');
+    const web = makeSep('web-bluetooth');
+    expect(native.tracks).toEqual(['weight', 'pressure']);
+    expect(native.csv).toBe(web.csv);
+    expect(readMoments(native.csv.trim().split('\n').slice(1)).weight)
+      .toEqual(observed.weight.map((point) => ({ ...point, tS: point.tS + 0.5 })));
+  });
+
   it('preserves legacy-compatible shot-summary CSV columns and output for a complete shot', () => {
     const record = { ...shot, brewRatio: '1:2.1', notes: 'quoted, "tasting note"' };
     const helpers = { formatShotGrindForHistory: () => '2.4', normalizeTasteProfile: (value) => value,

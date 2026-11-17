@@ -22,7 +22,7 @@ function describeSeries(samples, key, maxGapS, source, originMs, extraction) {
   const observedIndices = [];
   const gapBeforeIndices = [];
   let previous;
-  for (const [index, point] of (samples ?? []).entries()) {
+  for (const [index, point] of (Array.isArray(samples) ? samples : []).entries()) {
     if (!finite(point?.tS) || !finite(point[key]) || point.confident === false) continue;
     if (previous != null && (index !== previous + 1 || point.tS <= samples[previous].tS
       || point.tS - samples[previous].tS > maxGapS + 1e-9 || point.breakBefore || point.gap || point.reset)) {
@@ -40,7 +40,7 @@ function describeSeries(samples, key, maxGapS, source, originMs, extraction) {
   };
 }
 
-function describeShot(record) {
+export function describePortableShot(record) {
   const timing = recordedShotTiming(record);
   const extraction = extractionTiming(timing);
   const pressure = describeSeries(record.labPressureCurve, 'bar', PRESSURE_CURVE_GAP_MS / 1000,
@@ -81,7 +81,7 @@ export function createPortableShots(records, beans, selections) {
   return freeze({
     format: PORTABLE_SHOT_FORMAT,
     version: PORTABLE_SHOT_VERSION,
-    shots: records.map((record) => describeShot(jsonCopy(record))),
+    shots: records.map((record) => describePortableShot(jsonCopy(record))),
     beans: linkedBeans.map(jsonCopy),
     selections: {
       favouriteIds: selections.favouriteIds.filter((id) => shots.has(id)),

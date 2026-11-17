@@ -1,3 +1,5 @@
+import { BetaActions } from '../beta/BetaActions.jsx';
+import { saveLocalFile, shareLocalFile } from '../beta/localFileShare.js';
 import { isAndroidApp, saveAndroidFile } from '../native/androidShell.js';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -56,6 +58,7 @@ export function PortableShotExport({ shotId, settings, ui, cardOptions, onCardOp
 
 function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChange }) {
   const [error, setError] = useState('');
+  const [shareStatus, setShareStatus] = useState('');
   const data = useLiveQuery(async () => {
     try {
       return await readShotForSharing(db, shotId);
@@ -70,6 +73,18 @@ function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChan
   const missing = shot && ['doseG', 'yieldG', 'durationS', 'ratio', 'rating'].filter((key) => shot.measurements[key] == null);
   const fieldNames = { doseG: 'dose', yieldG: 'yield', durationS: 'extraction time', ratio: 'brew ratio', rating: 'taste rating' };
   const filename = 'espresso-shot-' + String(shotId).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+  const deliverSep = async (share) => {
+    setShareStatus('');
+    const file = new File([sep.blob], filename + '-sep.csv', { type: 'text/csv' });
+    try {
+      const result = share ? await shareLocalFile(file, { consent: true, title: 'Espresso Dial-In SEP CSV' })
+        : await saveLocalFile(file, { consent: true });
+      if (result === 'fallback') setShareStatus('Share sheet unavailable. Use Export SEP CSV.');
+      if (result === 'chooser-opened') setShareStatus('Share sheet opened. Import depends on the app you choose.');
+    } catch {
+      setShareStatus('Could not save the SEP CSV.');
+    }
+  };
   const saveJson = async () => {
     try {
       await downloadBackup(snapshot, filename + '.json');
@@ -102,7 +117,7 @@ function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChan
             </p>
             {missing.length > 0 && <p className={ui.sub}>Missing from this shot: {missing.map((key) => fieldNames[key]).join(', ')}.</p>}
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={saveJson}>Download shot JSON</button>
+              <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={saveJson}>Export shot JSON</button>
               <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={() => downloadCsvFile(
                 filename + '.csv', shotSummaryCsv(snapshot, {
                   formatShotGrindForHistory: (record) => savedGrind(record, settings),
@@ -119,11 +134,17 @@ function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChan
                   SEP CSV contains recorded {sep.tracks.join(' and ')} samples. It can be used as a Visualizer upload file.
                   SEP mobile import still needs a device check.
                 </p>
-                <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`}
-                  onClick={() => downloadFile(filename + '-sep.csv', sep.blob)}>Download SEP CSV</button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`}
+                    onClick={() => void deliverSep(false)}>Export SEP CSV</button>
+                  {isAndroidApp && <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`}
+                    onClick={() => void deliverSep(true)}>Share to compatible app (SEP CSV)</button>}
+                </div>
               </>
             ) : <p className={ui.sub}>SEP and Visualizer unavailable. {sep.reason}</p>}
+            {shareStatus && <p role="status">{shareStatus}</p>}
           </div>
+          <div className={`border-t pt-2 ${ui.modalDivider}`}><BetaActions ui={ui} shot={shot.record} /></div>
         </div>
       )}
     </>

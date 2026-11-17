@@ -1,3 +1,4 @@
+import { BetaActions } from './beta/BetaActions.jsx';
 import { AndroidShell, isAndroidApp } from './native/androidShell.js';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -5287,6 +5288,7 @@ export default function App() {
                   {csvImportSummary && (
                     <p className={`text-[11px] ${ui.muted} text-center px-2`}>{csvImportSummary}</p>
                   )}
+                  <BetaActions ui={ui} />
                   <PortableShotBackup ui={ui} />
                   <FullAppTransfer ui={ui} blocked={shotBackLocked} />
                 </div>

@@ -97,7 +97,7 @@ export function extractionTiming(timing) {
 export function physicalShotSources(timing) {
   return {
     pressure: timing?.pressureSource === 'camera',
-    scale: timing?.scaleSource === 'web-bluetooth',
+    scale: timing?.scaleSource === 'web-bluetooth' || timing?.scaleSource === 'native-ble',
   };
 }
 

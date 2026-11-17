@@ -3,6 +3,7 @@ package com.jimbook.espressodialin;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.ClipData;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.net.Uri;
@@ -158,16 +159,23 @@ public class AndroidShell extends Plugin {
     }
 
     @PluginMethod
+    public void getDiagnosticDevice(PluginCall call) {
+        call.resolve(new JSObject()
+            .put("androidVersion", Build.VERSION.RELEASE)
+            .put("model", Build.MODEL));
+    }
+
+    @PluginMethod
     public void exportFile(PluginCall call) {
         String filename = call.getString("filename", "");
         String mimeType = call.getString("mimeType", "");
         if (!filename.matches("[A-Za-z0-9][A-Za-z0-9_. -]{0,127}")
-            || !("image/png".equals(mimeType) || "application/json".equals(mimeType))) {
+            || !("image/png".equals(mimeType) || "application/json".equals(mimeType) || "text/csv".equals(mimeType))) {
             call.reject("Unsupported export.");
             return;
         }
-        if (Boolean.TRUE.equals(call.getBoolean("share")) && "image/png".equals(mimeType)) {
-            sharePng(call, filename);
+        if (Boolean.TRUE.equals(call.getBoolean("share"))) {
+            shareFile(call, filename, mimeType);
             return;
         }
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
@@ -182,7 +190,7 @@ public class AndroidShell extends Plugin {
         if (call == null) return;
         Intent intent = result.getData();
         if (result.getResultCode() != Activity.RESULT_OK || intent == null || intent.getData() == null) {
-            call.resolve();
+            call.resolve(new JSObject().put("cancelled", true));
             return;
         }
         try (OutputStream output = getContext().getContentResolver().openOutputStream(intent.getData(), "wt")) {
@@ -194,22 +202,36 @@ public class AndroidShell extends Plugin {
         }
     }
 
-    private void sharePng(PluginCall call, String filename) {
+    private void shareFile(PluginCall call, String filename, String mimeType) {
+        File attachment = null;
         try {
             File directory = new File(getContext().getCacheDir(), "shot-share");
             if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("No cache directory");
-            File image = File.createTempFile("shot-", ".png", directory);
-            try (OutputStream output = new FileOutputStream(image)) {
+            long expiry = System.currentTimeMillis() - 24L * 60 * 60 * 1000;
+            File[] stale = directory.listFiles(file -> file.isFile() && file.getName().startsWith("shared-")
+                && file.lastModified() < expiry);
+            if (stale != null) for (File file : stale) file.delete();
+            String suffix = "image/png".equals(mimeType) ? ".png"
+                : "text/csv".equals(mimeType) ? ".csv" : ".json";
+            attachment = File.createTempFile("shared-", suffix, directory);
+            try (OutputStream output = new FileOutputStream(attachment)) {
                 writeData(call, output);
             }
-            Intent send = new Intent(Intent.ACTION_SEND).setType("image/png")
-                .putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(
-                    getContext(), getContext().getPackageName() + ".fileprovider", image, filename))
+            Uri uri = FileProvider.getUriForFile(
+                getContext(), getContext().getPackageName() + ".fileprovider", attachment, filename);
+            Intent send = new Intent(Intent.ACTION_SEND).setType(mimeType)
+                .putExtra(Intent.EXTRA_STREAM, uri)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            getActivity().startActivity(Intent.createChooser(send, "Espresso shot"));
+            send.setClipData(ClipData.newRawUri(filename, uri));
+            if (Boolean.TRUE.equals(call.getBoolean("feedback")) && "application/json".equals(mimeType)) {
+                send.putExtra(Intent.EXTRA_EMAIL, new String[]{"TullLabs@outlook.com"});
+                send.putExtra(Intent.EXTRA_SUBJECT, "Espresso Dial-In beta feedback");
+            }
+            getActivity().startActivity(Intent.createChooser(send, "Share Espresso Dial-In file"));
             call.resolve();
         } catch (IOException | RuntimeException error) {
-            call.reject("Unable to share the shot card.", error);
+            if (attachment != null) attachment.delete();
+            call.reject("Unable to open the share sheet.", error);
         }
     }
 

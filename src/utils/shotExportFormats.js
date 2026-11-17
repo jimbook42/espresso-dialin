@@ -1,4 +1,5 @@
 import { buildShotsCsvContent, buildShotsCsvRows, formatCsvRow, SHOT_CSV_HEADERS } from './csvExport.js';
+import { physicalShotSources } from './shotProfile.js';
 import { isShotTimestamp } from './portableShotRestore.js';
 
 const SEP_HEADER = 'information_type,elapsed,pressure,current_total_shot_weight,flow_in,flow_out,water_temperature_boiler,water_temperature_in,water_temperature_basket,metatype,metadata,comment';
@@ -17,10 +18,11 @@ export function shotSummaryCsv(snapshot, helpers) {
 
 export function buildSepShotFile(shot, { bean, grind } = {}) {
   const { record, measurements, pressure, weight } = shot;
+  const sources = physicalShotSources({ scaleSource: weight.source, pressureSource: pressure.source });
   const tracks = [
-    { info: weight, samples: record.scaleFlowCurve, valueKey: 'weightG', source: 'web-bluetooth', label: 'weight' },
-    { info: pressure, samples: record.labPressureCurve, valueKey: 'bar', source: 'camera', label: 'pressure' },
-  ].filter(({ info, source }) => info.source === source && info.observedIndices.length);
+    { info: weight, samples: record.scaleFlowCurve, valueKey: 'weightG', physical: sources.scale, label: 'weight' },
+    { info: pressure, samples: record.labPressureCurve, valueKey: 'bar', physical: sources.pressure, label: 'pressure' },
+  ].filter(({ info, physical }) => physical && info.observedIndices.length);
   if (!isShotTimestamp(record.timestamp)) return { reason: 'The saved shot date is unavailable.' };
   if (!tracks.length) return { reason: 'No pressure or weight samples with confirmed physical sensor provenance.' };
   const aligned = tracks.every(({ info }) => info.alignment === 'recorded-extraction');

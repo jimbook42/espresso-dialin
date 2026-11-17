@@ -1,3 +1,4 @@
+import { recordDiagnostic } from '../beta/diagnosticLog.js';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useShotLabPressure } from '../flairPressureLab/hooks/useShotLabPressure.js';
 import { shotLabPressureAimText } from '../flairPressureLab/shotLabPressureAimText.js';
@@ -146,6 +147,11 @@ export function ShotLabPressureProvider({
       }),
     [flairProfile, phaseGoal, timerRunning, timerUsePreInfusion],
   );
+
+  const trackingState = !enabled || pressure.cameraStatus !== 'live' ? 'inactive'
+    : pressure.readerError ? 'reader-error' : pressure.readerUncertain ? 'uncertain'
+      : pressure.readoutVisible ? 'reading' : pressure.readerReady ? 'ready' : 'loading';
+  useEffect(() => { recordDiagnostic('tracking', trackingState); }, [trackingState]);
 
   const testingLabel = enabled
     ? labPressureTestingShotLabel(labShotsLogged)

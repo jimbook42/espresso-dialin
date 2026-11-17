@@ -1,3 +1,4 @@
+import { recordDiagnostic } from '../../beta/diagnosticLog.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cameraErrorMessage } from '../cameraErrors.js';
 import { isPressureReplayBuild } from '../../config/pressureReplayFlag.js';
@@ -96,6 +97,7 @@ export function useFrontCameraStream({ facingMode = 'user' } = {}) {
   const recoveryUsedRef = useRef(false);
   const [revision, setRevision] = useState(0);
   const [status, setStatus] = useState('idle');
+  useEffect(() => { recordDiagnostic('camera', status); }, [status]);
   const [error, setError] = useState('');
   const [trackInfo, setTrackInfo] = useState(null);
 
@@ -213,6 +215,8 @@ export function useFrontCameraStream({ facingMode = 'user' } = {}) {
         if (!mountedRef.current || generation !== generationRef.current) return;
         releaseCamera();
         setTrackInfo(null);
+        if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') recordDiagnostic('camera', 'permission-denied');
+        else if (err?.name === 'NotFoundError' || err?.name === 'UnsupportedError') recordDiagnostic('camera', 'unavailable');
         setError(cameraErrorMessage(err));
         setStatus('error');
       }

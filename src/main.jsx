@@ -1,9 +1,12 @@
+import { observeDiagnosticLifecycle, recordDiagnostic } from './beta/diagnosticLog.js'
 import { isAndroidApp } from './native/androidShell.js'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { isPressureLabEnabled } from './config/pressureLabFlag.js'
 import { resolveAppEntry } from './appEntry.js'
+
+observeDiagnosticLifecycle(window, document)
 
 const root = createRoot(document.getElementById('root'))
 // The experimental direct reader remains available for local development and replay.
@@ -34,6 +37,7 @@ if (entry.entry === 'flair-pressure-lab') {
         const { recoverAndroidTransfer } = await import('./transfer/transferStore.js')
         await recoverAndroidTransfer()
       } catch (error) {
+        recordDiagnostic('app', 'launch-failed')
         const { TransferRecovery } = await import('./transfer/TransferRecovery.jsx')
         root.render(<TransferRecovery root={root} error={error} />)
         return

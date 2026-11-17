@@ -1,3 +1,4 @@
+import { recordDiagnostic } from '../../beta/diagnosticLog.js';
 import { BleClient, numberToUUID } from '@capacitor-community/bluetooth-le';
 import { AndroidShell } from '../../native/androidShell.js';
 
@@ -27,18 +28,28 @@ export function androidGatt(model, { reconnect = false, signal } = {}) {
     },
     async requestDevice() {
       if (reconnect && !(await AndroidShell.hasBluetoothPermissions()).granted) {
+        recordDiagnostic('ble', 'permission-unavailable');
         throw new Error('Bluetooth permission is required.');
       }
       signal?.throwIfAborted();
-      await BleClient.initialize({ androidNeverForLocation: true });
+      try {
+        await BleClient.initialize({ androidNeverForLocation: true });
+      } catch (error) {
+        recordDiagnostic('ble', 'initialization-failed');
+        throw error;
+      }
       signal?.throwIfAborted();
-      if (!(await BleClient.isEnabled())) throw new Error('Bluetooth is turned off.');
+      if (!(await BleClient.isEnabled())) {
+        recordDiagnostic('ble', 'disabled');
+        throw new Error('Bluetooth is turned off.');
+      }
       // Android's chooser cannot express the existing name-prefix OR service filters.
       // The selected scale is accepted only if its expected GATT profile opens.
       const selected = reconnect ? rememberedAndroidScale(model) : await BleClient.requestDevice();
       peripheral = selected && { deviceId: selected.deviceId, name: selected.name };
       signal?.throwIfAborted();
       if (!peripheral) throw new Error('No remembered scale.');
+      if (!reconnect) recordDiagnostic('ble', 'peripheral-selected');
       const { deviceId, name } = peripheral;
       const device = new EventTarget();
       device.name = name;
