@@ -1,12 +1,21 @@
 # Android POC: scaffold status and release preparation
 
-This branch is an incomplete engineering scaffold, not a beta candidate. The Android project bundles the existing React app. The native BLE plugin is installed but is not wired to the scale transports; Web Bluetooth remains the only scale implementation. Automatic reconnection is not implemented. Camera permission handling and the WebView camera workflow have not been implemented or tested. Do not use this build to assess hardware support or publish it.
+The Android app packages the v4.15.2 React UI, OpenCV, the ONNX model and its runtime locally. Its build enables camera pressure and scale support. It has no development server URL or service worker. The native shell handles Android Back, camera permission, PNG share and save, and saving the portable JSON backup. The screen stays awake while the timer is running or Pressure Tracker is recording.
+
+The smart scale setting and existing Connect control select and validate a device against the configured Timemore, Acaia or Bookoo GATT profile. Android stores the last successfully connected address per scale model locally. After pairing, deliberately enter Dial, Pressure Tracker or Brew Guide to try one direct connection. On a cold launch, tapping the live tab also counts as an explicit entry. An unavailable scale or missing permission leaves manual entry available. Use Connect again for permission, a changed address or a different device. There is no background scan. Reconnection and hardware compatibility require phone and scale testing.
 
 ## Build
 
-Install Node dependencies with `npm ci`, then install Android Studio and the Android SDK required by Capacitor 8 (compile/target SDK 36, minimum Android 7/API 24). From the repo root, run `npm run android:sync`. This builds the PWA assets with pressure lab and scale enabled and simulator/replay flags disabled, then copies them into the Android project. Open `android` in Android Studio, let Gradle sync, and build a debug APK. Alternatively, with the Android SDK and Java configured, run `android\gradlew.bat -p android assembleDebug` on Windows. The expected APK is `android/app/build/outputs/apk/debug/app-debug.apk`. No SDK or device was available when this document was written.
+Install Node dependencies with `npm ci`, then install Android Studio and the Android SDK required by Capacitor 8 (compile/target SDK 36, minimum Android 7/API 24). From the repo root, run `npm run android:sync`. This builds the PWA assets with pressure lab and scale enabled and simulator/replay flags disabled, then copies them into the Android project. Open `android` in Android Studio, let Gradle sync, and build a debug APK. Alternatively, with the Android SDK and Java configured, run `android\gradlew.bat -p android assembleDebug` on Windows. The expected APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Use JDK 21 and the checked-in Gradle wrapper. See the technical changelog for the recorded build and verification results.
 
-The Android app uses separate WebView storage from the Chrome PWA. History does not transfer automatically. Keep the original PWA and its data. Before any migration, export a full portable backup using the existing Settings backup control and retain a second copy outside both apps. Restore only after the Android import flow is verified on a disposable installation; confirm beans, shots, settings, links and curves against the source before trusting it. Do not delete PWA data. CSV export/import is not a guaranteed lossless full backup. Native file picker, export and restore must be tested first; this scaffold does not establish a proven migration route.
+Chrome and Android WebView use separate IndexedDB stores. Keep the original Chrome PWA and its data during the trial. In Chrome, open Settings and use **Download all shots as JSON**. Keep one copy of the file outside either app. In a disposable Android install, open Settings, select **Restore shot backup**, review the counts and conflicts, then select **Confirm shot restore**. The existing importer keeps existing records and restores shots, linked beans, favourites and bean references where valid. It does not transfer every app setting, unlinked beans or replay video. Compare counts and inspect representative shot curves after a force stop and relaunch. Android export uses the system file picker. Verify the whole route with a small backup before attempting a large one.
+
+## Phone verification
+
+- Install the debug APK on the Galaxy S23 Ultra. Launch in airplane mode, visit Dial, Pressure Tracker, Beans, History and Stats, and compare portrait, landscape and both themes with the Chrome PWA.
+- Log a manual test shot, force stop and relaunch, inspect History and Stats, and exercise Back before saving and while overlays are open. Save and share a PNG, then export and restore a small portable JSON backup as described above.
+- Grant and deny Nearby Devices. With the actual scale, check pair, weight, tare and timer commands. Restart without entering the workflow, then enter it and check reconnection. Repeat with Bluetooth off, the scale asleep or disconnected during a shot. Check that manual yield still works and that a late connection does not take over the shot.
+- Grant and deny camera access. On the original Flair 58, confirm front camera preview, calibration, live pressure sampling, recorded curve and recovery after Home, screen lock and return. Exercise the camera and scale together. Confirm the screen can sleep again after the shot ends.
 
 ## Beta preparation (not publication)
 
@@ -46,3 +55,7 @@ Known limitations and risks:
 Release notes location:
 AAB checksum and artifact location:
 ```
+
+## Proposed tester notes for the POC
+
+This Android build uses the same Espresso Dial-In screens as the web app. Try saving and sharing a test shot, reconnecting your scale after explicitly opening Dial, and using the Flair 58 camera reader. Bring history over with the portable JSON backup only after trying the restore with test data. Scale reconnection and the camera reader still need physical verification on the Galaxy S23 Ultra.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isScaleSimPickerEnabled } from '../config/scaleFlag.js';
 import { isDevUrlSimScaleActive } from '../config/devUrlSimScale.js';
 import { SCALE_DEVICES } from './scaleRegistry.js';
@@ -13,6 +13,8 @@ import {
 } from './scaleShotBaseline.js';
 import { createSimulatedTransport } from './transport/simulatedTransport.js';
 import { createBluetoothScaleTransport } from './transport/createBluetoothScaleTransport.js';
+import { isAndroidApp } from '../native/androidShell.js';
+import { rememberedAndroidScale } from './transport/androidGatt.js';
 import { isWebBluetoothAvailable } from './transport/webBluetoothTransport.js';
 import { roundYieldG } from './scaleShotStopSettle.js';
 import { resolveSettledYieldG } from './scaleYieldSettleResolve.js';
@@ -49,10 +51,13 @@ export function useTimemoreScale({
   usePreInfusion = false,
   preInfusionDurationS = 8,
   diagnosticsRef,
+  liveWorkflowEntry,
+  liveWorkflowActive,
+  shotLocked = false,
 }) {
-  const devUrlSim = enabled && isDevUrlSimScaleActive();
-  const simAllowed = enabled && (isScaleSimPickerEnabled() || devUrlSim);
-  const bleAvailable = isWebBluetoothAvailable();
+  const devUrlSim = !isAndroidApp && enabled && isDevUrlSimScaleActive();
+  const simAllowed = !isAndroidApp && enabled && (isScaleSimPickerEnabled() || devUrlSim);
+  const bleAvailable = isAndroidApp || isWebBluetoothAvailable();
 
   const [transportKind, setTransportKind] = useState(() => resolveDefaultTransportKind(simAllowed));
   const [connectStatus, setConnectStatus] = useState('idle');
@@ -65,6 +70,8 @@ export function useTimemoreScale({
   const [batteryPercent, setBatteryPercent] = useState(null);
 
   const transportRef = useRef(null);
+  const pendingConnect = useRef(null);
+  const nativeShotLocked = useRef(shotLocked);
   const connectionRef = useRef(null);
   const sessionRef = useRef(null);
   const shotSessionRef = useRef(null);
@@ -129,6 +136,7 @@ export function useTimemoreScale({
     if (sessionRef.current && sessionRef.current === shotSessionRef.current) {
       interruptedMetricsRef.current = sessionRef.current.getShotMetrics();
     }
+    pendingConnect.current?.abort();
     setConnectStatus('idle');
     setDisplayFlow(emptyDisplayFlow);
     setLiveFlowSeries([]);
@@ -144,6 +152,7 @@ export function useTimemoreScale({
       return undefined;
     }
     return () => {
+      pendingConnect.current?.abort();
       disposeTransport();
       resetScaleLiveWeightStore();
     };
@@ -193,7 +202,7 @@ export function useTimemoreScale({
     }
   }, [simAllowed, transportKind]);
 
-  const buildTransport = useCallback(() => {
+  const buildTransport = useCallback((options) => {
     const kind = resolveEffectiveTransportKind(transportKind, simAllowed);
     if (kind === 'sim') {
       return createSimulatedTransport({
@@ -203,23 +212,33 @@ export function useTimemoreScale({
         batteryPercent: 72,
       });
     }
-    return createBluetoothScaleTransport(scaleDeviceId);
+    return createBluetoothScaleTransport(scaleDeviceId, options);
   }, [transportKind, simAllowed, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS, devUrlSim]);
 
-  const connect = useCallback(async () => {
-    if (!enabled) return;
+  const connect = useCallback(async (reconnect = false) => {
+    if (!enabled || pendingConnect.current || (isAndroidApp && nativeShotLocked.current)) return;
+    const attempt = new AbortController();
+    pendingConnect.current = attempt;
+    attempt.reconnect = reconnect === true;
+    let transport;
     setConnectStatus('connecting');
     setBatteryPercent(null);
     try {
       await disposeTransport();
-      const transport = buildTransport();
+      attempt.signal.throwIfAborted();
+      transport = buildTransport({ reconnect: reconnect === true, signal: attempt.signal });
       transportRef.current = transport;
       await transport.connect();
+      attempt.signal.throwIfAborted();
+      if (isAndroidApp && (!transport.isConnected() || nativeShotLocked.current)) {
+        throw new Error('Scale connection ended before setup completed.');
+      }
+      transport.remember?.();
       const simulated = resolveEffectiveTransportKind(transportKind, simAllowed) === 'sim';
       const identity = {
         model: simulated ? 'Simulated Timemore Dot'
           : SCALE_DEVICES.find(({ id }) => id === scaleDeviceId)?.label ?? 'Compatible scale',
-        transport: simulated ? 'simulated' : 'web-bluetooth',
+        transport: simulated ? 'simulated' : isAndroidApp ? 'native-ble' : 'web-bluetooth',
         simulated,
       };
       connectionRef.current = { identity, wallMs: Date.now() };
@@ -235,12 +254,48 @@ export function useTimemoreScale({
       publishWeightSnapshot(0, 0, false);
       setDisplayFlow(emptyDisplayFlow);
     } catch (err) {
-      console.warn('[scale] connect failed', err);
-      setConnectStatus('error');
-      transportRef.current = null;
+      if (transportRef.current === transport) transportRef.current = null;
+      await transport?.disconnect().catch(() => {});
+      if (!attempt.signal.aborted) {
+        if (reconnect !== true) console.warn('[scale] connect failed', err);
+        setConnectStatus(reconnect === true ? 'idle' : 'error');
+      }
+    } finally {
+      pendingConnect.current = null;
     }
   }, [enabled, disposeTransport, buildTransport, attachSession, disconnect, resetShotWeightTracking,
     transportKind, simAllowed, scaleDeviceId, diagnosticsRef]);
+
+  useLayoutEffect(() => {
+    nativeShotLocked.current = shotLocked;
+    if (isAndroidApp && pendingConnect.current
+      && (shotLocked || (!liveWorkflowActive && pendingConnect.current.reconnect))) {
+      pendingConnect.current.abort();
+      setConnectStatus('idle');
+    }
+  }, [shotLocked, liveWorkflowActive]);
+
+  useEffect(() => {
+    if (!isAndroidApp) return undefined;
+    const cancelHiddenReconnect = () => {
+      if (document.visibilityState === 'hidden' && pendingConnect.current?.reconnect) {
+        pendingConnect.current.abort();
+        setConnectStatus('idle');
+      }
+    };
+    document.addEventListener('visibilitychange', cancelHiddenReconnect);
+    return () => document.removeEventListener('visibilitychange', cancelHiddenReconnect);
+  }, []);
+
+  const handledEntry = useRef(liveWorkflowEntry);
+  useEffect(() => {
+    if (handledEntry.current === liveWorkflowEntry) return;
+    handledEntry.current = liveWorkflowEntry;
+    if (isAndroidApp && enabled && liveWorkflowActive && !shotLocked && !connectionRef.current
+      && document.visibilityState !== 'hidden' && rememberedAndroidScale(scaleDeviceId)) {
+      void connect(true);
+    }
+  }, [liveWorkflowEntry, liveWorkflowActive, enabled, shotLocked, scaleDeviceId, connect]);
 
   const devUrlAutoConnectRef = useRef(false);
   useEffect(() => {

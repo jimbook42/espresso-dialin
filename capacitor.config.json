@@ -1,5 +1,9 @@
 {
   "appId": "com.jimbook.espressodialin",
   "appName": "Espresso Dial-In",
-  "webDir": "dist"
+  "webDir": "dist",
+  "server": {
+    "hostname": "localhost",
+    "androidScheme": "https"
+  }
 }

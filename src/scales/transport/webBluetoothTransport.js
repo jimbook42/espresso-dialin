@@ -56,7 +56,7 @@ export async function attachStandardBleBatteryService(server, onPercent) {
 /**
  * @returns {import('./scaleTransport.js').ScaleTransport}
  */
-export function createWebBluetoothTransport() {
+export function createWebBluetoothTransport(requestDevice = (options) => navigator.bluetooth.requestDevice(options)) {
   /** @type {BluetoothDevice | null} */
   let device = null;
   /** @type {BluetoothRemoteGATTCharacteristic | null} */
@@ -123,10 +123,7 @@ export function createWebBluetoothTransport() {
     getLabel: () => device?.name || 'Timemore scale',
     isConnected: () => !!device?.gatt?.connected,
     async connect() {
-      if (!isWebBluetoothAvailable()) {
-        throw new Error('Web Bluetooth is not available in this browser.');
-      }
-      device = await navigator.bluetooth.requestDevice({
+      device = await requestDevice({
         filters: [
           { namePrefix: 'TIMEMORE' },
           { namePrefix: 'Timemore' },
@@ -161,7 +158,7 @@ export function createWebBluetoothTransport() {
           notifyChar.removeEventListener('characteristicvaluechanged', handleNotification);
           await notifyChar.stopNotifications().catch(() => {});
         }
-        device?.gatt?.disconnect();
+        await device?.gatt?.disconnect();
       } finally {
         notifyChar = null;
         writeChar = null;

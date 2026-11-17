@@ -1,3 +1,4 @@
+import { isAndroidApp, saveAndroidFile } from '../native/androidShell.js';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useOverlayHistoryClose } from '../hooks/useOverlayHistoryClose.js';
@@ -29,6 +30,7 @@ function downloadBackup(snapshot, filename) {
   if (blob.size > MAX_PORTABLE_SHOT_BYTES) {
     throw new Error('The backup exceeds 64 MiB. Individual shots can be exported from Shot Profile.');
   }
+  if (isAndroidApp) return saveAndroidFile(blob, filename);
   downloadFile(filename, blob);
 }
 
@@ -68,9 +70,9 @@ function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChan
   const missing = shot && ['doseG', 'yieldG', 'durationS', 'ratio', 'rating'].filter((key) => shot.measurements[key] == null);
   const fieldNames = { doseG: 'dose', yieldG: 'yield', durationS: 'extraction time', ratio: 'brew ratio', rating: 'taste rating' };
   const filename = 'espresso-shot-' + String(shotId).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
-  const saveJson = () => {
+  const saveJson = async () => {
     try {
-      downloadBackup(snapshot, filename + '.json');
+      await downloadBackup(snapshot, filename + '.json');
     } catch (err) {
       setError(err.message);
     }
@@ -140,7 +142,7 @@ export function PortableShotBackup({ ui }) {
     setStatus('');
     try {
       const snapshot = await readPortableShots(db);
-      downloadBackup(snapshot, `espresso-shots-${new Date().toISOString().slice(0, 10)}.json`);
+      await downloadBackup(snapshot, `espresso-shots-${new Date().toISOString().slice(0, 10)}.json`);
     } catch (err) {
       setError(err.message);
     } finally {

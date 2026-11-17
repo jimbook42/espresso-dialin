@@ -2,6 +2,7 @@
   "git": {
     "deploymentEnabled": {
       "main": false,
+      "feat/capacitor-android-poc": false,
       "fix/qa-4-ux-polish": false,
       "b07/final-release-recovery": false,
       "b06b/beta-safety-sharing": false,

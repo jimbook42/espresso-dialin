@@ -7,7 +7,7 @@ import {
 } from '../protocols/bookooMini.js';
 
 /** @returns {import('./scaleTransport.js').ScaleTransport} */
-export function createBookooTransport() {
+export function createBookooTransport(requestDevice = (options) => navigator.bluetooth.requestDevice(options)) {
   let device = null;
   let notifyChar = null;
   let writeChar = null;
@@ -33,7 +33,7 @@ export function createBookooTransport() {
     getLabel: () => device?.name || 'BOOKOO scale',
     isConnected: () => !!device?.gatt?.connected,
     async connect() {
-      device = await navigator.bluetooth.requestDevice({
+      device = await requestDevice({
         filters: [
           { namePrefix: 'BOOKOO' },
           { namePrefix: 'Bookoo' },
@@ -64,7 +64,7 @@ export function createBookooTransport() {
           notifyChar.removeEventListener('characteristicvaluechanged', handleNotification);
           await notifyChar.stopNotifications().catch(() => {});
         }
-        device?.gatt?.disconnect();
+        await device?.gatt?.disconnect();
       } finally {
         notifyChar = null;
         writeChar = null;

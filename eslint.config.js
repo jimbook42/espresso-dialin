@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'android/**/build', 'android/app/src/main/assets/public', 'public/flair-pressure-lab/opencv.js', 'public/flair-pressure-lab/ort']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

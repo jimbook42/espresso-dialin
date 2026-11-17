@@ -125,7 +125,7 @@ export default defineConfig(({ mode }) => ({
         config.logger.info('Release preflight passed for ' + diagnosticsBuildSha());
       },
     } : null,
-    VitePWA({
+    mode !== 'android' && VitePWA({
       registerType: 'autoUpdate',
       manifestFilename: 'manifest.json',
       manifest: pwaManifest,

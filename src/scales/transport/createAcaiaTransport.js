@@ -9,7 +9,7 @@ import {
 const HEARTBEAT_MS = 2500;
 
 /** @returns {import('./scaleTransport.js').ScaleTransport} */
-export function createAcaiaTransport() {
+export function createAcaiaTransport(requestDevice = (options) => navigator.bluetooth.requestDevice(options)) {
   let device = null;
   let notifyChar = null;
   let writeChar = null;
@@ -45,7 +45,7 @@ export function createAcaiaTransport() {
     getLabel: () => device?.name || 'Acaia scale',
     isConnected: () => !!device?.gatt?.connected,
     async connect() {
-      device = await navigator.bluetooth.requestDevice({
+      device = await requestDevice({
         filters: [
           { namePrefix: 'ACAIA' },
           { namePrefix: 'Acaia' },
@@ -87,7 +87,7 @@ export function createAcaiaTransport() {
           notifyChar.removeEventListener('characteristicvaluechanged', handleNotification);
           await notifyChar.stopNotifications().catch(() => {});
         }
-        device?.gatt?.disconnect();
+        await device?.gatt?.disconnect();
       } finally {
         notifyChar = null;
         writeChar = null;

@@ -1,3 +1,4 @@
+import { AndroidShell, isAndroidApp } from './native/androidShell.js';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import {
   db,
@@ -761,7 +762,12 @@ export default function App() {
     flairEnabled && recipeDefinesPreinfusion(activeRecipe?.flairProfile);
   const hookUsePreInfusion = usePreInfusion || (scaleFeatureEnabled && scaleRecipePreinfusion);
 
+  const [liveWorkflowEntry, setLiveWorkflowEntry] = useState(0);
   const timemoreScale = useTimemoreScale({
+    liveWorkflowEntry,
+    liveWorkflowActive: activeTab === 'dial' || activeTab === 'pressure' || activeTab === 'brew',
+    shotLocked: timerRunning || timerStartPending || shotCountdownValue != null
+      || yieldSettleActive || dialShotPending || pressureState !== 'idle',
     enabled: scaleFeatureEnabled,
     scaleDeviceId: normalizeSmartScaleDeviceId(settingsSetting?.smartScaleDeviceId),
     targetYieldG: activeTab === 'pressure' ? null : activeRecipe?.targetYieldG || 36,
@@ -771,6 +777,12 @@ export default function App() {
       ? Number(activeRecipe?.flairProfile?.preinfusionTime) || 12
       : 0,
   });
+
+  useEffect(() => {
+    if (!isAndroidApp || (!timerRunning && pressureState !== 'recording')) return undefined;
+    void AndroidShell.keepAwake({ enabled: true }).catch(() => {});
+    return () => { void AndroidShell.keepAwake({ enabled: false }).catch(() => {}); };
+  }, [timerRunning, pressureState]);
 
   const preinfusionScaleCtx = {
     scaleFeatureEnabled,
@@ -1627,6 +1639,9 @@ export default function App() {
       return;
     }
     const next = validNavigationTab(requested, context);
+    if (!context.locked && (next === 'dial' || next === 'pressure' || next === 'brew')) {
+      setLiveWorkflowEntry((entry) => entry + 1);
+    }
     if (next === context.activeTab) return;
     if (navigationRef.current.initialized) {
       const nextState = { ...window.history.state, dialTab: next };
@@ -1723,6 +1738,9 @@ export default function App() {
         nav.restoring = true;
         window.history.forward();
         return;
+      }
+      if (next !== context.activeTab && (next === 'dial' || next === 'pressure' || next === 'brew')) {
+        setLiveWorkflowEntry((entry) => entry + 1);
       }
       setSelectedTab(next);
     };

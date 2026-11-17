@@ -161,7 +161,7 @@ export function createShotDeviceDiagnostics(settings) {
       const { timeline, final } = frozen;
       const stopMs = final.stopMs + final.wallClockDriftAtStopMs;
       const observedWeight = frozen.scaleDiagnostics.rawWeightSamples?.some(({ tMs }) => tMs >= 0);
-      const physicalScale = frozen.scaleDiagnostics.identity?.transport === 'web-bluetooth'
+      const physicalScale = ['web-bluetooth', 'native-ble'].includes(frozen.scaleDiagnostics.identity?.transport)
         && !frozen.events.some(({ identity }) => identity?.simulated);
       return {
         version: 1,

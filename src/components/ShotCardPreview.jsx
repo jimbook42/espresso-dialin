@@ -1,3 +1,4 @@
+import { isAndroidApp, saveAndroidFile } from '../native/androidShell.js';
 import { useEffect, useRef, useState } from 'react';
 import { drawShotCard } from '../utils/shotCard.js';
 
@@ -29,8 +30,12 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
   }, [shot, bean, grind, referenceShot, options, filename, onError]);
   const ready = preview?.options === options && preview.shot === shot && preview.bean === bean
     && preview.grind === grind && preview.referenceShot === referenceShot && preview.filename === filename;
-  const canShare = ready && navigator.share && navigator.canShare?.({ files: [preview.file] });
+  const canShare = ready && (isAndroidApp || (navigator.share && navigator.canShare?.({ files: [preview.file] })));
   const download = () => {
+    if (isAndroidApp) {
+      void saveAndroidFile(preview.file, preview.file.name).catch((error) => onError(error.message));
+      return;
+    }
     const link = document.createElement('a');
     link.href = preview.url;
     link.download = preview.file.name;
@@ -40,9 +45,14 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
   };
   const share = async () => {
     try {
+      if (isAndroidApp) {
+        await saveAndroidFile(preview.file, preview.file.name, true);
+        return;
+      }
       await navigator.share({ files: [preview.file], title: 'Espresso shot' });
     } catch (error) {
-      if (error.name !== 'AbortError') download();
+      if (isAndroidApp) onError(error.message);
+      else if (error.name !== 'AbortError') download();
     }
   };
   const choices = [['brand', 'Show branding'], ['bean', 'Show bean name'], ['grinder', 'Show grinder'],
