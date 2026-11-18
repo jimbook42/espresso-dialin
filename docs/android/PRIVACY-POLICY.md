@@ -1,6 +1,6 @@
 # Espresso Dial-In Android privacy policy
 
-Operator: [approved publisher name]. Effective date: [publication date].
+Espresso Dial-In for Android is published by Tull Labs. This policy takes effect when it is published for the Android release. For privacy questions, contact TullLabs@outlook.com.
 
 ## Information kept on your device
 
@@ -22,6 +22,12 @@ The Android app does not automatically send your shots, camera images, diagnosti
 
 If you email support or submit a report or contribution, we receive the email address, message and files you send. We use support submissions to reply and investigate issues. We use contributions to evaluate and improve the app. Our support mailbox provider processes messages on our behalf. The email, storage or sharing app you choose can also handle your attachments.
 
-We restrict access to received files to [approved support/research roles] and keep them in [approved protected mailbox or storage]. We keep support messages and reports for [approved retention period] and contributions for [approved retention period]. To ask about your data or request deletion of material you sent to us, contact [approved privacy contact, currently proposed as TullLabs@outlook.com]. If possible, provide the submission date or contribution export ID. [Approved handling for backups, deletion requests and any retention exceptions.]
+Tull Labs keeps diagnostic reports and their related support correspondence for up to 90 days from receipt. Contributed shot data and the submission records needed to manage it are kept for up to 12 months from receipt. We review and remove expired material manually. Access to submissions is limited to people handling support or contribution review for Tull Labs.
 
-You can delete shots and beans in the app and clear recent diagnostic events from **Settings → Report a problem**. Clearing Android app storage erases local app records. Keep a verified backup before you remove anything you want to retain. Files exported outside the app and copies sent to other recipients are managed separately.
+To ask about, access, correct or request deletion of material you sent to Tull Labs, email TullLabs@outlook.com. Include the approximate submission date or contribution export ID if you have it. We may ask for enough information to identify the submission. We can act on the copies we control. Your email or sharing provider and other recipients manage their own copies.
+
+You can delete shots and beans in the app and clear recent diagnostic events from Settings → Report a problem. Clearing Android app storage erases local app records. Keep a verified backup before you remove anything you want to retain. Files exported outside the app are managed separately.
+
+## Viewing this policy
+
+The public policy page has no app analytics. GitHub Pages logs visitors' IP addresses for security when the page is opened.

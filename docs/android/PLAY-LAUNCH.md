@@ -9,7 +9,8 @@ Draft for owner review. The current debug APK is v4.15.6 (5), source `00ed0b6aca
 | App name | Espresso Dial-In |
 | Type and category | App · Food and Drink |
 | Short description | Log espresso shots, track beans, and dial in your grind with local history. |
-| Support email | TullLabs@outlook.com, the current in-app feedback address. Confirm it is approved for public support. |
+| Publisher | Tull Labs |
+| Support and privacy email | TullLabs@outlook.com, owner-approved for both roles and for deletion requests. |
 | Package ID | `com.jimbook.espressodialin`. Confirm availability and the permanent ID in Play Console before the first upload. |
 
 Google Play allows 30 characters for the app name, 80 for the short description and 4,000 for the full description. [Listing requirements](https://support.google.com/googleplay/android-developer/answer/9859152) · [Categories and tags](https://support.google.com/googleplay/android-developer/answer/9859673)
@@ -62,7 +63,7 @@ Google Play allows up to 500 Unicode characters per language for release notes. 
 
 | Owner | Remaining work |
 | --- | --- |
-| Codex, local preparation | Listing copy, asset specifications, privacy draft, Data Safety worksheet and release/signing runbook are prepared. Android analytics is disabled in source. After owner approval, add an Android-accessible policy link or text and prepare actual screenshots and graphics using the agreed capture scope. |
+| Codex, local preparation | Listing copy, asset specifications, approved policy text, Data Safety worksheet and release/signing runbook are prepared. Android analytics is disabled in source. The Android Settings link and free GitHub Pages handoff are prepared. Actual screenshots, graphics and the physical policy-link check are pending. |
 | Owner | Resolve the checklist below, plus the permanent package ID, audience and pricing where applicable. Authorize any later Console action and any installation replacement separately. |
 | Physical hardware | PNG download was verified on v4.15.6. Complete recipient PNG sharing, Flair 58 and BLE acceptance, and independent backup restore. Capture physical WebView network evidence and test Play installation and update on an isolated device once authorized. |
 | Play Console | Complete account and package verification, choose Play App Signing, confirm the version-code ledger and app content requirements, set up the private tester list, and verify the Play signing certificate and generated APK. Add any policy declarations only after owner review and explicit authorization. |
@@ -71,11 +72,11 @@ The first internal candidate still needs owner and signing approval, the protect
 
 ## Owner decision checklist
 
-- [ ] **Play account** Confirm personal or organization and the creation date.
-- [ ] **Publisher** Confirm the public developer name and policy operator.
-- [ ] **Contacts** Confirm public support and privacy contacts. `TullLabs@outlook.com` is the existing feedback destination and a candidate for either role.
-- [ ] **Policy hosting** Approve the public URL, effective date and in-app access point. Keep the draft unpublished until placeholders are resolved.
-- [ ] **Retention** Approve separate periods and access rules for support reports and contributed shots. No duration is committed yet.
-- [ ] **Deletion** Confirm where requests go, how a submission is located, who handles requests, and how copies and exceptions are handled.
+- [x] **Play account** Personal, trader. Confirmed by the owner.
+- [ ] **Account verification** Confirm creation date and the trader/legal identity and contact details required for the intended Play markets.
+- [x] **Publisher and contacts** Tull Labs and TullLabs@outlook.com for support, privacy and deletion requests.
+- [x] **Report and contribution retention** 90 days and 12 months respectively, from receipt.
+- [ ] **Policy hosting** Confirm the proposed GitHub Pages URL and separately approve going live. Settings links to the proposed URL. Verify it on the physical release candidate. [Hosting handoff](PLAY-PRIVACY-OPERATIONS.md#hosting-handoff)
+- [ ] **Manual operations** Assign a handler and backup, verify provider recovery and controlled copies, and decide retention for ordinary support and request records. Rehearse expiry and deletion on test items. [Retention and deletion process](PLAY-PRIVACY-OPERATIONS.md#support-mailbox-and-submission-deadlines)
 - [ ] **Upload key** Name the owner or custodian and approve the protected storage and recovery locations.
 - [ ] **Testers** Approve the internal cohort and intended closed-test cohort. Keep invite details out of Git.

@@ -41,6 +41,9 @@ try {
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByTitle('Settings', { exact: true }).click();
     await page.getByRole('heading', { name: 'Preferences & Settings' }).waitFor();
+    const privacy = page.getByRole('link', { name: 'Privacy Policy', exact: true });
+    assert.equal(await privacy.count(), android ? 1 : 0);
+    if (android) assert.equal(await privacy.getAttribute('href'), 'https://jimbook42.github.io/espresso-dialin-privacy/');
     const toggle = page.getByRole('switch', { name: 'Anonymous usage stats' });
     assert.equal(await toggle.count(), android ? 0 : 1);
     const enabled = !android && preference !== false;
@@ -60,7 +63,7 @@ try {
     assert.equal(persisted, preference);
     await page.close();
   }
-  console.log(`PASS ${platform}: analytics loader, Settings and stored preference for default, on and off`);
+  console.log(`PASS ${platform}: analytics guard, stored preference and Privacy Policy link`);
 } finally {
   await browser?.close();
   await server.kill();

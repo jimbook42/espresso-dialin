@@ -50,11 +50,11 @@ Dedicated Android and Google Play roadmap for `feat/capacitor-android-poc`. The 
 ## A6. Google Play preparation
 
 - **Priority** Medium.
-- **Status** Preparation underway. Listing copy, privacy and Data Safety drafts, permission/SDK audit and signing runbook are ready for owner review. Play artifacts and approval remain pending.
+- **Status** Preparation underway. The owner confirmed Tull Labs as publisher, a personal trader account, TullLabs@outlook.com for support/privacy/deletion requests, 90-day report retention and 12-month contribution retention. Policy text and Android Settings link are prepared. Hosting activation, physical acceptance and Play artifacts remain pending.
 - **Dependencies** Owner decisions, approved listing assets, secure signing, physical WebView network verification and A5.
 - **Acceptance criteria** Draft the listing, current screenshots, privacy policy and support contact. Review Data Safety for existing behavior and third-party SDKs as well as voluntary files shared with chosen recipients. Document camera and nearby-device permission purposes. Check current target API and other Play policies at submission. Rehearse a clean-commit AAB build, Play App Signing and a separately managed upload key, then verify the delivered signing certificate and update path. Track every release by monotonically increasing version code, commit SHA and tester-facing release notes. Prepare internal testing.
 - **Verification evidence** The existing Android debug artifact targets API 36. After v4.15.6, the source disables the analytics loader and controls on Android, including when a restored preference is on. The web-bundle regression covers both platforms. Physical WebView network verification is still pending. [Listing and readiness](PLAY-LAUNCH.md) · [Privacy and permissions audit](PLAY-DATA-SAFETY.md)
-- **Next action** Confirm the [owner decisions](PLAY-LAUNCH.md#owner-decision-checklist), run the isolated restore rehearsal, and complete the signed AAB, hardware and Play install/update gates. [Signing, backup and release checklist](PLAY-SIGNING.md)
+- **Next action** Confirm account creation and trader details, rehearse the manual privacy process, and approve the proposed GitHub Pages URL before publishing. Verify the policy link and Android WebView on the signed candidate. Complete camera/BLE acceptance, independent restore, signing and Play install/update gates. [Privacy operations](PLAY-PRIVACY-OPERATIONS.md) · [Remaining owner decisions](PLAY-LAUNCH.md#owner-decision-checklist) · [Signing and release checklist](PLAY-SIGNING.md)
 
 ## A7. Closed beta and production
 

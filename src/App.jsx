@@ -5263,6 +5263,12 @@ export default function App() {
                     </div>
                     {usageError && <p role="alert">Could not save your usage stats preference. Please try again.</p>}
                   </>}
+                  {isAndroidApp && (
+                    <a className={`flex min-h-11 items-center font-semibold underline ${ui.text}`}
+                      href="https://jimbook42.github.io/espresso-dialin-privacy/">
+                      Privacy Policy
+                    </a>
+                  )}
                 </div>
 
                 <div className={`pt-2 border-t ${ui.modalDivider} space-y-2`}>
