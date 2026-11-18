@@ -16,7 +16,7 @@ The app keeps a limited local diagnostic history to help you report problems. It
 
 Contributing shots is optional. The app lets you preview selected brew measurements, bean and grinder settings, taste ratings, sensor samples, and information about the calculation, source and quality of readings. The file omits private notes, saved shot IDs, device addresses, photos and video. It includes a random export ID and can include a tester alias you supply. If you send it to us, we use it to assess and improve Espresso Dial-In's shot analysis and recommendations. An email you send may identify you even if the file does not include your name.
 
-The Android app does not automatically send your shots, camera images, diagnostic reports or contributions to us. The audited Android build includes a shared web analytics component that tries to load a script from the app's local address when **Anonymous usage stats** is enabled. The Android package has no analytics service at that address. The hosted web app has its own analytics behavior.
+The Android app does not automatically send your shots, camera images, diagnostic reports or contributions to us. Vercel Web Analytics is disabled in the Android version covered by this policy. The hosted web app has a separate analytics preference.
 
 ## Support, retention and deletion
 

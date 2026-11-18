@@ -6,7 +6,14 @@ describe('anonymous usage stats', () => {
     expect(anonymousUsageEnabled(false, null)).toBe(false);
     expect(anonymousUsageEnabled(true, null)).toBe(true);
     expect(anonymousUsageEnabled(true, { anonymousUsageStats: false })).toBe(false);
+    expect(anonymousUsageEnabled(true, { anonymousUsageStats: true })).toBe(true);
   });
+
+  it.each([null, { anonymousUsageStats: true }, { anonymousUsageStats: false }])(
+    'disables analytics on Android regardless of persisted preference (%j)', (settings) => {
+      expect(anonymousUsageEnabled(true, settings, true)).toBe(false);
+    },
+  );
 
   it('blocks page views while off even if the injected script is still alive', () => {
     const event = { type: 'pageview', url: 'https://example.com/?note=private#user-content' };

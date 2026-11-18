@@ -12,8 +12,8 @@ const allowed = {
 const customEventTransport = null;
 let pageViewsAllowed = false;
 
-export function anonymousUsageEnabled(loaded, settings) {
-  return loaded && settings?.anonymousUsageStats !== false;
+export function anonymousUsageEnabled(loaded, settings, isAndroidApp = false) {
+  return !isAndroidApp && loaded && settings?.anonymousUsageStats !== false;
 }
 
 export function allowUsagePageViews(allowed) {

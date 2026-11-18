@@ -454,7 +454,7 @@ export default function App() {
   const showFirstLaunchWizard = shouldRenderFirstLaunchWizard(settingsQueryResult, { hasExistingUserData });
   const firstLaunchDataLoaded = beansQuery !== undefined && shotsQuery !== undefined;
   const usageEnabled = !usageSessionOff
-    && anonymousUsageEnabled(settingsQueryResult !== SETTINGS_QUERY_PENDING, settingsSetting);
+    && anonymousUsageEnabled(settingsQueryResult !== SETTINGS_QUERY_PENDING, settingsSetting, isAndroidApp);
   useLayoutEffect(() => {
     allowUsagePageViews(usageEnabled);
     return () => allowUsagePageViews(false);
@@ -5250,17 +5250,19 @@ export default function App() {
                     </div>
                     <SettingsToggle checked={statsForNerdsEnabled} onChange={handleToggleStatsForNerds} label="Stats for Nerds" />
                   </div>
-                  <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
-                    <div>
-                      <span className={`font-bold block ${ui.text}`}>Anonymous usage stats</span>
-                      <span className={`block text-[10px] ${ui.muted}`}>
-                        Vercel page views help improve the app. Your shots, history and camera data stay on your device unless you choose to share them.
-                      </span>
+                  {!isAndroidApp && <>
+                    <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
+                      <div>
+                        <span className={`font-bold block ${ui.text}`}>Anonymous usage stats</span>
+                        <span className={`block text-[10px] ${ui.muted}`}>
+                          Vercel page views help improve the app. Your shots, history and camera data stay on your device unless you choose to share them.
+                        </span>
+                      </div>
+                      <SettingsToggle checked={usageEnabled} onChange={handleToggleAnonymousUsage}
+                        disabled={usageSaving || settingsQueryResult === SETTINGS_QUERY_PENDING} label="Anonymous usage stats" />
                     </div>
-                    <SettingsToggle checked={usageEnabled} onChange={handleToggleAnonymousUsage}
-                      disabled={usageSaving || settingsQueryResult === SETTINGS_QUERY_PENDING} label="Anonymous usage stats" />
-                  </div>
-                  {usageError && <p role="alert">Could not save your usage stats preference. Please try again.</p>}
+                    {usageError && <p role="alert">Could not save your usage stats preference. Please try again.</p>}
+                  </>}
                 </div>
 
                 <div className={`pt-2 border-t ${ui.modalDivider} space-y-2`}>

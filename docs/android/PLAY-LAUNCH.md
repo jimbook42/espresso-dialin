@@ -1,6 +1,6 @@
 # Espresso Dial-In Google Play launch preparation
 
-Status as of 18 November 2026. Draft for owner review. The audited build is Android debug v4.15.6 (5), source `00ed0b6acacf9ec10602b1c99ec60b6af171bd98`. A Play release artifact and Play Console record are still pending.
+Draft for owner review. The current debug APK is v4.15.6 (5), source `00ed0b6acacf9ec10602b1c99ec60b6af171bd98`. The Android analytics guard is a later source change. A Play release artifact and Play Console record are still pending.
 
 ## Store listing draft
 
@@ -34,7 +34,13 @@ During beta you can preview and voluntarily share a problem report or a selected
 | Feature graphic | 1,024 × 500, JPEG or 24-bit PNG without alpha. Reuse `public/logo-master.svg` or `public/logo-header-dark.svg` and the existing palette. Leave room for cropping and keep key elements central. Finished artwork and owner approval are pending. |
 | Screenshots | At least two across supported device types to publish the listing. Capture four phone screens from the candidate in portrait at 1,080 × 1,920 or another compliant size. Files must be JPEG or 24-bit PNG without alpha, each dimension 320–3,840 px, and the long edge at most twice the short edge. Use a 9:16 capture viewport if the Galaxy's native screenshot exceeds the ratio limit. |
 
-Capture Dial with manual entry, Beans and recipe settings, History → Shot Profile with a reference, and Stats or Transfer & Backup. Use an isolated profile with manual test records or owner-approved records. Remove identifying names, notes, emails, device names, addresses and notifications. Use actual application screens. Camera and scale screenshots and hardware claims require physical acceptance first. Prepare genuine screenshots for additional form factors only when supported. [Google Play preview assets](https://support.google.com/googleplay/android-developer/answer/9866151) · [Play icon specification](https://developer.android.com/distribute/google-play/resources/icon-design-specifications)
+**Feature graphic design.** Use an opaque `#1a1714` field with the existing warm accents `#E8AE6C` and `#B8712F`. Centre the wordmark and coffee mark from `public/logo-master.svg` as one group, leaving the outer area quiet for responsive cropping. Check legibility at phone size. Use brand artwork alone, without device frames, ranking claims, hardware logos or calls to action. `public/maskable-512.png` is an alternate reference for launcher masking, alongside existing adaptive mipmaps. Artwork approval is pending. [Google Play preview assets](https://support.google.com/googleplay/android-developer/answer/9866151) · [Play icon specification](https://developer.android.com/distribute/google-play/resources/icon-design-specifications)
+
+**Screenshot capture checklist**
+
+- [ ] Use a separate installation with genuine manual test entries or owner-approved scrubbed records. Clear notifications and remove personal notes, account names, email addresses, device names, addresses and archive filenames before capture.
+- [ ] Capture the candidate's actual screens in this order: **Dial** with dose, yield, time and grinder guidance, **Beans** with recipe context, **History → Shot Profile** with a reference, and **Stats** with the sample history. An optional fifth image can show **Transfer & Backup**.
+- [ ] Use a 9:16 capture viewport and validate dimensions, alpha, metadata and legibility. Review thumbnails for identifying data and unsupported claims. Hold camera or BLE screenshots and compatibility claims until physical acceptance. Keep screenshots for other device types limited to form factors actually tested.
 
 ## Testing tracks and onboarding
 
@@ -56,9 +62,20 @@ Google Play allows up to 500 Unicode characters per language for release notes. 
 
 | Owner | Remaining work |
 | --- | --- |
-| Codex, local preparation | Listing copy, audit, privacy draft, Data Safety worksheet and release/signing runbook are prepared. After the owner approves the policy URL and analytics decision, add an Android-accessible policy link or text as needed and verify the actual release build's data flows. Prepare screenshots and graphic at the approved capture scope. |
-| Owner | Confirm developer name, account type and creation date, permanent package ID, support/privacy contact, hosting URL, retention periods and deletion process, analytics policy, audience, pricing and tester cohort. Choose upload-key custodian and backup location. Authorize any later Console action and any installation replacement separately. |
-| Physical hardware | Complete the v4.15.6 PNG retest, Flair 58 and native BLE acceptance, and independent restore rehearsal. Obtain release-candidate WebView network evidence and verify Play-delivered behavior on a separate device once authorized. |
+| Codex, local preparation | Listing copy, asset specifications, privacy draft, Data Safety worksheet and release/signing runbook are prepared. Android analytics is disabled in source. After owner approval, add an Android-accessible policy link or text and prepare actual screenshots and graphics using the agreed capture scope. |
+| Owner | Resolve the checklist below, plus the permanent package ID, audience and pricing where applicable. Authorize any later Console action and any installation replacement separately. |
+| Physical hardware | PNG download was verified on v4.15.6. Complete recipient PNG sharing, Flair 58 and BLE acceptance, and independent backup restore. Capture physical WebView network evidence and test Play installation and update on an isolated device once authorized. |
 | Play Console | Complete account and package verification, choose Play App Signing, confirm the version-code ledger and app content requirements, set up the private tester list, and verify the Play signing certificate and generated APK. Add any policy declarations only after owner review and explicit authorization. |
 
 The first internal candidate still needs owner and signing approval, the protected restore path, a verified signed AAB and resolved release-blocking device results. A Play-ready privacy policy needs an approved public URL and an in-app link or text. The Data Safety form is exempt while the app is exclusively on the internal track. Prepare the reviewed declaration before moving to closed testing. [Data Safety form scope](https://support.google.com/googleplay/android-developer/answer/10787469) · [User Data policy](https://support.google.com/googleplay/android-developer/answer/10144311)
+
+## Owner decision checklist
+
+- [ ] **Play account** Confirm personal or organization and the creation date.
+- [ ] **Publisher** Confirm the public developer name and policy operator.
+- [ ] **Contacts** Confirm public support and privacy contacts. `TullLabs@outlook.com` is the existing feedback destination and a candidate for either role.
+- [ ] **Policy hosting** Approve the public URL, effective date and in-app access point. Keep the draft unpublished until placeholders are resolved.
+- [ ] **Retention** Approve separate periods and access rules for support reports and contributed shots. No duration is committed yet.
+- [ ] **Deletion** Confirm where requests go, how a submission is located, who handles requests, and how copies and exceptions are handled.
+- [ ] **Upload key** Name the owner or custodian and approve the protected storage and recovery locations.
+- [ ] **Testers** Approve the internal cohort and intended closed-test cohort. Keep invite details out of Git.
