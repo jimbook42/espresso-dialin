@@ -11,6 +11,7 @@ Draft for owner review. The current debug APK is v4.15.6 (5), source `00ed0b6aca
 | Short description | Log espresso shots, track beans, and dial in your grind with local history. |
 | Publisher | Tull Labs |
 | Support and privacy email | TullLabs@outlook.com, owner-approved for both roles and for deletion requests. |
+| Public privacy policy | [Espresso Dial-In Android privacy policy](https://jimbook42.github.io/espresso-dialin-privacy/), published 18 November 2026 from `46da6baf244d0b294b599f3d91beb615bc516091`. |
 | Package ID | `com.jimbook.espressodialin`. Confirm availability and the permanent ID in Play Console before the first upload. |
 
 Google Play allows 30 characters for the app name, 80 for the short description and 4,000 for the full description. [Listing requirements](https://support.google.com/googleplay/android-developer/answer/9859152) · [Categories and tags](https://support.google.com/googleplay/android-developer/answer/9859673)
@@ -63,12 +64,12 @@ Google Play allows up to 500 Unicode characters per language for release notes. 
 
 | Owner | Remaining work |
 | --- | --- |
-| Codex, local preparation | Listing copy, asset specifications, approved policy text, Data Safety worksheet and release/signing runbook are prepared. Android analytics is disabled in source. The Android Settings link and free GitHub Pages handoff are prepared. Actual screenshots, graphics and the physical policy-link check are pending. |
+| Codex, local preparation | Listing copy, asset specifications, Data Safety worksheet and release/signing runbook are prepared. Android analytics is disabled in source. The approved policy is live on GitHub Pages and its URL matches the Android Settings link. Actual screenshots, graphics and the physical policy-link check are pending. |
 | Owner | Resolve the checklist below, plus the permanent package ID, audience and pricing where applicable. Authorize any later Console action and any installation replacement separately. |
 | Physical hardware | PNG download was verified on v4.15.6. Complete recipient PNG sharing, Flair 58 and BLE acceptance, and independent backup restore. Capture physical WebView network evidence and test Play installation and update on an isolated device once authorized. |
 | Play Console | Complete account and package verification, choose Play App Signing, confirm the version-code ledger and app content requirements, set up the private tester list, and verify the Play signing certificate and generated APK. Add any policy declarations only after owner review and explicit authorization. |
 
-The first internal candidate still needs owner and signing approval, the protected restore path, a verified signed AAB and resolved release-blocking device results. A Play-ready privacy policy needs an approved public URL and an in-app link or text. The Data Safety form is exempt while the app is exclusively on the internal track. Prepare the reviewed declaration before moving to closed testing. [Data Safety form scope](https://support.google.com/googleplay/android-developer/answer/10787469) · [User Data policy](https://support.google.com/googleplay/android-developer/answer/10144311)
+The first internal candidate still needs owner and signing approval, the protected restore path, a verified signed AAB and resolved release-blocking device results. The privacy URL has been verified while signed out. Verify it from Android Settings on the signed candidate and use it in Play Console after approval. The Data Safety form is exempt while the app is exclusively on the internal track. Prepare the reviewed declaration before moving to closed testing. [Data Safety form scope](https://support.google.com/googleplay/android-developer/answer/10787469) · [User Data policy](https://support.google.com/googleplay/android-developer/answer/10144311)
 
 ## Owner decision checklist
 
@@ -76,7 +77,8 @@ The first internal candidate still needs owner and signing approval, the protect
 - [ ] **Account verification** Confirm creation date and the trader/legal identity and contact details required for the intended Play markets.
 - [x] **Publisher and contacts** Tull Labs and TullLabs@outlook.com for support, privacy and deletion requests.
 - [x] **Report and contribution retention** 90 days and 12 months respectively, from receipt.
-- [ ] **Policy hosting** Confirm the proposed GitHub Pages URL and separately approve going live. Settings links to the proposed URL. Verify it on the physical release candidate. [Hosting handoff](PLAY-PRIVACY-OPERATIONS.md#hosting-handoff)
+- [x] **Policy hosting** Approved and published on GitHub Pages. The verified URL matches the Settings link in source. [Publication record](PLAY-PRIVACY-OPERATIONS.md#hosting-handoff)
+- [ ] **On-device policy link** Open it from Settings on the physical release candidate.
 - [ ] **Manual operations** Assign a handler and backup, verify provider recovery and controlled copies, and decide retention for ordinary support and request records. Rehearse expiry and deletion on test items. [Retention and deletion process](PLAY-PRIVACY-OPERATIONS.md#support-mailbox-and-submission-deadlines)
 - [ ] **Upload key** Name the owner or custodian and approve the protected storage and recovery locations.
 - [ ] **Testers** Approve the internal cohort and intended closed-test cohort. Keep invite details out of Git.
