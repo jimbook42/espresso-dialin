@@ -19,6 +19,8 @@ Chrome and Android WebView use separate IndexedDB stores. Use [Transfer & Backup
 
 ## Beta preparation (not publication)
 
+For current preparation beyond this POC, use the [Play launch plan](PLAY-LAUNCH.md) and the [signing, migration and release checklist](PLAY-SIGNING.md). Preserve an independently verified full-app archive before any future signing-identity transition.
+
 The provisional application ID is `com.jimbook.espressodialin`; verify ownership and choose the final permanent ID before the first Play upload. Android `versionName` starts at 4.15.2 to match the web source; `versionCode` starts at 1. Assign a unique integer greater than every prior Play upload for every AAB, including internal tests. Track code, name, commit SHA, tester notes and build date together. Never reuse a code. Keep `package.json` version changes subject to the repository's release instructions.
 
 For each beta, build from a clean, reviewed commit and record its full Git SHA (`git rev-parse HEAD`), Node and npm versions, lockfile, Android Studio/JDK/SDK versions and Gradle wrapper. Run `npm ci` and `npm run android:sync`; use Android Studio's Build > Generate Signed Bundle / APK > Android App Bundle. Select the protected upload keystore and alias via the IDE prompts; use the release variant. The resulting AAB is under `android/app/release/`. This procedure has not been exercised here and byte-for-byte reproducibility is not established.
@@ -58,4 +60,4 @@ AAB checksum and artifact location:
 
 ## Proposed tester notes for the POC
 
-This Android build uses the same Espresso Dial-In screens as the web app. Try saving and sharing a test shot, reconnecting your scale after explicitly opening Dial, and using the Flair 58 camera reader. Bring history over with the portable JSON backup only after trying the restore with test data. Scale reconnection and the camera reader still need physical verification on the Galaxy S23 Ultra.
+This Android build uses the same Espresso Dial-In screens as the web app. Try saving and sharing a test shot, reconnecting your scale after explicitly opening Dial, and using the Flair 58 camera reader. For a complete history transfer use [Transfer & Backup](FULL-APP-TRANSFER.md) and rehearse restore before changing installations. Scale reconnection and the camera reader still need physical verification on the Galaxy S23 Ultra.
