@@ -7,8 +7,11 @@ import {
   isPresetGrinderModel,
   isCustomGrinderModel,
   adjustSette,
+  formatRecommendedGrindDisplay,
   parseGrindForShotSave,
 } from '../grinders/grinderRegistry.js';
+import { compareGrindSettings } from '../grinders/dialBoundaryAdvisory.js';
+import { withAdjustedGrindSetting } from './grindRecommendationDisplay.js';
 import { adjustPresetGrind } from '../grinders/presetGrinders/dial.js';
 import { getPresetGrinderSpec } from '../grinders/presetGrinders/catalog.js';
 import { adjustCustomGrind } from '../grinders/customGrinder.js';
@@ -133,7 +136,8 @@ export function buildBasketAdjustmentBasisRec(
  * One-off grind shift for the next recommendation display only (does not touch learning).
  */
 export function applyBasketChangeToRecommendation(rec, grinderModel, direction, settings = null) {
-  if (!rec?.recommendedSetting || !grinderModel || !direction) return rec;
+  if (!rec?.recommendedSetting || !grinderModel) return rec;
+  if (direction !== BASKET_FLOW_MORE_HOLES && direction !== BASKET_FLOW_FEWER_HOLES) return rec;
 
   const shifted = shiftQuantitativeSetting(
     grinderModel,
@@ -142,9 +146,20 @@ export function applyBasketChangeToRecommendation(rec, grinderModel, direction, 
     settings
   );
 
+  if (!compareGrindSettings(grinderModel, rec.recommendedSetting, shifted, settings)) return rec;
   return {
-    ...rec,
-    recommendedSetting: shifted,
+    ...withAdjustedGrindSetting(grinderModel, rec, shifted, '', settings),
     basketChangeNote: BASKET_ADJUSTMENT_NOTE,
   };
+}
+
+export function resolveBasketAdjustmentDirection(hold, basis, grinderModel, settings = null) {
+  if (hold?.basketDirection) return hold.basketDirection;
+  // Old holds contain only a label. An ageing shift makes its source ambiguous.
+  if (!hold?.label || !basis?.recommendedSetting || basis.ageWarning) return null;
+  if (hold.label === formatRecommendedGrindDisplay(grinderModel, basis.recommendedSetting, settings)) return null;
+  return [BASKET_FLOW_MORE_HOLES, BASKET_FLOW_FEWER_HOLES].find((direction) => {
+    const candidate = applyBasketChangeToRecommendation(basis, grinderModel, direction, settings);
+    return hold.label === formatRecommendedGrindDisplay(grinderModel, candidate.recommendedSetting, settings);
+  }) ?? null;
 }

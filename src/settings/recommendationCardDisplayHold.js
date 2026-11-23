@@ -3,17 +3,17 @@ import { beanGrinderStorageKey } from '../grinders/grindDialByBean.js';
 export function getRecommendationCardDisplayHold(settings, beanId, grinderModel) {
   const key = beanGrinderStorageKey(beanId, grinderModel);
   if (!key) return null;
-  const label = settings?.recommendationCardDisplayByBeanGrinder?.[key];
-  return typeof label === 'string' && label.trim() ? label.trim() : null;
+  const hold = settings?.recommendationCardDisplayByBeanGrinder?.[key];
+  return typeof hold === 'string' ? { label: hold.trim() } : hold ?? null;
 }
 
-export function patchRecommendationCardDisplayHold(settings, beanId, grinderModel, displayLabel) {
+export function patchRecommendationCardDisplayHold(settings, beanId, grinderModel, displayLabel, basketDirection) {
   const key = beanGrinderStorageKey(beanId, grinderModel);
-  if (!key || !displayLabel) return {};
+  if (!key || !displayLabel || !basketDirection) return {};
   return {
     recommendationCardDisplayByBeanGrinder: {
       ...(settings?.recommendationCardDisplayByBeanGrinder || {}),
-      [key]: displayLabel,
+      [key]: { label: displayLabel, basketDirection },
     },
   };
 }

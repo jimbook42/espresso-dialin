@@ -2230,118 +2230,93 @@
       "statusLabel": null
     },
     "getAgeAdjustedRecommendation/fresher_by_3": {
-      "ageWarning": "Bean freshness shift detected. Recommendation dynamically shifted coarser.",
-      "engineStats": "__undefined__",
-      "evidenceContext": "__undefined__",
-      "flairWaterTempAdvice": "__undefined__",
-      "grindSettingHeld": "__undefined__",
-      "inputGrind": "__undefined__",
-      "nicheEmpiricalValidationNote": "__undefined__",
-      "nicheLearningNote": "__undefined__",
+      "ageWarning": "Bean freshness shift detected. The shot-based recommendation was shifted coarser.",
+      "grindSettingHeld": false,
+      "inputGrind": {
+        "customGrindValue": "__undefined__",
+        "macro": 10,
+        "micro": "A",
+        "setting": "__undefined__"
+      },
       "originalReason": "KEEP GRIND — Balanced and in range.",
-      "outlierGrindHeld": "__undefined__",
-      "reason": "KEEP GRIND — Balanced and in range.",
+      "reason": "GRIND COARSER — Adjusted for bean freshness.",
       "recommendedSetting": {
         "macro": 10,
         "micro": "B"
-      },
-      "subRecommendation": "__undefined__",
-      "warning": "__undefined__"
+      }
     },
     "getAgeAdjustedRecommendation/fresher_by_5": {
-      "ageWarning": "Thaw/Freshness detected: Active beans are 5 days fresher than your last logged shot. Recommendation dynamically shifted coarser to compensate.",
-      "engineStats": "__undefined__",
-      "evidenceContext": "__undefined__",
-      "flairWaterTempAdvice": "__undefined__",
-      "grindSettingHeld": "__undefined__",
-      "inputGrind": "__undefined__",
-      "nicheEmpiricalValidationNote": "__undefined__",
-      "nicheLearningNote": "__undefined__",
+      "ageWarning": "Thaw/Freshness detected. Active beans are 5 days fresher than the reference shot. The shot-based recommendation was shifted coarser.",
+      "grindSettingHeld": false,
+      "inputGrind": {
+        "customGrindValue": "__undefined__",
+        "macro": 10,
+        "micro": "A",
+        "setting": "__undefined__"
+      },
       "originalReason": "KEEP GRIND — Balanced and in range.",
-      "outlierGrindHeld": "__undefined__",
-      "reason": "KEEP GRIND — Balanced and in range.",
+      "reason": "GRIND COARSER — Adjusted for bean freshness.",
       "recommendedSetting": {
         "macro": 10,
         "micro": "C"
-      },
-      "subRecommendation": "__undefined__",
-      "warning": "__undefined__"
+      }
     },
     "getAgeAdjustedRecommendation/no_recommendation": null,
     "getAgeAdjustedRecommendation/older_by_12": {
-      "ageWarning": "Aging detected: Active beans are 12 days older than your last logged shot. Recommendation dynamically shifted finer to compensate.",
-      "engineStats": "__undefined__",
-      "evidenceContext": "__undefined__",
-      "flairWaterTempAdvice": "__undefined__",
-      "grindSettingHeld": "__undefined__",
-      "inputGrind": "__undefined__",
-      "nicheEmpiricalValidationNote": "__undefined__",
-      "nicheLearningNote": "__undefined__",
+      "ageWarning": "Aging detected. Active beans are 12 days older than the reference shot. The shot-based recommendation was shifted finer.",
+      "grindSettingHeld": false,
+      "inputGrind": {
+        "customGrindValue": "__undefined__",
+        "macro": 10,
+        "micro": "A",
+        "setting": "__undefined__"
+      },
       "originalReason": "KEEP GRIND — Balanced and in range.",
-      "outlierGrindHeld": "__undefined__",
-      "reason": "KEEP GRIND — Balanced and in range.",
+      "reason": "GRIND FINER — Adjusted for bean ageing.",
       "recommendedSetting": {
         "macro": 9,
         "micro": "H"
-      },
-      "subRecommendation": "__undefined__",
-      "warning": "__undefined__"
+      }
     },
     "getAgeAdjustedRecommendation/older_by_6": {
-      "ageWarning": "Bean aged 6 days since last shot. Recommendation dynamically shifted finer.",
-      "engineStats": "__undefined__",
-      "evidenceContext": "__undefined__",
-      "flairWaterTempAdvice": "__undefined__",
-      "grindSettingHeld": "__undefined__",
-      "inputGrind": "__undefined__",
-      "nicheEmpiricalValidationNote": "__undefined__",
-      "nicheLearningNote": "__undefined__",
+      "ageWarning": "Bean aged 6 days since the reference shot. The shot-based recommendation was shifted finer.",
+      "grindSettingHeld": false,
+      "inputGrind": {
+        "customGrindValue": "__undefined__",
+        "macro": 10,
+        "micro": "A",
+        "setting": "__undefined__"
+      },
       "originalReason": "KEEP GRIND — Balanced and in range.",
-      "outlierGrindHeld": "__undefined__",
-      "reason": "KEEP GRIND — Balanced and in range.",
+      "reason": "GRIND FINER — Adjusted for bean ageing.",
       "recommendedSetting": {
         "macro": 9,
         "micro": "I"
-      },
-      "subRecommendation": "__undefined__",
-      "warning": "__undefined__"
+      }
     },
     "getAgeAdjustedRecommendation/same_age": {
       "ageWarning": null,
-      "engineStats": "__undefined__",
-      "evidenceContext": "__undefined__",
-      "flairWaterTempAdvice": "__undefined__",
-      "grindSettingHeld": "__undefined__",
-      "inputGrind": "__undefined__",
-      "nicheEmpiricalValidationNote": "__undefined__",
-      "nicheLearningNote": "__undefined__",
       "originalReason": "KEEP GRIND — Balanced and in range.",
-      "outlierGrindHeld": "__undefined__",
       "reason": "KEEP GRIND — Balanced and in range.",
       "recommendedSetting": {
         "macro": 10,
         "micro": "A"
-      },
-      "subRecommendation": "__undefined__",
-      "warning": "__undefined__"
+      }
     },
     "getAgeAdjustedRecommendation/sunbeam_shift": {
-      "ageWarning": "Thaw/Freshness detected: Active beans are 5 days fresher than your last logged shot. Recommendation dynamically shifted coarser to compensate.",
-      "engineStats": "__undefined__",
-      "evidenceContext": "__undefined__",
-      "flairWaterTempAdvice": "__undefined__",
-      "grindSettingHeld": "__undefined__",
-      "inputGrind": "__undefined__",
-      "nicheEmpiricalValidationNote": "__undefined__",
-      "nicheLearningNote": "__undefined__",
+      "ageWarning": "Thaw/Freshness detected. Active beans are 5 days fresher than the reference shot. The shot-based recommendation was shifted coarser.",
+      "grindSettingHeld": false,
+      "inputGrind": {
+        "customGrindValue": "__undefined__",
+        "macro": "__undefined__",
+        "micro": "__undefined__",
+        "setting": 15
+      },
       "originalReason": "KEEP GRIND — Balanced and in range.",
-      "outlierGrindHeld": "__undefined__",
-      "reason": "KEEP GRIND — Balanced and in range.",
+      "reason": "GRIND COARSER — Adjusted for bean freshness.",
       "recommendedSetting": {
         "setting": 16
-      },
-      "subRecommendation": "__undefined__",
-      "warning": "__undefined__"
+      }
     },
     "getHistoricalRoastBaseline/decaf_excluded_from_regular": null,
     "getHistoricalRoastBaseline/decaf_pool": 122,

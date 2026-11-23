@@ -7,7 +7,7 @@ import {
   calculateRecommendation,
   calculateEffectiveBeanAge,
   getInitialGrindRecommendation,
-  getAgeAdjustedRecommendation,
+  getDialRecommendation,
   getIdealFreezeWindow,
   classifyShotOutcome,
   getRecommendationEvidenceContext,
@@ -20,11 +20,6 @@ import {
   filterShotsForGrinderModelLearning,
   shotMatchesGrinderForLearning,
   findLatestShotForBeanAndGrinder,
-  recomputeReferenceLearningRecommendationFromLastShot,
-  recomputeQuantitativeRecommendationFromLastShot,
-  grinderSupportsQuantitativeRecommendations,
-  shouldUsePreviousRecipeRecommendation,
-  PREVIOUS_RECIPE_REC_DISCLAIMER,
   KNOWN_ISSUE_REASONS,
   knownIssueReasonLabel,
 } from './utils/grinderLogic';
@@ -95,6 +90,7 @@ import {
   resolveEffectiveZeroOffsetPresetDial,
 } from './grinders/presetGrinders/dial.js';
 import {
+  beanGrinderStorageKey,
   getGrindUiForBeanGrinder,
   grindUiSnapshotFromControls,
   patchGrindUiForBeanGrinder,
@@ -196,6 +192,7 @@ import {
 import {
   applyBasketChangeToRecommendation,
   buildBasketAdjustmentBasisRec,
+  resolveBasketAdjustmentDirection,
   BASKET_FLOW_FEWER_HOLES,
   BASKET_FLOW_MORE_HOLES,
 } from './utils/basketChangeAdjustment.js';
@@ -525,7 +522,6 @@ export default function App() {
   }, []);
   const [basketChangePromptOpen, setBasketChangePromptOpen] = useState(false);
   const [pendingBasketAdjustment, setPendingBasketAdjustment] = useState(null);
-  const [appliedRecommendationDisplay, setAppliedRecommendationDisplay] = useState(null);
   const appSettings = settingsSetting;
 
   const [selectedBeanId, setSelectedBeanId] = useState('');
@@ -2634,7 +2630,6 @@ export default function App() {
       clearPendingGrind(activeBean.id, grinderModel);
       setApplyRecConfirmation('');
       setPendingBasketAdjustment(null);
-      setAppliedRecommendationDisplay(null);
 
       setActualTimeS('');
       if (activeRecipe?.targetDoseG != null && activeRecipe.targetDoseG !== '') {
@@ -2692,70 +2687,17 @@ export default function App() {
   const grinderShotsForLearning = grinderModel
     ? filterShotsForGrinderModelLearning(shots, grinderModel)
     : [];
-  const usePreviousRecipeRecommendation = shouldUsePreviousRecipeRecommendation({
+  const dynamicRec = getDialRecommendation({
     lastLoggedShot,
+    lastLearningShot,
+    activeBean,
     activeRecipe,
     beanShotsForGrinder,
+    grinderShotsForLearning,
+    grinderModel,
     flairEnabled,
+    settings: appSettings,
   });
-  const previousRecipeRec =
-    usePreviousRecipeRecommendation && lastLoggedShot
-      ? getAgeAdjustedRecommendation(lastLoggedShot, activeBean, null, appSettings)
-      : null;
-  const ageAdjustedRec =
-    !usePreviousRecipeRecommendation
-    && lastLearningShot
-    && lastLearningShot.grinderModel === grinderModel
-      ? getAgeAdjustedRecommendation(lastLearningShot, activeBean, null, appSettings)
-      : null;
-  const liveReferenceLearningRec =
-    !usePreviousRecipeRecommendation
-    && lastLearningShot
-    && activeRecipe
-      ? recomputeReferenceLearningRecommendationFromLastShot(
-          lastLearningShot,
-          activeRecipe,
-          beanShotsForGrinder,
-          flairEnabled,
-          appSettings,
-          grinderShotsForLearning
-        )
-      : null;
-  const liveQuantitativeRec =
-    !usePreviousRecipeRecommendation
-    && grinderSupportsQuantitativeRecommendations(grinderModel, appSettings)
-    && !isNicheZeroGrinderModel(grinderModel)
-    && lastLearningShot
-    && activeRecipe
-      ? recomputeQuantitativeRecommendationFromLastShot(
-          lastLearningShot,
-          activeRecipe,
-          beanShotsForGrinder,
-          flairEnabled,
-          appSettings,
-          grinderShotsForLearning
-        )
-      : null;
-  const dynamicRec = usePreviousRecipeRecommendation && previousRecipeRec
-    ? {
-        ...previousRecipeRec,
-        reason: lastLoggedShot.recommendation?.reason ?? previousRecipeRec.originalReason,
-        originalReason: lastLoggedShot.recommendation?.reason ?? previousRecipeRec.originalReason,
-        previousRecipeDisclaimer: PREVIOUS_RECIPE_REC_DISCLAIMER,
-      }
-    : liveReferenceLearningRec
-      ? {
-          ...liveReferenceLearningRec,
-          ageWarning: ageAdjustedRec?.ageWarning ?? null,
-          originalReason: liveReferenceLearningRec.reason,
-        }
-      : liveQuantitativeRec
-        ? {
-            ...liveQuantitativeRec,
-            ageWarning: ageAdjustedRec?.ageWarning ?? null,
-            originalReason: liveQuantitativeRec.reason,
-          }
-        : ageAdjustedRec;
   const nicheLearningBlocksEvidence =
     isNicheZeroGrinderModel(grinderModel)
     && Boolean(dynamicRec?.nicheLearningNote)
@@ -2849,15 +2791,22 @@ export default function App() {
     },
     settings: appSettings,
   });
-  const displayDynamicRec =
-    pendingBasketAdjustment && basketAdjustmentBasis?.recommendedSetting
-      ? applyBasketChangeToRecommendation(
-          basketAdjustmentBasis,
-          grinderModel,
-          pendingBasketAdjustment,
-          appSettings
-        )
-      : dynamicRec;
+  const basketScope = beanGrinderStorageKey(activeBean?.id, grinderModel);
+  const basketDirection = (pendingBasketAdjustment?.scope === basketScope
+    ? pendingBasketAdjustment.direction
+    : resolveBasketAdjustmentDirection(
+        getRecommendationCardDisplayHold(appSettings, activeBean?.id, grinderModel),
+        basketAdjustmentBasis,
+        grinderModel,
+        appSettings
+      ));
+  const basketRec = applyBasketChangeToRecommendation(
+    basketAdjustmentBasis, grinderModel, basketDirection, appSettings
+  );
+  const displayDynamicRec = basketRec?.basketChangeNote ? basketRec : dynamicRec;
+  const displayedGrindLabel = displayDynamicRec?.recommendedSetting
+    ? formatRecommendedGrindDisplay(grinderModel, displayDynamicRec.recommendedSetting, appSettings)
+    : null;
   const grindRecommendationSummary = displayDynamicRec?.recommendedSetting
     ? formatGrindRecommendationSummary(grinderModel, displayDynamicRec, appSettings)
     : null;
@@ -2905,7 +2854,7 @@ export default function App() {
   const applyRecommendation = async () => {
     if (!displayDynamicRec || !displayDynamicRec.recommendedSetting) return;
     const recSet = displayDynamicRec.recommendedSetting;
-    const appliedLabel = formatRecommendedGrindDisplay(grinderModel, recSet, appSettings);
+    const appliedLabel = displayedGrindLabel;
     
     const applyGrinder = grinderModel;
     const uiState = uiStateFromRecommendedSetting(applyGrinder, recSet, appSettings);
@@ -2930,12 +2879,9 @@ export default function App() {
           currentSettings,
           activeBean?.id
         );
-        const displayHoldPatch = patchRecommendationCardDisplayHold(
-          currentSettings,
-          activeBean?.id,
-          applyGrinder,
-          appliedLabel
-        );
+        const displayHoldPatch = displayDynamicRec.basketChangeNote
+          ? patchRecommendationCardDisplayHold(currentSettings, activeBean?.id, applyGrinder, appliedLabel, basketDirection)
+          : clearRecommendationCardDisplayHoldPatch(currentSettings, activeBean?.id, applyGrinder);
         return { ...recPatch, ...displayHoldPatch };
       });
     }
@@ -2947,8 +2893,7 @@ export default function App() {
     }
 
     setPendingBasketAdjustment(null);
-    setAppliedRecommendationDisplay(appliedLabel);
-    setApplyRecConfirmation(`Grind set to ${appliedLabel}.`);
+    setApplyRecConfirmation(appliedLabel);
     window.setTimeout(() => setApplyRecConfirmation(''), 4000);
   };
 
@@ -3050,18 +2995,8 @@ export default function App() {
     return formatPreviousGrindLabel(grinderModel, shot, appSettings);
   })();
 
-  const recommendedGrindDisplay = (() => {
-    if (appliedRecommendationDisplay && !pendingBasketAdjustment) return appliedRecommendationDisplay;
-    const heldLabel = getRecommendationCardDisplayHold(appSettings, activeBean?.id, grinderModel);
-    if (heldLabel) return heldLabel;
-    if (displayDynamicRec?.recommendedSetting && grinderModel) {
-      return formatRecommendedGrindDisplay(grinderModel, displayDynamicRec.recommendedSetting, appSettings);
-    }
-    return currentGrindLabel;
-  })();
-  const guideSuggestedGrindLabel = displayDynamicRec?.recommendedSetting
-    ? formatRecommendedGrindDisplay(grinderModel, displayDynamicRec.recommendedSetting, appSettings)
-    : null;
+  const recommendedGrindDisplay = displayedGrindLabel ?? currentGrindLabel;
+  const guideSuggestedGrindLabel = displayedGrindLabel;
 
   const grinderBadgeLabel = getUiGrinderPresentation(grinderModel, appSettings).shortBadgeLabel;
   const showHeldbackEstimatedStartingCard =
@@ -3110,8 +3045,8 @@ export default function App() {
       setActualYieldG(yieldG);
     }
     setWasPurged(true);
-    if (lastLearningShot && dynamicRec?.recommendedSetting && lastLearningShot.grinderModel === grinderModel) {
-      const uiState = uiStateFromRecommendedSetting(grinderModel, dynamicRec.recommendedSetting, appSettings);
+    if (displayDynamicRec?.recommendedSetting) {
+      const uiState = uiStateFromRecommendedSetting(grinderModel, displayDynamicRec.recommendedSetting, appSettings);
       if (uiState?.setteMacro != null) setSetteMacro(uiState.setteMacro);
       if (uiState?.setteMicro != null) setSetteMicro(uiState.setteMicro);
       if (uiState?.sunbeamSetting != null) setSunbeamSetting(uiState.sunbeamSetting);
@@ -3541,10 +3476,10 @@ export default function App() {
                     </span>
                   </div>
 
-                  {dynamicRec?.ageWarning && (
+                  {displayDynamicRec?.ageWarning && (
                     <div className={`flex items-start gap-2 text-xs ${ui.accentText} ${ui.freezeHint} p-3 rounded-xl`}>
                       <Flame className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <span>{dynamicRec.ageWarning}</span>
+                      <span>{displayDynamicRec.ageWarning}</span>
                     </div>
                   )}
 
@@ -3615,9 +3550,9 @@ export default function App() {
                     <p className={`text-xs ${ui.sub}`}>{dynamicRec.subRecommendation}</p>
                   )}
 
-                  {applyRecConfirmation && (
+                  {applyRecConfirmation && applyRecConfirmation === displayedGrindLabel && (
                     <p className={`text-xs font-semibold ${ui.accentText}`} role="status">
-                      {applyRecConfirmation}
+                      Grind set to {applyRecConfirmation}.
                     </p>
                   )}
 
@@ -3661,8 +3596,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => {
-                          setAppliedRecommendationDisplay(null);
-                          setPendingBasketAdjustment(BASKET_FLOW_MORE_HOLES);
+                          setPendingBasketAdjustment({ scope: basketScope, direction: BASKET_FLOW_MORE_HOLES });
                           setBasketChangePromptOpen(false);
                         }}
                         className={`w-full text-left px-4 py-3 rounded-xl ${ui.secondaryBtn} text-sm font-semibold`}
@@ -3673,8 +3607,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => {
-                          setAppliedRecommendationDisplay(null);
-                          setPendingBasketAdjustment(BASKET_FLOW_FEWER_HOLES);
+                          setPendingBasketAdjustment({ scope: basketScope, direction: BASKET_FLOW_FEWER_HOLES });
                           setBasketChangePromptOpen(false);
                         }}
                         className={`w-full text-left px-4 py-3 rounded-xl ${ui.secondaryBtn} text-sm font-semibold`}

@@ -54,6 +54,8 @@ import {
 } from './learningShotIdentity.js';
 import { HIGH_LEARNED_CONFIDENCE_THRESHOLD } from './grindShiftDamping.js';
 import { formatDialShiftReasonParts } from '../grinders/presetGrinders/shiftLabel.js';
+import { compareGrindSettings } from '../grinders/dialBoundaryAdvisory.js';
+import { withAdjustedGrindSetting } from './grindRecommendationDisplay.js';
 import {
   buildOutlierRecommendationReason,
   applyGrindShiftDamping,
@@ -458,14 +460,22 @@ export function getHistoricalRoastBaseline(grinderModel, roastType, recipes = []
   return Math.round(average);
 }
 
-export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = null, settings = null) {
-  if (!lastShot || !lastShot.recommendation || !lastShot.recommendation.recommendedSetting) return null;
+function applyBeanAgeToRecommendation(rec, lastShot, activeBean, mockDate, settings) {
+  if (!rec?.recommendedSetting) return null;
+  const unadjusted = { ...rec, originalReason: rec.reason, ageWarning: null };
+  const reason = rec.reason ?? '';
+  if (
+    rec.outlierGrindHeld
+    || rec.engineStats?.severeChoke
+    || /likely outlier|severe choke|grind step is capped|dial is at its limit/i.test(reason)
+    || (rec.grindSettingHeld && !/balanced and in range/i.test(reason))
+    || !Number.isFinite(lastShot.beanAgeDays)
+    || !Number.isFinite(calendarDay(activeBean?.roastDate))
+  ) {
+    return unadjusted;
+  }
 
-  const currentAgeData = calculateEffectiveBeanAge(activeBean, mockDate);
-  const currentAge = currentAgeData.daysOld;
-  const shotAge = lastShot.beanAgeDays !== undefined ? lastShot.beanAgeDays : currentAge;
-
-  const ageDelta = currentAge - shotAge;
+  const ageDelta = calculateEffectiveBeanAge(activeBean, mockDate).daysOld - lastShot.beanAgeDays;
   let ageShiftSette = 0;
   let ageShiftSunbeam = 0;
   let ageWarning = null;
@@ -473,54 +483,96 @@ export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = nu
   if (ageDelta <= -4) {
     ageShiftSette = 2;
     ageShiftSunbeam = 1;
-    ageWarning = `Thaw/Freshness detected: Active beans are ${Math.abs(ageDelta)} days fresher than your last logged shot. Recommendation dynamically shifted coarser to compensate.`;
+    ageWarning = `Thaw/Freshness detected. Active beans are ${Math.abs(ageDelta)} days fresher than the reference shot. The shot-based recommendation was shifted coarser.`;
   } else if (ageDelta <= -2) {
     ageShiftSette = 1;
     ageShiftSunbeam = 1;
-    ageWarning = `Bean freshness shift detected. Recommendation dynamically shifted coarser.`;
+    ageWarning = 'Bean freshness shift detected. The shot-based recommendation was shifted coarser.';
   } else if (ageDelta >= 10) {
     ageShiftSette = -2;
     ageShiftSunbeam = -1;
-    ageWarning = `Aging detected: Active beans are ${ageDelta} days older than your last logged shot. Recommendation dynamically shifted finer to compensate.`;
+    ageWarning = `Aging detected. Active beans are ${ageDelta} days older than the reference shot. The shot-based recommendation was shifted finer.`;
   } else if (ageDelta >= 5) {
     ageShiftSette = -1;
     ageShiftSunbeam = 0;
-    ageWarning = `Bean aged ${ageDelta} days since last shot. Recommendation dynamically shifted finer.`;
+    ageWarning = `Bean aged ${ageDelta} days since the reference shot. The shot-based recommendation was shifted finer.`;
   }
 
-  let adjustedSetting = { ...lastShot.recommendation.recommendedSetting };
+  const grinderModel = lastShot.grinderModel || SETTE_GRINDER_ID;
+  const baseSetting = rec.recommendedSetting;
+  let adjustedSetting;
 
-  if (lastShot.grinderModel === SETTE_GRINDER_ID && ageShiftSette !== 0) {
-    adjustedSetting = adjustSette(adjustedSetting.macro, adjustedSetting.micro, ageShiftSette);
-  } else if (lastShot.grinderModel === SUNBEAM_GRINDER_ID && ageShiftSunbeam !== 0) {
-    adjustedSetting.setting = adjustSunbeam(adjustedSetting.setting, ageShiftSunbeam);
-  } else if (isNicheZeroGrinderModel(lastShot.grinderModel)) {
-    // Niche has no calibrated quantitative age shift.
-  } else if (isCustomGrinderModel(lastShot.grinderModel, settings)) {
-    const def = getGrinderDefinitionById(lastShot.grinderModel, settings);
+  if (grinderModel === SETTE_GRINDER_ID && ageShiftSette !== 0) {
+    adjustedSetting = adjustSette(baseSetting.macro, baseSetting.micro, ageShiftSette);
+  } else if (grinderModel === SUNBEAM_GRINDER_ID && ageShiftSunbeam !== 0) {
+    adjustedSetting = { setting: adjustSunbeam(baseSetting.setting, ageShiftSunbeam) };
+  } else if (isCustomGrinderModel(grinderModel, settings)) {
+    const def = getGrinderDefinitionById(grinderModel, settings);
     const shift = ageShiftSunbeam !== 0 ? ageShiftSunbeam : ageShiftSette;
-    if (shift !== 0 && adjustedSetting.customGrindValue != null) {
-      adjustedSetting = def.adjustSetting(shift, { customGrindValue: adjustedSetting.customGrindValue });
-    }
+    if (shift !== 0) adjustedSetting = def.adjustSetting(shift, baseSetting);
   }
 
-  const stored = lastShot.recommendation;
-  return {
-    recommendedSetting: adjustedSetting,
-    ageWarning: ageWarning,
-    reason: stored.reason,
-    originalReason: stored.reason,
-    warning: stored.warning,
-    subRecommendation: stored.subRecommendation,
-    flairWaterTempAdvice: stored.flairWaterTempAdvice,
-    evidenceContext: stored.evidenceContext,
-    inputGrind: stored.inputGrind,
-    engineStats: stored.engineStats,
-    nicheLearningNote: stored.nicheLearningNote,
-    nicheEmpiricalValidationNote: stored.nicheEmpiricalValidationNote,
-    outlierGrindHeld: stored.outlierGrindHeld,
-    grindSettingHeld: stored.grindSettingHeld,
+  const appliedDirection = compareGrindSettings(grinderModel, baseSetting, adjustedSetting, settings);
+  if (!adjustedSetting || appliedDirection !== Math.sign(ageShiftSette)) return unadjusted;
+
+  const inputGrind = rec.inputGrind ?? {
+    macro: lastShot.setteMacro,
+    micro: lastShot.setteMicro,
+    setting: lastShot.sunbeamSetting,
+    customGrindValue: lastShot.customGrindValue,
   };
+  return {
+    ...withAdjustedGrindSetting(
+      grinderModel,
+      { ...rec, inputGrind },
+      adjustedSetting,
+      ageDelta > 0 ? 'Adjusted for bean ageing.' : 'Adjusted for bean freshness.',
+      settings
+    ),
+    ageWarning,
+  };
+}
+
+export function getAgeAdjustedRecommendation(lastShot, activeBean, mockDate = null, settings = null) {
+  return applyBeanAgeToRecommendation(lastShot?.recommendation, lastShot, activeBean, mockDate, settings);
+}
+
+export function getDialRecommendation({
+  lastLoggedShot,
+  lastLearningShot,
+  activeBean,
+  activeRecipe,
+  beanShotsForGrinder,
+  grinderShotsForLearning,
+  grinderModel,
+  flairEnabled,
+  settings,
+  mockDate = null,
+}) {
+  const lastEligibleShot = lastLoggedShot && shotEligibleForLearning(lastLoggedShot)
+    ? lastLoggedShot
+    : lastLearningShot;
+  if (shouldUsePreviousRecipeRecommendation({
+    lastLoggedShot: lastEligibleShot, activeRecipe, beanShotsForGrinder, flairEnabled,
+  })) {
+    return {
+      ...getAgeAdjustedRecommendation(lastEligibleShot, activeBean, mockDate, settings),
+      previousRecipeDisclaimer: PREVIOUS_RECIPE_REC_DISCLAIMER,
+    };
+  }
+
+  // Prefer current-recipe evidence when available. Older records may lack recipe context.
+  const latest = (activeRecipe && beanShotsForGrinder.find((shot) =>
+    shotMatchesRecipeContext(shot, activeRecipe, flairEnabled)
+  )) || lastLearningShot;
+  if (!latest) return null;
+  const sourceShot = latest.grinderModel ? latest : { ...latest, grinderModel };
+  const rec = recomputeReferenceLearningRecommendationFromLastShot(
+    sourceShot, activeRecipe, beanShotsForGrinder, flairEnabled, settings, grinderShotsForLearning
+  ) ?? (getGrinderDefinitionById(grinderModel, settings) && recomputeQuantitativeRecommendationFromLastShot(
+    sourceShot, activeRecipe, beanShotsForGrinder, flairEnabled, settings, grinderShotsForLearning
+  )) ?? sourceShot.recommendation;
+  return applyBeanAgeToRecommendation(rec, sourceShot, activeBean, mockDate, settings);
 }
 
 /**

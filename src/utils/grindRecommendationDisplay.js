@@ -3,6 +3,7 @@ import {
   isNicheZeroGrinderModel,
 } from '../grinders/grinderRegistry.js';
 import {
+  compareGrindSettings,
   dialBoundaryAdvisoryForRecommendation,
   dialLimitReachedNote,
 } from '../grinders/dialBoundaryAdvisory.js';
@@ -49,6 +50,22 @@ function stripLeadingEstimatedPrefix(raw) {
   return {
     estimated: true,
     text: text.replace(/^ESTIMATED\s*[—–-]\s*/i, '').trim(),
+  };
+}
+
+export function withAdjustedGrindSetting(grinderModel, rec, recommendedSetting, explanation, settings = null) {
+  const inputGrind = rec.inputGrind ?? rec.recommendedSetting;
+  const direction = compareGrindSettings(grinderModel, inputGrind, recommendedSetting, settings)
+    ?? compareGrindSettings(grinderModel, rec.recommendedSetting, recommendedSetting, settings);
+  const lead = direction === 0 ? 'KEEP GRIND' : direction < 0 ? 'GRIND FINER' : 'GRIND COARSER';
+  const { estimated } = stripLeadingEstimatedPrefix(rec.reason);
+  return {
+    ...rec,
+    recommendedSetting,
+    inputGrind,
+    originalReason: rec.originalReason ?? rec.reason,
+    reason: `${estimated ? 'ESTIMATED — ' : ''}${lead}${explanation ? ` — ${explanation}` : ''}`,
+    grindSettingHeld: direction === 0,
   };
 }
 

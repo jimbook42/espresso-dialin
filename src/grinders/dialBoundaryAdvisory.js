@@ -1,4 +1,5 @@
 import { getNicheZeroDialLimits } from './nicheZero.js';
+import { parseCustomGrindValue } from './customGrinder.js';
 import {
   getGrinderDefinitionById,
   isNicheZeroGrinderModel,
@@ -49,13 +50,16 @@ function grinderDialLimits(grinderModel, settings) {
 function recommendedDialValue(grinderModel, recommendedSetting, settings) {
   if (!recommendedSetting) return null;
   if (isSetteGrinderModel(grinderModel)) {
+    if (recommendedSetting.macro == null || recommendedSetting.micro == null) return null;
     return setteToNumeric(recommendedSetting.macro, recommendedSetting.micro);
   }
   if (isSunbeamGrinderModel(grinderModel)) {
+    if (recommendedSetting.setting == null) return null;
     const n = Number(recommendedSetting.setting);
     return Number.isFinite(n) ? n : null;
   }
   if (isNicheZeroGrinderModel(grinderModel)) {
+    if (recommendedSetting.nicheZeroSetting == null) return null;
     const n = Number(recommendedSetting.nicheZeroSetting);
     return Number.isFinite(n) ? n : null;
   }
@@ -65,10 +69,18 @@ function recommendedDialValue(grinderModel, recommendedSetting, settings) {
   }
   const def = getGrinderDefinitionById(grinderModel, settings);
   if (def?.customProfile) {
-    const n = Number(recommendedSetting.customGrindValue);
-    return Number.isFinite(n) ? n : null;
+    return parseCustomGrindValue(recommendedSetting.customGrindValue, def.customProfile);
   }
   return null;
+}
+
+/** Negative is finer, positive is coarser, zero is the same dial position. */
+export function compareGrindSettings(grinderModel, from, to, settings = null) {
+  const current = recommendedDialValue(grinderModel, from, settings);
+  const target = recommendedDialValue(grinderModel, to, settings);
+  if (current === null || target === null) return null;
+  const direction = grinderDialLimits(grinderModel, settings)?.lowerIsFiner === false ? -1 : 1;
+  return Math.sign((target - current) * direction);
 }
 
 function atDialEnd(value, limits, which) {
@@ -111,6 +123,8 @@ function currentDialFromEngineStats(grinderModel, rec, settings) {
 }
 
 export function dialBoundaryAdvisoryForRecommendation(grinderModel, rec, settings = null) {
+  // The final target after an actual age or basket shift supersedes the engine's original intent.
+  if (rec?.ageWarning || rec?.basketChangeNote) return null;
   const shift = rec?.engineStats?.shift ?? 0;
   const reason = rec?.reason || rec?.originalReason || '';
 
