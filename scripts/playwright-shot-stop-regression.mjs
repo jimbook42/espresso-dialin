@@ -37,10 +37,10 @@ async function logShot(page) {
   await page.getByTestId('history-shot-card').waitFor();
 }
 
-async function seed(page, settings) {
+async function seed(page, settings, recipeDoseG) {
   await page.goto(server.url);
   await page.waitForFunction(() => document.body.textContent.includes('grinder'));
-  await page.evaluate(async (settings) => {
+  await page.evaluate(async ({ settings, recipeDoseG }) => {
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open('EspressoDialDB');
       request.onsuccess = () => resolve(request.result);
@@ -57,17 +57,17 @@ async function seed(page, settings) {
       tx.objectStore('beans').put({ id: 'audit-bean', name: 'Timing audit coffee', roastType: 'Medium' });
       tx.objectStore('recipes').put({
         id: 'audit-recipe', beanId: 'audit-bean', targetTimeMinS: 27, targetTimeMaxS: 32,
-        targetDoseG: 18, targetYieldG: 36,
+        targetDoseG: recipeDoseG, targetYieldG: 36,
       });
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-  }, settings);
+  }, { settings, recipeDoseG });
   await page.reload();
 }
 
-async function run(name, check, { settings = {}, withPlateau = true } = {}) {
+async function run(name, check, { settings = {}, withPlateau = true, recipeDoseG = 18 } = {}) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {
     await page.addInitScript(() => {
@@ -102,7 +102,7 @@ async function run(name, check, { settings = {}, withPlateau = true } = {}) {
       };
       window.scaleDrop = () => device.gatt.disconnect();
     });
-    await seed(page, settings);
+    await seed(page, settings, recipeDoseG);
     const connect = page.getByRole('button', { name: 'Connect scale', exact: true });
     await connect.click();
     await page.getByRole('button', { name: 'Disconnect', exact: true }).waitFor();
@@ -154,6 +154,8 @@ try {
     assert.equal(await page.evaluate(() => window.scaleStopCommands), 1);
     await logShot(page);
     const [shot] = await readShots(page);
+    assert.equal(shot.actualDoseG, 18.5);
+    assert.equal(shot.targetDoseG, 18.5);
     const exported = await readDiagnostics(page);
     assert.equal(exported.shotId, shot.id);
     assert.equal(exported.final.rule, 'plateau');
@@ -172,7 +174,7 @@ try {
       await writeFile(process.env.B06_SIMULATED_DIAGNOSTICS_EXAMPLE, JSON.stringify(exported, null, 2));
     }
     return { candidate, ...exported.final };
-  }, { settings: { labCameraPressureEnabled: withPressurePreview } });
+  }, { recipeDoseG: 18.5, settings: { labCameraPressureEnabled: withPressurePreview } });
   await run('missing notifications release the frozen display', async ({ page, stop, readTime, candidate }) => {
     await page.clock.runFor(750);
     await page.waitForFunction((before) => {
@@ -229,8 +231,9 @@ try {
     await card.getByTestId('history-share-shot').waitFor();
     await card.getByRole('button', { name: 'Delete shot', exact: true }).waitFor();
     await card.getByText('Shot profile', { exact: true }).click();
-    await card.getByText('Scale recording interrupted', { exact: true }).waitFor();
+    await card.getByTestId('history-shot-profile').getByText('Scale recording interrupted', { exact: true }).waitFor();
     const insights = card.getByTestId('shot-insights');
+    const chart = card.getByTestId('history-recorded-chart');
     await insights.getByText('Shot insights', { exact: true }).waitFor();
     await insights.getByText('Main takeaway', { exact: true }).waitFor();
     await insights.getByText('Supporting observations', { exact: true }).waitFor();
@@ -250,11 +253,12 @@ try {
         `History insights overflow at ${viewport.width}px`);
       await insights.evaluate((element) => element.scrollIntoView({ block: 'start', inline: 'nearest' }));
       await page.screenshot({ path: path.join(tmpdir(), `b09-shot-insights-${viewport.width}x${viewport.height}.png`) });
-      await card.getByRole('button', { name: 'Weight', exact: true }).click();
-      await card.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
+      await chart.scrollIntoViewIfNeeded();
+      await chart.getByRole('button', { name: 'Weight', exact: true }).click();
+      await chart.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-      await card.getByRole('button', { name: 'Flow', exact: true }).click();
-      await card.getByRole('img', { name: 'Flow rate (g/s)' }).waitFor();
+      await chart.getByRole('button', { name: 'Flow', exact: true }).click();
+      await chart.getByRole('img', { name: 'Flow rate (g/s)' }).waitFor();
     }
     await page.getByTitle('Settings', { exact: true }).click();
     await page.getByRole('button', { name: 'Dark', exact: true }).click();

@@ -1,5 +1,5 @@
 /**
- * Download-only export of the last Lab replay video and that shot's saved curve.
+ * Export of the last Lab replay video and that shot's saved curve.
  * Does not change stored shot or bean records.
  */
 import {
@@ -7,6 +7,7 @@ import {
 } from '../scales/shotDeviceDiagnostics.js';
 import { replayDiagnosticsForShot } from './labReplayDiagnostics.js';
 import { readerStallDiagnosticsForShot } from './readerStallDiagnostics.js';
+import { isAndroidApp, saveAndroidFile, saveAndroidReplay } from '../native/androidShell.js';
 
 /**
  * @param {object | null | undefined} shot
@@ -40,7 +41,7 @@ export function replayVideoExtension(mimeType) {
  * @param {string | null | undefined} mimeType
  */
 export function labReplayExportFilenames(shotId, mimeType) {
-  const safe = String(shotId || 'shot').replace(/[^a-zA-Z0-9._-]+/g, '_');
+  const safe = String(shotId || 'shot').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 90);
   return {
     video: `lab-replay-${safe}.${replayVideoExtension(mimeType)}`,
     pressure: `lab-replay-${safe}-pressure.json`,
@@ -90,14 +91,42 @@ export function buildShotDiagnosticDocument(shot, exportedAt = new Date().toISOS
   };
 }
 
-export function exportLabShotReplayDownloads({ shot, blob, mimeType }) {
-  if (!shot?.id) return null;
-  const documentJson = buildShotDiagnosticDocument(shot);
-  const names = labReplayExportFilenames(shot.id, mimeType || blob?.type);
-  if (blob) downloadBlobFile(names.video, blob);
-  downloadBlobFile(
-    names.pressure,
-    new Blob([JSON.stringify(documentJson)], { type: 'application/json' }),
-  );
-  return documentJson;
+export async function exportLabShotFiles({ shot, replay, includeVideo }, {
+  native = isAndroidApp, save = saveAndroidFile, saveVideo = saveAndroidReplay, download = downloadBlobFile,
+} = {}) {
+  if (!shot?.id) throw new Error('This shot is no longer available.');
+  if (includeVideo && (replay?.meta?.shotId !== shot.id || !replay.blob?.size)) {
+    throw new Error('This shot’s replay video is unavailable. Export diagnostics to save its pressure data.');
+  }
+  const mimeType = (replay?.meta?.mimeType || replay?.blob?.type || '').split(';')[0].toLowerCase();
+  const names = labReplayExportFilenames(shot.id, mimeType);
+  const diagnostics = new Blob([JSON.stringify(buildShotDiagnosticDocument(shot))], { type: 'application/json' });
+  const files = [];
+  if (includeVideo) files.push({
+    name: names.video, blob: replay.blob.slice(0, replay.blob.size, mimeType), write: saveVideo,
+  });
+  files.push({ name: names.pressure, blob: diagnostics, write: save });
+
+  const outcomes = [];
+  for (const { name, blob, write } of files) {
+    const file = { name, bytes: blob.size };
+    try {
+      if (!native) {
+        download(name, blob);
+        outcomes.push({ ...file, status: 'download' });
+        continue;
+      }
+      const receipt = await write(blob, name);
+      if (receipt.cancelled) {
+        outcomes.push({ ...file, status: 'cancelled' });
+        break;
+      }
+      if (receipt.bytesWritten !== blob.size) throw new Error('The byte count did not match.');
+      outcomes.push({ ...file, savedAs: receipt.filename, status: 'saved' });
+    } catch (error) {
+      outcomes.push({ ...file, status: 'failed', error: error.message });
+      break;
+    }
+  }
+  return outcomes;
 }

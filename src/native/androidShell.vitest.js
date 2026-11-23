@@ -1,12 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
-import { AndroidShell, saveAndroidFile } from './androidShell.js';
+import { AndroidShell, saveAndroidFile, saveAndroidReplay } from './androidShell.js';
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: { getPlatform: () => 'android' },
   registerPlugin: () => ({
-    beginFileExport: vi.fn(), appendFileExport: vi.fn(),
+    beginFileExport: vi.fn(), beginReplayExport: vi.fn(), appendFileExport: vi.fn(),
     exportFile: vi.fn(), cancelFileExport: vi.fn(),
   }),
 }));
@@ -46,4 +46,31 @@ it('never opens a picker for empty input or failed staging and cleans up failed 
   await expect(saveAndroidFile(new Blob(['abc']), 'broken.png')).rejects.toThrow(/Broken transfer/);
   expect(AndroidShell.exportFile).not.toHaveBeenCalled();
   expect(AndroidShell.cancelFileExport).toHaveBeenCalledOnce();
+});
+
+it('uses a separate bounded replay path and sends only a chunk at a time', async () => {
+  const largeSize = 64 * 1024 * 1024 + 1;
+  const size = 256 * 1024 + 1;
+  const slice = vi.fn((start, end) => new Blob([new Uint8Array(end - start)]));
+  const replay = { size, type: 'video/webm;codecs=vp8', slice };
+  await expect(saveAndroidFile({ ...replay, size: largeSize }, 'replay.webm')).rejects.toThrow(/64 MiB/);
+  const interrupted = vi.fn(() => { throw new Error('test interruption'); });
+  await expect(saveAndroidReplay({ ...replay, size: largeSize, slice: interrupted }, 'replay.webm')).rejects.toThrow(/test interruption/);
+  expect(AndroidShell.beginReplayExport.mock.calls[0][0].byteCount).toBe(largeSize);
+  expect(interrupted).toHaveBeenCalledWith(0, 256 * 1024);
+  AndroidShell.exportFile.mockResolvedValue({ bytesWritten: size, filename: 'replay (1).webm' });
+  await expect(saveAndroidReplay(replay, 'replay.webm')).resolves.toMatchObject({ filename: 'replay (1).webm' });
+  expect(AndroidShell.beginReplayExport).toHaveBeenCalledWith({
+    id: expect.any(String), filename: 'replay.webm', mimeType: 'video/webm', byteCount: size,
+  });
+  expect(AndroidShell.beginFileExport).not.toHaveBeenCalled();
+  expect(slice).toHaveBeenCalledTimes(2);
+  expect(slice).toHaveBeenLastCalledWith(size - 1, size);
+  expect(AndroidShell.exportFile.mock.calls[0][0]).toMatchObject({ share: false });
+});
+
+it('rejects unsupported and oversized replay input before staging', async () => {
+  await expect(saveAndroidReplay(new Blob(['no'], { type: 'application/octet-stream' }), 'clip.mp4')).rejects.toThrow(/unsupported/);
+  await expect(saveAndroidReplay({ size: 256 * 1024 * 1024 + 1, type: 'video/mp4' }, 'clip.mp4')).rejects.toThrow(/256 MiB/);
+  expect(AndroidShell.beginReplayExport).not.toHaveBeenCalled();
 });

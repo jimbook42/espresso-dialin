@@ -1,5 +1,6 @@
 import { BetaActions } from './beta/BetaActions.jsx';
-import { AndroidShell, isAndroidApp } from './native/androidShell.js';
+import { isAndroidApp } from './native/androidShell.js';
+import { useAndroidKeepAwake } from './native/useAndroidKeepAwake.js';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import {
   db,
@@ -233,13 +234,13 @@ import {
   allowUsagePageViews, anonymousUsageEnabled, beforeUsagePageView, recordUsage, usageSensors,
 } from './settings/anonymousUsage.js';
 import { isVerifiedGaugeCalibration } from './flairPressureLab/gaugeCompatibility.js';
-import { ShotProfile } from './components/ShotProfile.jsx';
+import { HistoryShotChart, ShotProfile } from './components/ShotProfile.jsx';
 import { FullAppTransfer } from './transfer/FullAppTransfer.jsx';
-import { PortableShotBackup } from './components/PortableShotExport.jsx';
+import { PortableShotBackup, PortableShotExport } from './components/PortableShotExport.jsx';
 import { BeanShotConsistency } from './components/BeanShotConsistency.jsx';
 import { saveShotTasteRating, shotTasteRating } from './utils/shotRatings.js';
 import { canReferenceShot, readShotSelections, removeDeletedShotSelections, setReferenceShot, toggleFavouriteShot } from './utils/shotSelections.js';
-import { savedShotMeasurements } from './utils/shotProfile.js';
+import { hasPhysicalShotChart, savedShotMeasurements } from './utils/shotProfile.js';
 import { ShotLabPressureIntegration } from './components/ShotLabPressureIntegration.jsx';
 import { ShotLabPressureProvider } from './components/ShotLabPressureContext.jsx';
 import { LabShotReplayScreen } from './components/LabShotReplayScreen.jsx';
@@ -247,7 +248,7 @@ import {
   loadLastLabShotReplayMeta,
   loadLastLabShotReplayWithBlob,
 } from './flairPressureLab/labShotReplayDb.js';
-import { exportLabShotReplayDownloads } from './flairPressureLab/labShotReplayExport.js';
+import { exportLabShotFiles } from './flairPressureLab/labShotReplayExport.js';
 import { readerStallDiagnosticsForShot } from './flairPressureLab/readerStallDiagnostics.js';
 import { LabPressureStartPanel } from './components/LabPressureStartPanel.jsx';
 import { LabPreShotDialUnderScale } from './components/LabPreShotDialUnderScale.jsx';
@@ -417,6 +418,7 @@ export default function App() {
   const [usageError, setUsageError] = useState(false);
   const [lastSavedShotId, setLastSavedShotId] = useState(null);
   const [shotToShare, setShotToShare] = useState(null);
+  const [portableShotId, setPortableShotId] = useState(null);
   const [shotCardOptions, setShotCardOptions] = useState({ brand: true, bean: false, grinder: false, date: false, notes: false, reference: false });
   const [experienceDraft, setExperienceDraft] = useState(null);
   const [savingExperience, setSavingExperience] = useState(false);
@@ -434,7 +436,8 @@ export default function App() {
 
   const beansQuery = useLiveQuery(() => db.beans.toArray(), []);
   const beans = beansQuery || [];
-  const recipes = useLiveQuery(() => db.recipes.toArray(), []) || [];
+  const recipesQuery = useLiveQuery(() => db.recipes.toArray(), []);
+  const recipes = recipesQuery || [];
   const shotsQuery = useLiveQuery(() => db.shots.orderBy('timestamp').reverse().toArray(), []);
   const historyShots = useMemo(() => shotsQuery || [], [shotsQuery]);
   const shotSelections = useLiveQuery(() => readShotSelections(db), []);
@@ -449,7 +452,7 @@ export default function App() {
     settingsQueryResult === SETTINGS_QUERY_PENDING ? null : (settingsQueryResult ?? null);
   const hasExistingUserData = historyShots.length > 0 || beans.length > 0;
   const showFirstLaunchWizard = shouldRenderFirstLaunchWizard(settingsQueryResult, { hasExistingUserData });
-  const firstLaunchDataLoaded = beansQuery !== undefined && shotsQuery !== undefined;
+  const firstLaunchDataLoaded = beansQuery !== undefined && recipesQuery !== undefined && shotsQuery !== undefined;
   const usageEnabled = !usageSessionOff
     && anonymousUsageEnabled(settingsQueryResult !== SETTINGS_QUERY_PENDING, settingsSetting, isAndroidApp);
   useLayoutEffect(() => {
@@ -494,6 +497,8 @@ export default function App() {
   const shotCountdownStartOptsRef = useRef(null);
   const [weighingViewOpen, setWeighingViewOpen] = useState(false);
   const [labCalibrateRequest, setLabCalibrateRequest] = useState(0);
+  const [labCalibrationOpen, setLabCalibrationOpen] = useState(false);
+  const [brewPreparing, setBrewPreparing] = useState(false);
   const [labZeroConfirmOpen, setLabZeroConfirmOpen] = useState(false);
   const labZeroConfirmedSessionRef = useRef(false);
   const labPendingStartOptsRef = useRef(null);
@@ -505,6 +510,8 @@ export default function App() {
   const [labReplayShotId, setLabReplayShotId] = useState(null);
   const [labReplayOpen, setLabReplayOpen] = useState(false);
   const [labReplayPayload, setLabReplayPayload] = useState(null);
+  const [shotExportStatus, setShotExportStatus] = useState(null);
+  const exportingShotRef = useRef(false);
   const [scaleDebugLines, setScaleDebugLines] = useState([]);
   const [yieldSettleActive, setYieldSettleActive] = useState(false);
   const [frozenShotWeightG, setFrozenShotWeightG] = useState(null);
@@ -577,7 +584,7 @@ export default function App() {
     () => cachedGrindBootstrap?.grindUi?.customGrindValue ?? null
   );
   const [wasPurged, setWasPurged] = useState(true);
-  const [actualDoseG, setActualDoseG] = useState(18);
+  const [doseOverride, setDoseOverride] = useState(null);
   const [actualYieldG, setActualYieldG] = useState('');
   const [actualTimeS, setActualTimeS] = useState('');
   const dialHasMeasurements = actualTimeS !== '' || actualYieldG !== '';
@@ -593,7 +600,7 @@ export default function App() {
   const yieldInputRef = useRef(null);
   const notesCardRef = useRef(null);
   const tasteInputRef = useRef(null);
-  const actualDoseGRef = useRef(actualDoseG);
+  const actualDoseGRef = useRef('');
   const actualYieldGRef = useRef(actualYieldG);
   const recommendationRef = useRef(null);
   const grindSettingsRef = useRef(null);
@@ -691,11 +698,6 @@ export default function App() {
   }, [darkMode]);
 
   useEffect(() => {
-    actualDoseGRef.current = actualDoseG;
-    actualYieldGRef.current = actualYieldG;
-  }, [actualDoseG, actualYieldG]);
-
-  useEffect(() => {
     logoTapTesterRef.current = createLogoTapTester({
       onTrigger: () => {
         const variant = nextLogoTestCelebrationVariant();
@@ -746,6 +748,13 @@ export default function App() {
   const beanShots = shots.filter(s => s.beanId === activeBean?.id);
   const storedRecipe = recipes.find(r => r.beanId === activeBean?.id);
   const activeRecipe = resolveRecipeForBean(activeBean, storedRecipe, beanShots, grinderModel);
+  const actualDoseG = doseOverride && doseOverride.beanId === activeBean?.id
+    ? doseOverride.value
+    : recipesQuery === undefined ? '' : activeRecipe.targetDoseG ?? '';
+  useEffect(() => {
+    actualDoseGRef.current = actualDoseG;
+    actualYieldGRef.current = actualYieldG;
+  }, [actualDoseG, actualYieldG]);
   const lastLoggedShot = findLatestShotForBeanAndGrinder(shots, activeBean?.id, grinderModel);
   const lastLearningShot = activeBean && grinderModel
     ? shots.find(
@@ -776,11 +785,19 @@ export default function App() {
       : 0,
   });
 
-  useEffect(() => {
-    if (!isAndroidApp || (!timerRunning && pressureState !== 'recording')) return undefined;
-    void AndroidShell.keepAwake({ enabled: true }).catch(() => {});
-    return () => { void AndroidShell.keepAwake({ enabled: false }).catch(() => {}); };
-  }, [timerRunning, pressureState]);
+  const preparationSurface = labCameraPressureEnabled && !showFirstLaunchWizard
+    && (activeTab === 'pressure' || (activeTab === 'dial' && activeBeansList.length > 0)
+      || (activeTab === 'brew' && brewPreparing));
+  const recordingOrSetup = timerRunning || pressureState === 'recording'
+    || timerStartPending || shotCountdownValue != null || yieldSettleActive
+    || weighingViewOpen || labCalibrationOpen || labZeroConfirmOpen;
+  useAndroidKeepAwake({
+    active: recordingOrSetup,
+    preparationKey: preparationSurface ? `${activeTab}:${liveWorkflowEntry}` : null,
+    canPrepare: preparationSurface && !isSettingsOpen && !recordingOrSetup
+      && (activeTab !== 'dial' || (!dialShotPending && !dialHasMeasurements))
+      && (activeTab !== 'pressure' || pressureState === 'idle'),
+  });
 
   const preinfusionScaleCtx = {
     scaleFeatureEnabled,
@@ -810,11 +827,6 @@ export default function App() {
     scaleFeatureEnabled && timemoreScale.isConnected && timerRunning
       ? timemoreScale.displayFlowSeries
       : null;
-
-  const prefillDoseFromRecipe = (recipe) => {
-    if (recipe?.targetDoseG == null || recipe.targetDoseG === '') return;
-    setActualDoseG(recipe.targetDoseG);
-  };
 
   useEffect(() => {
     if (weighingViewOpen && !timemoreScale.isConnected) {
@@ -1335,6 +1347,7 @@ export default function App() {
     manualDraftId.current = null;
     handleResetTimer();
     if (!hasUnsavedShot) return true;
+    setDoseOverride(null);
     setActualTimeS('');
     setActualYieldG('');
     dialYieldSourceRef.current = null;
@@ -1687,7 +1700,7 @@ export default function App() {
       manualDraftId.current = draft.id;
       setActualTimeS(draft.time);
       setActualYieldG(draft.yieldG);
-      setActualDoseG(draft.dose);
+      setDoseOverride({ beanId: draft.beanId, value: draft.dose });
       setTasteProfile(draft.taste);
       setShotRating(draft.rating);
       setNotes(draft.notes);
@@ -1921,13 +1934,26 @@ export default function App() {
   }, []);
 
   const exportLabShotReplay = useCallback(async (shot, includeVideo = true) => {
-    const data = includeVideo ? await loadLastLabShotReplayWithBlob().catch(() => null) : null;
-    const same = Boolean(data && data.meta.shotId === shot?.id);
-    exportLabShotReplayDownloads({
-      shot,
-      blob: same ? data.blob : null,
-      mimeType: same ? (data.meta.mimeType || data.blob.type) : undefined,
-    });
+    if (exportingShotRef.current) return;
+    exportingShotRef.current = true;
+    setShotExportStatus({ shotId: shot.id, busy: true, lines: ['Preparing export…'] });
+    try {
+      const replay = includeVideo ? await loadLastLabShotReplayWithBlob() : null;
+      const outcomes = await exportLabShotFiles({ shot, includeVideo, replay });
+      const lines = outcomes.map(({ name, savedAs, bytes, status, error }) => {
+        const size = `${bytes.toLocaleString()} bytes`;
+        if (status === 'saved') return savedAs ? `Saved ${savedAs} and verified ${size}.`
+          : `Verified ${size} saved. Requested filename ${name}.`;
+        if (status === 'cancelled') return `Cancelled ${name} (${size}).`;
+        if (status === 'download') return `Download requested for ${name} (${size}).`;
+        return `Failed to save ${name} (${size}). ${error}`;
+      });
+      setShotExportStatus({ shotId: shot.id, lines, failed: outcomes.some(({ status }) => status === 'failed') });
+    } catch (error) {
+      setShotExportStatus({ shotId: shot.id, failed: true, lines: [error.message || 'Could not prepare this export.'] });
+    } finally {
+      exportingShotRef.current = false;
+    }
   }, []);
 
   const requestStartTimerWithLab = useCallback(
@@ -2079,8 +2105,8 @@ export default function App() {
   };
 
   const selectActiveBean = (beanId) => {
+    if (beanId !== activeBean?.id) setDoseOverride(null);
     setSelectedBeanId(beanId);
-    prefillDoseFromRecipe(recipes.find((r) => r.beanId === beanId));
     void rememberSelectedBeanId(beanId);
   };
 
@@ -2193,9 +2219,7 @@ export default function App() {
         const existingRecipe = isEditingBean ? await db.recipes.where('beanId').equals(beanId).first() : null;
         await persistBeanRecipeForBean(db, beanId, recipeValidation.recipe, existingRecipe, grinderModel);
       });
-      if (isEditingBean) {
-        prefillDoseFromRecipe(recipeValidation.recipe);
-      } else {
+      if (!isEditingBean) {
         selectActiveBean(beanId);
 
         const currentSettings = await db.settings.get('global') || { id: 'global' };
@@ -2560,7 +2584,7 @@ export default function App() {
       actualTimeS: parsedTime,
       tasteProfile: savedTasteProfile,
       shotRating: shotRating !== null ? shotRating : undefined,
-      brewRatio: `1:${brewRatio}`,
+      brewRatio: `1:${(parsedYield / parsedDose).toFixed(1)}`,
       beanAgeDays: ageData.daysOld,
       storageType: activeBean.storageType || 'bag',
       recommendationFollowed,
@@ -2632,9 +2656,7 @@ export default function App() {
       setPendingBasketAdjustment(null);
 
       setActualTimeS('');
-      if (activeRecipe?.targetDoseG != null && activeRecipe.targetDoseG !== '') {
-        setActualDoseG(activeRecipe.targetDoseG);
-      }
+      setDoseOverride(null);
       setActualYieldG('');
       dialYieldSourceRef.current = null;
       setShotRating(null);
@@ -3036,9 +3058,6 @@ export default function App() {
   }, [activeTab, brewGuideEnabled, releaseBrewGuideTimer]);
 
   const handleBrewHandoff = ({ timeS, yieldG } = {}) => {
-    if (activeRecipe && activeRecipe.targetDoseG != null && activeRecipe.targetDoseG !== '') {
-      setActualDoseG(activeRecipe.targetDoseG);
-    }
     if (timeS != null && timeS !== '') setActualTimeS(timeS);
     if (yieldG != null && yieldG !== '' && Number(yieldG) > 0) {
       dialYieldSourceRef.current = null;
@@ -3126,6 +3145,7 @@ export default function App() {
       targetTimeMaxS={activeTab === 'pressure' ? undefined : activeRecipe?.targetTimeMaxS}
       labShotsLogged={labShotsWithPressureLogged}
       calibrateRequest={labCalibrateRequest}
+      onCalibrationOpenChange={setLabCalibrationOpen}
       registerOpenCalibrate={(fn) => {
         labPressureOpenCalibrateRef.current = fn;
       }}
@@ -3810,12 +3830,12 @@ export default function App() {
                     >
                       <label className={`${ui.fieldLabel} block mb-2`}>Dose (g)</label>
                       <input
-                        type="number" step="0.1"
+                        type="number" step="any"
                         {...fieldErrorAttributes('shot-dose', shotFieldHighlights.dose)}
                         value={actualDoseG}
                         onChange={(e) => {
                           persistManualShotEdit({ dose: e.target.value });
-                          setActualDoseG(e.target.value);
+                          setDoseOverride({ beanId: activeBean.id, value: e.target.value });
                           setShotFieldHighlights((prev) => ({ ...prev, dose: false }));
                         }}
                         className={`w-full bg-transparent ${ui.text} text-center text-xl font-black focus:outline-none`}
@@ -4047,6 +4067,7 @@ export default function App() {
             onEndPreInfusion={handleEndPreInfusion}
             onHandoff={handleBrewHandoff}
             onTimerHost={setBrewTimerHost}
+            onPreparationActive={setBrewPreparing}
             guidanceMode={brewGuidanceMode}
             onUseQuickChecklist={handleUseQuickChecklist}
             onNoChecklist={handleNoBrewChecklist}
@@ -4598,12 +4619,17 @@ export default function App() {
                         ))}
                       </div>
                     )}
+                    {hasPhysicalShotChart(s) && <HistoryShotChart shot={s} ui={ui} />}
                     <div className="flex flex-wrap justify-end gap-3">
                       <button type="button" aria-label="Favourite shot" aria-pressed={favourite}
                         title={favourite ? 'Remove from favourites' : 'Add to favourites'}
                         onClick={() => saveShotSelection(() => toggleFavouriteShot(db, s.id))}
                         className={`mr-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg ${favourite ? ui.accentText : ui.muted}`}>
                         <Heart className={`size-4 ${favourite ? 'fill-current' : ''}`} aria-hidden="true" />
+                      </button>
+                      <button type="button" onClick={() => setPortableShotId(s.id)}
+                        className={`min-h-11 rounded-lg px-3 text-xs font-bold ${ui.secondaryBtn}`}>
+                        Share shot
                       </button>
                       <button type="button" onClick={() => void openShotShare(s.id)}
                         className={`min-h-11 text-xs font-bold ${ui.accentText}`} data-testid="history-share-shot" aria-label="Report issue using diagnostic JSON">
@@ -4619,13 +4645,13 @@ export default function App() {
                             <Play className="w-4 h-4 fill-current" /> Replay
                           </button>
                         )}
-                        <button type="button" onClick={() => void exportLabShotReplay(s, false)}
+                        <button type="button" disabled={shotExportStatus?.busy} onClick={() => void exportLabShotReplay(s, false)}
                           className={`inline-flex items-center gap-1 min-h-11 text-xs font-bold ${ui.accentText}`}
                           data-testid="history-shot-diagnostics-export">
                           <Download className="w-3.5 h-3.5" /> Export diagnostics
                         </button>
                         {hasReplay && (
-                          <button type="button" onClick={() => void exportLabShotReplay(s)}
+                          <button type="button" disabled={shotExportStatus?.busy} onClick={() => void exportLabShotReplay(s)}
                             className={`inline-flex items-center gap-1 min-h-11 text-xs font-bold ${ui.accentText}`}
                             data-testid="history-lab-shot-replay-export" aria-label="Export shot replay">
                             <Download className="w-3.5 h-3.5" /> Export replay
@@ -4634,8 +4660,13 @@ export default function App() {
                       </div>
                     )}
                     </div>
+                    {shotExportStatus?.shotId === s.id && (
+                      <div role={shotExportStatus.failed ? 'alert' : 'status'} className={`space-y-1 break-words text-xs ${ui.sub}`}>
+                        {shotExportStatus.lines.map((line) => <p key={line}>{line}</p>)}
+                      </div>
+                    )}
 
-                    <ShotProfile shot={s} ui={ui} settings={appSettings} cardOptions={shotCardOptions} onCardOptionsChange={setShotCardOptions} referenceShot={referenceShot}
+                    <ShotProfile shot={s} ui={ui} referenceShot={referenceShot}
                       onRatingChange={(rating) => saveShotTasteRating(db, s.id, rating)}
                       onOpenBeanConsistency={referenceEligible ? () => showBeanConsistency(bean.id) : null}
                       referenceDate={referenceShot ? formatShotWhen(referenceShot.timestamp) : null}
@@ -5353,6 +5384,10 @@ export default function App() {
       </nav>
 
       {usageEnabled && <Analytics beforeSend={beforeUsagePageView} />}
+      {portableShotId != null && (
+        <PortableShotExport shotId={portableShotId} settings={appSettings} ui={ui} cardOptions={shotCardOptions}
+          onCardOptionsChange={setShotCardOptions} onClose={() => setPortableShotId(null)} />
+      )}
       {shotToShare && (
         <FeedbackShareDialog shot={shotToShare} ui={ui} onClose={() => setShotToShare(null)}
           onShotShare={(method) => recordUsage(usageEnabled, 'share_shot', { method })} />

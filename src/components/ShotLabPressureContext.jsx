@@ -34,6 +34,7 @@ export function ShotLabPressureProvider({
   labShotsLogged = 0,
   calibrateRequest = 0,
   registerOpenCalibrate,
+  onCalibrationOpenChange,
   preShotDialCheckSurface = false,
   shotReplayCommitRef,
   shotReplayDiscardRef,
@@ -51,6 +52,10 @@ export function ShotLabPressureProvider({
   const storedCalibration = labGaugeTapCalibrationFromSettings(settings);
   const viewMoved = settings?.labGaugeTapCalibration?.viewMoved === true;
   const [calibrateOpen, setCalibrateOpen] = useState(false);
+  useEffect(() => {
+    onCalibrationOpenChange?.(calibrateOpen);
+    return () => onCalibrationOpenChange?.(false);
+  }, [calibrateOpen, onCalibrationOpenChange]);
   const [facingMode, setFacingMode] = useState(() => {
     try { return localStorage.getItem('espresso-dialin.camera-facing-mode') === 'environment' ? 'environment' : 'user'; }
     catch { return 'user'; }

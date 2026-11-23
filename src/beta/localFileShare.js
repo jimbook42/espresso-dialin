@@ -14,8 +14,13 @@ export async function shareLocalFile(file, { consent, title, feedback = false } 
 } = {}) {
   if (!consent) return 'consent-required';
   if (!native) return shareFeedbackFiles(browser ?? {}, { files: [file], title });
+  if (!file?.size || (feedback && file.type !== 'application/json')) return 'fallback';
   try {
-    await android(file, file.name, true, { feedback });
+    if (feedback) {
+      const body = JSON.parse(await file.text());
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return 'fallback';
+    }
+    await android(file, file.name, true, { feedback, ...(title ? { title } : {}) });
     return 'chooser-opened';
   } catch (error) {
     return error?.name === 'AbortError' ? 'cancelled' : 'fallback';

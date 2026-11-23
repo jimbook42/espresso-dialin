@@ -98,18 +98,18 @@ try {
   await contribution.getByRole('button', { name: 'Close' }).click();
   await page.getByRole('button', { name: 'Close settings' }).click();
   await page.getByRole('button', { name: 'History', exact: true }).click();
-  const profile = page.getByTestId('history-shot-profile').first();
-  await profile.getByText('Shot profile', { exact: true }).click();
-  await profile.getByText('Share Shot', { exact: true }).click();
-  await profile.getByRole('button', { name: 'Contribute shot data' }).click();
+  const latest = page.getByTestId('history-shot-card').first();
+  const shotSharing = page.getByRole('dialog', { name: 'Share shot' });
+  await latest.getByRole('button', { name: 'Share shot', exact: true }).click();
+  await shotSharing.getByRole('button', { name: 'Contribute shot data' }).click();
   await contribution.getByRole('button', { name: 'Preview contribution (1)', exact: true }).click();
   await contributionText.waitFor();
   assert.equal(JSON.parse(await contributionText.inputValue()).records.length, 1);
   assert.deepEqual(errors, []);
-  console.log('PASS Shot Profile opens a single-shot contribution preview');
+  console.log('PASS History Share shot opens a single-shot contribution preview');
 
   await contribution.getByRole('button', { name: 'Close' }).click();
-  const card = profile.getByRole('region', { name: 'Shot card' });
+  const card = shotSharing.getByRole('region', { name: 'Shot card' });
   const historical = await downloadPng(card);
   assert.equal(historical.height, 575);
   await card.getByRole('checkbox', { name: 'Show personal notes' }).check();
@@ -118,6 +118,10 @@ try {
   await card.getByRole('checkbox', { name: 'Show personal notes' }).uncheck();
   await card.getByRole('checkbox', { name: 'Show bean name' }).uncheck();
   assert.deepEqual((await downloadPng(card)).pixels, historical.pixels);
+  await shotSharing.getByRole('button', { name: 'Close' }).click();
+  await shotSharing.waitFor({ state: 'hidden' });
+  const profile = latest.getByTestId('history-shot-profile');
+  await profile.getByText('Shot profile', { exact: true }).click();
   await profile.getByRole('button', { name: 'Use as bean reference' }).click();
   await seed([], [
     { id: 'manual-png', beanId: v1Bean.id, timestamp: '2026-01-01T00:00:00Z', actualYieldG: 32 },
@@ -127,10 +131,12 @@ try {
   ]);
   await page.reload();
   await page.getByRole('button', { name: 'History', exact: true }).click();
-  const profiles = page.getByTestId('history-shot-profile');
-  const manual = await openCard(profiles.nth(1));
+  const history = page.getByTestId('history-shot-card');
+  const manual = await openCard(history.nth(1));
   assert.equal((await downloadPng(manual)).height, 575);
-  const tracked = await openCard(profiles.first());
+  await shotSharing.getByRole('button', { name: 'Close' }).click();
+  await shotSharing.waitFor({ state: 'hidden' });
+  const tracked = await openCard(history.first());
   const trackedPng = await downloadPng(tracked);
   assert.equal(trackedPng.height, 575 + 3 * 180);
   await tracked.getByRole('checkbox', { name: 'Include bean reference' }).check();
@@ -139,9 +145,8 @@ try {
   console.log('PASS real canvas PNG download, historical/manual cards, privacy, pressure and flow, and reference comparison');
 
   async function openCard(entry) {
-    await entry.getByText('Shot profile', { exact: true }).click();
-    await entry.getByText('Share Shot', { exact: true }).click();
-    return entry.getByRole('region', { name: 'Shot card' });
+    await entry.getByRole('button', { name: 'Share shot', exact: true }).click();
+    return shotSharing.getByRole('region', { name: 'Shot card' });
   }
 
   async function downloadPng(section) {

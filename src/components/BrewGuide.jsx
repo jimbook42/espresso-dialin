@@ -279,6 +279,7 @@ export function BrewGuide({
   onEndPreInfusion = () => {},
   onHandoff = () => {},
   onTimerHost = () => {},
+  onPreparationActive,
   guidanceMode = BREW_GUIDANCE_MODES.full,
   onUseQuickChecklist = () => {},
   onNoChecklist = () => {},
@@ -290,6 +291,10 @@ export function BrewGuide({
   liveShotScreen,
 }) {
   const [screen, setScreen] = useState(setupComplete ? 'menu' : 'setup');
+  useEffect(() => {
+    onPreparationActive?.(screen === 'steps');
+    return () => onPreparationActive?.(false);
+  }, [screen, onPreparationActive]);
   const [setupReturnTo, setSetupReturnTo] = useState('brew');
   const [guideId, setGuideId] = useState('temperature');
   const [guideBack, setGuideBack] = useState('menu');

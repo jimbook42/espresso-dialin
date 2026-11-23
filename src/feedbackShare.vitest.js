@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { feedbackMailto, prepareGaugeFeedback, prepareShotFeedback, shareFeedbackFiles } from './feedbackShare.js';
 import { buildShotDiagnosticDocument } from './flairPressureLab/labShotReplayExport.js';
 import { diagnosticsBuild } from './scales/shotDeviceDiagnostics.js';
+import { shareLocalFile } from './beta/localFileShare.js';
 
 describe('voluntary diagnostic sharing', () => {
   it('uses Diagnostics v2 for the selected historical shot with optional feedback and saved flow', async () => {
@@ -46,5 +47,26 @@ describe('voluntary diagnostic sharing', () => {
       testerFeedback: 'White needle',
     });
     expect(prepareGaugeFeedback('light-pointer', '', null).files).toHaveLength(1);
+  });
+
+  it('stages the selected shot JSON with a description and returns chooser status only', async () => {
+    const { title, files: [file] } = prepareShotFeedback({ id: 'saved-shot' }, '  Camera moved  ');
+    const android = vi.fn(async () => ({ bytesWritten: file.size }));
+    const options = { native: true, android };
+    const intent = { consent: true, title, feedback: true };
+    expect(await shareLocalFile(file, intent, options)).toBe('chooser-opened');
+    expect(android).toHaveBeenCalledWith(file, 'lab-replay-saved-shot-pressure.json', true, { feedback: true, title });
+    expect(JSON.parse(await file.text())).toMatchObject({ shotId: 'saved-shot', testerFeedback: 'Camera moved' });
+    android.mockRejectedValueOnce(new DOMException('', 'AbortError'));
+    expect(await shareLocalFile(file, intent, options)).toBe('cancelled');
+    android.mockRejectedValueOnce(new Error('No chooser'));
+    expect(await shareLocalFile(file, intent, options)).toBe('fallback');
+    android.mockClear();
+    for (const contents of ['', '{', 'null', '[]']) {
+      const bad = new File([contents], 'invalid.json', { type: 'application/json' });
+      expect(await shareLocalFile(bad, intent, options)).toBe('fallback');
+    }
+    expect(android).not.toHaveBeenCalled();
+    expect(() => prepareShotFeedback(null, '')).toThrow(/no longer available/);
   });
 });

@@ -19,6 +19,11 @@ export function savedShotMeasurements(shot) {
   return { durationS, doseG, yieldG, ratio: Number.isFinite(ratio) ? ratio : null };
 }
 
+export function formatSavedDose(doseG) {
+  if (doseG == null) return 'Not recorded';
+  return `${Number.isInteger(doseG) ? doseG.toFixed(1) : doseG} g`;
+}
+
 function readCurve(curve, key, validValue, maxGapS) {
   const points = [];
   let broken = false;
@@ -101,14 +106,22 @@ export function physicalShotSources(timing) {
   };
 }
 
-export function buildShotProfile(shot) {
+export function hasPhysicalShotChart(shot) {
+  const sources = physicalShotSources(recordedShotTiming(shot));
+  return Boolean((sources.pressure && shot.labPressureCurve?.length) || (sources.scale && shot.scaleFlowCurve?.length));
+}
+
+export function buildShotProfile(shot, { physicalOnly = false } = {}) {
   const timing = recordedShotTiming(shot);
+  const sources = physicalShotSources(timing);
   const pressureOriginS = toSeconds(timing?.pressureOriginMs);
   const scaleOriginS = toSeconds(timing?.scaleOriginMs);
   const legacyPreS = timing ? null : legacyPreInfusionS(shot);
   const extraction = extractionTiming(timing);
-  const pressureLocal = readCurve(shot.labPressureCurve, 'bar', validPressure, PRESSURE_GAP_S);
-  const weightLocal = readCurve(shot.scaleFlowCurve, 'weightG', Number.isFinite, SCALE_FLOW_MAX_SAMPLE_GAP_S);
+  const pressureLocal = !physicalOnly || sources.pressure
+    ? readCurve(shot.labPressureCurve, 'bar', validPressure, PRESSURE_GAP_S) : [];
+  const weightLocal = !physicalOnly || sources.scale
+    ? readCurve(shot.scaleFlowCurve, 'weightG', Number.isFinite, SCALE_FLOW_MAX_SAMPLE_GAP_S) : [];
   const aligned = Boolean(extraction && (pressureLocal.length || weightLocal.length)
     && (!pressureLocal.length || pressureOriginS != null) && (!weightLocal.length || scaleOriginS != null));
   const pressureTime = (tS) => tS + (aligned ? pressureOriginS : 0);

@@ -8,7 +8,7 @@ import {
   readerStallDiagnosticsForShot,
   recordReaderSample,
 } from './readerStallDiagnostics.js';
-import { exportLabShotReplayDownloads } from './labShotReplayExport.js';
+import { exportLabShotFiles } from './labShotReplayExport.js';
 
 afterEach(() => {
   clearReaderStallDiagnostics();
@@ -152,7 +152,8 @@ describe('lab export with zero pressure samples', () => {
       };
       commitReaderStallDiagnostics('empty-shot', summary);
       const shot = { id: 'empty-shot' };
-      const exported = exportLabShotReplayDownloads({ shot });
+      await exportLabShotFiles({ shot }, { native: false });
+      const exported = JSON.parse(await blobs[0].text());
       expect(exported.labPressureCurve).toEqual([]);
       expect(exported.readerStallDiagnostics).toMatchObject({
         shotId: 'empty-shot',
@@ -164,10 +165,8 @@ describe('lab export with zero pressure samples', () => {
         rejectionReasons: { needleQuality: 12 },
       });
       expect(exported.readerStallDiagnostics).not.toHaveProperty('bar');
-      const downloaded = JSON.parse(await blobs[0].text());
-      expect(downloaded.labPressureCurve).toEqual([]);
-      expect(downloaded.readerStallDiagnostics.framesRead).toBe(0);
-      expect(downloaded.readerStallDiagnostics.duplicateFrames).toBe(4);
+      expect(exported.readerStallDiagnostics.framesRead).toBe(0);
+      expect(exported.readerStallDiagnostics.duplicateFrames).toBe(4);
       expect(JSON.stringify(shot)).toBe(JSON.stringify({ id: 'empty-shot' }));
       expect(readerStallDiagnosticsForShot('other')).toBeNull();
     } finally {

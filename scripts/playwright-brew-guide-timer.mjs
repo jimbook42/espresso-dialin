@@ -67,7 +67,7 @@ async function mockScale(page, bookoo) {
   }, bookoo);
 }
 
-async function run(name, check, { connected = false, countdown = 'off', bookoo = false } = {}) {
+async function run(name, check, { connected = false, countdown = 'off', bookoo = false, doseOverride } = {}) {
   if (process.argv[2] && !name.includes(process.argv[2])) return;
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   const errors = [];
@@ -82,6 +82,7 @@ async function run(name, check, { connected = false, countdown = 'off', bookoo =
   try {
     if (connected) await mockScale(page, bookoo);
     await seed(page, countdown, bookoo ? 'bookoo-themis' : 'timemore-dot');
+    if (doseOverride) await page.getByText('Dose (g)', { exact: true }).locator('..').locator('input').fill(doseOverride);
     if (connected) {
       await button('Connect scale').click();
       await button('Disconnect').waitFor();
@@ -173,7 +174,12 @@ try {
   await run('Countdown Off without a connected scale', async (view) => {
     await view.start.click();
     await verifyRunningAndDone(view);
-  });
+    await view.page.getByRole('spinbutton', { name: 'Actual yield in grams' }).fill('32');
+    await view.button('Done').click();
+    await view.button('Done').click();
+    await view.button('Go to Dial-in to mark taste').click();
+    assert.equal(await view.page.getByText('Dose (g)', { exact: true }).locator('..').locator('input').inputValue(), '18.73');
+  }, { doseOverride: '18.73' });
 
   await run('Countdown Off with a rejected scale start', async (view) => {
     await view.start.click();

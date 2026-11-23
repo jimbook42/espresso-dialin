@@ -1,4 +1,4 @@
-import { buildShotProfile } from './shotProfile.js';
+import { buildShotProfile, formatSavedDose } from './shotProfile.js';
 
 export const CARD_WIDTH = 1200;
 export const CARD_BRAND = 'ESPRESSO DIAL-IN';
@@ -67,7 +67,9 @@ export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options
     metrics.forEach(([label, value, unit], n) => {
       const x = 80 + n * 260;
       text(label, x, y + 150, 19, '#9eaea3', 700);
-      text(value == null ? '—' : label === 'RATIO' ? `1:${value.toFixed(1)}` : `${value.toFixed(1)} ${unit}`, x, y + 188, 30, '#fff9f1', 700, 230);
+      const measurement = value == null ? '—' : label === 'RATIO' ? `1:${value.toFixed(1)}`
+        : label === 'DOSE' ? formatSavedDose(value) : `${value.toFixed(1)} ${unit}`;
+      text(measurement, x, y + 188, 30, '#fff9f1', 700, 230);
     });
     let chartY = y + 230;
     tracks[i].forEach((track) => {

@@ -9,9 +9,10 @@ function jsonFile(name, data) {
 }
 
 export function prepareShotFeedback(shot, note) {
+  if (shot?.id == null || shot.id === '') throw new Error('This shot is no longer available.');
   const shortId = String(shot.id).slice(0, 8);
   const filename = labReplayExportFilenames(shot.id).pressure;
-  const diagnostics = buildShotDiagnosticDocument(shot, undefined, { testerFeedback: note, includeSavedFlow: true });
+  const diagnostics = buildShotDiagnosticDocument(shot, undefined, { testerFeedback: note?.trim(), includeSavedFlow: true });
   return {
     title: `Espresso Dial-In shot ${shortId} v${version}`,
     files: [jsonFile(filename, diagnostics)],

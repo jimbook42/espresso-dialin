@@ -1,6 +1,6 @@
 import {describe, expect, it, vi} from 'vitest';
 import {createLabReplayDiagnostics, commitReplayDiagnostics, replayDiagnosticsForShot} from './labReplayDiagnostics.js';
-import {exportLabShotReplayDownloads} from './labShotReplayExport.js';
+import {exportLabShotFiles} from './labShotReplayExport.js';
 
 describe('export-only replay evidence', () => {
   it('captures the actual calibration and all publication states without treating holds as fresh', () => {
@@ -45,14 +45,20 @@ describe('export-only replay evidence', () => {
       commitReplayDiagnostics('download-shot',capture.snapshot());
       const shot={id:'download-shot',labPressureCurve:[{tS:.125,bar:1.8}]};
       const original=JSON.stringify(shot);
-      exportLabShotReplayDownloads({shot,blob:new Blob(['video'],{type:'video/mp4'})});
+      const replay = { meta: { shotId: shot.id }, blob: new Blob(['video'], { type: 'video/mp4' }) };
+      await exportLabShotFiles({ shot, replay, includeVideo: true }, { native: false });
       const exported=JSON.parse(await blobs[1].text());
       expect(exported.readerDiagnosticsAvailability).toBe('current-session');
       expect(exported.readerDiagnostics.calibrations[0].template.red).toEqual([1,2]);
       expect(exported.readerDiagnostics.frames.map(f=>f.status)).toEqual(['fresh','held','gap']);
       expect(exported.readerStallDiagnostics).toBeNull();
       expect(JSON.stringify(shot)).toBe(original);
-      const missing=exportLabShotReplayDownloads({shot:{id:'old-shot'},blob:blobs[0]});
+      await expect(exportLabShotFiles({
+        shot: { id: 'old-shot' }, replay, includeVideo: true,
+      }, { native: false })).rejects.toThrow(/unavailable/);
+      expect(blobs).toHaveLength(2);
+      await exportLabShotFiles({ shot: { id: 'old-shot' } }, { native: false });
+      const missing = JSON.parse(await blobs[2].text());
       expect(missing.readerDiagnostics).toBeNull();
       expect(missing.readerDiagnosticsAvailability).toContain('unavailable');
     } finally { vi.unstubAllGlobals(); }

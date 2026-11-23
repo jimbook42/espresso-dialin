@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildComparisonProfile, buildShotProfile, observationAtTime, savedShotMeasurements } from './shotProfile.js';
+import { buildComparisonProfile, buildShotProfile, formatSavedDose, hasPhysicalShotChart, observationAtTime, savedShotMeasurements } from './shotProfile.js';
 import { createShotDeviceDiagnostics, shotDeviceDiagnosticsForShot } from '../scales/shotDeviceDiagnostics.js';
 import pressureRecording from '../../scripts/pressure-label/fixtures/batch-2026-11-03/source/lab-replay-a1efe497-pressure.json';
 
@@ -8,6 +8,33 @@ const pressure = (...samples) => samples.map(([tS, bar]) => ({ tS, bar }));
 const timed = { version: 1, pressureOriginMs: 0, scaleOriginMs: 0, extractionStartMs: 0, clockDriftMs: 0 };
 
 afterEach(() => vi.useRealTimers());
+
+it('compacts only physical tracks and preserves aligned gaps on standalone recordings', () => {
+  const shot = {
+    recordType: 'standalone-pressure',
+    labPressureCurve: pressure([0, 0], [0.04, 1], [1.4, 6]),
+    scaleFlowCurve: weights([0, 0], [0.2, 1]),
+    shotProfileTiming: { ...timed, pressureSource: 'camera', scaleSource: 'simulated', extractionStartMs: 200 },
+  };
+  expect(hasPhysicalShotChart(shot)).toBe(true);
+  expect(buildShotProfile(shot, { physicalOnly: true })).toMatchObject({
+    pressure: [
+      { tS: 0, bar: 0, breakBefore: false }, { tS: 0.04, bar: 1, breakBefore: false },
+      { tS: 1.4, bar: 6, breakBefore: true },
+    ],
+    aligned: true, extractionStartS: 0.2, pressureInterrupted: true, weight: [], flow: [],
+  });
+  expect(buildShotProfile(shot).weight).toHaveLength(2);
+  expect(hasPhysicalShotChart({ ...shot, shotProfileTiming: null })).toBe(false);
+  expect(hasPhysicalShotChart({ ...shot, labPressureCurve: [] })).toBe(false);
+});
+
+it('renders a recorded dose with its full precision', () => {
+  expect(formatSavedDose(18)).toBe('18.0 g');
+  expect(formatSavedDose(18.5)).toBe('18.5 g');
+  expect(formatSavedDose(18.73)).toBe('18.73 g');
+  expect(formatSavedDose(null)).toBe('Not recorded');
+});
 
 describe('comparison profiles', () => {
   it('aligns each stream to extraction start and preserves recorded pressure and its gaps', () => {

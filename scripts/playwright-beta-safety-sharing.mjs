@@ -98,7 +98,7 @@ try {
   await page.getByRole('button', { name: 'Balanced', exact: true }).click();
   await page.getByRole('button', { name: 'Log shot & calculate grind adjustment', exact: true }).click();
   await page.getByTestId('saved-share-shot').click();
-  const dialog = page.getByRole('dialog', { name: 'Share shot' });
+  const dialog = page.getByRole('dialog', { name: 'Report issue' });
   await dialog.getByLabel('What went wrong? (optional)').fill('Scale stopped reporting');
   await page.screenshot({ path: join(screenshots, 'share-shot.png') });
   await dialog.getByRole('button', { name: 'Share', exact: true }).click();
@@ -130,7 +130,7 @@ try {
   assert.deepEqual(oldShot.labPressureCurve, [{ tS: 0, bar: 1 }]);
   assert.equal(oldShot.scaleDiagnostics.availability, 'unavailable');
   assert.equal(oldShot.recordingBuild, null);
-  await dialog.getByText('Attach the downloaded diagnostic JSON file before sending.').waitFor();
+  await dialog.getByText(/Attach the diagnostic JSON manually before sending/).waitFor();
   const mailto = new URL(await dialog.getByRole('link', { name: 'Open email' }).getAttribute('href'));
   assert.equal(mailto.pathname, 'TullLabs@outlook.com');
   assert.equal(mailto.searchParams.get('subject'), `Espresso Dial-In shot ${id.slice(0, 8)} v${version}`);

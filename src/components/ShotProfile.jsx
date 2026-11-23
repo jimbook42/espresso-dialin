@@ -1,11 +1,10 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Star } from 'lucide-react';
-import { buildShotProfile, observationAtTime } from '../utils/shotProfile.js';
+import { buildShotProfile, formatSavedDose, hasPhysicalShotChart, observationAtTime } from '../utils/shotProfile.js';
 import { ScaleFlowChart } from './ScaleFlowChart.jsx';
 import { ShotInsights } from './ShotInsights.jsx';
 import { ShotComparison } from './ShotComparison.jsx';
 import { PressureFlowAnalytics } from './PressureFlowAnalytics.jsx';
-import { PortableShotExport } from './PortableShotExport.jsx';
 import { shotTasteRating } from '../utils/shotRatings.js';
 
 const format = (value, unit, digits = 1) => value == null ? 'Not recorded' : `${value.toFixed(digits)} ${unit}`;
@@ -52,8 +51,7 @@ function TasteRating({ shot, ui, onRatingChange }) {
   );
 }
 
-function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
-  const profile = useMemo(() => buildShotProfile(shot), [shot]);
+function ProfileChart({ profile, ui, compact = false }) {
   const [selectedView, setView] = useState(null);
   const [cursor, setCursor] = useState(null);
   const timeId = useId();
@@ -71,11 +69,91 @@ function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
     ['weight', 'Weight', 'weightG', 'g', 1],
     ['flow', 'Flow', 'flowGs', 'g/s', 2],
   ].filter(([key]) => showObservations && profile[key].length && (profile.aligned || view === key));
+  if (!view) return null;
+  const exploration = (
+    <div className="space-y-1">
+      <label htmlFor={timeId} className="block text-xs font-semibold">
+        {cursor == null ? 'Explore time' : `Time ${formatTime(cursor)}`}
+      </label>
+      <input id={timeId} type="range" min={profile.minTimeS} max={profile.maxTimeS} step="0.01"
+        value={cursor ?? profile.minTimeS} onChange={(event) => selectTime(Number(event.target.value))}
+        aria-label="Explore shot time" aria-valuetext={formatTime(cursor ?? profile.minTimeS)}
+        className="w-full min-h-8 accent-[#c88a4b] block" />
+      {showObservations && (
+        <dl className="grid grid-cols-3 gap-1 text-[11px] tabular-nums" data-testid="profile-observations">
+          {observations.map(([key, label, valueKey, unit, digits]) => {
+            const point = observationAtTime(profile[key], cursor);
+            return (
+              <div key={key}>
+                <dt className={ui.sub}>{label}</dt>
+                <dd>{point ? format(point[valueKey], unit, digits) : 'No sample'}</dd>
+                {point && <dd className={ui.sub}>{formatTime(point.tS)}</dd>}
+              </div>
+            );
+          })}
+        </dl>
+      )}
+    </div>
+  );
+  return (
+    <div className={`${ui.cardInset} min-w-0 rounded-xl p-2.5 space-y-2`}>
+      {views.length > 1 && (
+        <div className="grid auto-cols-fr grid-flow-col gap-1" role="group" aria-label="Chart measurement">
+          {views.map(([key, label]) => (
+            <button key={key} type="button" aria-pressed={view === key}
+              onClick={() => { setView(key); if (!profile.aligned) setCursor(null); }}
+              className={`min-h-11 rounded-lg text-[11px] font-semibold ${view === key ? ui.chartToggleActive : ui.chartToggleIdle}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      <ScaleFlowChart profile={profile} view={view} cursorS={cursor} onPickTime={selectTime} />
+      <div className={`flex flex-wrap gap-x-3 gap-y-1 text-[11px] ${ui.sub}`}>
+        <span>{profile.aligned ? 'Time from shot timer start' : 'Sensor recording time'}</span>
+        {profile.extractionStartS > 0 && <span>Shaded pre-infusion</span>}
+        {profile.legacyPreS > 0 && <span>Estimated pre-infusion {formatTime(profile.legacyPreS)}</span>}
+        {profile.extractionEndS != null && <span>Dashed extraction end</span>}
+        {profile.settlementEndS != null && <span>Weight includes yield settling</span>}
+        {compact && profile.pressureInterrupted && <span>Pressure recording interrupted</span>}
+        {compact && profile.scaleInterrupted && <span>Scale recording interrupted</span>}
+      </div>
+      {compact ? (
+        <details open={showObservations || undefined}>
+          <summary className={`min-h-11 cursor-pointer py-3 text-xs font-semibold ${ui.sub}`}>Explore chart</summary>
+          {exploration}
+        </details>
+      ) : exploration}
+    </div>
+  );
+}
+
+export function HistoryShotChart({ shot, ui }) {
+  const surface = useRef(null);
+  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined');
+  const [height, setHeight] = useState(170);
+  useEffect(() => {
+    if (!surface.current || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting && entry.target.firstElementChild) setHeight(entry.boundingClientRect.height);
+      setNear(entry.isIntersecting);
+    }, { rootMargin: '200px 0px' });
+    observer.observe(surface.current);
+    return () => observer.disconnect();
+  }, []);
+  const profile = useMemo(() => near ? buildShotProfile(shot, { physicalOnly: true }) : null, [shot, near]);
+  return <div ref={surface} data-testid="history-recorded-chart" style={near ? undefined : { height }}>
+    {profile && <ProfileChart profile={profile} ui={ui} compact />}
+  </div>;
+}
+
+function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
+  const profile = useMemo(() => buildShotProfile(shot), [shot]);
   const yieldLabel = profile.yieldSource === 'manual' ? 'Entered yield'
     : profile.yieldSource === 'scale' ? 'Scale yield' : 'Saved yield';
   const metrics = [
     ['Extraction time', formatTime(profile.durationS)],
-    ['Saved dose', format(profile.doseG, 'g')],
+    ['Saved dose', formatSavedDose(profile.doseG)],
     [yieldLabel, format(profile.yieldG, 'g')],
     ['Brew ratio', profile.ratio == null ? 'Not recorded' : `1:${profile.ratio.toFixed(1)}`],
     ...(profile.pressure.length ? [['Peak pressure', format(profile.peakPressureBar, 'bar')]] : []),
@@ -85,7 +163,6 @@ function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
       ['Peak flow (smoothed)', format(profile.peakFlowGs, 'g/s', 2)],
     ] : []),
   ];
-
   return (
     <div className={`space-y-3 pb-3 ${ui.text}`} data-testid="shot-profile-details">
       <TasteRating shot={shot} ui={ui} onRatingChange={onRatingChange} />
@@ -110,52 +187,7 @@ function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
         ))}
       </ul>
       <ShotInsights shot={shot} profile={profile} ui={ui} onOpenBeanConsistency={onOpenBeanConsistency} />
-      {view && (
-        <div className={`${ui.cardInset} min-w-0 rounded-xl p-2.5 space-y-2`}>
-          {views.length > 1 && (
-            <div className="grid auto-cols-fr grid-flow-col gap-1" role="group" aria-label="Chart measurement">
-              {views.map(([key, label]) => (
-                <button key={key} type="button" aria-pressed={view === key}
-                  onClick={() => { setView(key); if (!profile.aligned) setCursor(null); }}
-                  className={`min-h-11 rounded-lg text-[11px] font-semibold ${view === key ? ui.chartToggleActive : ui.chartToggleIdle}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-          <ScaleFlowChart profile={profile} view={view} cursorS={cursor} onPickTime={selectTime} />
-          <div className={`flex flex-wrap gap-x-3 gap-y-1 text-[11px] ${ui.sub}`}>
-            <span>{profile.aligned ? 'Time from shot timer start' : 'Sensor recording time'}</span>
-            {profile.extractionStartS > 0 && <span>Shaded pre-infusion</span>}
-            {profile.legacyPreS > 0 && <span>Estimated pre-infusion {formatTime(profile.legacyPreS)}</span>}
-            {profile.extractionEndS != null && <span>Dashed extraction end</span>}
-            {profile.settlementEndS != null && <span>Weight includes yield settling</span>}
-          </div>
-          <div className="space-y-1">
-            <label htmlFor={timeId} className="block text-xs font-semibold">
-              {cursor == null ? 'Explore time' : `Time ${formatTime(cursor)}`}
-            </label>
-            <input id={timeId} type="range" min={profile.minTimeS} max={profile.maxTimeS} step="0.01"
-              value={cursor ?? profile.minTimeS} onChange={(event) => selectTime(Number(event.target.value))}
-              aria-label="Explore shot time" aria-valuetext={formatTime(cursor ?? profile.minTimeS)}
-              className="w-full min-h-8 accent-[#c88a4b] block" />
-            {showObservations && (
-              <dl className="grid grid-cols-3 gap-1 text-[11px] tabular-nums" data-testid="profile-observations">
-                {observations.map(([key, label, valueKey, unit, digits]) => {
-                  const point = observationAtTime(profile[key], cursor);
-                  return (
-                    <div key={key}>
-                      <dt className={ui.sub}>{label}</dt>
-                      <dd>{point ? format(point[valueKey], unit, digits) : 'No sample'}</dd>
-                      {point && <dd className={ui.sub}>{formatTime(point.tS)}</dd>}
-                    </div>
-                  );
-                })}
-              </dl>
-            )}
-          </div>
-        </div>
-      )}
+      {!hasPhysicalShotChart(shot) && <ProfileChart profile={profile} ui={ui} />}
     </div>
   );
 }
@@ -172,7 +204,7 @@ function ReferenceComparison({ shot, referenceShot, referenceDate, ui }) {
   );
 }
 
-export function ShotProfile({ shot, ui, settings, cardOptions, onCardOptionsChange, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency }) {
+export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency }) {
   const [open, setOpen] = useState(false);
   const isReference = referenceShot?.id === shot.id;
   return (
@@ -187,7 +219,6 @@ export function ShotProfile({ shot, ui, settings, cardOptions, onCardOptionsChan
         <>
           <ProfileDetails shot={shot} ui={ui} onRatingChange={onRatingChange}
             onOpenBeanConsistency={onOpenBeanConsistency} />
-          <PortableShotExport shotId={shot.id} settings={settings} ui={ui} cardOptions={cardOptions} onCardOptionsChange={onCardOptionsChange} />
           {(shot.labPressureCurve?.length > 0 || shot.scaleFlowCurve?.length > 0) && (
             <PressureFlowAnalytics shot={shot} ui={ui} />
           )}

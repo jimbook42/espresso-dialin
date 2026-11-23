@@ -6,8 +6,10 @@ import android.content.Intent;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.os.Build;
 import android.net.Uri;
+import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.view.WindowManager;
 import androidx.activity.result.ActivityResult;
@@ -38,6 +40,8 @@ public class AndroidShell extends Plugin {
     private String fileName;
     private String fileMime;
     private boolean openingFile;
+    private boolean screenRequested;
+    private boolean foreground = true;
 
     @PluginMethod
     public synchronized void beginBackupExport(PluginCall call) {
@@ -123,6 +127,8 @@ public class AndroidShell extends Plugin {
 
     @Override
     protected synchronized void handleOnDestroy() {
+        screenRequested = false;
+        applyScreenFlag();
         discardFailedBackup();
         discardFileExport();
         super.handleOnDestroy();
@@ -158,13 +164,30 @@ public class AndroidShell extends Plugin {
     @PluginMethod
     public void keepAwake(PluginCall call) {
         getActivity().runOnUiThread(() -> {
-            if (Boolean.TRUE.equals(call.getBoolean("enabled"))) {
-                getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            } else {
-                getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            }
+            screenRequested = Boolean.TRUE.equals(call.getBoolean("enabled"));
+            applyScreenFlag();
             call.resolve();
         });
+    }
+
+    @Override
+    protected void handleOnPause() {
+        foreground = false;
+        applyScreenFlag();
+    }
+
+    @Override
+    protected void handleOnResume() {
+        foreground = true;
+        applyScreenFlag();
+    }
+
+    private void applyScreenFlag() {
+        if (screenRequested && foreground) {
+            getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
     }
 
     @PluginMethod
@@ -176,6 +199,15 @@ public class AndroidShell extends Plugin {
 
     @PluginMethod
     public synchronized void beginFileExport(PluginCall call) {
+        beginStagedExport(call, false);
+    }
+
+    @PluginMethod
+    public synchronized void beginReplayExport(PluginCall call) {
+        beginStagedExport(call, true);
+    }
+
+    private void beginStagedExport(PluginCall call, boolean replay) {
         String id = call.getString("id", "");
         String filename = call.getString("filename", "");
         String mimeType = call.getString("mimeType", "");
@@ -184,9 +216,25 @@ public class AndroidShell extends Plugin {
             call.reject("An export is already open.");
             return;
         }
-        if (!id.matches("[a-f0-9-]{36}") || expected <= 0 || expected > FileExportPayload.LIMIT
-            || !filename.matches("[A-Za-z0-9][A-Za-z0-9_. -]{0,127}")
-            || !("image/png".equals(mimeType) || "application/json".equals(mimeType) || "text/csv".equals(mimeType))) {
+        String suffix;
+        if (replay) {
+            suffix = switch (mimeType) {
+                case "video/mp4" -> ".mp4";
+                case "video/webm" -> ".webm";
+                default -> null;
+            };
+        } else {
+            suffix = switch (mimeType) {
+                case "image/png" -> ".png";
+                case "application/json" -> ".json";
+                case "text/csv" -> ".csv";
+                default -> null;
+            };
+        }
+        if (!id.matches("[a-f0-9-]{36}") || expected <= 0
+            || expected > (replay ? FileExportPayload.REPLAY_LIMIT : FileExportPayload.LIMIT)
+            || !filename.matches("[A-Za-z0-9][A-Za-z0-9_. -]{0,127}") || suffix == null
+            || (replay && !filename.endsWith(suffix))) {
             call.reject("Unsupported export.");
             return;
         }
@@ -198,9 +246,8 @@ public class AndroidShell extends Plugin {
             File[] stale = directory.listFiles(file -> file.isFile() && file.getName().startsWith("shared-")
                 && file.lastModified() < expiry);
             if (stale != null) for (File file : stale) file.delete();
-            String suffix = "image/png".equals(mimeType) ? ".png" : "text/csv".equals(mimeType) ? ".csv" : ".json";
             staged = File.createTempFile("shared-", suffix, directory);
-            fileExport = new FileExportPayload(staged, expected);
+            fileExport = new FileExportPayload(staged, expected, replay);
             fileId = id;
             fileName = filename;
             fileMime = mimeType;
@@ -246,6 +293,7 @@ public class AndroidShell extends Plugin {
         try {
             fileExport.verify(fileMime);
             if (Boolean.TRUE.equals(call.getBoolean("share"))) {
+                if (fileMime.startsWith("video/")) throw new IOException("Replay video export requires a save destination.");
                 shareFile(call, fileExport.file, fileName, fileMime);
                 int byteCount = fileExport.expected;
                 fileExport = null; // Keep the verified file available to the recipient.
@@ -293,7 +341,11 @@ public class AndroidShell extends Plugin {
                 public InputStream openInput() throws IOException { return resolver.openInputStream(uri); }
                 public void discard() { deleteCreatedDocument(resolver, uri); }
             });
-            call.resolve(new JSObject().put("bytesWritten", payload.expected));
+            JSObject receipt = new JSObject().put("bytesWritten", payload.expected);
+            try (Cursor row = resolver.query(uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+                if (row != null && row.moveToFirst()) receipt.put("filename", row.getString(0));
+            } catch (RuntimeException ignored) { /* Some document providers omit display metadata. */ }
+            call.resolve(receipt);
         } catch (IOException | RuntimeException error) {
             if (call != null) call.reject("Unable to save and verify the export. Try again with a local folder.", error);
         } finally {
@@ -310,14 +362,20 @@ public class AndroidShell extends Plugin {
     private void shareFile(PluginCall call, File attachment, String filename, String mimeType) {
         Uri uri = FileProvider.getUriForFile(
             getContext(), getContext().getPackageName() + ".fileprovider", attachment, filename);
+        Intent send = fileShareIntent(uri, filename, mimeType,
+            Boolean.TRUE.equals(call.getBoolean("feedback")), call.getString("title", "Espresso Dial-In beta feedback"));
+        getActivity().startActivity(Intent.createChooser(send, "Share Espresso Dial-In file"));
+    }
+
+    static Intent fileShareIntent(Uri uri, String filename, String mimeType, boolean feedback, String title) {
         Intent send = new Intent(Intent.ACTION_SEND).setType(mimeType)
             .putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         send.setClipData(ClipData.newRawUri(filename, uri));
-        if (Boolean.TRUE.equals(call.getBoolean("feedback")) && "application/json".equals(mimeType)) {
+        if (feedback && "application/json".equals(mimeType)) {
             send.putExtra(Intent.EXTRA_EMAIL, new String[]{"TullLabs@outlook.com"});
-            send.putExtra(Intent.EXTRA_SUBJECT, "Espresso Dial-In beta feedback");
+            send.putExtra(Intent.EXTRA_SUBJECT, title);
         }
-        getActivity().startActivity(Intent.createChooser(send, "Share Espresso Dial-In file"));
+        return send;
     }
 }

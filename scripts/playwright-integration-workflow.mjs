@@ -165,7 +165,7 @@ async function shareAndDelete(page, shot) {
   await card.getByText(`${coffee} [N/A]`, { exact: true }).waitFor();
   assert.equal(await card.count(), 1);
   await card.getByTestId('history-share-shot').click();
-  const share = page.getByRole('dialog', { name: 'Share shot' });
+  const share = page.getByRole('dialog', { name: 'Report issue' });
   const download = page.waitForEvent('download');
   await button(share, 'Share').click();
   const exported = JSON.parse(await readFile(await (await download).path(), 'utf8'));

@@ -62,6 +62,25 @@ public class FileExportPayloadTest {
         assertTrue(truncated.discarded);
     }
 
+    @Test public void replayUsesASeparateBoundAndVerifiesReadbackWithoutChangingBytes() throws IOException {
+        assertThrows(IOException.class, () -> new FileExportPayload(temp.newFile(), FileExportPayload.LIMIT + 1));
+        new FileExportPayload(temp.newFile(), FileExportPayload.LIMIT + 1, true);
+        assertThrows(IOException.class, () -> new FileExportPayload(temp.newFile(), FileExportPayload.REPLAY_LIMIT + 1, true));
+        byte[] webm = { 0x1a, 0x45, (byte) 0xdf, (byte) 0xa3, (byte) 0x9f };
+        FileExportPayload payload = new FileExportPayload(temp.newFile(), webm.length, true);
+        payload.append(0, Base64.getEncoder().encodeToString(webm), Base64.getDecoder()::decode);
+        payload.verify("video/webm");
+        assertThrows(IOException.class, () -> payload.verify("video/mp4"));
+        MemoryDestination destination = new MemoryDestination();
+        payload.saveVerified(destination);
+        assertArrayEquals(webm, destination.bytes.toByteArray());
+        byte[] mp4 = { 0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 0, 0 };
+        FileExportPayload mp4Payload = new FileExportPayload(temp.newFile(), mp4.length, true);
+        mp4Payload.append(0, Base64.getEncoder().encodeToString(mp4), Base64.getDecoder()::decode);
+        mp4Payload.verify("video/mp4");
+        assertThrows(IOException.class, () -> mp4Payload.verify("video/webm"));
+    }
+
     private static class MemoryDestination implements FileExportPayload.Destination {
         final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         boolean discarded;

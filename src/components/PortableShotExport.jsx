@@ -1,7 +1,7 @@
 import { BetaActions } from '../beta/BetaActions.jsx';
 import { saveLocalFile, shareLocalFile } from '../beta/localFileShare.js';
 import { isAndroidApp, saveAndroidFile } from '../native/androidShell.js';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useOverlayHistoryClose } from '../hooks/useOverlayHistoryClose.js';
 import { ShotCardPreview } from './ShotCardPreview.jsx';
@@ -30,7 +30,7 @@ function downloadBackup(snapshot, filename) {
   if (!snapshot.shots.length) throw new Error('No saved shots are available to export.');
   const blob = new Blob([JSON.stringify(snapshot)], { type: 'application/json' });
   if (blob.size > MAX_PORTABLE_SHOT_BYTES) {
-    throw new Error('The backup exceeds 64 MiB. Individual shots can be exported from Shot Profile.');
+    throw new Error('The backup exceeds 64 MiB. Export individual shots using Share shot in History.');
   }
   if (isAndroidApp) return saveAndroidFile(blob, filename);
   downloadFile(filename, blob);
@@ -42,17 +42,24 @@ function savedGrind(shot, settings) {
   return hasSetting ? formatShotGrindForHistory(shot, settings) : '';
 }
 
-export function PortableShotExport({ shotId, settings, ui, cardOptions, onCardOptionsChange }) {
-  const [open, setOpen] = useState(false);
-  useOverlayHistoryClose(open, () => setOpen(false));
+export function PortableShotExport({ shotId, settings, ui, cardOptions, onCardOptionsChange, onClose }) {
+  const ref = useRef(null);
+  const requestClose = useOverlayHistoryClose(true, onClose);
+  useEffect(() => {
+    const dialog = ref.current;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
   return (
-    <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className={`border-t ${ui.modalDivider}`}>
-      <summary className={`flex min-h-11 cursor-pointer items-center text-sm font-semibold ${ui.accentText}`}>
-        Share Shot
-      </summary>
-      {open && <ShotShareOptions shotId={shotId} settings={settings} ui={ui}
-        cardOptions={cardOptions} onCardOptionsChange={onCardOptionsChange} />}
-    </details>
+    <dialog ref={ref} aria-label="Share shot" onCancel={(event) => event.preventDefault()}
+      className={`m-auto max-h-[85dvh] w-[calc(100%-2rem)] max-w-lg space-y-3 overflow-y-auto rounded-2xl p-4 backdrop:bg-black/70 ${ui.card} ${ui.text}`}>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-bold">Share shot</h2>
+        <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={requestClose}>Close</button>
+      </div>
+      <ShotShareOptions shotId={shotId} settings={settings} ui={ui}
+        cardOptions={cardOptions} onCardOptionsChange={onCardOptionsChange} />
+    </dialog>
   );
 }
 
@@ -87,7 +94,25 @@ function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChan
   };
   const saveJson = async () => {
     try {
-      await downloadBackup(snapshot, filename + '.json');
+      const result = await downloadBackup(snapshot, filename + '.json');
+      if (result) setShareStatus(result.cancelled ? 'Save cancelled.' : 'Shot JSON saved.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  const saveCsv = async () => {
+    const name = filename + '.csv';
+    const csv = shotSummaryCsv(snapshot, {
+      formatShotGrindForHistory: (record) => savedGrind(record, settings),
+      normalizeTasteProfile, formatRecFollowedForCsv, knownIssueReasonLabel,
+    });
+    if (!isAndroidApp) {
+      downloadCsvFile(name, csv);
+      return;
+    }
+    try {
+      const result = await saveLocalFile(new File([csv], name, { type: 'text/csv' }), { consent: true });
+      setShareStatus(result === 'cancelled' ? 'Save cancelled.' : 'Shot CSV saved.');
     } catch (err) {
       setError(err.message);
     }
@@ -118,12 +143,7 @@ function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChan
             {missing.length > 0 && <p className={ui.sub}>Missing from this shot: {missing.map((key) => fieldNames[key]).join(', ')}.</p>}
             <div className="flex flex-wrap gap-2">
               <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={saveJson}>Export shot JSON</button>
-              <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={() => downloadCsvFile(
-                filename + '.csv', shotSummaryCsv(snapshot, {
-                  formatShotGrindForHistory: (record) => savedGrind(record, settings),
-                  normalizeTasteProfile, formatRecFollowedForCsv, knownIssueReasonLabel,
-                }),
-              )}>Download shot CSV</button>
+              <button type="button" className={`${buttonClass} ${ui.secondaryBtn}`} onClick={saveCsv}>Download shot CSV</button>
             </div>
           </div>
           <div className={`border-t pt-2 space-y-1 ${ui.modalDivider}`}>

@@ -49,7 +49,7 @@ async function diagnostics(page, card) {
 async function sharedDiagnostics(page, action) {
   await page.evaluate(() => Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true }));
   await action.click();
-  const dialog = page.getByRole('dialog', { name: 'Share shot' });
+  const dialog = page.getByRole('dialog', { name: 'Report issue' });
   const pending = page.waitForEvent('download');
   await dialog.getByRole('button', { name: 'Share', exact: true }).click();
   const download = await pending;
@@ -69,7 +69,11 @@ async function checkShotProfile(page, card, shot, screenshot) {
   const details = panel.getByTestId('shot-profile-details');
   assert.equal(await details.count(), 0);
   await summary.tap();
-  await panel.getByTestId('shot-pressure-chart').waitFor();
+  const inline = card.getByTestId('history-recorded-chart');
+  const hasInlineChart = await inline.count() > 0;
+  const charts = hasInlineChart ? inline : panel;
+  await charts.scrollIntoViewIfNeeded();
+  await charts.getByTestId('shot-pressure-chart').waitFor();
   const timing = shot.shotProfileTiming;
   assert.equal(timing.version, 1);
   assert.ok(Number.isFinite(timing.pressureOriginMs));
@@ -80,21 +84,25 @@ async function checkShotProfile(page, card, shot, screenshot) {
   if (hasScale) {
     assert.ok(Number.isFinite(timing.scaleOriginMs));
     assert.ok(timing.settlementEndMs >= timing.stopMs);
-    await panel.getByRole('button', { name: 'Weight', exact: true }).tap();
-    await panel.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
-    await panel.getByRole('button', { name: 'Flow', exact: true }).tap();
-    await panel.getByRole('img', { name: 'Flow rate (g/s)' }).waitFor();
-    await panel.getByRole('button', { name: 'Combined', exact: true }).tap();
-    await panel.getByRole('img', { name: 'Pressure (bar) and flow (g/s)' }).waitFor();
+    if (hasInlineChart && timing.scaleSource === 'simulated') {
+      assert.equal(await charts.getByRole('button', { name: 'Weight', exact: true }).count(), 0);
+    } else {
+      await charts.getByRole('button', { name: 'Weight', exact: true }).tap();
+      await charts.getByRole('img', { name: 'Scale weight (g)' }).waitFor();
+      await charts.getByRole('button', { name: 'Flow', exact: true }).tap();
+      await charts.getByRole('img', { name: 'Flow rate (g/s)' }).waitFor();
+      await charts.getByRole('button', { name: 'Combined', exact: true }).tap();
+      await charts.getByRole('img', { name: 'Pressure (bar) and flow (g/s)' }).waitFor();
+    }
   } else {
     await panel.getByText('No scale data', { exact: true }).waitFor();
     assert.equal(timing.scaleOriginMs, null);
   }
-  const chart = panel.getByRole('img');
+  const chart = charts.getByRole('img');
   await chart.tap();
-  await panel.getByTestId('profile-time-cursor').waitFor({ state: 'attached' });
-  await panel.getByTestId('profile-observations').waitFor();
-  const range = panel.getByRole('slider', { name: 'Explore shot time' });
+  await charts.getByTestId('profile-time-cursor').waitFor({ state: 'attached' });
+  await charts.getByTestId('profile-observations').waitFor();
+  const range = charts.getByRole('slider', { name: 'Explore shot time' });
   const timeBefore = await range.inputValue();
   await range.press('ArrowRight');
   assert.notEqual(await range.inputValue(), timeBefore);

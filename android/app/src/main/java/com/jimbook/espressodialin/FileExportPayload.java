@@ -16,13 +16,20 @@ import java.util.zip.CRC32;
 final class FileExportPayload {
     static final int CHUNK_SIZE = 256 * 1024;
     static final int LIMIT = 64 * 1024 * 1024;
+    static final int REPLAY_LIMIT = 256 * 1024 * 1024;
     private static final Pattern BASE64 = Pattern.compile("[A-Za-z0-9+/]+={0,2}");
     final File file;
     final int expected;
     private int received;
 
     FileExportPayload(File file, int expected) throws IOException {
-        if (expected <= 0 || expected > LIMIT || file.length() != 0) throw new IOException("Invalid export size");
+        this(file, expected, false);
+    }
+
+    FileExportPayload(File file, int expected, boolean replay) throws IOException {
+        if (expected <= 0 || expected > (replay ? REPLAY_LIMIT : LIMIT) || file.length() != 0) {
+            throw new IOException("Invalid export size");
+        }
         this.file = file;
         this.expected = expected;
     }
@@ -44,6 +51,10 @@ final class FileExportPayload {
 
     void verify(String mimeType) throws IOException {
         if (received != expected || file.length() != expected) throw new IOException("Incomplete export");
+        if ("video/mp4".equals(mimeType) || "video/webm".equals(mimeType)) {
+            verifyVideoHeader(mimeType);
+            return;
+        }
         if (!"image/png".equals(mimeType)) return;
         try (DataInputStream png = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
             if (expected < 57 || png.readLong() != 0x89504e470d0a1a0aL) throw new IOException("Invalid PNG signature");
@@ -75,6 +86,17 @@ final class FileExportPayload {
                 }
             }
             throw new IOException("Incomplete PNG");
+        }
+    }
+
+    private void verifyVideoHeader(String mimeType) throws IOException {
+        try (DataInputStream input = new DataInputStream(new FileInputStream(file))) {
+            int header = input.readInt();
+            if ("video/webm".equals(mimeType)) {
+                if (header != 0x1a45dfa3 || expected <= 4) throw new IOException("Invalid WebM header");
+            } else if (header < 16 || header > expected || input.readInt() != 0x66747970) {
+                throw new IOException("Invalid MP4 header");
+            }
         }
     }
 

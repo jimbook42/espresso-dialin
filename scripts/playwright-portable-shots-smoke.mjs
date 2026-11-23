@@ -97,12 +97,11 @@ try {
   browser = await chromium.launch();
   const source = await openOfflinePage(true);
   await source.getByRole('button', { name: 'History', exact: true }).click();
-  const profile = source.getByTestId('history-shot-profile');
-  await profile.getByText('Shot profile', { exact: true }).click();
-  await profile.getByText('Share Shot', { exact: true }).click();
-  await profile.getByAltText('Preview of shot card').waitFor();
-  assert.equal(await profile.getByRole('button', { name: /Beanconqueror|Visualizer/ }).count(), 0);
-  const single = await grabDownload(source, 'Download shot JSON');
+  const sourceShare = source.getByRole('dialog', { name: 'Share shot' });
+  await source.getByTestId('history-shot-card').getByRole('button', { name: 'Share shot', exact: true }).click();
+  await sourceShare.getByAltText('Preview of shot card').waitFor();
+  assert.equal(await sourceShare.getByRole('button', { name: /Beanconqueror|Visualizer/ }).count(), 0);
+  const single = await grabDownload(source, 'Export shot JSON');
   const parsed = JSON.parse(single.bytes.toString());
   assert.deepEqual(parsed.shots[0].record, shot);
   assert.equal(parsed.shots[0].measurements.rating, 4);
@@ -111,10 +110,12 @@ try {
   const summary = await grabDownload(source, 'Download shot CSV');
   assert.match(summary.bytes.toString(), /^"Timestamp \(ISO\)","Timestamp \(Epoch Ms\)"/);
   assert.match(summary.bytes.toString(), /"Portable test coffee"/);
-  const sep = await grabDownload(source, 'Download SEP CSV');
+  const sep = await grabDownload(source, 'Export SEP CSV');
   assert.match(sep.bytes.toString(), /^information_type,elapsed,pressure,/);
   assert.match(sep.bytes.toString(), /"moment","0\.336","0\.41368543682058806"/);
 
+  await sourceShare.getByRole('button', { name: 'Close' }).click();
+  await sourceShare.waitFor({ state: 'hidden' });
   await source.getByTitle('Settings', { exact: true }).click();
   const backup = await grabDownload(source, 'Download all shots as JSON');
   assert.equal(backup.bytes.toString(), single.bytes.toString());
@@ -148,12 +149,15 @@ try {
   await card.getByRole('button', { name: 'Favourite shot', pressed: true }).waitFor();
   const cards = await openOfflinePage(true, [recorded, manual, reference]);
   await cards.getByRole('button', { name: 'History', exact: true }).click();
+  const activeShare = cards.getByRole('dialog', { name: 'Share shot' });
+  const closeShare = async () => {
+    await activeShare.getByRole('button', { name: 'Close' }).click();
+    await activeShare.waitFor({ state: 'hidden' });
+  };
   const openCard = async (notes) => {
     const card = cards.getByTestId('history-shot-card').filter({ hasText: notes });
-    const details = card.getByTestId('history-shot-profile');
-    await details.locator('summary').first().click();
-    await details.getByText('Share Shot', { exact: true }).click();
-    return details;
+    await card.getByRole('button', { name: 'Share shot', exact: true }).click();
+    return activeShare;
   };
   const output = await mkdtemp(join(tmpdir(), 'espresso-b14-png-'));
   const saveCard = async (details, name, height) => {
@@ -173,7 +177,8 @@ try {
   };
   const manualCard = await openCard(manual.notes);
   await saveCard(manualCard, 'manual', 575);
-  assert.equal(await manualCard.getByRole('button', { name: 'Download SEP CSV' }).count(), 0);
+  assert.equal(await manualCard.getByRole('button', { name: 'Export SEP CSV' }).count(), 0);
+  await closeShare();
   const recordedCard = await openCard('Recorded card QA fixture');
   const redacted = await saveCard(recordedCard, 'redacted', 1115);
   for (const label of ['Show bean name', 'Show grinder', 'Show date', 'Show personal notes']) {
@@ -187,22 +192,27 @@ try {
   assert.deepEqual(await saveCard(recordedCard, 'redacted-again', 1115), redacted);
   await recordedCard.getByLabel('Show bean name').check();
   await cards.goBack();
-  await recordedCard.getByText('Share Shot', { exact: true }).click();
+  await activeShare.waitFor({ state: 'hidden' });
+  await openCard('Recorded card QA fixture');
   assert.equal(await recordedCard.getByLabel('Show bean name').isChecked(), true);
   await recordedCard.getByLabel('Show bean name').uncheck();
-  await recordedCard.locator('summary').first().click();
-  await recordedCard.locator('summary').first().click();
-  await recordedCard.getByText('Share Shot', { exact: true }).click();
+  await closeShare();
+  await openCard('Recorded card QA fixture');
   assert.equal(await recordedCard.getByLabel('Show bean name').isChecked(), false);
+  await closeShare();
   await cards.getByRole('button', { name: 'Dial', exact: true }).click();
   await cards.getByRole('button', { name: 'History', exact: true }).click();
   const reopened = await openCard('Recorded card QA fixture');
   assert.equal(await reopened.getByLabel('Show bean name').isChecked(), false);
+  await closeShare();
   const other = await openCard(manual.notes);
   assert.equal(await other.getByLabel('Show bean name').isChecked(), false);
+  await closeShare();
+  await openCard('Recorded card QA fixture');
   await reopened.getByLabel('Show branding').uncheck();
   await recordedCard.getByLabel('Include bean reference').check();
   await saveCard(recordedCard, 'reference', 1635);
+  await closeShare();
 
   const synthetic = (duration, id) => ({
     id, beanId: bean.id, timestamp: '2023-03-24T09:38:52.463Z',
@@ -230,10 +240,9 @@ try {
   }));
   await comparison.reload();
   await comparison.getByRole('button', { name: 'History', exact: true }).click();
-  const shortCard = comparison.getByTestId('history-shot-card').filter({ hasText: 'Distinctive private notes' })
-    .filter({ hasText: '22' }).first().getByTestId('history-shot-profile');
-  await shortCard.locator('summary').first().click();
-  await shortCard.getByText('Share Shot', { exact: true }).click();
+  await comparison.getByTestId('history-shot-card').filter({ hasText: 'Distinctive private notes' })
+    .filter({ hasText: '22' }).first().getByRole('button', { name: 'Share shot', exact: true }).click();
+  const shortCard = comparison.getByRole('dialog', { name: 'Share shot' });
   await shortCard.getByLabel('Include bean reference').check();
   const saveComparison = async (name) => {
     const img = shortCard.getByAltText('Preview of shot card');
