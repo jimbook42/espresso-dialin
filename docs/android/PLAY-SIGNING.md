@@ -1,6 +1,6 @@
 # Android signing, transition and release checklist
 
-Status as of 18 November 2026. This is a runbook for an authorized future build and test. The current artifact is the locally signed v4.15.6 debug APK. The release variant has no checked-in signing configuration. A signed release AAB, keys and Play-generated APK are pending.
+Status as of 24 November 2026. The current local test artifact is the locally signed v4.15.7 debug APK. The release variant has no checked-in signing configuration. A signed release AAB, keys and Play-generated APK are pending.
 
 ## Signing identities
 
@@ -46,7 +46,15 @@ The checked-in package is `com.jimbook.espressodialin`. Source and the debug art
 | 4.15.4 | 3 | Debug historical transfer |
 | 4.15.5 | 4 | Debug beta acceptance |
 | 4.15.6 | 5 | Debug PNG fix |
-| First Play internal candidate | Next approved unused code above 5 and every prior Play upload | Unassigned. Confirm the actual Console ledger first. |
+| 4.15.7 | 6 | Debug Galaxy acceptance build. Device testing pending. |
+| First Play internal candidate | Next approved unused code above 6 and every prior Play upload | Unassigned. Confirm the actual Console ledger first. |
+
+### v4.15.7 local debug acceptance artifact
+
+- Built 24 November 2026 from `cd10ac4fa584b51567ac97ae9419990ea84d1c83`, the version-only successor of approved source `0d85470c746528693f84d860767b38d62dd708f8`. The APK embeds the version commit. This ledger entry was committed after checksum verification.
+- Local Windows artifact `D:\EspressoAndroidToolchain\espresso-dial-in-v4.15.7-debug.apk` (19,216,941 bytes). APK SHA-256 `c099255ac2013e1b485d46fdfdebde5c0116e43855fc227c6d8d8a5e514faca9`.
+- Package `com.jimbook.espressodialin`, versionName `4.15.7`, versionCode `6`, min API 24, target API 36. Signer SHA-256 `eed6f6abf590d5e6beaf41fab7c047c0ad82bff78528e67e30f3172b0fe5e44a` matches v4.15.6 (5). The package and signing match support an in-place update after the owner retains an external `.dialinbackup`.
+- Release preflight, Capacitor sync, 149 focused Vitest tests, four browser checks, six Android host tests, Java compilation, and debug assembly passed. The APK signature, alignment, archive CRCs, 44 packaged web files, and embedded version and source SHA were verified. The instrumentation test compiled and awaits device execution. Physical acceptance and Play delivery remain pending.
 
 Record track, versionName/code, full SHA, certificate fingerprints and artifact digest before any upload. Once used for a Play upload, a code cannot be reused. Assign a higher code to replacement builds, including fixes on test tracks. [Version your app](https://developer.android.com/studio/publish/versioning)
 
