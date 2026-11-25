@@ -1,6 +1,6 @@
 import { pressureGapBridges } from './pressureGapBridges.js';
 import { useId } from 'react';
-import { flowRateSeriesFromWeightCurve, FLOW_PLOT_SMOOTH_WINDOW_S, SCALE_FLOW_MAX_SAMPLE_GAP_S } from '../scales/flowMetrics.js';
+import { plottedFlowFromWeights } from '../scales/displayFlow.js';
 import { pressureChartPointsForDisplay, labPressureCurvePlotTimeS } from '../flairPressureLab/pressureDisplaySmoothing.js';
 import { shotPressureChartY } from '../flairPressureLab/shotPressureChartLayout.js';
 import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js';
@@ -10,8 +10,28 @@ import {
 } from './scaleFlowPressureOverlay.js';
 
 const AMBER = '#c88a4b';
+const FLOW_STROKE = '#16877d';
 const PROFILE_AMBER = 'rgba(200, 138, 75, 0.35)';
 const AXIS = '#6b6457';
+
+// Use an outer Tukey fence with a minimum spread for flow. Weight estimates by the
+// time since the previous estimate so a notification burst has little influence.
+function typicalFlowRange(points) {
+  if (points.length < 4) return [-Infinity, Infinity];
+  const weighted = points.map((point, i) => ({
+    value: point.flowGs,
+    seconds: i === 0 || point.breakBefore ? 0.2 : Math.min(0.5, point.tS - points[i - 1].tS),
+  })).sort((a, b) => a.value - b.value);
+  const total = weighted.reduce((sum, point) => sum + point.seconds, 0);
+  const quantile = (fraction) => {
+    let remaining = total * fraction;
+    return weighted.find(({ seconds }) => (remaining -= seconds) <= 0)?.value ?? weighted.at(-1).value;
+  };
+  const lower = quantile(0.25);
+  const upper = quantile(0.75);
+  const spread = Math.max(0.5, upper - lower);
+  return [lower - 3 * spread, upper + 3 * spread];
+}
 
 /**
  * @param {{
@@ -40,7 +60,7 @@ export function ScaleFlowChart({
   const labelId = useId();
   if (!profile && !flowCurve?.length) return null;
 
-  const flowSeries = profile?.flow ?? flowRateSeriesFromWeightCurve(flowCurve, FLOW_PLOT_SMOOTH_WINDOW_S, SCALE_FLOW_MAX_SAMPLE_GAP_S).map((point) => ({
+  const flowSeries = profile?.flow ?? plottedFlowFromWeights(flowCurve).map((point) => ({
     ...point,
     tS: point.tS + flowTimeOffsetSec,
   }));
@@ -53,6 +73,7 @@ export function ScaleFlowChart({
   const showPressure = profile ? view === 'pressure' || view === 'combined' : pressurePoints.length > 0 || showIdealPressure;
   const showPrimary = !profile || view !== 'pressure';
   const isWeight = view === 'weight';
+  const primaryStroke = isWeight ? AMBER : FLOW_STROKE;
   const primaryKey = isWeight ? 'weightG' : 'flowGs';
   const primaryPoints = isWeight ? profile.weight : flowSeries;
   const primaryUnit = isWeight ? 'g' : 'g/s';
@@ -76,22 +97,24 @@ export function ScaleFlowChart({
   const timeAxisMin = profile ? Math.floor(profile.minTimeS) : 0;
   const timeStep = profile ? Math.max(1, Math.ceil((maxT - timeAxisMin) / 5)) : 10;
   const timeAxisMax = Math.max(timeStep, Math.ceil(maxT / timeStep) * timeStep);
-  const [primaryMin, primaryMax] = primaryPoints.reduce(([min, max], p) =>
-    [Math.min(min, p[primaryKey]), Math.max(max, p[primaryKey])], [0, 0.5]);
+  const [typicalMin, typicalMax] = isWeight ? [-Infinity, Infinity] : typicalFlowRange(primaryPoints);
+  const typicalPoints = primaryPoints.filter((point) => point[primaryKey] >= typicalMin && point[primaryKey] <= typicalMax);
+  const [primaryMin, primaryMax] = typicalPoints.reduce(([min, max], p) =>
+    [Math.min(min, p[primaryKey]), Math.max(max, p[primaryKey])], [0, profile && !isWeight ? 2 : 0.5]);
   const primaryStep = profile ? Math.max(isWeight ? 1 : 0.5, Math.ceil((primaryMax - primaryMin) / 2)) : 5;
   const yMin = Math.floor(primaryMin / primaryStep) * primaryStep;
   const yMax = Math.ceil(primaryMax / primaryStep) * primaryStep;
+  const outsideRange = (point) => point[primaryKey] < yMin || point[primaryKey] > yMax;
+  const outliers = showPrimary ? primaryPoints.filter(outsideRange) : [];
+  const visiblePrimary = primaryPoints.flatMap((point, i) => outsideRange(point) ? []
+    : [{ ...point, breakBefore: point.breakBefore || (i > 0 && outsideRange(primaryPoints[i - 1])) }]);
   const x = (t) => padL + ((t - timeAxisMin) / (timeAxisMax - timeAxisMin)) * chartW;
   const yPrimary = (value) => padT + chartH - ((value - yMin) / (yMax - yMin)) * chartH;
 
   const pathFor = (points, key, xAt, yAt) => points
     .map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'} ${xAt(p.tS).toFixed(1)} ${yAt(p[key]).toFixed(1)}`)
     .join(' ');
-  const intervalFlow = profile?.intervalFlow && !isWeight;
-  const primaryPath = showPrimary ? (intervalFlow
-    ? primaryPoints.map(({ fromTS, tS, flowGs }) =>
-      `M ${x(fromTS)} ${yPrimary(flowGs)} H ${x(tS)}`).join(' ')
-    : pathFor(primaryPoints, primaryKey, x, yPrimary)) : '';
+  const primaryPath = showPrimary ? pathFor(visiblePrimary, primaryKey, x, yPrimary) : '';
 
   const pressureYMax = showPressure
     ? Math.max(10, historyPressureYMax(pressurePoints, flairProfile))
@@ -121,7 +144,7 @@ export function ScaleFlowChart({
   const pressureX = profile ? x : (tS) => x(labPressureCurvePlotTimeS(tS));
   const bridges = profile ? [] : pressureGapBridges(pressurePoints);
 
-  const pressurePath = showPressure && !profile?.intervalFlow ? pathFor(pressurePoints, 'bar', pressureX, yBar) : '';
+  const pressurePath = showPressure && !profile?.pressureDots ? pathFor(pressurePoints, 'bar', pressureX, yBar) : '';
   const isolatedPoints = (points) => points.filter((p, i) => (i === 0 || p.breakBefore)
     && (!points[i + 1] || points[i + 1].breakBefore));
 
@@ -143,12 +166,18 @@ export function ScaleFlowChart({
         <span id={labelId} className={profile ? 'text-xs font-semibold' : 'text-[9px] uppercase tracking-wider text-[#6b6457]'}>
           {profile ? label[view] : 'Scale flow (g/s vs time)'}
         </span>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           {showPressure && showPrimary && (
-            <span className="text-[9px] uppercase tracking-wider text-[#6b6457]">
-              <span className="inline-block w-2 h-0.5 align-middle mr-1" style={{ background: pressureLiveStroke }} />
-              bar
-            </span>
+            <>
+              <span className="text-[10px] font-semibold">
+                <span className="inline-block w-2 h-0.5 align-middle mr-1" style={{ background: primaryStroke }} />
+                Flow (g/s) · left
+              </span>
+              <span className="text-[10px] font-semibold">
+                <span className="inline-block w-2 h-0.5 align-middle mr-1" style={{ background: pressureLiveStroke }} />
+                Pressure (bar) · right
+              </span>
+            </>
           )}
           {peakLabel && (
             <span className="text-[9px] font-semibold text-[#c97868] tabular-nums">{peakLabel}</span>
@@ -169,7 +198,7 @@ export function ScaleFlowChart({
         })}
       >
         {showPrimary && <g data-testid="history-flow-axis" fill={profile ? 'currentColor' : AXIS} fontSize={profile ? 10 : 8} fontFamily="system-ui, sans-serif">
-          <line x1={padL} y1={padT} x2={padL} y2={axisBottom} stroke={AXIS} strokeWidth="0.75" />
+          <line x1={padL} y1={padT} x2={padL} y2={axisBottom} stroke={showPressure ? primaryStroke : AXIS} strokeWidth="0.75" />
           {primaryTicks.map((tick) => {
             const y = yPrimary(tick);
             return (
@@ -217,7 +246,7 @@ export function ScaleFlowChart({
         </g>
         {showPressure && (
           <g data-testid="history-pressure-axis" fill={profile ? 'currentColor' : AXIS} fontSize={profile ? 10 : 8} fontFamily="system-ui, sans-serif">
-            <line x1={showPrimary ? axisRight : padL} y1={padT} x2={showPrimary ? axisRight : padL} y2={axisBottom} stroke={AXIS} strokeWidth="0.75" />
+            <line x1={showPrimary ? axisRight : padL} y1={padT} x2={showPrimary ? axisRight : padL} y2={axisBottom} stroke={pressureLiveStroke} strokeWidth="0.75" />
             {(profile ? [0, pressureYMax / 2, pressureYMax] : [0, 5, 10]).map((tick) => {
               const y = yBar(tick);
               const axisX = showPrimary ? axisRight : padL;
@@ -235,6 +264,9 @@ export function ScaleFlowChart({
                 </g>
               );
             })}
+            <text x={showPrimary ? axisRight + 28 : 8} y={padT + chartH / 2} textAnchor="middle"
+              transform={`rotate(${showPrimary ? 90 : -90} ${showPrimary ? axisRight + 28 : 8} ${padT + chartH / 2})`}
+              data-testid="history-pressure-axis-label">bar</text>
           </g>
         )}
         {profile?.extractionStartS > 0 && (
@@ -257,7 +289,7 @@ export function ScaleFlowChart({
         {showPrimary && <path
           d={primaryPath}
           fill="none"
-          stroke={AMBER}
+          stroke={primaryStroke}
           strokeWidth="2"
           strokeLinejoin="round"
           data-testid={isWeight ? 'history-weight' : 'history-flow'}
@@ -286,10 +318,18 @@ export function ScaleFlowChart({
             data-testid="history-measured-pressure"
           />
         )}
-        {profile && showPrimary && !intervalFlow && isolatedPoints(primaryPoints).map((p) => (
-          <circle key={p.tS} cx={x(p.tS)} cy={yPrimary(p[primaryKey])} r="2" fill={AMBER} />
+        {showPrimary && isolatedPoints(visiblePrimary).map((p) => (
+          <circle key={p.tS} cx={x(p.tS)} cy={yPrimary(p[primaryKey])} r="2" fill={primaryStroke} />
         ))}
-        {profile && showPressure && (profile.intervalFlow ? pressurePoints : isolatedPoints(pressurePoints)).map((p, i) => (
+        {outliers.map(({ tS, flowGs }) => {
+          const high = flowGs > yMax;
+          const markerX = x(tS);
+          const markerY = high ? padT : axisBottom;
+          const baseY = markerY + (high ? 6 : -6);
+          return <path key={tS} d={`M ${markerX} ${markerY} L ${markerX - 3} ${baseY} H ${markerX + 3} Z`}
+            fill={primaryStroke} data-testid="flow-outlier"><title>{flowGs.toFixed(2)} g/s at {tS.toFixed(2)} s</title></path>;
+        })}
+        {profile && showPressure && (profile.pressureDots ? pressurePoints : isolatedPoints(pressurePoints)).map((p, i) => (
           <circle key={i} cx={pressureX(p.tS)} cy={yBar(p.bar)} r="2" fill={pressureLiveStroke} />
         ))}
         {cursorS != null && (
@@ -297,6 +337,12 @@ export function ScaleFlowChart({
             stroke="currentColor" strokeWidth="1" opacity="0.8" data-testid="profile-time-cursor" />
         )}
       </svg>
+      {outliers.length > 0 && (
+        <details className="text-xs">
+          <summary>Flow beyond the axis range ({outliers.length})</summary>
+          <ul>{outliers.map(({ tS, flowGs }) => <li key={tS}>{tS.toFixed(2)} s · {flowGs.toFixed(2)} g/s</li>)}</ul>
+        </details>
+      )}
     </div>
   );
 }

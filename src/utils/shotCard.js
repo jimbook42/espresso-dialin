@@ -35,8 +35,9 @@ export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options
   const tracks = profiles.map((p) => [
     { label: 'PRESSURE', unit: 'bar', points: p.pressure, key: 'bar', color: '#cf8250' },
     { label: 'WEIGHT', unit: 'g', points: p.weight, key: 'weightG', color: '#739c82' },
-    { label: 'FLOW (SMOOTHED)', unit: 'g/s', points: p.flow, key: 'flowGs', color: '#8294bd' },
-  ].filter((t) => t.points.length));
+    { label: 'FLOW (SMOOTHED)', unit: 'g/s', points: p.flow, key: 'flowGs', color: '#8294bd',
+      hadIntervals: p.averageFlowGs != null },
+  ].filter((t) => t.points.length || t.hadIntervals));
   const sectionHeight = (i) => 340 + tracks[i].length * 180 + (options.notes && entries[i].shot.notes ? 100 : 0);
   canvas.width = CARD_WIDTH;
   canvas.height = 170 + entries.reduce((sum, _, i) => sum + sectionHeight(i), 0) + 65;
@@ -73,10 +74,16 @@ export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options
     });
     let chartY = y + 230;
     tracks[i].forEach((track) => {
+      if (!track.points.length) {
+        text('FLOW', 80, chartY + 10, 15, track.color, 700);
+        text('Too few consecutive scale readings to plot flow', 165, chartY + 53, 21, '#c7cfc8');
+        chartY += 180;
+        return;
+      }
       const left = 165, right = 1080, top = chartY + 20, bottom = chartY + 125;
       const origin = p.aligned ? p.extractionStartS : 0;
       const comparable = referenceShot && profiles.every((profile) => profile.aligned);
-      const matching = comparable ? tracks.flatMap((group, j) => group.filter((item) => item.key === track.key)
+      const matching = comparable ? tracks.flatMap((group, j) => group.filter((item) => item.key === track.key && item.points.length)
         .map((item) => ({ points: item.points, origin: profiles[j].extractionStartS }))) : [{ points: track.points, origin }];
       const minT = Math.min(0, ...matching.map((item) => item.points[0].tS - item.origin));
       const maxT = Math.max(minT + 1, ...matching.map((item) => item.points.at(-1).tS - item.origin));

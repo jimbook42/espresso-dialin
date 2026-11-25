@@ -37,7 +37,8 @@ describe('advanced pressure and flow', () => {
     });
     expect(result.pressure.map(({ breakBefore }) => breakBefore)).toEqual([false, false, true, true, false, false, false, false, false]);
     expect(result.flow.map(({ fromTS, tS }) => [fromTS, tS])).toEqual([[0, 0.15], [1.625, 1.75], [1.75, 2], [2, 2.25]]);
-    expect(result).toMatchObject({ observedPeakBar: 8, averageBar: null, timeToPeakS: null });
+    expect(result).toMatchObject({ observedPeakBar: 8, averageBar: null, timeToPeakS: 2.125,
+      pressureCoverage: { interruptions: 2, peakMayBeMissed: true, averageUnavailableReason: 'Less than half of extraction observed' } });
     expect(result.bands).toEqual([{ minBar: 6, maxBar: 8, count: 2, seconds: 0.375, averageFlowGs: 1 / 0.375 }]);
   });
 
@@ -82,5 +83,95 @@ describe('advanced pressure and flow', () => {
     expect(result).toMatchObject({
       observedPeakBar: 0, averageBar: 0, timeToPeakS: 0, flow: [], flowStatus: 'No usable flow intervals inside extraction',
     });
+  });
+});
+
+const alignedShot = (samples, overrides = {}) => ({
+  shotProfileTiming: { ...timings, pressureOriginMs: 2000, ...overrides },
+  labPressureCurve: pressure(...samples),
+});
+
+describe('pressure observation coverage', () => {
+  const samples = Array.from({ length: 9 }, (_, i) => [i / 8, i]);
+
+  it('retains the time-weighted extraction average and earliest peak for a complete recording', () => {
+    const result = buildPressureFlowAnalytics(alignedShot(samples));
+    expect(result).toMatchObject({ averageBar: 4, fullExtractionAverageBar: 4, observedPeakBar: 8, timeToPeakS: 1,
+      pressureCoverage: { observedS: 1, observedFraction: 1, intervals: 8, interruptions: 0, peakMayBeMissed: false } });
+  });
+
+  it('requires both near-complete duration and observed endpoints for the extraction-average label', () => {
+    const curve = Array.from({ length: 9 }, (_, i) => [0.05 + i * 0.1125, 6]);
+    const nearComplete = buildPressureFlowAnalytics(alignedShot(curve));
+    expect(nearComplete.fullExtractionAverageBar).toBeCloseTo(6);
+    expect(nearComplete.pressureCoverage.peakMayBeMissed).toBe(true);
+    const delayed = curve.map(([tS, bar]) => [tS + 0.01, bar]).slice(1);
+    expect(buildPressureFlowAnalytics(alignedShot(delayed))).toMatchObject({
+      fullExtractionAverageBar: null, pressureCoverage: { peakMayBeMissed: true },
+    });
+    const lateStart = Array.from({ length: 23 }, (_, i) => [0.25 + i * 0.125, 6]);
+    expect(buildPressureFlowAnalytics(alignedShot(lateStart, { extractionEndMs: 5000 }))).toMatchObject({
+      fullExtractionAverageBar: null, pressureCoverage: { observedFraction: 11 / 12, startMissingS: 0.25 },
+    });
+  });
+
+  it.each([
+    ['before peak', 3, 8, 1, 13 / 3],
+    ['after peak', 6, 12, 0.25, 5],
+  ])('excludes a brief internal gap %s from the integral and retains observed peak time', (where, missing, peak, peakTime, expected) => {
+    const curve = samples.filter((_, i) => i !== missing).map(([time, bar], i) =>
+      [time, where === 'after peak' && i === 2 ? 12 : bar]);
+    const result = buildPressureFlowAnalytics(alignedShot(curve));
+    expect(result).toMatchObject({ fullExtractionAverageBar: null, observedPeakBar: peak, timeToPeakS: peakTime,
+      pressureCoverage: { observedS: 0.75, observedFraction: 0.75, interruptions: 1, peakMayBeMissed: true } });
+    expect(result.averageBar).toBeCloseTo(expected);
+  });
+
+  it.each([
+    ['start', samples.slice(2), 5, 0.25, 0, 1],
+    ['end', samples.slice(0, -2), 3, 0, 0.25, 0.75],
+  ])('reports a partial average with a missing extraction %s', (_edge, curve, average, startMissingS, endMissingS, timeToPeakS) => {
+    expect(buildPressureFlowAnalytics(alignedShot(curve))).toMatchObject({
+      averageBar: average, fullExtractionAverageBar: null, timeToPeakS,
+      pressureCoverage: { observedFraction: 0.75, interruptions: 0, startMissingS, endMissingS, peakMayBeMissed: true },
+    });
+  });
+
+  it('reports a partial average at exactly half coverage across two gaps', () => {
+    const result = buildPressureFlowAnalytics(alignedShot(samples.filter((_, i) => ![2, 6].includes(i))));
+    expect(result).toMatchObject({ averageBar: 4, fullExtractionAverageBar: null, timeToPeakS: 1,
+      pressureCoverage: { observedFraction: 0.5, intervals: 4, interruptions: 2, gaps: [
+        { fromTS: 0.125, toTS: 0.375 }, { fromTS: 0.625, toTS: 0.875 },
+      ] } });
+  });
+
+  it('withholds averages for one valid interval and retains the known observed peak', () => {
+    expect(buildPressureFlowAnalytics(alignedShot([[0, 3], [0.125, 5], [0.5, 4]]))).toMatchObject({
+      averageBar: null, timeToPeakS: 0.125, observedPeakBar: 5,
+      pressureCoverage: { observedFraction: 0.125, averageUnavailableReason: 'Fewer than two continuous pressure intervals' },
+    });
+  });
+
+  it('distinguishes no samples from uncertainty and keeps pre-infusion independent', () => {
+    expect(buildPressureFlowAnalytics(alignedShot([]))).toMatchObject({
+      averageBar: null, timeToPeakS: null, pressureCoverage: null, pressureStatus: 'No pressure recording', preinfusionS: 2,
+    });
+    expect(buildPressureFlowAnalytics(alignedShot(samples, { pressureOriginMs: null }))).toMatchObject({
+      averageBar: null, timeToPeakS: null, pressureCoverage: null, pressureStatus: 'Pressure extraction timing is uncertain',
+      preinfusionS: 2,
+    });
+    const beforeExtraction = [[0, 12], [0.125, 12], ...samples.map(([time, bar]) => [time + 0.25, bar])];
+    expect(buildPressureFlowAnalytics(alignedShot(beforeExtraction, { pressureOriginMs: 1750, scaleInterrupted: true })))
+      .toMatchObject({ preinfusionS: 2, averageBar: 4, observedPeakBar: 8, timeToPeakS: 1, flow: [] });
+  });
+
+  it('keeps raw interval flow for bands and uses the History estimator for the curve', () => {
+    const shot = { ...alignedShot(samples, { scaleOriginMs: 2000 }), scaleFlowCurve: weight(
+      [0, 0], [0.1, 0.1], [0.101, 0.2], [0.25, 0.3], [0.5, 0.6], [0.75, 0.9], [1, 1.2],
+    ) };
+    const result = buildPressureFlowAnalytics(shot);
+    expect(result.flow[1].flowGs).toBeCloseTo(100);
+    expect(result.displayFlow.map(({ tS }) => tS)).toEqual([0.25, 0.5, 0.75, 1]);
+    for (const { flowGs } of result.displayFlow) expect(flowGs).toBeCloseTo(1.2);
   });
 });

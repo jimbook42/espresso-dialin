@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDisplayFlowEstimator } from './displayFlow.js';
+import { createDisplayFlowEstimator, plottedFlowFromWeights } from './displayFlow.js';
 import {
   createFlowEndDetector, flowEndAutoStopDisplayEndS, flowEndAutoStopShouldFreezeTimer,
   flowEndAutoStopShouldStop, flowEndDisplayedAndSavedTimes, stepFlowEndDetector,
@@ -18,6 +18,37 @@ const steady = sampled(120, (t) => 0.9 * t);
 const asSamples = (events) => events.map(({ offsetMs, weightG }) => ({ tS: offsetMs / 1000, weightG }));
 const positivePart = (n) => Math.max(0, n);
 const clean = [0];
+
+describe('saved flow plot', () => {
+  const weights = (...points) => points.map(([tS, weightG]) => ({ tS, weightG }));
+
+  it('holds a quantised 1.2 g/s pour across irregular, duplicate and 1 ms deliveries', () => {
+    const samples = weights([0, 0], [0.1, 0.1], [0.1, 0.1], [0.101, 0.2], [0.25, 0.3],
+      [0.4, 0.5], [0.5, 0.6], [0.72, 0.9], [0.9, 1.1], [1, 1.2]);
+    const original = structuredClone(samples);
+    expect(instantaneousFlowGs(samples[2], samples[3])).toBeCloseTo(100);
+    const output = plottedFlowFromWeights(samples);
+    expect(output[0].tS).toBe(0.25);
+    expect(output.at(-1).tS).toBe(1);
+    for (const { flowGs } of output) expect(Math.abs(flowGs - 1.2)).toBeLessThan(0.15);
+    expect(samples).toEqual(original);
+  });
+
+  it('shows the plateau, splits at a weight disturbance and at missing notifications', () => {
+    const flow = plottedFlowFromWeights(weights([0, 2], [0.2, 2], [0.4, 1], [0.41, 2],
+      [0.65, 2.24], [1.3, 9], [1.6, 9.3]));
+    expect(flow.map(({ tS, breakBefore }) => [tS, breakBefore])).toEqual([[0.2, true], [0.65, true], [1.6, true]]);
+    expect(flow[0].flowGs).toBe(0);
+    expect(flow[1].flowGs).toBeCloseTo(1);
+    expect(flow[2].flowGs).toBeCloseTo(1);
+  });
+
+  it('retains a rapid supported change and uses the last weight at the same timestamp', () => {
+    const flow = plottedFlowFromWeights(weights([0, 0], [0.25, 0.25], [0.25, 0.3], [0.5, 0.6],
+      [0.75, 1.85], [1, 3.1], [1.25, 3.1], [1.5, 3.1]));
+    expect(flow.map(({ flowGs }) => Number(flowGs.toFixed(2)))).toEqual([1.2, 1.2, 3.1, 5, 2.5, 0]);
+  });
+});
 
 function startSession(handlers) {
   vi.useFakeTimers({ now: 10000 });

@@ -3,12 +3,13 @@ import { BleClient, numberToUUID } from '@capacitor-community/bluetooth-le';
 import { AndroidShell } from '../../native/androidShell.js';
 
 const keyFor = (model) => 'dialin.android.scale.' + model;
+const isAndroidAddress = (id) => typeof id === 'string' && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(id);
 const uuid = (value) => typeof value === 'number' ? numberToUUID(value) : value;
 
 export function rememberedAndroidScale(model) {
   try {
     const device = JSON.parse(localStorage.getItem(keyFor(model)));
-    return /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(device?.deviceId) ? device : null;
+    return isAndroidAddress(device?.deviceId) ? device : null;
   } catch {
     return null;
   }
@@ -19,11 +20,12 @@ export function androidGatt(model, { reconnect = false, signal } = {}) {
   let peripheral;
   return {
     remember() {
-      if (!peripheral) return;
+      if (!isAndroidAddress(peripheral?.deviceId)) return;
       try {
         localStorage.setItem(keyFor(model), JSON.stringify(peripheral));
       } catch {
         // A usable connection does not depend on writable local storage.
+        recordDiagnostic('ble', 'remember-unavailable');
       }
     },
     async requestDevice() {
@@ -48,7 +50,7 @@ export function androidGatt(model, { reconnect = false, signal } = {}) {
       const selected = reconnect ? rememberedAndroidScale(model) : await BleClient.requestDevice();
       peripheral = selected && { deviceId: selected.deviceId, name: selected.name };
       signal?.throwIfAborted();
-      if (!peripheral) throw new Error('No remembered scale.');
+      if (!isAndroidAddress(peripheral?.deviceId)) throw new Error('Scale address is unavailable.');
       if (!reconnect) recordDiagnostic('ble', 'peripheral-selected');
       const { deviceId, name } = peripheral;
       const device = new EventTarget();
@@ -59,18 +61,21 @@ export function androidGatt(model, { reconnect = false, signal } = {}) {
         connected: false,
         async connect() {
           connecting = true;
+          let disconnected = false;
           try {
             await BleClient.connect(deviceId, () => {
+              disconnected = true;
               gatt.connected = false;
               device.dispatchEvent(new Event('gattserverdisconnected'));
             }, { timeout: 8000 });
+            if (disconnected) throw new Error('Scale disconnected during setup.');
             gatt.connected = true;
             signal?.throwIfAborted();
             services = await BleClient.getServices(deviceId);
             signal?.throwIfAborted();
             return gatt;
           } catch (error) {
-            await gatt.disconnect();
+            await gatt.disconnect().catch(() => {});
             throw error;
           } finally {
             connecting = false;

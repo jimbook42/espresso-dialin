@@ -1,7 +1,8 @@
 import { isStandalonePressureShot } from '../flairPressureLab/standalonePressureShot.js';
 import { PRESSURE_CURVE_GAP_MS } from '../flairPressureLab/pressureCurveFilter.js';
 import { pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
-import { flowRateSeriesFromWeightCurve, instantaneousFlowGs, SCALE_FLOW_MAX_SAMPLE_GAP_S } from '../scales/flowMetrics.js';
+import { instantaneousFlowGs, SCALE_FLOW_MAX_SAMPLE_GAP_S } from '../scales/flowMetrics.js';
+import { plottedFlowFromWeights } from '../scales/displayFlow.js';
 
 const PRESSURE_GAP_S = PRESSURE_CURVE_GAP_MS / 1000;
 const INTERRUPTED_PRESSURE_S = 1;
@@ -55,28 +56,20 @@ function shift(points, shiftTime) {
   return points.map((point) => ({ ...point, tS: shiftTime(point.tS) }));
 }
 
-function scaleFlow(weights, startS, endS) {
-  const runs = [];
+function averageScaleFlow(weights, startS, endS) {
   let seconds = 0;
   let grams = 0;
-  let run = [];
+  let previous;
   for (const point of weights) {
     if (point.tS < startS || point.tS > endS) continue;
-    const previous = point.breakBefore ? null : run.at(-1);
-    const change = point.weightG - previous?.weightG;
-    if (!previous || !Number.isFinite(change / (point.tS - previous.tS))) {
-      run = [point];
-      runs.push(run);
-      continue;
+    if (!point.breakBefore && Number.isFinite(instantaneousFlowGs(previous, point))) {
+      seconds += point.tS - previous.tS;
+      grams += point.weightG - previous.weightG;
     }
-    seconds += point.tS - previous.tS;
-    grams += change;
-    run.push(point);
+    previous = point;
   }
-  const points = runs.flatMap((segment) => flowRateSeriesFromWeightCurve(segment, undefined, SCALE_FLOW_MAX_SAMPLE_GAP_S)
-    .map((point, index) => ({ ...point, breakBefore: index === 0 })));
   const average = grams / seconds;
-  return { points, average: Number.isFinite(average) && average >= 0 ? average : null };
+  return Number.isFinite(average) && average >= 0 ? average : null;
 }
 
 const peak = (points, key) => points.reduce((max, point) =>
@@ -132,10 +125,10 @@ export function buildShotProfile(shot, { physicalOnly = false } = {}) {
   const extractionEndS = aligned && extraction.durationS != null ? toSeconds(timing.extractionEndMs) : null;
   const stopS = aligned ? toSeconds(timing?.stopMs) : null;
   const settlementEndS = aligned ? toSeconds(timing?.settlementEndMs) : null;
-  // Calculate in the original scale clock, including gap and EMA decisions.
-  const { points, average } = scaleFlow(weightLocal, extractionStartS == null ? -Infinity : extractionStartS - scaleOriginS,
-    extractionEndS == null ? Infinity : extractionEndS - scaleOriginS);
-  const flow = shift(points, weightTime);
+  const flowStartS = extractionStartS == null ? -Infinity : extractionStartS - scaleOriginS;
+  const flowEndS = extractionEndS == null ? Infinity : extractionEndS - scaleOriginS;
+  const displayWeights = !physicalOnly || sources.scale ? shot.scaleFlowCurve : null;
+  const flow = shift(plottedFlowFromWeights(Array.isArray(displayWeights) ? displayWeights : [], flowStartS, flowEndS), weightTime);
   const measures = savedShotMeasurements(shot);
 
   const pressureInterrupted = pressureLocal.some((point, index) =>
@@ -147,7 +140,7 @@ export function buildShotProfile(shot, { physicalOnly = false } = {}) {
     ...measures,
     yieldSource: measures.yieldG != null ? timing?.yieldSource ?? null : null,
     peakPressureBar: peak(pressure, 'bar'),
-    averageFlowGs: average,
+    averageFlowGs: averageScaleFlow(weightLocal, flowStartS, flowEndS),
     peakFlowGs: peak(flow, 'flowGs'),
     finalWeightG: weight.at(-1)?.weightG ?? null,
     pressure,

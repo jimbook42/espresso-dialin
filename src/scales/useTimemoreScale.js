@@ -24,6 +24,33 @@ import { publishScaleLiveWeight, resetScaleLiveWeightStore } from './scaleLiveWe
 const noopAsync = async () => {};
 const emptyDisplayFlow = { flowGs: null, series: [] };
 
+// A GATT subscription can succeed even when the selected peripheral never
+// sends a weight the chosen scale protocol can decode.
+async function connectVerifiedAndroidScale(transport, signal) {
+  let timer;
+  let confirmWeight;
+  const weight = new Promise((resolve) => { confirmWeight = resolve; });
+  const offWeight = transport.onWeight(({ weightG }) => {
+    if (Number.isFinite(weightG)) confirmWeight({ weightG });
+  });
+  const offDisconnect = transport.onDisconnect?.(() => confirmWeight({ error: new Error('Scale disconnected during setup.') }));
+  const abort = () => confirmWeight({ error: signal.reason });
+  signal.addEventListener('abort', abort, { once: true });
+  try {
+    await transport.connect();
+    signal.throwIfAborted();
+    timer = setTimeout(() => confirmWeight({ error: new Error('No weight readings received from the scale.') }), 4000);
+    const { error, weightG } = await weight;
+    if (error) throw error;
+    return weightG;
+  } finally {
+    clearTimeout(timer);
+    offWeight();
+    offDisconnect?.();
+    signal.removeEventListener('abort', abort);
+  }
+}
+
 /** @param {boolean} simAllowed */
 export function resolveDefaultTransportKind(simAllowed) {
   return simAllowed ? 'sim' : 'ble';
@@ -69,10 +96,18 @@ export function useTimemoreScale({
   const [liveFlowSeries, setLiveFlowSeries] = useState([]);
   const [flowSeriesEpoch, setFlowSeriesEpoch] = useState(0);
   const [batteryPercent, setBatteryPercent] = useState(null);
+  const [foregroundEntry, setForegroundEntry] = useState(0);
+  const [connectionSettled, setConnectionSettled] = useState(0);
 
   const transportRef = useRef(null);
   const pendingConnect = useRef(null);
+  const pendingDisconnect = useRef(null);
   const nativeShotLocked = useRef(shotLocked);
+  const nativeForeground = useRef(true);
+  const foreground = useRef(globalThis.document?.visibilityState !== 'hidden');
+  const intentionallyDisconnected = useRef(new Set());
+  const selectedModel = useRef(scaleDeviceId);
+  const handledEntry = useRef(null);
   const connectionRef = useRef(null);
   const sessionRef = useRef(null);
   const shotSessionRef = useRef(null);
@@ -126,7 +161,12 @@ export function useTimemoreScale({
     connectionRef.current = null;
     const t = transportRef.current;
     transportRef.current = null;
-    if (t) await t.disconnect().catch(() => {});
+    if (!t) return pendingDisconnect.current;
+    const cleanup = t.disconnect().catch(() => {});
+    pendingDisconnect.current = cleanup;
+    await cleanup;
+    if (pendingDisconnect.current === cleanup) pendingDisconnect.current = null;
+    if (isAndroidApp) setConnectionSettled((value) => value + 1);
   }, [disposeSession, diagnosticsRef]);
 
   const resetShotWeightTracking = useCallback(() => {
@@ -136,7 +176,8 @@ export function useTimemoreScale({
     publishWeightSnapshot(liveWeightRef.current, 0, false);
   }, [publishWeightSnapshot]);
 
-  const disconnect = useCallback(async () => {
+  const disconnect = useCallback(async (intentional = true) => {
+    if (isAndroidApp && intentional) intentionallyDisconnected.current.add(scaleDeviceId);
     if (sessionRef.current && sessionRef.current === shotSessionRef.current) {
       interruptedMetricsRef.current = sessionRef.current.getShotMetrics();
     }
@@ -148,14 +189,20 @@ export function useTimemoreScale({
     setBatteryPercent(null);
     resetShotWeightTracking();
     await disposeTransport();
-  }, [disposeTransport, resetShotWeightTracking]);
+  }, [disposeTransport, resetShotWeightTracking, scaleDeviceId]);
 
   useEffect(() => {
     if (!enabled) {
       resetScaleLiveWeightStore();
-      return undefined;
+      if (!isAndroidApp) return undefined;
+      let disabled = true;
+      void Promise.resolve(pendingDisconnect.current).then(() => {
+        if (disabled) setConnectStatus('idle');
+      });
+      return () => { disabled = false; };
     }
     return () => {
+      handledEntry.current = null;
       pendingConnect.current?.abort();
       disposeTransport();
       resetScaleLiveWeightStore();
@@ -220,10 +267,12 @@ export function useTimemoreScale({
   }, [transportKind, simAllowed, scaleDeviceId, targetYieldG, usePreInfusion, preInfusionDurationS, devUrlSim]);
 
   const connect = useCallback(async (reconnect = false) => {
-    if (!enabled || pendingConnect.current || (isAndroidApp && nativeShotLocked.current)) return;
+    if (!enabled || pendingConnect.current || (isAndroidApp && (nativeShotLocked.current
+      || pendingDisconnect.current || !foreground.current || scaleDeviceId !== selectedModel.current))) return;
     const attempt = new AbortController();
     pendingConnect.current = attempt;
     attempt.reconnect = reconnect === true;
+    attempt.model = scaleDeviceId;
     let transport;
     const simulated = resolveEffectiveTransportKind(transportKind, simAllowed) === 'sim';
     if (!simulated) recordDiagnostic('ble', reconnect === true ? 'reconnecting' : 'pairing');
@@ -234,12 +283,15 @@ export function useTimemoreScale({
       attempt.signal.throwIfAborted();
       transport = buildTransport({ reconnect: reconnect === true, signal: attempt.signal });
       transportRef.current = transport;
-      await transport.connect();
+      let initialWeightG = 0;
+      if (isAndroidApp) initialWeightG = await connectVerifiedAndroidScale(transport, attempt.signal);
+      else await transport.connect();
       attempt.signal.throwIfAborted();
-      if (isAndroidApp && (!transport.isConnected() || nativeShotLocked.current)) {
+      if (isAndroidApp && (!transport.isConnected() || nativeShotLocked.current || scaleDeviceId !== selectedModel.current)) {
         throw new Error('Scale connection ended before setup completed.');
       }
       transport.remember?.();
+      intentionallyDisconnected.current.delete(scaleDeviceId);
       if (!simulated) recordDiagnostic('ble', 'connected');
       const identity = {
         model: simulated ? 'Simulated Timemore Dot'
@@ -247,62 +299,83 @@ export function useTimemoreScale({
         transport: simulated ? 'simulated' : isAndroidApp ? 'native-ble' : 'web-bluetooth',
         simulated,
       };
-      connectionRef.current = { identity, wallMs: Date.now() };
+      connectionRef.current = { identity, model: scaleDeviceId, wallMs: Date.now() };
       diagnosticsRef?.current?.connect(identity, connectionRef.current.wallMs);
       attachSession(transport);
       unsubscribeDisconnectRef.current = transport.onDisconnect?.(() => {
-        if (transportRef.current === transport) void disconnect();
+        if (transportRef.current === transport) void disconnect(false);
       });
       setConnectStatus('connected');
-      liveWeightRef.current = 0;
+      liveWeightRef.current = initialWeightG;
       resetShotWeightTracking();
-      setLiveWeightG(0);
-      publishWeightSnapshot(0, 0, false);
+      setLiveWeightG(initialWeightG);
+      publishWeightSnapshot(initialWeightG, 0, false);
       setDisplayFlow(emptyDisplayFlow);
     } catch (err) {
-      if (transportRef.current === transport) transportRef.current = null;
-      await transport?.disconnect().catch(() => {});
+      if (transport && transportRef.current === transport) await disposeTransport();
+      else await transport?.disconnect().catch(() => {});
       if (!simulated) recordDiagnostic('ble', attempt.signal.aborted || err?.name === 'NotFoundError' ? 'cancelled' : 'failed');
       if (!attempt.signal.aborted) {
         if (reconnect !== true) console.warn('[scale] connect failed', err);
-        setConnectStatus(reconnect === true ? 'idle' : 'error');
-      }
+        setConnectStatus('error');
+      } else if (isAndroidApp) setConnectStatus('idle');
     } finally {
       pendingConnect.current = null;
+      if (isAndroidApp) setConnectionSettled((value) => value + 1);
     }
-  }, [enabled, disposeTransport, buildTransport, attachSession, disconnect, resetShotWeightTracking,
+  }, [enabled, disposeTransport, buildTransport, attachSession, disconnect, resetShotWeightTracking, publishWeightSnapshot,
     transportKind, simAllowed, scaleDeviceId, diagnosticsRef]);
 
   useLayoutEffect(() => {
     nativeShotLocked.current = shotLocked;
+    selectedModel.current = scaleDeviceId;
     if (isAndroidApp && pendingConnect.current
-      && (shotLocked || (!liveWorkflowActive && pendingConnect.current.reconnect))) {
+      && (shotLocked || pendingConnect.current.model !== scaleDeviceId
+        || (!liveWorkflowActive && pendingConnect.current.reconnect))) {
       pendingConnect.current.abort();
-      setConnectStatus('idle');
     }
-  }, [shotLocked, liveWorkflowActive]);
+  }, [shotLocked, liveWorkflowActive, scaleDeviceId]);
 
   useEffect(() => {
     if (!isAndroidApp) return undefined;
-    const cancelHiddenReconnect = () => {
-      if (document.visibilityState === 'hidden' && pendingConnect.current?.reconnect) {
+    const updateForeground = () => {
+      const visible = nativeForeground.current && document.visibilityState !== 'hidden';
+      if (foreground.current === visible) return;
+      foreground.current = visible;
+      if (visible) setForegroundEntry((entry) => entry + 1);
+      else if (pendingConnect.current?.reconnect) {
         pendingConnect.current.abort();
-        setConnectStatus('idle');
       }
     };
-    document.addEventListener('visibilitychange', cancelHiddenReconnect);
-    return () => document.removeEventListener('visibilitychange', cancelHiddenReconnect);
+    const pause = () => { nativeForeground.current = false; updateForeground(); };
+    const resume = () => { nativeForeground.current = true; updateForeground(); };
+    document.addEventListener('visibilitychange', updateForeground);
+    document.addEventListener('dialin-android-paused', pause);
+    document.addEventListener('dialin-android-resumed', resume);
+    return () => {
+      document.removeEventListener('visibilitychange', updateForeground);
+      document.removeEventListener('dialin-android-paused', pause);
+      document.removeEventListener('dialin-android-resumed', resume);
+    };
   }, []);
 
-  const handledEntry = useRef(liveWorkflowEntry);
   useEffect(() => {
-    if (handledEntry.current === liveWorkflowEntry) return;
-    handledEntry.current = liveWorkflowEntry;
-    if (isAndroidApp && enabled && liveWorkflowActive && !shotLocked && !connectionRef.current
-      && document.visibilityState !== 'hidden' && rememberedAndroidScale(scaleDeviceId)) {
-      void connect(true);
+    if (!isAndroidApp) return;
+    if (!liveWorkflowActive || !enabled) handledEntry.current = null;
+    if (shotLocked) return;
+    if (connectionRef.current && (connectionRef.current.model !== scaleDeviceId || !enabled)) {
+      void disconnect(false);
+      return;
     }
-  }, [liveWorkflowEntry, liveWorkflowActive, enabled, shotLocked, scaleDeviceId, connect]);
+    if (!enabled || !liveWorkflowActive || !foreground.current || pendingDisconnect.current
+      || intentionallyDisconnected.current.has(scaleDeviceId) || !rememberedAndroidScale(scaleDeviceId)) return;
+    const last = handledEntry.current;
+    if (last?.model === scaleDeviceId && last.workflow === liveWorkflowEntry && last.foreground === foregroundEntry) return;
+    if (pendingConnect.current) return;
+    handledEntry.current = { model: scaleDeviceId, workflow: liveWorkflowEntry, foreground: foregroundEntry };
+    if (!connectionRef.current) void connect(true);
+  }, [liveWorkflowEntry, liveWorkflowActive, enabled, shotLocked, scaleDeviceId, connect,
+    foregroundEntry, connectionSettled, disconnect]);
 
   const devUrlAutoConnectRef = useRef(false);
   useEffect(() => {
@@ -525,7 +598,9 @@ export function useTimemoreScale({
     liveFlowSeries,
     flowSeriesEpoch,
     batteryPercent,
+    connectionLocked: isAndroidApp && shotLocked,
     connect,
+    reconnect: isAndroidApp && !isConnected && rememberedAndroidScale(scaleDeviceId) ? () => connect(true) : undefined,
     disconnect,
     tare,
     recordScaleConnection,

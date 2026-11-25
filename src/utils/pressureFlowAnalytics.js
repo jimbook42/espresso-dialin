@@ -1,27 +1,52 @@
 import { PRESSURE_CURVE_GAP_MS } from '../flairPressureLab/pressureCurveFilter.js';
+import { plottedFlowFromWeights } from '../scales/displayFlow.js';
 import { buildComparisonProfile, extractionTiming, recordedShotTiming } from './shotProfile.js';
 
 const PRESSURE_GAP_S = PRESSURE_CURVE_GAP_MS / 1000;
 const TIME_EPSILON_S = 1e-9;
 const BAND_WIDTH_BAR = 2;
+const MIN_OBSERVED_FRACTION = 0.5;
+const MIN_EXTRACTION_FRACTION = 0.9;
 const bandStart = (bar) => Math.floor(bar / BAND_WIDTH_BAR) * BAND_WIDTH_BAR;
 
 function pressureSummary(pressure, durationS) {
-  if (!pressure.length) return { observedPeakBar: null, averageBar: null, timeToPeakS: null };
-  const peak = pressure.reduce((max, sample) => sample.bar > max.bar ? sample : max);
-  const first = pressure[0];
-  const last = pressure.at(-1);
-  const complete = pressure.length >= 3 && first.tS <= PRESSURE_GAP_S + TIME_EPSILON_S
-    && durationS - last.tS <= PRESSURE_GAP_S + TIME_EPSILON_S
-    && !pressure.slice(1).some(({ breakBefore }) => breakBefore);
-  const area = complete ? pressure.slice(1).reduce((sum, point, i) => {
-    const previous = pressure[i];
-    return sum + (point.bar + previous.bar) / 2 * (point.tS - previous.tS);
-  }, 0) : null;
+  const peak = pressure.reduce((max, sample) => !max || sample.bar > max.bar ? sample : max, null);
+  let observedS = 0;
+  let area = 0;
+  let intervals = 0;
+  const gaps = [];
+  for (let i = 1; i < pressure.length; i += 1) {
+    const point = pressure[i];
+    const previous = pressure[i - 1];
+    if (point.breakBefore) {
+      gaps.push({ fromTS: previous.tS, toTS: point.tS });
+      continue;
+    }
+    const span = point.tS - previous.tS;
+    observedS += span;
+    area += (point.bar + previous.bar) / 2 * span;
+    intervals += 1;
+  }
+  const observedFraction = peak ? Math.min(1, observedS / durationS) : null;
+  const startMissingS = peak ? Math.max(0, pressure[0].tS) : null;
+  const endMissingS = peak ? Math.max(0, durationS - pressure.at(-1).tS) : null;
+  // Keep the existing boundary tolerance for a representative extraction average.
+  // It estimates the extraction from observed data and never fills either edge.
+  const complete = gaps.length === 0 && observedFraction >= MIN_EXTRACTION_FRACTION - TIME_EPSILON_S
+    && startMissingS <= PRESSURE_GAP_S + TIME_EPSILON_S && endMissingS <= PRESSURE_GAP_S + TIME_EPSILON_S;
+  const averageBar = intervals >= 2 && observedFraction >= MIN_OBSERVED_FRACTION - TIME_EPSILON_S
+    ? area / observedS : null;
   return {
-    observedPeakBar: peak.bar,
-    averageBar: complete ? area / (last.tS - first.tS) : null,
-    timeToPeakS: complete ? Math.max(0, peak.tS) : null,
+    observedPeakBar: peak?.bar ?? null,
+    averageBar,
+    fullExtractionAverageBar: complete ? averageBar : null,
+    timeToPeakS: peak ? Math.max(0, peak.tS) : null,
+    pressureCoverage: peak ? {
+      observedS, observedFraction, intervals, interruptions: gaps.length, gaps, startMissingS, endMissingS,
+      peakMayBeMissed: gaps.length > 0 || observedFraction < 1 - TIME_EPSILON_S,
+      averageUnavailableReason: intervals < 2 ? 'Fewer than two continuous pressure intervals'
+        : averageBar == null ? 'Less than half of extraction observed' : null,
+    } : null,
   };
 }
 
@@ -59,12 +84,19 @@ export function buildPressureFlowAnalytics(shot) {
   const profile = buildComparisonProfile(shot);
   const pressure = durationS != null && profile.sources.pressure
     ? profile.pressure.filter(({ tS }) => tS >= -TIME_EPSILON_S && tS <= durationS + TIME_EPSILON_S) : [];
-  const flow = durationS != null && !profile.scaleTimingApproximate
-    && profile.sources.scale && timing.scaleInterrupted === false ? profile.flow : [];
+  const usableScale = durationS != null && Number.isFinite(timing.scaleOriginMs)
+    && profile.sources.scale && timing.scaleInterrupted === false;
+  const flow = usableScale ? profile.flow : [];
+  // Use the same elapsed-time estimator as compact History. Paired bands retain
+  // their original, unsmoothed net mass / observed duration definition.
+  const displayFlow = usableScale && Array.isArray(shot.scaleFlowCurve) ? plottedFlowFromWeights(shot.scaleFlowCurve,
+    (extraction.startMs - timing.scaleOriginMs) / 1000, (timing.extractionEndMs - timing.scaleOriginMs) / 1000)
+    .map((point) => ({ ...point, tS: point.tS + (timing.scaleOriginMs - extraction.startMs) / 1000 })) : [];
   return {
     durationS,
     pressure,
     flow,
+    displayFlow,
     bands: pressureBands(pressure, flow),
     ...pressureSummary(pressure, durationS),
     preinfusionS: durationS != null && extraction.startMs > 0 ? extraction.startMs / 1000 : null,
@@ -76,6 +108,6 @@ export function buildPressureFlowAnalytics(shot) {
       : profile.scaleDisconnected ? 'Scale disconnected during recording'
         : durationS == null || profile.scaleTimingApproximate ? 'Scale extraction timing is uncertain'
           : !profile.sources.scale || timing.scaleInterrupted !== false ? 'Continuous Bluetooth scale source unverified'
-            : !flow.length ? 'No usable flow intervals inside extraction' : null,
+            : !flow.length && !displayFlow.length ? 'No usable flow intervals inside extraction' : null,
   };
 }

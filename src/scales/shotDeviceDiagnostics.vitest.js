@@ -10,6 +10,31 @@ import { buildShotDiagnosticDocument } from '../flairPressureLab/labShotReplayEx
 import { createShotLabPressureSession } from '../flairPressureLab/shotLabPressureSession.js';
 import { SHOT_YIELD_SETTLE_MS } from './scaleShotStopSettle.js';
 
+it('exports saved alignment, extraction gaps and scale sampling without requiring a retained trace', () => {
+  const shot = {
+    id: 'saved-alignment-only',
+    shotProfileTiming: { version: 1, clockDriftMs: 30, pressureSource: 'camera', scaleSource: 'native-ble',
+      pressureOriginMs: 1800, scaleOriginMs: 2000, extractionStartMs: 2000, extractionEndMs: 3000, scaleInterrupted: false },
+    labPressureCurve: [[0, 12], [0.25, 3], [0.375, 4], [0.5, 7], [0.75, 6], [0.875, 5], [1, 4]]
+      .map(([tS, bar]) => ({ tS, bar })),
+    scaleFlowCurve: [[0, 0], [0.1, 0.1], [0.1, 0.1], [0.101, 0.2], [0.25, 0.3], [1, 1]]
+      .map(([tS, weightG]) => ({ tS, weightG })),
+  };
+  const exported = buildShotDiagnosticDocument(shot);
+  expect(exported).toMatchObject({
+    recordingBuild: null, scaleDiagnostics: { availability: 'unavailable' },
+    savedMeasurementDiagnostics: {
+      timing: { pressureOriginMs: 1800, extractionStartMs: 2000, extractionEndMs: 3000, scaleSource: 'native-ble' },
+      extractionDurationS: 1,
+      pressureCoverage: { observedS: 0.5, interruptions: 1, gaps: [{ fromTS: 0.3, toTS: 0.55 }] },
+      scaleSampling: { observations: 6, duplicateTimestamps: 1, reversedTimestamps: 0, gapsOver500ms: 1, sub20msIntervals: 1 },
+    },
+  });
+  expect(exported.savedMeasurementDiagnostics.scaleSampling.largestRise.flowGs).toBeCloseTo(100);
+  expect(exported.savedScaleFlowCurve).toBeUndefined();
+  expect(buildShotDiagnosticDocument(shot, undefined, { includeSavedFlow: true }).savedScaleFlowCurve).toEqual(shot.scaleFlowCurve);
+});
+
 const buildSha = vi.hoisted(() => {
   const sha = '8a89237170266504cb6c3f3dd7759ae5fd4ab681';
   vi.stubEnv('VITE_APP_VERSION', '4.14.14');

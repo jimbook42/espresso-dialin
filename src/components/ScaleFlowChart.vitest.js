@@ -49,6 +49,25 @@ function renderChart(props) {
 }
 
 describe('ScaleFlowChart history pressure overlay', () => {
+  it('keeps the flow axis readable and exposes an extreme estimate on the correct axis', () => {
+    const flow = Array.from({ length: 30 }, (_, i) => ({ tS: i / 4, flowGs: i === 15 ? 56 : 1.3 }));
+    renderChart({ view: 'combined', profile: {
+      flow, displayPressure: [{ tS: 0, bar: 7.2 }], pressureDots: true, minTimeS: 0, maxTimeS: 8,
+    } });
+    const find = (id) => container.querySelector(`[data-testid="${id}"]`);
+    expect([...container.querySelectorAll('[data-testid="history-flow-tick"]')].map((tick) => tick.textContent))
+      .toEqual(['0', '1', '2']);
+    expect(find('history-flow-axis-label').textContent).toBe('g/s');
+    expect(find('history-pressure-axis-label').textContent).toBe('bar');
+    expect(find('history-flow-axis').querySelector('line').getAttribute('stroke'))
+      .not.toBe(find('history-pressure-axis').querySelector('line').getAttribute('stroke'));
+    expect(container.textContent).toContain('Flow (g/s) · left');
+    expect(container.textContent).toContain('Pressure (bar) · right');
+    expect(find('flow-outlier').querySelector('title').textContent).toBe('56.00 g/s at 3.75 s');
+    expect(container.querySelector('details li').textContent).toBe('3.75 s · 56.00 g/s');
+    expect(find('history-flow').getAttribute('d').match(/M /g)).toHaveLength(2);
+  });
+
   it('draws separate flow segments around missing notifications', () => {
     renderChart({});
     const path = container.querySelector('[data-testid="history-flow"]').getAttribute('d');

@@ -24,6 +24,8 @@ export function ScaleTimerControls({
   timerRunning = false,
   onOpenWeighingView,
   onConnect,
+  reconnect,
+  connectionLocked = false,
   onDisconnect,
   onTare,
   scaleDebugLines = [],
@@ -50,14 +52,22 @@ export function ScaleTimerControls({
         </select>
       )}
       {!isConnected ? (
-        <button
-          type="button"
-          onClick={onConnect}
-          disabled={connectStatus === 'connecting' || (transportKind === 'ble' && !bleAvailable)}
-          className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-[rgba(200,138,75,0.15)] text-[#c88a4b] border border-[rgba(200,138,75,0.3)] disabled:opacity-40"
-        >
-          {connectStatus === 'connecting' ? 'Connecting…' : 'Connect scale'}
-        </button>
+        <>
+          {reconnect && connectStatus !== 'connecting' && (
+            <button type="button" onClick={reconnect} disabled={connectionLocked}
+              className={`text-[10px] font-bold px-3 py-1.5 rounded-lg ${ui.chip} disabled:opacity-40`}>
+              Retry remembered scale
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onConnect}
+            disabled={connectionLocked || connectStatus === 'connecting' || (transportKind === 'ble' && !bleAvailable)}
+            className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-[rgba(200,138,75,0.15)] text-[#c88a4b] border border-[rgba(200,138,75,0.3)] disabled:opacity-40"
+          >
+            {connectStatus === 'connecting' ? 'Connecting…' : reconnect ? 'Pair another scale' : 'Connect scale'}
+          </button>
+        </>
       ) : (
         <>
           <span className="text-[10px] font-semibold text-[#8a9d72]">

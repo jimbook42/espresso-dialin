@@ -14,6 +14,7 @@ const shot = {
   shotProfileTiming: {
     version: 1, pressureSource: 'camera', scaleSource: 'native-ble', clockDriftMs: 0,
     pressureOriginMs: 0, scaleOriginMs: 0, extractionStartMs: 500, extractionEndMs: 30500, stopMs: 30500,
+    scaleInterrupted: false,
   },
 };
 let browser;
@@ -136,6 +137,13 @@ try {
   await profile.locator('summary').first().click();
   await profile.getByText('18.5 g', { exact: true }).waitFor();
   assert.equal(await profile.getByTestId('shot-pressure-chart').count(), 0);
+  await profile.getByText('Advanced pressure and flow', { exact: true }).click();
+  const advanced = profile.getByTestId('pressure-flow-analytics');
+  await advanced.getByText('Time to observed peak', { exact: true }).waitFor();
+  await advanced.getByText('Higher pressure may have occurred', { exact: false }).waitFor();
+  await advanced.getByText('Fewer than two continuous pressure intervals', { exact: true }).waitFor();
+  await advanced.getByText('Flow (g/s) · left', { exact: true }).waitFor();
+  await advanced.getByText('Pressure (bar) · right', { exact: true }).waitFor();
   await profile.locator('summary').first().click();
   const old = page.getByTestId('history-shot-card').filter({ hasText: 'Older manual shot' });
   assert.equal(await old.getByTestId('history-recorded-chart').count(), 0);
@@ -155,7 +163,11 @@ try {
 
   await card.getByTestId('history-shot-diagnostics-export').click();
   await card.getByText(/Saved verified-lab-replay-accepted-shot-pressure\.json and verified/).waitFor();
-  assert.deepEqual(json((await files()).at(-1)).labPressureCurve, shot.labPressureCurve);
+  const diagnostic = json((await files()).at(-1));
+  assert.deepEqual(diagnostic.labPressureCurve, shot.labPressureCurve);
+  assert.equal(diagnostic.savedMeasurementDiagnostics.timing.extractionStartMs, 500);
+  assert.equal(diagnostic.savedMeasurementDiagnostics.pressureCoverage.intervals, 1);
+  assert.equal(diagnostic.savedScaleFlowCurve, undefined);
   await page.evaluate(() => { window.testShell.next = 'cancel'; });
   await card.getByTestId('history-shot-diagnostics-export').click();
   await card.getByText(/Cancelled lab-replay-accepted-shot-pressure\.json/).waitFor();

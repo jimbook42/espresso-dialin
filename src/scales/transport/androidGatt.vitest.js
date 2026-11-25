@@ -46,6 +46,53 @@ describe('Android scale connection boundary', () => {
     AndroidShell.hasBluetoothPermissions.mockResolvedValue({ granted: false });
     await expect(androidGatt(model, { reconnect: true }).requestDevice()).rejects.toThrow('permission');
     expect(BleClient.initialize).not.toHaveBeenCalled();
+    expect(BleClient.connect).not.toHaveBeenCalled();
+    expect(BleClient.requestDevice).not.toHaveBeenCalled();
+  });
+
+  it('stays off GATT when Bluetooth is disabled and can reuse the identity after it is enabled', async () => {
+    const initial = androidGatt(model);
+    await initial.requestDevice();
+    initial.remember();
+    BleClient.requestDevice.mockClear();
+    AndroidShell.hasBluetoothPermissions.mockResolvedValue({ granted: true });
+    BleClient.isEnabled.mockResolvedValueOnce(false);
+    await expect(androidGatt(model, { reconnect: true }).requestDevice()).rejects.toThrow('turned off');
+    expect(BleClient.connect).not.toHaveBeenCalled();
+    const device = await androidGatt(model, { reconnect: true }).requestDevice();
+    await device.gatt.connect();
+    expect(device.gatt.connected).toBe(true);
+    expect(BleClient.requestDevice).not.toHaveBeenCalled();
+  });
+
+  it.each(['powered off', 'out of range'])('retains the saved address when the scale is %s', async (reason) => {
+    const initial = androidGatt(model);
+    await initial.requestDevice();
+    initial.remember();
+    AndroidShell.hasBluetoothPermissions.mockResolvedValue({ granted: true });
+    const device = await androidGatt(model, { reconnect: true }).requestDevice();
+    BleClient.connect.mockRejectedValueOnce(new Error(reason));
+    await expect(device.gatt.connect()).rejects.toThrow(reason);
+    expect(device.gatt.connected).toBe(false);
+    expect(rememberedAndroidScale(model)).toEqual(peripheral);
+  });
+
+  it('rejects stale connected state after a disconnect during native setup', async () => {
+    BleClient.connect.mockImplementation(async (_id, onDisconnect) => onDisconnect());
+    const device = await androidGatt(model).requestDevice();
+    await expect(device.gatt.connect()).rejects.toThrow('disconnected');
+    expect(device.gatt.connected).toBe(false);
+    expect(BleClient.getServices).not.toHaveBeenCalled();
+  });
+
+  it('does not fail an already usable connection if Android WebView storage is unwritable', async () => {
+    localStorage.setItem = () => { throw new Error('storage unavailable'); };
+    const adapter = androidGatt(model);
+    const device = await adapter.requestDevice();
+    await device.gatt.connect();
+    expect(() => adapter.remember()).not.toThrow();
+    expect(device.gatt.connected).toBe(true);
+    expect(rememberedAndroidScale(model)).toBeNull();
   });
 
   it('closes a connection that finishes after the workflow cancels it', async () => {

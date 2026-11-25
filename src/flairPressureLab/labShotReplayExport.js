@@ -8,6 +8,60 @@ import {
 import { replayDiagnosticsForShot } from './labReplayDiagnostics.js';
 import { readerStallDiagnosticsForShot } from './readerStallDiagnostics.js';
 import { isAndroidApp, saveAndroidFile, saveAndroidReplay } from '../native/androidShell.js';
+import { buildPressureFlowAnalytics } from '../utils/pressureFlowAnalytics.js';
+import { recordedShotTiming } from '../utils/shotProfile.js';
+import { instantaneousFlowGs, SCALE_FLOW_MAX_SAMPLE_GAP_S } from '../scales/flowMetrics.js';
+
+function savedScaleSampling(curve) {
+  if (!Array.isArray(curve) || !curve.length) return null;
+  const summary = { observations: curve.length, duplicateTimestamps: 0, reversedTimestamps: 0,
+    gapsOver500ms: 0, sub20msIntervals: 0, shortestPositiveMs: null, largestRise: null, largestDrop: null };
+  for (let i = 1; i < curve.length; i += 1) {
+    const previous = curve[i - 1];
+    const point = curve[i];
+    const elapsedS = point?.tS - previous?.tS;
+    if (!Number.isFinite(elapsedS)) continue;
+    if (elapsedS === 0) summary.duplicateTimestamps += 1;
+    else if (elapsedS < 0) summary.reversedTimestamps += 1;
+    else {
+      const ms = elapsedS * 1000;
+      summary.shortestPositiveMs = Math.min(summary.shortestPositiveMs ?? Infinity, ms);
+      if (elapsedS > SCALE_FLOW_MAX_SAMPLE_GAP_S + 1e-9) {
+        summary.gapsOver500ms += 1;
+        continue;
+      }
+      if (ms < 20 - 1e-6) summary.sub20msIntervals += 1;
+      const flowGs = instantaneousFlowGs(previous, point);
+      if (!Number.isFinite(flowGs) || point.breakBefore || point.reset || point.confident === false
+        || previous.confident === false) continue;
+      const interval = { fromTS: previous.tS, toTS: point.tS, flowGs };
+      if (flowGs > (summary.largestRise?.flowGs ?? 0)) summary.largestRise = interval;
+      if (flowGs < (summary.largestDrop?.flowGs ?? 0)) summary.largestDrop = interval;
+    }
+  }
+  return summary;
+}
+
+function savedMeasurementDiagnostics(shot) {
+  const timing = recordedShotTiming(shot);
+  const analysis = buildPressureFlowAnalytics(shot);
+  const offsetFields = ['pressureOriginMs', 'scaleOriginMs', 'extractionStartMs', 'extractionEndMs',
+    'stopMs', 'settlementEndMs', 'clockDriftMs'];
+  return {
+    timing: timing ? {
+      origin: 'application shot timer start',
+      ...Object.fromEntries(offsetFields.map((key) => [key, Number.isFinite(timing[key]) ? timing[key] : null])),
+      pressureSource: ['camera', 'simulated'].includes(timing.pressureSource) ? timing.pressureSource : null,
+      scaleSource: ['native-ble', 'web-bluetooth'].includes(timing.scaleSource) ? timing.scaleSource : null,
+      scaleInterrupted: typeof timing.scaleInterrupted === 'boolean' ? timing.scaleInterrupted : null,
+    } : null,
+    extractionDurationS: analysis.durationS,
+    pressureStatus: analysis.pressureStatus,
+    pressureCoverage: analysis.pressureCoverage,
+    scaleStatus: analysis.flowStatus,
+    scaleSampling: savedScaleSampling(shot.scaleFlowCurve),
+  };
+}
 
 /**
  * @param {object | null | undefined} shot
@@ -83,6 +137,7 @@ export function buildShotDiagnosticDocument(shot, exportedAt = new Date().toISOS
     scaleDiagnostics: { availability: 'unavailable', reason: DIAGNOSTICS_UNAVAILABLE },
     stopDiagnosticsAvailability: trace ? 'current-session' : DIAGNOSTICS_UNAVAILABLE,
     ...trace,
+    ...(shot ? { savedMeasurementDiagnostics: savedMeasurementDiagnostics(shot) } : {}),
     pressureSource: documentJson.labPressureCurve.length || documentJson.readerDiagnostics || documentJson.readerStallDiagnostics
       ? trace?.pressureSource ?? null : null,
     ...(testerFeedback ? { testerFeedback } : {}),

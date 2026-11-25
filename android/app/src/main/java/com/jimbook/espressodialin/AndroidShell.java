@@ -174,12 +174,14 @@ public class AndroidShell extends Plugin {
     protected void handleOnPause() {
         foreground = false;
         applyScreenFlag();
+        getBridge().triggerDocumentJSEvent("dialin-android-paused");
     }
 
     @Override
     protected void handleOnResume() {
         foreground = true;
         applyScreenFlag();
+        getBridge().triggerDocumentJSEvent("dialin-android-resumed");
     }
 
     private void applyScreenFlag() {

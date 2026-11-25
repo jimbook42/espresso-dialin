@@ -772,7 +772,7 @@ export default function App() {
   const [liveWorkflowEntry, setLiveWorkflowEntry] = useState(0);
   const timemoreScale = useTimemoreScale({
     liveWorkflowEntry,
-    liveWorkflowActive: activeTab === 'dial' || activeTab === 'pressure' || activeTab === 'brew',
+    liveWorkflowActive: !isSettingsOpen && (activeTab === 'dial' || activeTab === 'pressure' || activeTab === 'brew'),
     shotLocked: timerRunning || timerStartPending || shotCountdownValue != null
       || yieldSettleActive || dialShotPending || pressureState !== 'idle',
     enabled: scaleFeatureEnabled,
@@ -1813,6 +1813,7 @@ export default function App() {
   };
 
   const handleSmartScaleDeviceChange = async (deviceId) => {
+    if (isAndroidApp && (experienceSwitchLocked || timerStartingRef.current)) return;
     await patchGlobalSettings(db, {
       smartScaleDeviceId: normalizeSmartScaleDeviceId(deviceId),
     });
@@ -3757,6 +3758,8 @@ export default function App() {
                         timerRunning={timerRunning}
                         onOpenWeighingView={() => setWeighingViewOpen(true)}
                         onConnect={timemoreScale.connect}
+                        reconnect={timemoreScale.reconnect}
+                        connectionLocked={timemoreScale.connectionLocked}
                         onDisconnect={() => {
                           setWeighingViewOpen(false);
                           timemoreScale.disconnect();
@@ -5061,6 +5064,7 @@ export default function App() {
                       scaleConnected: timemoreScale.isConnected,
                     })}
                     onChange={(e) => { void handleSmartScaleDeviceChange(e.target.value); }}
+                    disabled={isAndroidApp && experienceSwitchLocked}
                     className={`w-full ${inputClass} border rounded-lg p-2.5 font-semibold`}
                   >
                     {listSmartScalePickerOptions().map((opt) => (
