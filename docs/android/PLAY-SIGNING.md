@@ -1,6 +1,6 @@
 # Android signing, transition and release checklist
 
-Status as of 24 November 2026. The current local test artifact is the locally signed v4.15.7 debug APK. The release variant has no checked-in signing configuration. A signed release AAB, keys and Play-generated APK are pending.
+Status as of 25 November 2026. The current local test artifact is the locally signed v4.15.8 debug APK for Galaxy S23 Ultra acceptance. The release variant has no checked-in signing configuration. A signed release AAB, keys and Play-generated APK are pending.
 
 ## Signing identities
 
@@ -47,7 +47,8 @@ The checked-in package is `com.jimbook.espressodialin`. Source and the debug art
 | 4.15.5 | 4 | Debug beta acceptance |
 | 4.15.6 | 5 | Debug PNG fix |
 | 4.15.7 | 6 | Debug Galaxy acceptance build. Device testing pending. |
-| First Play internal candidate | Next approved unused code above 6 and every prior Play upload | Unassigned. Confirm the actual Console ledger first. |
+| 4.15.8 | 7 | Debug Galaxy S23 Ultra acceptance build. Device testing pending. |
+| First Play internal candidate | Next approved unused code above 7 and every prior Play upload | Unassigned. Confirm the actual Console ledger first. |
 
 ### v4.15.7 local debug acceptance artifact
 
@@ -55,6 +56,14 @@ The checked-in package is `com.jimbook.espressodialin`. Source and the debug art
 - Local Windows artifact `D:\EspressoAndroidToolchain\espresso-dial-in-v4.15.7-debug.apk` (19,216,941 bytes). APK SHA-256 `c099255ac2013e1b485d46fdfdebde5c0116e43855fc227c6d8d8a5e514faca9`.
 - Package `com.jimbook.espressodialin`, versionName `4.15.7`, versionCode `6`, min API 24, target API 36. Signer SHA-256 `eed6f6abf590d5e6beaf41fab7c047c0ad82bff78528e67e30f3172b0fe5e44a` matches v4.15.6 (5). The package and signing match support an in-place update after the owner retains an external `.dialinbackup`.
 - Release preflight, Capacitor sync, 149 focused Vitest tests, four browser checks, six Android host tests, Java compilation, and debug assembly passed. The APK signature, alignment, archive CRCs, 44 packaged web files, and embedded version and source SHA were verified. The instrumentation test compiled and awaits device execution. Physical acceptance and Play delivery remain pending.
+
+### v4.15.8 local debug acceptance artifact
+
+- Built 25 November 2026 from `0c2f6f18911f1e15df7cce8783eb6d443200b2ce`. This version-only commit follows the PM-approved functional source `3699cdf873ad5aaebe60af0f750fc73fe1d60a55`. The APK embeds the version commit. This ledger entry follows it on the feature branch.
+- Local Windows artifact `D:\EspressoAndroidToolchain\espresso-dial-in-v4.15.8-debug.apk` (19,219,565 bytes). APK SHA-256 `310681ba6cb6f06fb963d5d971b9b14048272d9a5d5ce29132a4542a1d85c8af`.
+- Package `com.jimbook.espressodialin`, versionName `4.15.8`, versionCode `7`, min API 24, target API 36. Code 7 was unused in the local ledger and existing APKs, and exceeds v4.15.7's code 6. Both APKs verified with signer SHA-256 `eed6f6abf590d5e6beaf41fab7c047c0ad82bff78528e67e30f3172b0fe5e44a`. The package, signing key and WebView origin match the previous build and support an in-place update after the owner verifies an external `.dialinbackup`.
+- Release preflight, production web build, Capacitor sync, Android Java compilation, six Android host tests, 182 focused Vitest tests, Android History browser acceptance, and debug assembly passed. Signature, alignment, ZIP CRCs, embedded provenance and all 44 packaged web files were verified. The first packaging attempt stopped on a Windows-locked Gradle cache. A fresh intermediates directory produced the single APK.
+- Physical Galaxy S23 Ultra acceptance is pending. There was no installation, production deployment or Play submission.
 
 Record track, versionName/code, full SHA, certificate fingerprints and artifact digest before any upload. Once used for a Play upload, a code cannot be reused. Assign a higher code to replacement builds, including fixes on test tracks. [Version your app](https://developer.android.com/studio/publish/versioning)
 
