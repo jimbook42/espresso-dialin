@@ -11,6 +11,8 @@ import { db as appDatabase } from '../utils/grinderLogic.js';
 import { savedShotMeasurements, buildShotProfile } from '../utils/shotProfile.js';
 import { historicalSchemas, v1Bean, v1Recipe, v1Shot, v10Shot } from './historicalFixtures.js';
 import { MANUAL_SHOT_DRAFT_KEY } from '../utils/manualShotDraft.js';
+import { patchGlobalSettings } from '../settings/patchGlobalSettings.js';
+import { smoothFlowGraphs } from '../settings/flowGraphPreference.js';
 
 const appVersion = '4.15.2';
 const tables = ['beans', 'recipes', 'shots', 'settings'];
@@ -75,6 +77,30 @@ afterEach(async () => {
 });
 
 describe('full app transfer', () => {
+  it.each([undefined, false, true])('round-trips the flow graph preference %s without rewriting a shot', async (savedValue) => {
+    expect(smoothFlowGraphs(undefined)).toBe(true);
+    const initial = empty();
+    initial.shots = [v10Shot];
+    initial.settings = [{ id: 'global', grinderModel: 'Niche Zero' }];
+    const source = await setup(initial);
+    if (savedValue !== undefined) await patchGlobalSettings(source.database, { smoothFlowGraphs: savedValue });
+    source.database.close();
+    await source.database.open();
+    const current = await source.database.settings.get('global');
+    expect(smoothFlowGraphs(current)).toBe(savedValue ?? true);
+    expect(current.smoothFlowGraphs).toBe(savedValue);
+    const { file } = await source.store.capture();
+
+    const destination = await setup();
+    await patchGlobalSettings(destination.database, { smoothFlowGraphs: !(savedValue ?? true) });
+    await destination.store.stage(await destination.store.preview(file));
+    await destination.store.applyPending();
+    const restored = await destination.database.settings.get('global');
+    expect(restored).toEqual(current);
+    expect(smoothFlowGraphs(restored)).toBe(savedValue ?? true);
+    expect(await destination.database.shots.get(v10Shot.id)).toEqual(v10Shot);
+  });
+
   it.each([1, 6, 10, 11, 17])('opens historical schema %i and round-trips old and new rows', async (version) => {
     const name = 'historical-' + crypto.randomUUID();
     const historical = new Dexie(name);

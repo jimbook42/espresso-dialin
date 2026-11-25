@@ -22,7 +22,17 @@ import { resolveSettledYieldG } from './scaleYieldSettleResolve.js';
 import { publishScaleLiveWeight, resetScaleLiveWeightStore } from './scaleLiveWeightStore.js';
 
 const noopAsync = async () => {};
-const emptyDisplayFlow = { flowGs: null, series: [] };
+const emptyFlowTrack = { flowGs: null, series: [] };
+const emptyDisplayFlow = { smooth: emptyFlowTrack, detail: emptyFlowTrack };
+
+function appendFlowEstimate(track, sample) {
+  if (!sample) return track.flowGs == null ? track : { ...track, flowGs: null };
+  const last = track.series.at(-1);
+  const series = last?.tS === sample.tS
+    ? [...track.series.slice(0, -1), { ...last, ...sample }]
+    : [...track.series, sample];
+  return { flowGs: sample.flowGs, series };
+}
 
 // A GATT subscription can succeed even when the selected peripheral never
 // sends a weight the chosen scale protocol can decode.
@@ -82,6 +92,7 @@ export function useTimemoreScale({
   liveWorkflowEntry,
   liveWorkflowActive,
   shotLocked = false,
+  smoothFlow = true,
 }) {
   const devUrlSim = !isAndroidApp && enabled && isDevUrlSimScaleActive();
   const simAllowed = !isAndroidApp && enabled && (isScaleSimPickerEnabled() || devUrlSim);
@@ -93,6 +104,7 @@ export function useTimemoreScale({
   const [liveRelativeWeightG, setLiveRelativeWeightG] = useState(0);
   const [weightTriggersPrimed, setWeightTriggersPrimed] = useState(false);
   const [displayFlow, setDisplayFlow] = useState(emptyDisplayFlow);
+  const [displayFlowOriginMs, setDisplayFlowOriginMs] = useState(null);
   const [liveFlowSeries, setLiveFlowSeries] = useState([]);
   const [flowSeriesEpoch, setFlowSeriesEpoch] = useState(0);
   const [batteryPercent, setBatteryPercent] = useState(null);
@@ -218,24 +230,23 @@ export function useTimemoreScale({
 
   const attachSession = useCallback((transport) => {
     disposeSession();
+    const appendDisplay = (key, sample) => setDisplayFlow((previous) => {
+      const next = appendFlowEstimate(previous[key], sample);
+      return next === previous[key] ? previous : { ...previous, [key]: next };
+    });
     sessionRef.current = createScaleSession(transport, {
       onWeightObservation: (evt) => diagnosticsRef?.current?.weight(evt),
-      onExtractionStart: (epoch) => diagnosticsRef?.current?.extractionStart(epoch),
+      onExtractionStart: (epoch) => {
+        setDisplayFlowOriginMs(epoch);
+        diagnosticsRef?.current?.extractionStart(epoch);
+      },
       onLiveWeight: (g) => {
         liveWeightRef.current = g;
         setLiveWeightG(g);
         syncRelativeFromLive(g);
       },
-      onDisplayFlowSample: (sample) => {
-        setDisplayFlow((prev) => {
-          if (!sample) return prev.flowGs == null ? prev : { ...prev, flowGs: null };
-          const last = prev.series.at(-1);
-          const series = last?.tS === sample.tS
-            ? [...prev.series.slice(0, -1), { ...last, ...sample }]
-            : [...prev.series, sample];
-          return { flowGs: sample.flowGs, series };
-        });
-      },
+      onDisplayFlowSample: (sample) => appendDisplay('smooth', sample),
+      onDetailFlowSample: (sample) => appendDisplay('detail', sample),
       onLiveTimerS: () => {},
       onFlowSample: (sample) => {
         setLiveFlowSeries((prev) => {
@@ -245,6 +256,7 @@ export function useTimemoreScale({
       },
       onBatteryPercent: (pct) => setBatteryPercent(pct),
     });
+    sessionRef.current.setDisplayForeground(foreground.current);
   }, [disposeSession, syncRelativeFromLive, diagnosticsRef]);
 
   useEffect(() => {
@@ -337,11 +349,12 @@ export function useTimemoreScale({
   }, [shotLocked, liveWorkflowActive, scaleDeviceId]);
 
   useEffect(() => {
-    if (!isAndroidApp) return undefined;
     const updateForeground = () => {
       const visible = nativeForeground.current && document.visibilityState !== 'hidden';
       if (foreground.current === visible) return;
       foreground.current = visible;
+      sessionRef.current?.setDisplayForeground(visible);
+      if (!isAndroidApp) return;
       if (visible) setForegroundEntry((entry) => entry + 1);
       else if (pendingConnect.current?.reconnect) {
         pendingConnect.current.abort();
@@ -407,11 +420,11 @@ export function useTimemoreScale({
   const tare = useCallback(async () => {
     if (!transportRef.current) return;
     const session = sessionRef.current;
-    session?.resetDisplayFlow();
+    session?.setDisplayTaring(true);
     try {
       await issueTare(transportRef.current);
     } finally {
-      if (sessionRef.current === session) session?.resetDisplayFlow();
+      if (sessionRef.current === session) session?.setDisplayTaring(false);
     }
   }, [issueTare]);
 
@@ -515,6 +528,7 @@ export function useTimemoreScale({
     }
     const atStopG = readRelativeShotWeightG();
     yieldSettleSnapshotRef.current = { atStopG, peakG: atStopG };
+    sessionRef.current?.endDisplayFlow();
     diagnosticsRef?.current?.event('yield-settlement-started', { weightG: atStopG });
     transport.stopTimer().catch(() => {});
     return true;
@@ -565,6 +579,7 @@ export function useTimemoreScale({
       weightTriggersPrimed: false,
       displayFlowGs: null,
       displayFlowSeries: [],
+      displayFlowOriginMs: null,
       liveFlowSeries: [],
       flowSeriesEpoch: 0,
       batteryPercent: null,
@@ -583,6 +598,7 @@ export function useTimemoreScale({
     };
   }
 
+  const displayTrack = smoothFlow ? displayFlow.smooth : displayFlow.detail;
   return {
     simAllowed,
     bleAvailable,
@@ -593,8 +609,9 @@ export function useTimemoreScale({
     liveWeightG,
     liveRelativeWeightG,
     weightTriggersPrimed,
-    displayFlowGs: isConnected ? displayFlow.flowGs : null,
-    displayFlowSeries: isConnected ? displayFlow.series : [],
+    displayFlowGs: isConnected ? displayTrack.flowGs : null,
+    displayFlowSeries: isConnected ? displayTrack.series : [],
+    displayFlowOriginMs: isConnected ? displayFlowOriginMs : null,
     liveFlowSeries,
     flowSeriesEpoch,
     batteryPercent,

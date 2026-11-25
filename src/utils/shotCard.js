@@ -1,4 +1,5 @@
 import { buildShotProfile, formatSavedDose } from './shotProfile.js';
+import { LIVE_FLOW_STROKE, typicalFlowRange } from '../scales/flowPlotRange.js';
 
 export const CARD_WIDTH = 1200;
 export const CARD_BRAND = 'ESPRESSO DIAL-IN';
@@ -24,18 +25,25 @@ export async function encodeShotCardPng(canvas) {
 }
 
 // The same canvas is used for the preview and the exported PNG.
-export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options }) {
+export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options, smoothFlow = true }) {
   const entries = [{ shot, bean, grind, title: referenceShot ? 'YOUR SHOT' : 'SHOT PROFILE' },
     ...(referenceShot ? [{ shot: referenceShot, bean, grind: referenceShot.grinderModel, title: 'BEAN REFERENCE' }] : [])];
   const profiles = entries.map(({ shot: item }) => buildShotProfile({
     ...item,
     labPressureCurve: item.labPressureCurve?.map((point) => point?.gap ? { ...point, breakBefore: true } : point),
     scaleFlowCurve: item.scaleFlowCurve?.map((point) => point?.gap ? { ...point, breakBefore: true } : point),
-  }));
+  }, { smoothFlow }));
+  const timedDomains = profiles.map((profile) => {
+    const origin = profile.extractionStartS;
+    return [Math.min(0, profile.minTimeS - origin), Math.max(1, profile.maxTimeS - origin)];
+  });
+  const sharedTime = referenceShot && profiles.every((profile) => profile.aligned)
+    ? [Math.min(...timedDomains.map(([start]) => start)), Math.max(...timedDomains.map(([, end]) => end))]
+    : null;
   const tracks = profiles.map((p) => [
-    { label: 'PRESSURE', unit: 'bar', points: p.pressure, key: 'bar', color: '#cf8250' },
+    { label: 'PRESSURE', unit: 'bar', points: p.pressure, key: 'bar', color: '#c97868' },
     { label: 'WEIGHT', unit: 'g', points: p.weight, key: 'weightG', color: '#739c82' },
-    { label: 'FLOW (SMOOTHED)', unit: 'g/s', points: p.flow, key: 'flowGs', color: '#8294bd',
+    { label: smoothFlow ? 'ESTIMATED FLOW · SMOOTH' : 'ESTIMATED FLOW · DETAIL', unit: 'g/s', points: p.flow, key: 'flowGs', color: LIVE_FLOW_STROKE,
       hadIntervals: p.averageFlowGs != null },
   ].filter((t) => t.points.length || t.hadIntervals));
   const sectionHeight = (i) => 340 + tracks[i].length * 180 + (options.notes && entries[i].shot.notes ? 100 : 0);
@@ -82,26 +90,30 @@ export function drawShotCard(canvas, { shot, bean, grind, referenceShot, options
       }
       const left = 165, right = 1080, top = chartY + 20, bottom = chartY + 125;
       const origin = p.aligned ? p.extractionStartS : 0;
-      const comparable = referenceShot && profiles.every((profile) => profile.aligned);
-      const matching = comparable ? tracks.flatMap((group, j) => group.filter((item) => item.key === track.key && item.points.length)
-        .map((item) => ({ points: item.points, origin: profiles[j].extractionStartS }))) : [{ points: track.points, origin }];
-      const minT = Math.min(0, ...matching.map((item) => item.points[0].tS - item.origin));
-      const maxT = Math.max(minT + 1, ...matching.map((item) => item.points.at(-1).tS - item.origin));
-      const [minV, maxV] = track.points.reduce(([low, high], point) =>
+      const [minT, maxT] = p.aligned ? sharedTime ?? timedDomains[i]
+        : [Math.min(0, track.points[0].tS), Math.max(1, track.points.at(-1).tS)];
+      const [minV, maxV] = track.key === 'flowGs' ? typicalFlowRange(track.points) : track.points.reduce(([low, high], point) =>
         [Math.min(low, point[track.key]), Math.max(high, point[track.key])], [0, 1]);
+      const outside = (point) => point[track.key] < minV || point[track.key] > maxV;
+      const xAt = (point) => left + (point.tS - origin - minT) / (maxT - minT) * (right - left);
+      const yAt = (point) => bottom - (point[track.key] - minV) / (maxV - minV) * (bottom - top);
       text(track.label, 80, chartY + 10, 15, track.color, 700, 1000);
       text(`${maxV.toFixed(1)} ${track.unit}`, 80, chartY + 53, 16, '#c7cfc8');
       text(`${minV.toFixed(1)}`, 80, bottom, 16, '#c7cfc8');
       ctx.strokeStyle = '#516057'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left, bottom); ctx.lineTo(right, bottom); ctx.stroke();
       ctx.strokeStyle = track.color; ctx.fillStyle = track.color; ctx.lineWidth = 4; ctx.beginPath();
       track.points.forEach((point, n) => {
-        const x = left + (point.tS - origin - minT) / (maxT - minT) * (right - left);
-        const py = bottom - (point[track.key] - minV) / (maxV - minV) * (bottom - top);
-        if (!n || point.breakBefore) ctx.moveTo(x, py); else ctx.lineTo(x, py);
+        if (outside(point)) return;
+        if (!n || point.breakBefore || outside(track.points[n - 1])) ctx.moveTo(xAt(point), yAt(point));
+        else ctx.lineTo(xAt(point), yAt(point));
       });
       ctx.stroke();
       // Dots preserve isolated observations, including zero-valued samples.
-      track.points.forEach((point) => { const x = left + (point.tS - origin - minT) / (maxT - minT) * (right - left); const py = bottom - (point[track.key] - minV) / (maxV - minV) * (bottom - top); ctx.beginPath(); ctx.arc(x, py, 3, 0, Math.PI * 2); ctx.fill(); });
+      track.points.forEach((point) => {
+        const y = outside(point) ? (point[track.key] > maxV ? top : bottom) : yAt(point);
+        ctx.beginPath(); ctx.arc(xAt(point), y, outside(point) ? 6 : 3, 0, Math.PI * 2); ctx.fill();
+      });
+      if (track.points.some(outside)) text('EDGE MARKERS SHOW OFF-SCALE FLOW', 570, chartY + 10, 14, track.color);
       // Mark gaps above the trace so adjacent dots cannot visually hide a break.
       track.points.forEach((point, index) => {
         if (!index || !point.breakBefore) return;

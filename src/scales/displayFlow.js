@@ -1,6 +1,8 @@
 import { SCALE_FLOW_MAX_SAMPLE_GAP_S } from './flowMetrics.js';
 
 export const DISPLAY_FLOW_WINDOW_S = 0.75;
+export const LIVE_SMOOTH_FLOW_WINDOW_S = 1;
+export const SAVED_SMOOTH_FLOW_WINDOW_S = 1.5;
 const MIN_SPAN_S = 0.4;
 const SCALE_STEP_G = 0.1;
 const EPSILON = 1e-9;
@@ -10,11 +12,25 @@ const EPSILON = 1e-9;
 const PLOT_MIN_SPAN_S = 0.2;
 const PLOT_WINDOW_S = 0.5;
 
-export function plottedFlowFromWeights(weights, startS = -Infinity, endS = Infinity) {
+function startsRun(previous, point) {
+  return point.breakBefore || point.reset || (previous
+    && point.tS - previous.tS > SCALE_FLOW_MAX_SAMPLE_GAP_S + EPSILON);
+}
+
+function validObservation(point) {
+  return Number.isFinite(point?.tS) && point.tS >= 0 && Number.isFinite(point.weightG)
+    && !point.gap && point.confident !== false;
+}
+
+function disturbed(previous, point) {
+  return previous && previous.weightG - point.weightG > SCALE_STEP_G + EPSILON;
+}
+
+function* weightRuns(weights, startS, endS) {
   const observations = [];
   let broken = true;
   for (const point of weights) {
-    if (!Number.isFinite(point?.tS) || point.tS < 0 || !Number.isFinite(point.weightG) || point.confident === false) {
+    if (!validObservation(point)) {
       broken = true;
       continue;
     }
@@ -32,32 +48,123 @@ export function plottedFlowFromWeights(weights, startS = -Infinity, endS = Infin
     broken = false;
   }
 
-  const flow = [];
-  let window = [];
-  let breakBefore = true;
+  let run = [];
   for (const point of observations) {
     if (point.tS < startS - EPSILON || point.tS > endS + EPSILON) continue;
-    const last = window.at(-1);
-    if (point.breakBefore || (last && point.tS - last.tS > SCALE_FLOW_MAX_SAMPLE_GAP_S + EPSILON)) {
-      window = [];
-      breakBefore = true;
-    } else if (last && last.weightG - point.weightG > SCALE_STEP_G + EPSILON) {
-      // Discard the falling observation from the plot window so its rebound
-      // cannot be counted as newly added mass.
-      window = [];
-      breakBefore = true;
-      continue;
+    const last = run.at(-1);
+    const boundary = startsRun(last, point);
+    const drop = !boundary && disturbed(last, point);
+    if (boundary || drop) {
+      if (run.length) yield run;
+      run = [];
     }
-    window.push(point);
-    while (point.tS - window[0].tS > PLOT_WINDOW_S + EPSILON) window.shift();
-    const span = point.tS - window[0].tS;
-    if (span < PLOT_MIN_SPAN_S - EPSILON) continue;
-    const flowGs = (point.weightG - window[0].weightG) / span;
-    if (!Number.isFinite(flowGs)) continue;
-    flow.push({ tS: point.tS, flowGs, breakBefore });
-    breakBefore = false;
+    // The rebound after a cup disturbance becomes the next anchor.
+    if (!drop) run.push(point);
+  }
+  if (run.length) yield run;
+}
+
+function detailSlope(first, last) {
+  const span = last.tS - first.tS;
+  return span >= PLOT_MIN_SPAN_S - EPSILON ? (last.weightG - first.weightG) / span : null;
+}
+
+// Integrate the regression moments over observed intervals, with weight changing
+// linearly inside each interval. Bursts occupy little time and have less influence.
+// The fit creates no additional plotted observations and is applied within a run.
+function timeWeightedSlope(points, start, end) {
+  if (end - start < 2 || points[end].tS - points[start].tS < MIN_SPAN_S - EPSILON) return null;
+  const first = points[start];
+  let duration = 0;
+  let sumT = 0;
+  let sumW = 0;
+  let sumTT = 0;
+  let sumTW = 0;
+  for (let index = start + 1; index <= end; index += 1) {
+    const point = points[index];
+    const previous = points[index - 1];
+    const seconds = point.tS - previous.tS;
+    const t = (point.tS + previous.tS) / 2 - first.tS;
+    const w = (point.weightG + previous.weightG) / 2 - first.weightG;
+    duration += seconds;
+    sumT += seconds * t;
+    sumW += seconds * w;
+    sumTT += seconds * (t * t + seconds ** 2 / 12);
+    sumTW += seconds * (t * w + seconds * (point.weightG - previous.weightG) / 12);
+  }
+  const slope = (sumTW - sumT * sumW / duration) / (sumTT - sumT * sumT / duration);
+  return !Number.isFinite(slope) || slope < -EPSILON ? null : Math.max(0, slope);
+}
+
+function plotRun(run, centredWindowS) {
+  const flow = [];
+  let start = 0;
+  let end = 0;
+  let breakBefore = true;
+  const halfWindow = centredWindowS / 2;
+  for (let i = 0; i < run.length; i += 1) {
+    const { tS } = run[i];
+    while (tS - run[start].tS > (halfWindow || PLOT_WINDOW_S) + EPSILON) start += 1;
+    while (centredWindowS && end + 1 < run.length && run[end + 1].tS - tS <= halfWindow + EPSILON) end += 1;
+    const slope = centredWindowS ? timeWeightedSlope(run, start, end) : detailSlope(run[start], run[i]);
+    if (Number.isFinite(slope)) flow.push({ tS, flowGs: slope, breakBefore });
+    breakBefore = !Number.isFinite(slope);
   }
   return flow;
+}
+
+export function plottedFlowFromWeights(weights, startS = -Infinity, endS = Infinity, centredWindowS = 0) {
+  const flow = [];
+  for (const run of weightRuns(weights, startS, endS)) {
+    const points = plotRun(run, centredWindowS);
+    // A short recording can support a detailed change without enough points for a fit.
+    for (const point of centredWindowS && !points.length ? plotRun(run, 0) : points) flow.push(point);
+  }
+  return flow;
+}
+
+/** Run both display modes without touching the recording or the raw flow stream. */
+export function createLiveFlowDisplay(windowS = LIVE_SMOOTH_FLOW_WINDOW_S) {
+  let samples = [];
+  let latestTime = -Infinity;
+  let smoothBreak = true;
+  let detailBreak = true;
+  const breakRun = () => {
+    samples = [];
+    smoothBreak = true;
+    detailBreak = true;
+  };
+  const interrupt = () => {
+    latestTime = -Infinity;
+    breakRun();
+  };
+  function add(point) {
+    const tS = point?.tS;
+    const previous = samples.at(-1);
+    if (!validObservation(point) || tS < latestTime) {
+      breakRun();
+      return { smooth: null, detail: null };
+    }
+    latestTime = tS;
+    const boundary = startsRun(previous, point);
+    const drop = !boundary && disturbed(previous, point);
+    if (boundary || drop) breakRun();
+    if (drop) return { smooth: null, detail: null };
+    if (samples.at(-1)?.tS === tS) samples[samples.length - 1] = point;
+    else samples.push(point);
+    while (tS - samples[0].tS > windowS + EPSILON) samples.shift();
+    const first = samples.find((sample) => tS - sample.tS <= PLOT_WINDOW_S + EPSILON);
+    const detail = detailSlope(first, point);
+    const smooth = timeWeightedSlope(samples, 0, samples.length - 1);
+    const result = {
+      smooth: smooth == null ? null : { tS, flowGs: smooth, ...(smoothBreak ? { breakBefore: true } : {}) },
+      detail: !Number.isFinite(detail) ? null : { tS, flowGs: detail, ...(detailBreak ? { breakBefore: true } : {}) },
+    };
+    smoothBreak = result.smooth == null;
+    detailBreak = result.detail == null;
+    return result;
+  }
+  return { add, interrupt };
 }
 
 /** Estimate live flow from received weights without changing their timestamps. */

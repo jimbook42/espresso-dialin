@@ -2,7 +2,7 @@ import { isStandalonePressureShot } from '../flairPressureLab/standalonePressure
 import { PRESSURE_CURVE_GAP_MS } from '../flairPressureLab/pressureCurveFilter.js';
 import { pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
 import { instantaneousFlowGs, SCALE_FLOW_MAX_SAMPLE_GAP_S } from '../scales/flowMetrics.js';
-import { plottedFlowFromWeights } from '../scales/displayFlow.js';
+import { plottedFlowFromWeights, SAVED_SMOOTH_FLOW_WINDOW_S } from '../scales/displayFlow.js';
 
 const PRESSURE_GAP_S = PRESSURE_CURVE_GAP_MS / 1000;
 const INTERRUPTED_PRESSURE_S = 1;
@@ -79,6 +79,11 @@ const validPressure = (bar) => Number.isFinite(bar) && bar >= 0 && bar <= 16;
 const stableClock = (timing) =>
   Number.isFinite(timing?.clockDriftMs) && Math.abs(timing.clockDriftMs) <= MAX_CLOCK_DRIFT_MS;
 
+function plotSavedFlow(weights, startS, endS, smoothFlow) {
+  return plottedFlowFromWeights(Array.isArray(weights) ? weights : [], startS, endS,
+    smoothFlow ? SAVED_SMOOTH_FLOW_WINDOW_S : 0);
+}
+
 export function recordedShotTiming(shot) {
   return shot.shotProfileTiming?.version === 1 ? shot.shotProfileTiming : null;
 }
@@ -104,7 +109,7 @@ export function hasPhysicalShotChart(shot) {
   return Boolean((sources.pressure && shot.labPressureCurve?.length) || (sources.scale && shot.scaleFlowCurve?.length));
 }
 
-export function buildShotProfile(shot, { physicalOnly = false } = {}) {
+export function buildShotProfile(shot, { physicalOnly = false, smoothFlow = false } = {}) {
   const timing = recordedShotTiming(shot);
   const sources = physicalShotSources(timing);
   const pressureOriginS = toSeconds(timing?.pressureOriginMs);
@@ -128,7 +133,7 @@ export function buildShotProfile(shot, { physicalOnly = false } = {}) {
   const flowStartS = extractionStartS == null ? -Infinity : extractionStartS - scaleOriginS;
   const flowEndS = extractionEndS == null ? Infinity : extractionEndS - scaleOriginS;
   const displayWeights = !physicalOnly || sources.scale ? shot.scaleFlowCurve : null;
-  const flow = shift(plottedFlowFromWeights(Array.isArray(displayWeights) ? displayWeights : [], flowStartS, flowEndS), weightTime);
+  const flow = shift(plotSavedFlow(displayWeights, flowStartS, flowEndS, smoothFlow), weightTime);
   const measures = savedShotMeasurements(shot);
 
   const pressureInterrupted = pressureLocal.some((point, index) =>
@@ -188,6 +193,15 @@ export function buildComparisonProfile(shot) {
     scaleTimingApproximate: weight.length > 0 && !scaleAligned,
     pressureTimingUnavailable: pressureLocal.length > 0 && !pressureAligned,
   };
+}
+
+export function buildExtractionFlowPlot(shot, smoothFlow) {
+  const timing = recordedShotTiming(shot);
+  const extraction = extractionTiming(timing);
+  const aligned = extraction != null && Number.isFinite(timing.scaleOriginMs);
+  const offset = aligned ? (timing.scaleOriginMs - extraction.startMs) / 1000 : 0;
+  return shift(plotSavedFlow(shot.scaleFlowCurve, aligned ? -offset : -Infinity,
+    aligned ? (extraction.durationS ?? Infinity) - offset : Infinity, smoothFlow), (tS) => tS + offset);
 }
 
 function scaleFlowIntervals(weight, endS) {

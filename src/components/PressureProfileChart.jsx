@@ -1,5 +1,6 @@
-import { useId } from 'react';
+import { useId, useMemo } from 'react';
 import { flairProfileChartPressures } from '../flairPressureLab/flairProfileChartPressures.js';
+import { LIVE_FLOW_STROKE, splitFlowPlot, typicalFlowRange } from '../scales/flowPlotRange.js';
 import {
   flairProfileMarkerProgress,
   flairProfileTaperStartChartProgress,
@@ -94,8 +95,6 @@ function markerAtProgress(built, progress) {
   return { x, y, tSec };
 }
 
-const FLOW_GREEN = '#8a9d72';
-
 /**
  * @param {{ tS: number, flowGs: number, breakBefore?: boolean }[]} liveFlowSamples
  * @param {ReturnType<typeof buildSmoothProfilePath>} built
@@ -103,17 +102,20 @@ const FLOW_GREEN = '#8a9d72';
  */
 function buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec) {
   if (!liveFlowSamples?.length || !built) return null;
-  const maxFlow = Math.ceil(Math.max(2, ...liveFlowSamples.map((p) => p.flowGs)) * 10) / 10;
   const { padL, padT, chartH, chartW, totalSec } = built;
-  const xFor = (tSec) => padL + (Math.min(tSec, totalSec) / totalSec) * chartW;
-  const yForFlow = (flow) => padT + chartH - (flow / maxFlow) * chartH * 0.85;
-  const path = liveFlowSamples
-    .map((p, i) => {
-      const tSec = flowTimeOffsetSec + p.tS;
-      return `${i === 0 || p.breakBefore ? 'M' : 'L'} ${xFor(tSec).toFixed(1)} ${yForFlow(p.flowGs).toFixed(1)}`;
-    })
-    .join(' ');
-  return { path, maxFlow };
+  const points = liveFlowSamples.filter(({ tS }) => tS + flowTimeOffsetSec <= totalSec);
+  const [min, max] = typicalFlowRange(points);
+  const minFlow = Math.floor(min * 10) / 10;
+  const maxFlow = Math.ceil(max * 10) / 10;
+  const { visible, outliers } = splitFlowPlot(points, minFlow, maxFlow);
+  const xFor = (tS) => padL + (Math.max(0, tS + flowTimeOffsetSec) / totalSec) * chartW;
+  const yFor = (flow) => padT + chartH - ((flow - minFlow) / (maxFlow - minFlow)) * chartH * 0.85;
+  const path = visible.map((p, i) =>
+    `${i === 0 || p.breakBefore ? 'M' : 'L'} ${xFor(p.tS).toFixed(1)} ${yFor(p.flowGs).toFixed(1)}`).join(' ');
+  const markers = outliers.map(({ tS, flowGs }) => ({
+    tS, flowGs, x: xFor(tS), y: yFor(flowGs > maxFlow ? maxFlow : minFlow),
+  }));
+  return { path, minFlow, maxFlow, markers };
 }
 
 /** Smooth Flair-style pressure curve (display only). */
@@ -137,7 +139,7 @@ export function PressureProfileChart({
   const gradId = useId().replace(/:/g, '');
   const w = 340;
   const h = compact ? 88 : 100;
-  const built = buildSmoothProfilePath(profile, w, h, compact);
+  const built = useMemo(() => buildSmoothProfilePath(profile, w, h, compact), [profile, w, h, compact]);
   const hasData = built !== null;
 
   const padL = 4;
@@ -183,10 +185,8 @@ export function PressureProfileChart({
     taperStartProgress != null && hasData
       ? markerAtProgress(built, taperStartProgress)
       : null;
-  const flowOverlay =
-    liveFlowSamples?.length && hasData
-      ? buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec)
-      : null;
+  const flowOverlay = useMemo(() => buildLiveFlowPath(liveFlowSamples, built, flowTimeOffsetSec),
+    [liveFlowSamples, built, flowTimeOffsetSec]);
 
   return (
     <div
@@ -230,21 +230,26 @@ export function PressureProfileChart({
                   <path
                     d={flowOverlay.path}
                     fill="none"
-                    stroke={FLOW_GREEN}
+                    stroke={LIVE_FLOW_STROKE}
                     strokeWidth="1.8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity="0.9"
                   />
+                  {flowOverlay.markers.map(({ tS, flowGs, x, y }) => (
+                    <circle key={tS} cx={x} cy={y} r="2.5" fill={LIVE_FLOW_STROKE}>
+                      <title>{flowGs.toFixed(2)} g/s at {(tS + flowTimeOffsetSec).toFixed(2)} s</title>
+                    </circle>
+                  ))}
                   <text
                     x={w - padR - 2}
                     y={padT + (phaseLabel ? 22 : 10)}
-                    fill={FLOW_GREEN}
+                    fill={LIVE_FLOW_STROKE}
                     fontSize="9"
                     textAnchor="end"
                     fontFamily="system-ui, sans-serif"
                   >
-                    {flowOverlay.maxFlow.toFixed(1)} g/s
+                    {flowOverlay.minFlow < 0 ? `${flowOverlay.minFlow.toFixed(1)}–` : ''}{flowOverlay.maxFlow.toFixed(1)} g/s
                   </text>
                 </>
               )}

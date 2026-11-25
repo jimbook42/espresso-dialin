@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { buildPressureFlowAnalytics } from '../utils/pressureFlowAnalytics.js';
 import { ScaleFlowChart } from './ScaleFlowChart.jsx';
 
-function AnalysisDetails({ shot, ui }) {
-  const analysis = buildPressureFlowAnalytics(shot);
+function AnalysisDetails({ shot, ui, smoothFlow }) {
+  const analysis = useMemo(() => buildPressureFlowAnalytics(shot, { smoothFlow }), [shot, smoothFlow]);
   const { pressure, flow, displayFlow, bands, durationS, observedPeakBar, averageBar, fullExtractionAverageBar,
     timeToPeakS, preinfusionS, pressureCoverage } = analysis;
   const view = pressure.length && displayFlow.length ? 'combined' : pressure.length ? 'pressure' : 'flow';
@@ -25,7 +25,9 @@ function AnalysisDetails({ shot, ui }) {
           }} />
           <p className={ui.sub}>
             Time from extraction start (s).{pressure.length > 0 && ' Dots show camera readings.'}
-            {displayFlow.length > 0 && ' Plotted flow uses weight changes over 0.2–0.5 s.'}
+            {displayFlow.length > 0 && (smoothFlow
+              ? ' Plotted flow uses time-weighted estimates around each reading where coverage allows.'
+              : ' Plotted flow uses weight changes over 0.2–0.5 s.')}
           </p>
         </>
       )}
@@ -69,14 +71,14 @@ function AnalysisDetails({ shot, ui }) {
   );
 }
 
-export function PressureFlowAnalytics({ shot, ui }) {
+export function PressureFlowAnalytics({ shot, ui, smoothFlow = true }) {
   const [open, setOpen] = useState(false);
   return (
     <details className={`border-t ${ui.modalDivider}`} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className={`min-h-11 cursor-pointer py-3 text-sm font-semibold ${ui.accentText}`}>
         Advanced pressure and flow
       </summary>
-      {open && <AnalysisDetails shot={shot} ui={ui} />}
+      {open && <AnalysisDetails shot={shot} ui={ui} smoothFlow={smoothFlow} />}
     </details>
   );
 }

@@ -104,7 +104,9 @@ try {
   const weightPath = await selectedPath.getAttribute('d');
   assert.equal(weightPath.match(/M/g).length, 2, 'Bluetooth gap starts a new path');
   await comparison.getByRole('button', { name: 'Flow', exact: true }).click();
-  assert.match(await selectedPath.getAttribute('d'), /^M[^M]+ H[^M]+$/, 'flow shows one observed interval');
+  assert.match(await selectedPath.getAttribute('d'), /^M[\d.]+,[\d.]+$/, 'flow has one supported estimate');
+  assert.equal(await comparison.getByTestId('comparison-selected-series').locator('circle').count(), 1,
+    'a single estimate is visible without extending the trace into the gap');
   await comparison.getByText('Selected shot: measured source.', { exact: true }).waitFor();
   const advancedSummary = card('selected').getByText('Advanced pressure and flow', { exact: true });
   const advanced = card('selected').getByTestId('pressure-flow-analytics');

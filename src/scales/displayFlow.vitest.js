@@ -217,6 +217,42 @@ it('expires the readout without a new notification and re-primes after tare or d
   reconnected.session.dispose();
 });
 
+it('suspends both presentation tracks on background, tare and settlement while retaining every recorded weight', () => {
+  const smooth = vi.fn();
+  const detail = vi.fn();
+  const { session, send } = startSession({ onDisplayFlowSample: smooth, onDetailFlowSample: detail });
+  const events = [];
+  const observe = (...times) => {
+    for (const offsetMs of times) {
+      const point = { offsetMs, weightG: offsetMs / 1000 };
+      events.push(point);
+      send(point);
+    }
+  };
+  observe(0, 200, 400);
+  for (const show of [smooth, detail]) expect(show).toHaveBeenLastCalledWith(expect.objectContaining({ flowGs: expect.closeTo(1) }));
+  session.setDisplayForeground(false);
+  observe(500, 600);
+  for (const show of [smooth, detail]) expect(show).toHaveBeenLastCalledWith(null);
+  session.setDisplayForeground(true);
+  observe(700, 900);
+  expect(detail).toHaveBeenLastCalledWith(expect.objectContaining({ breakBefore: true }));
+  expect(smooth).toHaveBeenLastCalledWith(null);
+  observe(1100);
+  expect(smooth).toHaveBeenLastCalledWith(expect.objectContaining({ breakBefore: true }));
+  session.setDisplayTaring(true);
+  observe(1300, 1500, 1700);
+  for (const show of [smooth, detail]) expect(show).toHaveBeenLastCalledWith(null);
+  session.setDisplayTaring(false);
+  observe(1800, 2000, 2200);
+  expect(smooth).toHaveBeenLastCalledWith(expect.objectContaining({ breakBefore: true }));
+  session.endDisplayFlow();
+  observe(2400, 2600, 2800);
+  for (const show of [smooth, detail]) expect(show).toHaveBeenLastCalledWith(null);
+  expect(session.getShotMetrics().scaleFlowCurve).toEqual(asSamples(events));
+  session.dispose();
+});
+
 it('breaks the plot when sparse samples leave too little evidence inside the window', () => {
   const estimator = createDisplayFlowEstimator();
   const add = (tS) => estimator.add({ tS, weightG: tS });

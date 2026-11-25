@@ -13,6 +13,7 @@ import { readPortableShots, readShotForSharing } from '../utils/portableShots.js
 import { formatRecFollowedForCsv } from '../utils/recommendationFollowed.js';
 import { buildSepShotFile, shotSummaryCsv } from '../utils/shotExportFormats.js';
 import { normalizeTasteProfile } from '../utils/tasteProfile.js';
+import { smoothFlowGraphs } from '../settings/flowGraphPreference.js';
 
 const buttonClass = 'min-h-11 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50';
 
@@ -126,7 +127,7 @@ function ShotShareOptions({ shotId, settings, ui, cardOptions, onCardOptionsChan
       {data === undefined && <p className="pb-2 text-xs">Loading saved shot…</p>}
       {shot && (
         <div className="space-y-3 pb-3 text-xs">
-          <ShotCardPreview options={cardOptions} setOptions={onCardOptionsChange} shot={shot.record} bean={bean} grind={shot.record.grinderModel} referenceShot={referenceShot} filename={filename} ui={ui} onError={setError} />
+          <ShotCardPreview options={cardOptions} setOptions={onCardOptionsChange} shot={shot.record} bean={bean} grind={shot.record.grinderModel} referenceShot={referenceShot} filename={filename} ui={ui} onError={setError} smoothFlow={smoothFlowGraphs(settings)} />
           <div className="space-y-1">
             <p className="font-semibold">Local downloads</p>
             <p className={ui.sub}>

@@ -1,6 +1,7 @@
 import { pressureGapBridges } from './pressureGapBridges.js';
 import { useId } from 'react';
 import { plottedFlowFromWeights } from '../scales/displayFlow.js';
+import { flowPointsForPlot, FLOW_STROKE, splitFlowPlot, typicalFlowRange } from '../scales/flowPlotRange.js';
 import { pressureChartPointsForDisplay, labPressureCurvePlotTimeS } from '../flairPressureLab/pressureDisplaySmoothing.js';
 import { shotPressureChartY } from '../flairPressureLab/shotPressureChartLayout.js';
 import { pressureLiveStroke } from '../flairPressureLab/shotLabPressureTokens.js';
@@ -10,28 +11,8 @@ import {
 } from './scaleFlowPressureOverlay.js';
 
 const AMBER = '#c88a4b';
-const FLOW_STROKE = '#16877d';
 const PROFILE_AMBER = 'rgba(200, 138, 75, 0.35)';
 const AXIS = '#6b6457';
-
-// Use an outer Tukey fence with a minimum spread for flow. Weight estimates by the
-// time since the previous estimate so a notification burst has little influence.
-function typicalFlowRange(points) {
-  if (points.length < 4) return [-Infinity, Infinity];
-  const weighted = points.map((point, i) => ({
-    value: point.flowGs,
-    seconds: i === 0 || point.breakBefore ? 0.2 : Math.min(0.5, point.tS - points[i - 1].tS),
-  })).sort((a, b) => a.value - b.value);
-  const total = weighted.reduce((sum, point) => sum + point.seconds, 0);
-  const quantile = (fraction) => {
-    let remaining = total * fraction;
-    return weighted.find(({ seconds }) => (remaining -= seconds) <= 0)?.value ?? weighted.at(-1).value;
-  };
-  const lower = quantile(0.25);
-  const upper = quantile(0.75);
-  const spread = Math.max(0.5, upper - lower);
-  return [lower - 3 * spread, upper + 3 * spread];
-}
 
 /**
  * @param {{
@@ -97,17 +78,14 @@ export function ScaleFlowChart({
   const timeAxisMin = profile ? Math.floor(profile.minTimeS) : 0;
   const timeStep = profile ? Math.max(1, Math.ceil((maxT - timeAxisMin) / 5)) : 10;
   const timeAxisMax = Math.max(timeStep, Math.ceil(maxT / timeStep) * timeStep);
-  const [typicalMin, typicalMax] = isWeight ? [-Infinity, Infinity] : typicalFlowRange(primaryPoints);
-  const typicalPoints = primaryPoints.filter((point) => point[primaryKey] >= typicalMin && point[primaryKey] <= typicalMax);
-  const [primaryMin, primaryMax] = typicalPoints.reduce(([min, max], p) =>
-    [Math.min(min, p[primaryKey]), Math.max(max, p[primaryKey])], [0, profile && !isWeight ? 2 : 0.5]);
+  const [primaryMin, primaryMax] = isWeight ? primaryPoints.reduce(([min, max], p) =>
+    [Math.min(min, p.weightG), Math.max(max, p.weightG)], [0, 0.5]) : typicalFlowRange(primaryPoints, profile ? 2 : 0.5);
   const primaryStep = profile ? Math.max(isWeight ? 1 : 0.5, Math.ceil((primaryMax - primaryMin) / 2)) : 5;
   const yMin = Math.floor(primaryMin / primaryStep) * primaryStep;
   const yMax = Math.ceil(primaryMax / primaryStep) * primaryStep;
-  const outsideRange = (point) => point[primaryKey] < yMin || point[primaryKey] > yMax;
-  const outliers = showPrimary ? primaryPoints.filter(outsideRange) : [];
-  const visiblePrimary = primaryPoints.flatMap((point, i) => outsideRange(point) ? []
-    : [{ ...point, breakBefore: point.breakBefore || (i > 0 && outsideRange(primaryPoints[i - 1])) }]);
+  const { visible, outliers } = showPrimary && !isWeight ? splitFlowPlot(primaryPoints, yMin, yMax)
+    : { visible: isWeight ? primaryPoints : [], outliers: [] };
+  const visiblePrimary = isWeight ? visible : flowPointsForPlot(visible, timeAxisMin, timeAxisMax, chartW);
   const x = (t) => padL + ((t - timeAxisMin) / (timeAxisMax - timeAxisMin)) * chartW;
   const yPrimary = (value) => padT + chartH - ((value - yMin) / (yMax - yMin)) * chartH;
 

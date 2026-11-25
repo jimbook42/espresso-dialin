@@ -1,35 +1,53 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { SwitchCamera } from 'lucide-react';
 import { useShotLabPressureContext } from './ShotLabPressureContext.jsx';
 import { ShotGaugeCamera } from './ShotGaugeCamera.jsx';
 import { getScaleLiveWeightSnapshot, resolveShotWeightReadout, subscribeScaleLiveWeight } from '../scales/scaleLiveWeightStore.js';
 import { cycleShotMetric, resolveShotScreen, shotEquipment } from '../settings/shotScreenLayout.js';
 import { pressureChartPointsForDisplay } from '../flairPressureLab/pressureDisplaySmoothing.js';
+import { flowPointsForPlot, LIVE_FLOW_STROKE, splitFlowPlot, typicalFlowRange } from '../scales/flowPlotRange.js';
 import './shotScreenLayout.css';
 
 const labels = { pressure: 'Pressure', weight: 'Weight', time: 'Time', flow: 'Flow' };
 const units = { pressure: 'bar', weight: 'g', time: 's', flow: 'g/s' };
-const colours = { pressure: '#c97868', weight: '#f5f2eb', time: '#f5f2eb', flow: '#e0a660' };
+const colours = { pressure: '#c97868', weight: '#f5f2eb', time: '#f5f2eb', flow: LIVE_FLOW_STROKE };
 const number = (value, places = 1) => value != null && Number.isFinite(value) ? value.toFixed(places) : '—';
 
 function LiveShotChart({ pressure = [], flow = [], gauge, scale, grow = false }) {
   // Reuse the pressure display's gap semantics. Missing samples remain gaps.
   const bars = gauge ? pressureChartPointsForDisplay(pressure) : [];
-  const flows = scale ? flow.filter((p) => !p.gap && Number.isFinite(p.tS) && Number.isFinite(p.flowGs)) : [];
-  const end = Math.max(10, ...bars.map((p) => p.tS), ...flows.map((p) => p.tS));
-  const flowMax = Math.ceil(Math.max(2, ...flows.map((p) => p.flowGs)) * 10) / 10;
+  const { flowEnd, flowMin, flowMax, visible, outliers } = useMemo(() => {
+    const flows = scale ? flow.filter((point) => !point.gap && Number.isFinite(point.tS) && Number.isFinite(point.flowGs)) : [];
+    const [min, max] = typicalFlowRange(flows);
+    const flowMin = Math.floor(min * 10) / 10;
+    const flowMax = Math.ceil(max * 10) / 10;
+    return { flowEnd: flows.at(-1)?.tS ?? 0, flowMin, flowMax, ...splitFlowPlot(flows, flowMin, flowMax) };
+  }, [flow, scale]);
+  const end = Math.max(10, bars.at(-1)?.tS ?? 0, flowEnd);
+  const plottedFlow = flowPointsForPlot(visible, 0, end, 300);
   const barMax = Math.max(10, ...bars.map((p) => p.bar));
-  const path = (points, key, max) => points.map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'}${(p.tS / end * 300).toFixed(1)},${(55 - p[key] / max * 50).toFixed(1)}`).join(' ');
+  const x = (tS) => tS / end * 300;
+  const y = (value, min, max) => 55 - (value - min) / (max - min) * 50;
+  const path = (points, key, max, min = 0) => points.map((p, i) => `${i === 0 || p.breakBefore ? 'M' : 'L'}${x(p.tS).toFixed(1)},${y(p[key], min, max).toFixed(1)}`).join(' ');
   return <div data-testid="live-shot-chart" className={`shot-live-chart ${grow ? 'shot-live-chart--grow' : ''} rounded-xl border border-[#2e2b26] bg-[#1a1815] px-3 py-2`}>
     <div className="shot-chart-axis-labels flex justify-between text-[10px]">
       {gauge && <span className="text-[#c97868]">Pressure · 0–{number(barMax, 0)} bar</span>}
-      {scale && <span className="text-[#e0a660]">Flow · 0–{number(flowMax, 1)} g/s</span>}
+      {scale && <span style={{ color: colours.flow }}>Flow · {flowMin === 0 ? '0' : number(flowMin, 1)}–{number(flowMax, 1)} g/s</span>}
       <span className="text-[#6b6457]">{number(end, 0)}s</span>
     </div>
     <svg viewBox="0 0 300 60" preserveAspectRatio="none" className="w-full" role="img" aria-label="Live pressure and flow chart">
       <path d="M0,55 H300" stroke="#2e2b26" />
       <path d={path(bars, 'bar', barMax)} stroke="#c97868" fill="none" strokeWidth="2" />
-      <path d={path(flows, 'flowGs', flowMax)} stroke="#e0a660" fill="none" strokeWidth="2" />
+      <path data-testid="live-flow-trace" d={path(plottedFlow, 'flowGs', flowMax, flowMin)} stroke={colours.flow} fill="none" strokeWidth="2" />
+      {plottedFlow.filter((point, index) => (index === 0 || point.breakBefore)
+        && (!plottedFlow[index + 1] || plottedFlow[index + 1].breakBefore)).map(({ tS, flowGs }) =>
+        <circle key={tS} cx={x(tS)} cy={y(flowGs, flowMin, flowMax)} r="1.6" fill={colours.flow} />)}
+      {outliers.map(({ tS, flowGs }) => {
+        const top = flowGs > flowMax;
+        return <circle key={tS} cx={x(tS)} cy={top ? 4 : 56} r="2.5" fill={colours.flow} data-testid="live-flow-outlier">
+          <title>{number(flowGs, 2)} g/s at {number(tS, 2)} s</title>
+        </circle>;
+      })}
     </svg>
   </div>;
 }

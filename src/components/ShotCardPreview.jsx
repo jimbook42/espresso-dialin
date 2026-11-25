@@ -2,7 +2,7 @@ import { isAndroidApp, saveAndroidFile } from '../native/androidShell.js';
 import { useEffect, useRef, useState } from 'react';
 import { drawShotCard, encodeShotCardPng } from '../utils/shotCard.js';
 
-export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui, onError, options, setOptions }) {
+export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui, onError, options, setOptions, smoothFlow }) {
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -11,12 +11,12 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
     let disposed = false;
     let url;
     try {
-      drawShotCard(canvas.current, { shot, bean, grind, referenceShot: options.reference ? referenceShot : null, options });
+      drawShotCard(canvas.current, { shot, bean, grind, referenceShot: options.reference ? referenceShot : null, options, smoothFlow });
       void encodeShotCardPng(canvas.current).then((blob) => {
         if (disposed) return;
         const file = new File([blob], filename + '.png', { type: 'image/png' });
         url = URL.createObjectURL(file);
-        setPreview({ file, url, options, shot, bean, grind, referenceShot, filename });
+        setPreview({ file, url, options, shot, bean, grind, referenceShot, filename, smoothFlow });
       }).catch((error) => { if (!disposed) onError(error.message); });
     } catch (error) {
       onError(error.message);
@@ -25,9 +25,10 @@ export function ShotCardPreview({ shot, bean, grind, referenceShot, filename, ui
       disposed = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [shot, bean, grind, referenceShot, options, filename, onError]);
+  }, [shot, bean, grind, referenceShot, options, filename, onError, smoothFlow]);
   const ready = preview?.options === options && preview.shot === shot && preview.bean === bean
-    && preview.grind === grind && preview.referenceShot === referenceShot && preview.filename === filename;
+    && preview.grind === grind && preview.referenceShot === referenceShot && preview.filename === filename
+    && preview.smoothFlow === smoothFlow;
   const canShare = ready && (isAndroidApp || (navigator.share && navigator.canShare?.({ files: [preview.file] })));
   const deliverAndroid = async (share) => {
     setBusy(true);

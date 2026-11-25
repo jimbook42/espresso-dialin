@@ -475,7 +475,7 @@ describe('adaptive live shot screen', () => {
     }).textContent).toContain(flowText);
     const chart = container.querySelector('[data-testid="live-shot-chart"]');
     expect(chart.textContent).toContain('0–2.0 g/s');
-    const plotted = chart.querySelector('[stroke="#e0a660"]').getAttribute('d');
+    const plotted = chart.querySelector('[data-testid="live-flow-trace"]').getAttribute('d');
     expect(plotted.match(/M/g)).toHaveLength(2);
     expect(plotted.endsWith(`L${(last.tS * 30).toFixed(1)},${(55 - last.flowGs * 25).toFixed(1)}`)).toBe(true);
     expect(Boolean(chart.querySelector('[stroke="#c97868"]').getAttribute('d'))).toBe(gauge);
@@ -497,7 +497,7 @@ describe('adaptive live shot screen', () => {
 
     const profile = render(PressureProfileChart, { profile: { peakPressure: 9 }, liveFlowSamples: flow });
     expect(profile.querySelector('path[stroke="#c88a4b"]').getAttribute('d')).toContain('C');
-    const overlay = profile.querySelector('path[stroke="#8a9d72"]').getAttribute('d');
+    const overlay = profile.querySelector('path[stroke="#63c5b6"]').getAttribute('d');
     expect(overlay.match(/M/g)).toHaveLength(2);
     expect(overlay).toBe('M 12.7 79.7 L 21.4 79.2 M 30.1 29.8 L 38.7 26.2');
     expect(profile.textContent).toContain('12.0 g/s');

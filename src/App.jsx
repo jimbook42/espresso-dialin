@@ -160,6 +160,7 @@ import {
   tasteProfilesMatch,
 } from './utils/tasteProfile.js';
 import { SettingsToggle } from './components/SettingsToggle';
+import { smoothFlowGraphs } from './settings/flowGraphPreference.js';
 import { readCachedGrindBootstrapState } from './grinders/grindControlBootstrap.js';
 import {
   isShotStartCountdownActive,
@@ -542,6 +543,7 @@ export default function App() {
   // Timer State
   const [timerRunning, setTimerRunning] = useState(false);
   const shotStartedAtRef = useRef(null);
+  const [liveChartOriginMs, setLiveChartOriginMs] = useState(null);
   const [brewTimerHost, setBrewTimerHost] = useState(false);
   const [timerTicks, setTimerTicks] = useState(0);
   const timerSeconds = timerTicks / 10;
@@ -770,7 +772,9 @@ export default function App() {
   const hookUsePreInfusion = usePreInfusion || (scaleFeatureEnabled && scaleRecipePreinfusion);
 
   const [liveWorkflowEntry, setLiveWorkflowEntry] = useState(0);
+  const smoothFlow = smoothFlowGraphs(settingsSetting);
   const timemoreScale = useTimemoreScale({
+    smoothFlow,
     liveWorkflowEntry,
     liveWorkflowActive: !isSettingsOpen && (activeTab === 'dial' || activeTab === 'pressure' || activeTab === 'brew'),
     shotLocked: timerRunning || timerStartPending || shotCountdownValue != null
@@ -821,12 +825,15 @@ export default function App() {
     brewGuideTimerActiveRef.current = active;
     setBrewGuideTimerActive(active);
   }, []);
-  const profilePreinfusionTimeS = Number(activeRecipe?.flairProfile?.preinfusionTime) || 0;
-  const flowChartTimeOffsetSec = timerUsePreInfusion ? Math.max(profilePreinfusionTimeS, 4) : 0;
+  const flowChartTimeOffsetSec = liveChartOriginMs != null && timemoreScale.displayFlowOriginMs != null
+    ? (timemoreScale.displayFlowOriginMs - liveChartOriginMs) / 1000 : 0;
   const scaleLiveFlowOnProfile =
     scaleFeatureEnabled && timemoreScale.isConnected && timerRunning
       ? timemoreScale.displayFlowSeries
       : null;
+  const alignedLiveFlow = useMemo(() => scaleLiveFlowOnProfile?.map((point) => ({
+    ...point, tS: point.tS + flowChartTimeOffsetSec,
+  })), [scaleLiveFlowOnProfile, flowChartTimeOffsetSec]);
 
   useEffect(() => {
     if (weighingViewOpen && !timemoreScale.isConnected) {
@@ -983,6 +990,7 @@ export default function App() {
     else setPreInfusionPhase(false);
     shotStartedAtRef.current = performance.now();
     const wallMs = Date.now();
+    setLiveChartOriginMs(wallMs);
     shotDiagnosticsRef.current?.start(wallMs, shotStartedAtRef.current);
     if (!timerUsePreInfusion) shotDiagnosticsRef.current?.extractionPhaseStart(wallMs);
     if (standalone) {
@@ -3249,7 +3257,7 @@ export default function App() {
               targetTimeS={activeRecipe?.targetTimeMaxS}
               scaleEnabled={scaleFeatureEnabled}
               flowGs={timemoreScale.displayFlowGs}
-              flowSeries={scaleLiveFlowOnProfile?.map((point) => ({ ...point, tS: point.tS + flowChartTimeOffsetSec }))}
+              flowSeries={alignedLiveFlow}
               yieldSettleActive={yieldSettleActive}
               frozenYieldG={frozenShotWeightG}
               onGaugeVisibilityChange={handleShotGaugeVisibility}
@@ -4086,7 +4094,7 @@ export default function App() {
               targetTimeS={activeRecipe?.targetTimeMaxS}
               scaleEnabled={scaleFeatureEnabled}
               flowGs={timemoreScale.displayFlowGs}
-              flowSeries={scaleLiveFlowOnProfile?.map((point) => ({ ...point, tS: point.tS + flowChartTimeOffsetSec }))}
+              flowSeries={alignedLiveFlow}
               yieldSettleActive={yieldSettleActive}
               frozenYieldG={frozenShotWeightG}
               onGaugeVisibilityChange={handleShotGaugeVisibility}
@@ -4622,7 +4630,7 @@ export default function App() {
                         ))}
                       </div>
                     )}
-                    {hasPhysicalShotChart(s) && <HistoryShotChart shot={s} ui={ui} />}
+                    {hasPhysicalShotChart(s) && <HistoryShotChart shot={s} ui={ui} smoothFlow={smoothFlow} />}
                     <div className="flex flex-wrap justify-end gap-3">
                       <button type="button" aria-label="Favourite shot" aria-pressed={favourite}
                         title={favourite ? 'Remove from favourites' : 'Add to favourites'}
@@ -4669,7 +4677,7 @@ export default function App() {
                       </div>
                     )}
 
-                    <ShotProfile shot={s} ui={ui} referenceShot={referenceShot}
+                    <ShotProfile shot={s} ui={ui} referenceShot={referenceShot} smoothFlow={smoothFlow}
                       onRatingChange={(rating) => saveShotTasteRating(db, s.id, rating)}
                       onOpenBeanConsistency={referenceEligible ? () => showBeanConsistency(bean.id) : null}
                       referenceDate={referenceShot ? formatShotWhen(referenceShot.timestamp) : null}
@@ -5077,6 +5085,16 @@ export default function App() {
                       scaleConnected: timemoreScale.isConnected,
                     })}. Manual shot logging always works.
                   </p>
+                  <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>
+                    <div>
+                      <span className={`font-bold block ${ui.text}`}>Smooth flow graphs</span>
+                      <span className={`text-[10px] ${ui.muted}`}>
+                        Reduces small fluctuations in Bluetooth scale readings. Turn off to see more detailed flow changes.
+                      </span>
+                    </div>
+                    <SettingsToggle checked={smoothFlow} label="Smooth flow graphs"
+                      onChange={(enabled) => void patchGlobalSettings(db, { smoothFlowGraphs: enabled })} />
+                  </div>
                   {timemoreScale.isConnected && (
                     <>
                     <div className={`border-t ${ui.modalDivider} pt-3 flex items-center justify-between gap-3`}>

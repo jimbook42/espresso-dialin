@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { buildComparisonProfile } from '../utils/shotProfile.js';
+import { flowPointsForPlot, FLOW_STROKE, LIVE_FLOW_STROKE, splitFlowPlot, typicalFlowRange } from '../scales/flowPlotRange.js';
+import { buildComparisonProfile, buildExtractionFlowPlot } from '../utils/shotProfile.js';
 
 const measurements = [
   { id: 'pressure', label: 'Pressure', key: 'bar', unit: 'bar' },
@@ -11,6 +12,8 @@ const seriesStyles = [
   { label: 'Bean reference', stroke: '#508cbf', dash: '5 3' },
 ];
 const metric = (value, unit) => value == null ? '—' : `${value} ${unit}`;
+const measurementStroke = (id, index) => id === 'flow'
+  ? [FLOW_STROKE, LIVE_FLOW_STROKE][index] : seriesStyles[index].stroke;
 
 function axis(min, max, count, minimumStep) {
   const step = Math.max(minimumStep, Math.ceil((max - min) / count / minimumStep) * minimumStep);
@@ -21,8 +24,10 @@ function axis(min, max, count, minimumStep) {
 
 function ComparisonChart({ seriesByShot, measurement, timeAxis, timeLabel }) {
   const { id, label, key, unit } = measurement;
-  const points = seriesByShot.flat();
-  const [min, max] = points.reduce(([lo, hi], point) => [Math.min(lo, point[key]), Math.max(hi, point[key])], [0, 0]);
+  const [min, max] = id === 'flow'
+    ? seriesByShot.map((series) => typicalFlowRange(series)).reduce(([lo, hi], [low, high]) =>
+      [Math.min(lo, low), Math.max(hi, high)], [0, 0])
+    : seriesByShot.flat().reduce(([lo, hi], point) => [Math.min(lo, point[key]), Math.max(hi, point[key])], [0, 0]);
   const values = axis(min, max, 3, 0.5);
   const x = (time) => 36 + 268 * (time - timeAxis.first) / (timeAxis.last - timeAxis.first);
   const y = (value) => 113 - 100 * (value - values.first) / (values.last - values.first);
@@ -43,16 +48,23 @@ function ComparisonChart({ seriesByShot, measurement, timeAxis, timeLabel }) {
       <text x="170" y="145" textAnchor="middle" fill="currentColor" fontSize="10">{timeLabel} (s)</text>
       {seriesByShot.map((series, index) => {
         if (!series.length) return null;
-        const { label: name, stroke, dash } = seriesStyles[index];
+        const { label: name, dash } = seriesStyles[index];
+        const stroke = measurementStroke(id, index);
+        const { visible, outliers } = id === 'flow' ? splitFlowPlot(series, values.first, values.last)
+          : { visible: series, outliers: [] };
+        const trace = id === 'flow' ? flowPointsForPlot(visible, timeAxis.first, timeAxis.last, 268) : visible;
         return (
           <g key={name} data-testid={`comparison-${index === 0 ? 'selected' : 'reference'}-series`}>
-            <path d={series.map((point, i) => id === 'flow'
-              ? `M${x(point.fromTS)},${y(point[key])} H${x(point.tS)}`
-              : `${i === 0 || point.breakBefore ? 'M' : 'L'}${x(point.tS).toFixed(2)},${y(point[key]).toFixed(2)}`).join(' ')}
+            <path d={trace.map((point, i) =>
+              `${i === 0 || point.breakBefore ? 'M' : 'L'}${x(point.tS).toFixed(2)},${y(point[key]).toFixed(2)}`).join(' ')}
               stroke={stroke} strokeWidth="2" strokeDasharray={dash} fill="none" />
-            {id !== 'flow' && series.filter((point, i) => (i === 0 || point.breakBefore)
-              && (i === series.length - 1 || series[i + 1].breakBefore)).map((point) => (
+            {trace.filter((point, i) => (i === 0 || point.breakBefore)
+              && (i === trace.length - 1 || trace[i + 1].breakBefore)).map((point) => (
               <circle key={point.tS} cx={x(point.tS)} cy={y(point[key])} r="2.4" fill={stroke} />
+            ))}
+            {outliers.map(({ tS, flowGs }) => (
+              <circle key={tS} cx={x(tS)} cy={y(flowGs > values.last ? values.last : values.first)}
+                r="3" fill={stroke}><title>{flowGs.toFixed(2)} g/s at {tS.toFixed(2)} s</title></circle>
             ))}
           </g>
         );
@@ -69,8 +81,11 @@ function recordingSeries(profile, id) {
   return id === 'pressure' && profile.pressureTimingUnavailable ? profile.recordingPressure : profile[id];
 }
 
-export function ShotComparison({ shot, referenceShot, referenceDate, ui }) {
-  const profiles = useMemo(() => [buildComparisonProfile(shot), buildComparisonProfile(referenceShot)], [shot, referenceShot]);
+export function ShotComparison({ shot, referenceShot, referenceDate, ui, smoothFlow = true }) {
+  const profiles = useMemo(() => [shot, referenceShot].map((item) => ({
+    ...buildComparisonProfile(item),
+    flow: buildExtractionFlowPlot(item, smoothFlow),
+  })), [shot, referenceShot, smoothFlow]);
   const [view, setView] = useState(null);
   const available = measurements.filter(({ id }) => profiles.some((profile) => recordingSeries(profile, id).length > 0));
   const measurement = available.find(({ id }) => id === view) ?? available[0];
@@ -87,7 +102,8 @@ export function ShotComparison({ shot, referenceShot, referenceDate, ui }) {
     <div className={`space-y-2 pb-3 ${ui.text}`} data-testid="shot-comparison">
       <div className="grid grid-cols-2 gap-2">
         {profiles.map(({ durationS, doseG, yieldG }, index) => {
-          const { label, stroke, dash } = seriesStyles[index];
+          const { label, dash } = seriesStyles[index];
+          const stroke = measurementStroke(measurement?.id, index);
           return (
             <div key={label} className={`min-w-0 rounded-lg p-2 text-xs ${ui.metricCell}`}>
               <div className="flex flex-wrap items-center gap-x-1.5 font-semibold">
@@ -148,7 +164,6 @@ export function ShotComparison({ shot, referenceShot, referenceDate, ui }) {
               </div>
             );
           })}
-          {measurement.id === 'flow' && <p className={`text-xs ${ui.sub}`}>Flow spans the interval between two scale readings.</p>}
         </>
       ) : <p className={`text-xs ${ui.sub}`}>No sensor curves available for comparison.</p>}
     </div>

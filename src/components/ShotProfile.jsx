@@ -128,7 +128,7 @@ function ProfileChart({ profile, ui, compact = false }) {
   );
 }
 
-export function HistoryShotChart({ shot, ui }) {
+export function HistoryShotChart({ shot, ui, smoothFlow = true }) {
   const surface = useRef(null);
   const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined');
   const [height, setHeight] = useState(170);
@@ -141,14 +141,14 @@ export function HistoryShotChart({ shot, ui }) {
     observer.observe(surface.current);
     return () => observer.disconnect();
   }, []);
-  const profile = useMemo(() => near ? buildShotProfile(shot, { physicalOnly: true }) : null, [shot, near]);
+  const profile = useMemo(() => near ? buildShotProfile(shot, { physicalOnly: true, smoothFlow }) : null, [shot, near, smoothFlow]);
   return <div ref={surface} data-testid="history-recorded-chart" style={near ? undefined : { height }}>
     {profile && <ProfileChart profile={profile} ui={ui} compact />}
   </div>;
 }
 
-function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
-  const profile = useMemo(() => buildShotProfile(shot), [shot]);
+function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency, smoothFlow }) {
+  const profile = useMemo(() => buildShotProfile(shot, { smoothFlow }), [shot, smoothFlow]);
   const yieldLabel = profile.yieldSource === 'manual' ? 'Entered yield'
     : profile.yieldSource === 'scale' ? 'Scale yield' : 'Saved yield';
   const metrics = [
@@ -160,7 +160,7 @@ function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
     ...(profile.weight.length ? [['Last scale weight', format(profile.finalWeightG, 'g')]] : []),
     ...(profile.flow.length ? [
       ['Avg flow (observed intervals)', format(profile.averageFlowGs, 'g/s', 2)],
-      ['Peak flow (smoothed)', format(profile.peakFlowGs, 'g/s', 2)],
+      ['Peak plotted flow', format(profile.peakFlowGs, 'g/s', 2)],
     ] : []),
   ];
   return (
@@ -192,19 +192,20 @@ function ProfileDetails({ shot, ui, onRatingChange, onOpenBeanConsistency }) {
   );
 }
 
-function ReferenceComparison({ shot, referenceShot, referenceDate, ui }) {
+function ReferenceComparison({ shot, referenceShot, referenceDate, ui, smoothFlow }) {
   const [open, setOpen] = useState(false);
   return (
     <details onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className={`flex min-h-11 cursor-pointer items-center text-sm font-semibold ${ui.accentText}`}>
         Compare with bean reference
       </summary>
-      {open && <ShotComparison shot={shot} referenceShot={referenceShot} referenceDate={referenceDate} ui={ui} />}
+      {open && <ShotComparison shot={shot} referenceShot={referenceShot} referenceDate={referenceDate} ui={ui} smoothFlow={smoothFlow} />}
     </details>
   );
 }
 
-export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency }) {
+export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenceChange, onRatingChange, onOpenBeanConsistency,
+  smoothFlow = true }) {
   const [open, setOpen] = useState(false);
   const isReference = referenceShot?.id === shot.id;
   return (
@@ -218,15 +219,15 @@ export function ShotProfile({ shot, ui, referenceShot, referenceDate, onReferenc
       {open && (
         <>
           <ProfileDetails shot={shot} ui={ui} onRatingChange={onRatingChange}
-            onOpenBeanConsistency={onOpenBeanConsistency} />
+            onOpenBeanConsistency={onOpenBeanConsistency} smoothFlow={smoothFlow} />
           {(shot.labPressureCurve?.length > 0 || shot.scaleFlowCurve?.length > 0) && (
-            <PressureFlowAnalytics shot={shot} ui={ui} />
+            <PressureFlowAnalytics shot={shot} ui={ui} smoothFlow={smoothFlow} />
           )}
           {onReferenceChange && (
             <div className={`border-t ${ui.modalDivider}`}>
               {referenceShot && !isReference && (
                 <ReferenceComparison key={referenceShot.id} shot={shot} referenceShot={referenceShot}
-                  referenceDate={referenceDate} ui={ui} />
+                  referenceDate={referenceDate} ui={ui} smoothFlow={smoothFlow} />
               )}
               <button type="button" onClick={() => onReferenceChange(!isReference)}
                 className={`min-h-11 text-xs font-semibold ${ui.sub}`}>

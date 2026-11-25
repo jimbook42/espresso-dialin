@@ -1,6 +1,5 @@
 import { PRESSURE_CURVE_GAP_MS } from '../flairPressureLab/pressureCurveFilter.js';
-import { plottedFlowFromWeights } from '../scales/displayFlow.js';
-import { buildComparisonProfile, extractionTiming, recordedShotTiming } from './shotProfile.js';
+import { buildComparisonProfile, buildExtractionFlowPlot, extractionTiming, recordedShotTiming } from './shotProfile.js';
 
 const PRESSURE_GAP_S = PRESSURE_CURVE_GAP_MS / 1000;
 const TIME_EPSILON_S = 1e-9;
@@ -77,7 +76,7 @@ function pressureBands(pressure, flow) {
     .map(({ grams, ...band }) => ({ ...band, averageFlowGs: grams / band.seconds }));
 }
 
-export function buildPressureFlowAnalytics(shot) {
+export function buildPressureFlowAnalytics(shot, { smoothFlow = false } = {}) {
   const timing = recordedShotTiming(shot);
   const extraction = extractionTiming(timing);
   const durationS = extraction?.durationS ?? null;
@@ -89,9 +88,7 @@ export function buildPressureFlowAnalytics(shot) {
   const flow = usableScale ? profile.flow : [];
   // Use the same elapsed-time estimator as compact History. Paired bands retain
   // their original, unsmoothed net mass / observed duration definition.
-  const displayFlow = usableScale && Array.isArray(shot.scaleFlowCurve) ? plottedFlowFromWeights(shot.scaleFlowCurve,
-    (extraction.startMs - timing.scaleOriginMs) / 1000, (timing.extractionEndMs - timing.scaleOriginMs) / 1000)
-    .map((point) => ({ ...point, tS: point.tS + (timing.scaleOriginMs - extraction.startMs) / 1000 })) : [];
+  const displayFlow = usableScale ? buildExtractionFlowPlot(shot, smoothFlow) : [];
   return {
     durationS,
     pressure,

@@ -139,7 +139,7 @@ export function generateShotInsights({
   }
   if ((pressureOnly || profile?.flow?.length) && finite(profile?.peakFlowGs)) {
     findings.push(insight('flow-observation', 3,
-      `Peak smoothed flow was ${profile.peakFlowGs.toFixed(2)} g/s.`, 'shot-profile-derived-measurement'));
+      `Peak plotted flow was ${profile.peakFlowGs.toFixed(2)} g/s.`, 'shot-profile-derived-measurement'));
   }
   if ((pressureOnly || profile?.pressure?.length || profile?.weight?.length) && profile?.pressureInterrupted) {
     findings.push(insight('sensor-availability', 2, 'Pressure recording was interrupted.', 'shot-profile-measurement'));
